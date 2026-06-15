@@ -292,6 +292,7 @@ public class ControllerApiConstants {
   public static final String TARGET_SWAP_REGION = "target_swap_region";
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
+  public static final String TARGET_REGION_PROMOTED = "target_region_promoted";
   public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
   public static final String ENUM_SCHEMA_EVOLUTION_ALLOWED = "enum_schema_evolution_allowed";
   public static final String STORE_LIFECYCLE_HOOKS_LIST = "store_lifecycle_hooks_list";

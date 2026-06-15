@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,7 +36,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -53,6 +56,8 @@ import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -635,12 +640,13 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         .setTTLRepushEnabled(true)
         .setEnumSchemaEvolutionAllowed(true)
         .setFlinkVeniceViewsEnabled(true)
-        .setPreviousCurrentVersion(1);
+        .setPreviousCurrentVersion(1)
+        .setTargetRegionPromoted(true);
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    // 22 distinct ifPresent branches above. Allow some headroom because a few of those
-    // (e.g., the compaction lag pair) read through the same generic ifPresent.
+    // 23 distinct ifPresent/conditional branches above (added targetRegionPromoted). Allow some
+    // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
     verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
   }
 
@@ -759,6 +765,110 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
     verify(admin, never()).setStoreOwner(any(), any(), any());
+  }
+
+  /**
+   * Covers the {@code targetRegionPromoted=false} no-op path in {@code applyOnChild}: the flag is
+   * write-only-true, so an explicit {@code false} (e.g. from a replicateAllConfigs snapshot of an
+   * un-promoted store) must be treated as a no-op — {@code storeMetadataUpdate} must not be called.
+   */
+  @Test
+  public void testApplyOnChild_TargetRegionPromotedFalse_DoesNotTriggerMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-trp-false");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(false);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).storeMetadataUpdate(any(), any(), any());
+  }
+
+  /**
+   * Covers the {@code applyOnParent} wiring for {@code targetRegionPromoted}: when the flag is set
+   * to {@code true} in params, the parent round-trip must (a) set {@code setStore.targetRegionPromoted=true}
+   * in the Avro message and (b) add {@link com.linkedin.venice.controllerapi.ControllerApiConstants#TARGET_REGION_PROMOTED}
+   * to {@code updatedConfigsList}.
+   */
+  @Test
+  public void testApplyOnParent_TargetRegionPromoted_AppearsInAvroAndUpdatedConfigsList() {
+    String storeName = Utils.getUniqueString("parent-trp");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(true);
+    parentAdmin.updateStore(clusterName, storeName, params);
+
+    UpdateStore msg = captureLastUpdateStore();
+    assertTrue(msg.targetRegionPromoted, "Avro field targetRegionPromoted must be true");
+    Set<String> updatedKeys = msg.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet());
+    assertTrue(
+        updatedKeys.contains(TARGET_REGION_PROMOTED),
+        "updatedConfigsList must contain '" + TARGET_REGION_PROMOTED + "' but got: " + updatedKeys);
+  }
+
+  /**
+   * Covers the pre-check null-version branch in {@code applyOnChild}: when there is no future version
+   * (store has no versions), {@code storeMetadataUpdate} must be skipped — the inner lambda would be
+   * a no-op, so calling it would only cause an unnecessary ZK write.
+   */
+  @Test
+  public void testApplyOnChild_NoFutureVersion_SkipsStoreMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-trp-no-version");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    // newChildAdminMock returns a store with no versions; getLargestUsedVersionNumber() == 0,
+    // getVersion(0) == null → pre-check must skip storeMetadataUpdate.
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(true);
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).storeMetadataUpdate(any(), any(), any());
+  }
+
+  /**
+   * Covers the pre-check branch in {@code applyOnChild}: when the latest version is already promoted,
+   * {@code storeMetadataUpdate} must be skipped entirely to avoid an unnecessary ZK write.
+   */
+  @Test
+  public void testApplyOnChild_VersionAlreadyPromoted_SkipsStoreMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-trp-already");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    // Add a real version and mark it as already promoted
+    Store store = admin.getStore(clusterName, storeName);
+    Version v1 = new VersionImpl(storeName, 1, "push-id-1");
+    store.addVersion(v1);
+    store.setVersionTargetRegionPromoted(1, true);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(true);
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).storeMetadataUpdate(any(), any(), any());
+  }
+
+  /**
+   * Covers the {@code applyOnParent} no-op path for {@code targetRegionPromoted=false}: the flag is
+   * write-only-true, so an explicit {@code false} must NOT appear in {@code updatedConfigsList} and
+   * must NOT set {@code targetRegionPromoted=true} in the Avro message.
+   */
+  @Test
+  public void testApplyOnParent_TargetRegionPromotedFalse_NotInUpdatedConfigsList() {
+    String storeName = Utils.getUniqueString("parent-trp-false");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    // Pair with an owner update so the command has at least one real change; otherwise the parent
+    // throws "command didn't change any specific store config".
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(false).setOwner("new-owner");
+    parentAdmin.updateStore(clusterName, storeName, params);
+
+    UpdateStore msg = captureLastUpdateStore();
+    Set<String> updatedKeys = msg.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet());
+    assertFalse(
+        updatedKeys.contains(TARGET_REGION_PROMOTED),
+        "updatedConfigsList must NOT contain '" + TARGET_REGION_PROMOTED + "' when value is false");
+    assertFalse(msg.targetRegionPromoted, "Avro field must not be set to true when param is false");
   }
 
   // ===== helpers =====

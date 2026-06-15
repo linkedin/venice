@@ -690,6 +690,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setTargetRegionPromoted(boolean targetRegionPromoted) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isTargetRegionPromoted() {
+      return delegate.isTargetRegionPromoted();
+    }
+
+    @Override
     public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
       throw new UnsupportedOperationException();
     }
@@ -1618,6 +1628,11 @@ public class ReadOnlyStore implements Store {
       version = new ReadOnlyVersion(version);
     }
     return version;
+  }
+
+  @Override
+  public void setVersionTargetRegionPromoted(int versionNumber, boolean targetRegionPromoted) {
+    throw new UnsupportedOperationException();
   }
 
   @Override

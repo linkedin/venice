@@ -192,6 +192,30 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
       });
 
       client2.close();
+
+      // Verify targetRegionPromoted=true on parent and all child controllers.
+      // DeferredVersionSwapService sets the field once the target region's push completes
+      // and propagates it to children via the updateStore admin path.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Optional<Version> parentVersion = parentControllerClient.getStore(storeName).getStore().getVersion(2);
+        Assert.assertTrue(parentVersion.isPresent(), "Version 2 must exist on parent");
+        Assert.assertTrue(
+            parentVersion.get().isTargetRegionPromoted(),
+            "Parent controller must set targetRegionPromoted=true after target region push completes");
+      });
+
+      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            Optional<Version> childVersion = childControllerClient.getStore(storeName).getStore().getVersion(2);
+            Assert.assertTrue(childVersion.isPresent(), "Version 2 must exist in child controller");
+            Assert.assertTrue(
+                childVersion.get().isTargetRegionPromoted(),
+                "Child controller must reflect targetRegionPromoted=true via admin message propagation");
+          });
+        }
+      }
     }
   }
 

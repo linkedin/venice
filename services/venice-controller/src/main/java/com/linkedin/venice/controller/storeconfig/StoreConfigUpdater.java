@@ -66,6 +66,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_Q
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
@@ -111,6 +112,7 @@ import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceETLStrategy;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
@@ -296,6 +298,7 @@ public final class StoreConfigUpdater {
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
+    Optional<Boolean> targetRegionPromoted = params.getTargetRegionPromoted();
     Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
@@ -767,6 +770,28 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
+      if (targetRegionPromoted.orElse(false)) {
+        // Best-effort pre-check: only call storeMetadataUpdate when there is a future version that
+        // has not yet been promoted. Skips the ZK write when the version is missing (inner lambda
+        // would be a no-op) or already promoted. The inner lambda re-checks atomically for correctness.
+        Store currentStore = admin.getStore(clusterName, storeName);
+        int futureVersionNum = currentStore.getLargestUsedVersionNumber();
+        Version currentFutureVersion = currentStore.getVersion(futureVersionNum);
+        if (currentFutureVersion != null && !currentFutureVersion.isTargetRegionPromoted()) {
+          admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            int versionNum = store.getLargestUsedVersionNumber();
+            Version futureVersion = store.getVersion(versionNum);
+            if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
+              // Use store.setVersionTargetRegionPromoted rather than futureVersion.setTargetRegionPromoted
+              // because getVersion() returns a ReadOnlyVersion wrapper whose setters throw.
+              // The store-level method uses storeVersionsSupplier.getForUpdate() to bypass that wrapper.
+              store.setVersionTargetRegionPromoted(versionNum, true);
+            }
+            return store;
+          });
+        }
+      }
+
       globalRtDivEnabled.ifPresent(aBool -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
         store.setGlobalRtDivEnabled(aBool);
         return store;
@@ -1230,6 +1255,18 @@ public final class StoreConfigUpdater {
     setStore.isDaVinciHeartBeatReported = params.getIsDavinciHeartbeatReported()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
         .orElseGet((currStore::getIsDavinciHeartbeatReported));
+
+    // targetRegionPromoted is write-only-true: only track it as an updated config when explicitly
+    // set to true. An explicit false (e.g. from a replicateAllConfigs snapshot of an un-promoted
+    // store) is treated as a no-op on both parent and child, so propagating it to updatedConfigsList
+    // would create an "updated" config that children intentionally won't apply.
+    setStore.targetRegionPromoted = params.getTargetRegionPromoted()
+        .filter(Boolean::booleanValue)
+        .map(admin.addToUpdatedConfigList(updatedConfigsList, TARGET_REGION_PROMOTED))
+        .orElseGet(() -> {
+          Version futureVersion = currStore.getVersion(currStore.getLargestUsedVersionNumber());
+          return futureVersion != null && futureVersion.isTargetRegionPromoted();
+        });
 
     setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))

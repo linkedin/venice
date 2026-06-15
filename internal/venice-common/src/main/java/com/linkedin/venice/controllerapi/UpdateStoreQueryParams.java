@@ -79,6 +79,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_CLASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_PARAMS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
@@ -951,6 +952,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getIsDavinciHeartbeatReported() {
     return getBoolean(IS_DAVINCI_HEARTBEAT_REPORTED);
+  }
+
+  public UpdateStoreQueryParams setTargetRegionPromoted(boolean targetRegionPromoted) {
+    return putBoolean(TARGET_REGION_PROMOTED, targetRegionPromoted);
+  }
+
+  public Optional<Boolean> getTargetRegionPromoted() {
+    return getBoolean(TARGET_REGION_PROMOTED);
   }
 
   public UpdateStoreQueryParams setGlobalRtDivEnabled(boolean globalRtDivEnabled) {

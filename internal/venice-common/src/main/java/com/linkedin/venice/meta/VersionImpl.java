@@ -468,6 +468,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public void setTargetRegionPromoted(boolean targetRegionPromoted) {
+    this.storeVersion.targetRegionPromoted = targetRegionPromoted;
+  }
+
+  @Override
+  public boolean isTargetRegionPromoted() {
+    return this.storeVersion.targetRegionPromoted;
+  }
+
+  @Override
   public boolean isGlobalRtDivEnabled() {
     return this.storeVersion.globalRtDivEnabled;
   }
@@ -606,6 +616,7 @@ public class VersionImpl implements Version {
     clonedVersion.setTargetSwapRegion(getTargetSwapRegion());
     clonedVersion.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     clonedVersion.setIsDavinciHeartbeatReported(getIsDavinciHeartbeatReported());
+    clonedVersion.setTargetRegionPromoted(isTargetRegionPromoted());
     clonedVersion.setGlobalRtDivEnabled(isGlobalRtDivEnabled());
     clonedVersion.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     clonedVersion.setKeyUrnFields(getKeyUrnFields());

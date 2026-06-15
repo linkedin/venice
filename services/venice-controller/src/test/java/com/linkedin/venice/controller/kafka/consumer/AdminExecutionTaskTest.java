@@ -4,6 +4,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -18,9 +20,11 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
@@ -34,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.Logger;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -503,6 +508,148 @@ public class AdminExecutionTaskTest {
         anyInt(),
         anyInt(),
         anyInt());
+  }
+
+  /**
+   * Verifies that the {@code targetRegionPromoted} field set on an {@code UpdateStore} admin message
+   * is propagated into the {@code UpdateStoreQueryParams} passed to {@code admin.updateStore}.
+   * This covers the single-line addition in {@code AdminExecutionTask.handleSetStore}:
+   * {@code .setTargetRegionPromoted(message.targetRegionPromoted)}.
+   */
+  @Test
+  public void testHandleSetStore_TargetRegionPromoted_PropagatedToParams() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, true));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        /* isParentController= */ false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertTrue(
+        captor.getAllValues().stream().anyMatch(p -> p.getTargetRegionPromoted().orElse(false)),
+        "updateStore must be called with targetRegionPromoted=true when message.targetRegionPromoted=true");
+  }
+
+  @Test
+  public void testHandleSetStore_TargetRegionPromoted_FalseByDefault() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, false));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        /* isParentController= */ false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertTrue(
+        captor.getAllValues().stream().noneMatch(p -> p.getTargetRegionPromoted().orElse(false)),
+        "updateStore must not be called with targetRegionPromoted=true when message.targetRegionPromoted=false");
+  }
+
+  private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {
+    AdminOperation adminOperation = new AdminOperation();
+    adminOperation.operationType = AdminMessageType.UPDATE_STORE.getValue();
+    adminOperation.executionId = executionId;
+
+    UpdateStore updateStore = new UpdateStore();
+    updateStore.clusterName = clusterName;
+    updateStore.storeName = storeName;
+    updateStore.owner = "test-owner";
+    updateStore.partitionNum = 1;
+    updateStore.currentVersion = -1;
+    updateStore.enableReads = true;
+    updateStore.enableWrites = true;
+    updateStore.storageQuotaInByte = 21474836480L;
+    updateStore.readQuotaInCU = 1800L;
+    updateStore.accessControlled = false;
+    updateStore.compressionStrategy = 0;
+    updateStore.chunkingEnabled = false;
+    updateStore.rmdChunkingEnabled = false;
+    updateStore.batchGetLimit = -1;
+    updateStore.numVersionsToPreserve = 0;
+    updateStore.incrementalPushEnabled = false;
+    updateStore.separateRealTimeTopicEnabled = false;
+    updateStore.isMigrating = false;
+    updateStore.writeComputationEnabled = false;
+    updateStore.replicationMetadataVersionID = -1;
+    updateStore.readComputationEnabled = false;
+    updateStore.bootstrapToOnlineTimeoutInHours = 24;
+    updateStore.backupStrategy = 0;
+    updateStore.clientDecompressionEnabled = true;
+    updateStore.schemaAutoRegisterFromPushJobEnabled = false;
+    updateStore.hybridStoreOverheadBypass = false;
+    updateStore.hybridStoreDiskQuotaEnabled = false;
+    updateStore.nativeReplicationEnabled = false;
+    updateStore.latestSuperSetValueSchemaId = -1;
+    updateStore.replicationFactor = 3;
+    updateStore.migrationDuplicateStore = false;
+    updateStore.backupVersionRetentionMs = -1L;
+    updateStore.activeActiveReplicationEnabled = false;
+    updateStore.blobTransferEnabled = false;
+    updateStore.nearlineProducerCompressionEnabled = true;
+    updateStore.nearlineProducerCountPerWriter = 1;
+    updateStore.targetSwapRegionWaitTime = 60;
+    updateStore.isDaVinciHeartBeatReported = false;
+    updateStore.globalRtDivEnabled = false;
+    updateStore.enumSchemaEvolutionAllowed = false;
+    updateStore.flinkVeniceViewsEnabled = false;
+    updateStore.unusedSchemaDeletionEnabled = false;
+    updateStore.updatedConfigsList = new java.util.ArrayList<>();
+    updateStore.replicateAllConfigs = true;
+    updateStore.storeLifecycleHooks = new java.util.ArrayList<>();
+    updateStore.keyUrnCompressionEnabled = false;
+    updateStore.keyUrnFields = new java.util.ArrayList<>();
+    updateStore.throughputQuotaInBytes = -1L;
+    updateStore.throughputQuotaInRecords = -1L;
+    updateStore.previousCurrentVersion = -1;
+    updateStore.transientRecordCacheEnabled = false;
+    updateStore.mergedValueRmdColumnFamilyEnabled = false;
+    updateStore.ingestionPauseMode = 0;
+    updateStore.ingestionPausedRegions = new java.util.ArrayList<>();
+    updateStore.targetRegionPromoted = targetRegionPromoted;
+    updateStore.storageMode = 0;
+    updateStore.externalStorageReadMode = 0;
+
+    adminOperation.payloadUnion = updateStore;
+
+    PubSubPosition position = InMemoryPubSubPosition.of(1L);
+    return new AdminOperationWrapper(
+        adminOperation,
+        position,
+        executionId,
+        System.currentTimeMillis(),
+        System.currentTimeMillis(),
+        System.currentTimeMillis());
   }
 
   private AdminOperationWrapper createAddVersionWrapper(

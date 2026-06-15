@@ -9,6 +9,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
@@ -1089,6 +1090,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return;
     }
 
+    if (!targetVersion.isTargetRegionPromoted()) {
+      markTargetRegionPromoted(cluster, storeName, targetVersionNum);
+    }
+
     // Find next region to roll forward
     String nextRegionToRollForward =
         getNextRegionToRollForward(parentStore, targetVersionNum, cluster, kafkaTopicName, rolloutOrder);
@@ -1204,6 +1209,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return;
     }
 
+    if (!targetVersion.isTargetRegionPromoted()) {
+      markTargetRegionPromoted(cluster, storeName, targetVersionNum);
+    }
+
     // Get eligible non target regions to roll forward in
     Set<String> nonTargetRegionsCompleted =
         getRegionsToRollForward(remainingRegions, parentStore, targetVersionNum, cluster, kafkaTopicName);
@@ -1284,6 +1293,21 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       repository.updateStore(store);
     } catch (Exception e) {
       LOGGER.warn("Failed to execute updateStore for store: {} in cluster: {}", storeName, clusterName, e);
+    }
+  }
+
+  private void markTargetRegionPromoted(String clusterName, String storeName, int targetVersionNum) {
+    try {
+      LOGGER.info("Marking targetRegionPromoted=true for store: {} version: {}", storeName, targetVersionNum);
+      veniceParentHelixAdmin
+          .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setTargetRegionPromoted(true));
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to mark targetRegionPromoted for store: {} version: {} in cluster: {}",
+          storeName,
+          targetVersionNum,
+          clusterName,
+          e);
     }
   }
 

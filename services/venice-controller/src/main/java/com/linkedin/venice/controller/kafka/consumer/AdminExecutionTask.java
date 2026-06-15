@@ -585,6 +585,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
+        .setTargetRegionPromoted(message.targetRegionPromoted)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
         .setFlinkVeniceViewsEnabled(message.flinkVeniceViewsEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)

@@ -242,6 +242,18 @@ public abstract class AbstractStore implements Store {
   }
 
   @Override
+  public void setVersionTargetRegionPromoted(int versionNumber, boolean targetRegionPromoted) {
+    checkVersionSupplier();
+    for (int i = storeVersionsSupplier.getForUpdate().size() - 1; i >= 0; i--) {
+      Version version = new VersionImpl(storeVersionsSupplier.getForUpdate().get(i));
+      if (version.getNumber() == versionNumber) {
+        version.setTargetRegionPromoted(targetRegionPromoted);
+        return;
+      }
+    }
+  }
+
+  @Override
   public int peekNextVersionNumber() {
     int nextVersionNumber = getLargestUsedVersionNumber() + 1;
     checkDisableStoreWrite("increase", nextVersionNumber);
