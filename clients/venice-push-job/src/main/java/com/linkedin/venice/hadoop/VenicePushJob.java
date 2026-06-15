@@ -26,6 +26,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_BATCH_BYTES
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_INPUT_VALUE_SCHEMA_PROJECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
@@ -41,6 +42,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RA
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_VALUE_SCHEMA_PROJECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_SERVER_NAME;
@@ -82,6 +84,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME_MINUTES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
@@ -426,6 +429,9 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.repushUseFallbackValueSchemaId =
         props.getBoolean(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, false);
     pushJobSettingToReturn.isCompliancePush = props.getBoolean(COMPLIANCE_PUSH, false);
+    pushJobSettingToReturn.valueSchemaProjectionEnabled =
+        props.getBoolean(INPUT_VALUE_SCHEMA_PROJECTION_ENABLED, DEFAULT_INPUT_VALUE_SCHEMA_PROJECTION_ENABLED);
+    pushJobSettingToReturn.targetWriterValueSchemaId = props.getInt(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, -1);
     pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
         props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
@@ -2306,6 +2312,18 @@ public class VenicePushJob implements AutoCloseable {
           setting.controllerRetries,
           c -> c.getValueSchemaID(setting.storeName, pushJobSetting.valueSchemaString));
     }
+    if (getValueSchemaIdResponse.isError() && setting.valueSchemaProjectionEnabled
+        && setting.targetWriterValueSchemaId > 0) {
+      // Input value schema does not match any registered value schema. The user has supplied a target writer value
+      // schema ID to project input records down to; validate the superset relationship and enable projection.
+      configureValueSchemaProjection(controllerClient, setting);
+      LOGGER.info(
+          "Got schema id: {} (projection target) for value schema: {} of store: {}",
+          pushJobSetting.valueSchemaId,
+          pushJobSetting.valueSchemaString,
+          setting.storeName);
+      return;
+    }
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
       MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
       if (response.isError()) {
@@ -2346,6 +2364,48 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.valueSchemaId,
         pushJobSetting.valueSchemaString,
         setting.storeName);
+  }
+
+  /**
+   * Configure projection of input records down to a user-specified registered writer (target) value schema, used when
+   * the input value schema does not match any registered value schema. Fetches the writer schema by ID, validates that
+   * the input value schema is a strict superset of it, and enables
+   * {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}-based projection.
+   */
+  private void configureValueSchemaProjection(ControllerClient controllerClient, PushJobSetting setting) {
+    int writerSchemaId = setting.targetWriterValueSchemaId;
+    LOGGER.info(
+        "Input value schema is not registered; attempting projection to target writer value schema id: {} for store: {} "
+            + "(input value schema projection feature flag is enabled). Input value schema: {}",
+        writerSchemaId,
+        setting.storeName,
+        setting.valueSchemaString);
+    SchemaResponse writerSchemaResponse = ControllerClient.retryableRequest(
+        controllerClient,
+        setting.controllerRetries,
+        c -> c.getValueSchema(setting.storeName, writerSchemaId));
+    if (writerSchemaResponse.isError()) {
+      throw new VeniceException(
+          "Failed to fetch target writer value schema id: " + writerSchemaId + " for store: " + setting.storeName
+              + "\nError from the server: " + writerSchemaResponse.getError());
+    }
+    Schema writerSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(writerSchemaResponse.getSchemaStr());
+    if (!validateSubsetValueSchema(writerSchema, setting.valueSchemaString)) {
+      throw new VeniceSchemaMismatchException(
+          "Input value schema is not a superset of the target writer value schema (id: " + writerSchemaId
+              + "). Input value schema: " + setting.valueSchemaString + " , writer schema: "
+              + writerSchemaResponse.getSchemaStr());
+    }
+    setting.writerValueSchema = writerSchema;
+    setting.writerValueSchemaString = writerSchemaResponse.getSchemaStr();
+    setting.valueSchemaId = writerSchemaId;
+    setting.projectInputToWriterSchema = true;
+    LOGGER.info(
+        "Enabled input value schema projection for store: {}. Input value schema is a confirmed superset of target "
+            + "writer value schema id: {}. Resolved writer value schema: {}",
+        setting.storeName,
+        writerSchemaId,
+        setting.writerValueSchemaString);
   }
 
   /**

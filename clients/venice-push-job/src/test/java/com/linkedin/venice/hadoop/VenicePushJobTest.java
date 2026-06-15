@@ -6,6 +6,7 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENAB
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
@@ -342,6 +343,125 @@ public class VenicePushJobTest {
     VenicePushJob vpj = mock(VenicePushJob.class);
     doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
     vpj.validateAndSetRmdSchemas(mockClient, setting);
+  }
+
+  @Test
+  public void testValidateValueSchemaEnablesProjectionForSupersetInput() {
+    // Input value schema (V2) is a strict superset of the chosen target writer value schema (V1).
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    // Input value schema does not match any registered value schema.
+    SchemaResponse valueSchemaIdResponse = new SchemaResponse();
+    valueSchemaIdResponse.setError("Could not find any registered value schema for the input value schema.");
+    doReturn(valueSchemaIdResponse).when(mockClient)
+        .getValueSchemaID(eq(TEST_STORE), eq(NAME_RECORD_V2_SCHEMA.toString()));
+
+    // The supplied target writer value schema id resolves to the writer (V1) schema.
+    SchemaResponse writerSchemaResponse = new SchemaResponse();
+    writerSchemaResponse.setId(7);
+    writerSchemaResponse.setSchemaStr(NAME_RECORD_V1_SCHEMA.toString());
+    doReturn(writerSchemaResponse).when(mockClient).getValueSchema(eq(TEST_STORE), eq(7));
+
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), mockClient);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.enableWriteCompute = false;
+    setting.valueSchemaProjectionEnabled = true;
+    setting.targetWriterValueSchemaId = 7;
+    setting.valueSchema = NAME_RECORD_V2_SCHEMA;
+    setting.valueSchemaString = NAME_RECORD_V2_SCHEMA.toString();
+
+    vpj.validateAndRetrieveValueSchemas(mockClient, setting, false);
+
+    Assert.assertTrue(setting.projectInputToWriterSchema);
+    Assert.assertEquals(setting.valueSchemaId, 7);
+    Assert.assertEquals(setting.writerValueSchemaString, NAME_RECORD_V1_SCHEMA.toString());
+    Assert.assertEquals(setting.writerValueSchema, NAME_RECORD_V1_SCHEMA);
+  }
+
+  @Test
+  public void testValidateValueSchemaDoesNotProjectWhenFeatureFlagDisabled() {
+    // Even with a valid superset input and a target writer schema id, projection must NOT happen when the
+    // feature flag is off; the job falls through to the normal "schema not registered" failure path instead.
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    SchemaResponse valueSchemaIdResponse = new SchemaResponse();
+    valueSchemaIdResponse.setError("Could not find any registered value schema for the input value schema.");
+    doReturn(valueSchemaIdResponse).when(mockClient)
+        .getValueSchemaID(eq(TEST_STORE), eq(NAME_RECORD_V2_SCHEMA.toString()));
+    MultiSchemaResponse allValueSchemaResponse = new MultiSchemaResponse();
+    allValueSchemaResponse.setError("not relevant to this test");
+    doReturn(allValueSchemaResponse).when(mockClient).getAllValueSchema(eq(TEST_STORE));
+
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), mockClient);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.enableWriteCompute = false;
+    setting.valueSchemaProjectionEnabled = false;
+    setting.targetWriterValueSchemaId = 7;
+    setting.valueSchema = NAME_RECORD_V2_SCHEMA;
+    setting.valueSchemaString = NAME_RECORD_V2_SCHEMA.toString();
+
+    Assert.assertThrows(VeniceException.class, () -> vpj.validateAndRetrieveValueSchemas(mockClient, setting, false));
+    Assert.assertFalse(setting.projectInputToWriterSchema);
+    verify(mockClient, never()).getValueSchema(eq(TEST_STORE), eq(7));
+  }
+
+  @Test(expectedExceptions = VeniceSchemaMismatchException.class, expectedExceptionsMessageRegExp = ".*not a superset of the target writer value schema.*")
+  public void testValidateValueSchemaRejectsNonSupersetProjectionInput() {
+    // Input value schema (V1) is NOT a superset of the chosen target writer value schema (V2): V2 requires "age".
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    SchemaResponse valueSchemaIdResponse = new SchemaResponse();
+    valueSchemaIdResponse.setError("Could not find any registered value schema for the input value schema.");
+    doReturn(valueSchemaIdResponse).when(mockClient)
+        .getValueSchemaID(eq(TEST_STORE), eq(NAME_RECORD_V1_SCHEMA.toString()));
+
+    SchemaResponse writerSchemaResponse = new SchemaResponse();
+    writerSchemaResponse.setId(7);
+    writerSchemaResponse.setSchemaStr(NAME_RECORD_V2_SCHEMA.toString());
+    doReturn(writerSchemaResponse).when(mockClient).getValueSchema(eq(TEST_STORE), eq(7));
+
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), mockClient);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.enableWriteCompute = false;
+    setting.valueSchemaProjectionEnabled = true;
+    setting.targetWriterValueSchemaId = 7;
+    setting.valueSchema = NAME_RECORD_V1_SCHEMA;
+    setting.valueSchemaString = NAME_RECORD_V1_SCHEMA.toString();
+
+    vpj.validateAndRetrieveValueSchemas(mockClient, setting, false);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Failed to fetch target writer value schema id: 7.*")
+  public void testValidateValueSchemaProjectionFailsWhenWriterSchemaFetchErrors() {
+    // The supplied target writer value schema id cannot be resolved by the controller.
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    SchemaResponse valueSchemaIdResponse = new SchemaResponse();
+    valueSchemaIdResponse.setError("Could not find any registered value schema for the input value schema.");
+    doReturn(valueSchemaIdResponse).when(mockClient)
+        .getValueSchemaID(eq(TEST_STORE), eq(NAME_RECORD_V2_SCHEMA.toString()));
+
+    SchemaResponse writerSchemaResponse = new SchemaResponse();
+    writerSchemaResponse.setError("No value schema found for id: 7");
+    doReturn(writerSchemaResponse).when(mockClient).getValueSchema(eq(TEST_STORE), eq(7));
+
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), mockClient);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.enableWriteCompute = false;
+    setting.valueSchemaProjectionEnabled = true;
+    setting.targetWriterValueSchemaId = 7;
+    setting.valueSchema = NAME_RECORD_V2_SCHEMA;
+    setting.valueSchemaString = NAME_RECORD_V2_SCHEMA.toString();
+
+    vpj.validateAndRetrieveValueSchemas(mockClient, setting, false);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")

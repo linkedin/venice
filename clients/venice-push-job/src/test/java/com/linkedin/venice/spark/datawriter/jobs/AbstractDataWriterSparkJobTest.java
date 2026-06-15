@@ -26,22 +26,29 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.jobs.ComputeJob;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.fs.Path;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.rdd.RDD;
@@ -106,6 +113,95 @@ public class AbstractDataWriterSparkJobTest {
     pushJobSetting.inputDataSchema = mockSchema;
 
     dataWriterSparkJob.validateRmdSchema(pushJobSetting);
+  }
+
+  @Test
+  public void testValidateRmdSchemaSkippedWhenProjecting() {
+    // When projecting, the input RMD schema is a superset of the writer (server-side) RMD schema, so the exact-match
+    // check must be skipped: VeniceSchemaProjector#projectRmd converts each record's RMD at read time.
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+
+    Schema inputRmdSchema = RmdSchemaGenerator.generateMetadataSchema(TestWriteUtils.NAME_RECORD_V2_SCHEMA, 1);
+    Schema writerRmdSchema = RmdSchemaGenerator.generateMetadataSchema(TestWriteUtils.NAME_RECORD_V1_SCHEMA, 1);
+    Schema inputDataSchema = new PushInputSchemaBuilder().setKeySchema(Schema.create(Schema.Type.STRING))
+        .setValueSchema(TestWriteUtils.NAME_RECORD_V2_SCHEMA)
+        .setFieldSchema("rmd", inputRmdSchema)
+        .build();
+
+    PushJobSetting pushJobSetting = new PushJobSetting();
+    pushJobSetting.rmdField = "rmd";
+    pushJobSetting.inputDataSchema = inputDataSchema;
+    // Server-side (writer) RMD schema differs from the input RMD schema; without projection this would mismatch.
+    pushJobSetting.replicationMetadataSchemaString = writerRmdSchema.toString();
+    pushJobSetting.projectInputToWriterSchema = true;
+
+    // Must not throw despite the input/server RMD schema mismatch.
+    dataWriterSparkJob.validateRmdSchema(pushJobSetting);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Input rmd schema does not match the server side RMD schema.*")
+  public void testValidateRmdSchemaEnforcedWhenNotProjecting() {
+    // Same mismatch as above but without projection: the exact-match check must reject it.
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+
+    Schema inputRmdSchema = RmdSchemaGenerator.generateMetadataSchema(TestWriteUtils.NAME_RECORD_V2_SCHEMA, 1);
+    Schema writerRmdSchema = RmdSchemaGenerator.generateMetadataSchema(TestWriteUtils.NAME_RECORD_V1_SCHEMA, 1);
+    Schema inputDataSchema = new PushInputSchemaBuilder().setKeySchema(Schema.create(Schema.Type.STRING))
+        .setValueSchema(TestWriteUtils.NAME_RECORD_V2_SCHEMA)
+        .setFieldSchema("rmd", inputRmdSchema)
+        .build();
+
+    PushJobSetting pushJobSetting = new PushJobSetting();
+    pushJobSetting.rmdField = "rmd";
+    pushJobSetting.inputDataSchema = inputDataSchema;
+    pushJobSetting.replicationMetadataSchemaString = writerRmdSchema.toString();
+    pushJobSetting.projectInputToWriterSchema = false;
+
+    dataWriterSparkJob.validateRmdSchema(pushJobSetting);
+  }
+
+  @Test
+  public void testGetUserInputDataFrameProjectsValuesToWriterSchema() throws IOException {
+    // Drives the real Spark avro input path (getAvroDataFrame) end to end: a V2 (superset) avro input file is read and
+    // each value is projected down to the V1 writer schema, then serialized against V1.
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV2Schema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.projectInputToWriterSchema = true;
+    setting.writerValueSchema = TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+    setting.writerValueSchemaString = TestWriteUtils.NAME_RECORD_V1_SCHEMA.toString();
+    setting.replicationMetadataSchemaString = null;
+
+    RecordDeserializer<CharSequence> keyDeserializer = FastSerializerDeserializerFactory
+        .getFastAvroGenericDeserializer(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.STRING));
+    RecordDeserializer<GenericRecord> writerValueDeserializer = FastSerializerDeserializerFactory
+        .getFastAvroGenericDeserializer(TestWriteUtils.NAME_RECORD_V1_SCHEMA, TestWriteUtils.NAME_RECORD_V1_SCHEMA);
+    RecordSerializer<GenericRecord> writerValueSerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(TestWriteUtils.NAME_RECORD_V1_SCHEMA);
+
+    try (DataWriterSparkJob job = new DataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      List<Row> rows = job.getUserInputDataFrame().collectAsList();
+
+      Assert.assertEquals(rows.size(), TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT);
+      for (Row row: rows) {
+        String key = keyDeserializer.deserialize((byte[]) row.getAs("key")).toString();
+        byte[] valueBytes = row.getAs("value");
+
+        GenericRecord projected = writerValueDeserializer.deserialize(valueBytes);
+        // Projected to the writer schema (V1): "age" is dropped, surviving fields retain their values.
+        Assert.assertNull(projected.getSchema().getField("age"));
+        Assert.assertEquals(projected.get("firstName").toString(), "first_name_" + key);
+        Assert.assertEquals(projected.get("lastName").toString(), "last_name_" + key);
+
+        // The emitted bytes must be the V1 encoding (no trailing "age"): a non-projected V2 encoding would differ.
+        GenericRecord expected = new GenericData.Record(TestWriteUtils.NAME_RECORD_V1_SCHEMA);
+        expected.put("firstName", "first_name_" + key);
+        expected.put("lastName", "last_name_" + key);
+        Assert.assertEquals(valueBytes, writerValueSerializer.serialize(expected));
+      }
+    }
   }
 
   @Test(expectedExceptions = VeniceInvalidInputException.class, expectedExceptionsMessageRegExp = "The provided input rmd schema must be BinaryType.*")
