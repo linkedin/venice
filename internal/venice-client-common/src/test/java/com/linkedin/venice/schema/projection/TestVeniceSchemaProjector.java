@@ -203,8 +203,9 @@ public class TestVeniceSchemaProjector {
   }
 
   @Test
-  public void testRmdPerFieldDropsExtraSourceEntry() {
-    // Input value has f1 + f2 (extra); writer value has only f1. The per-field RMD entry for f2 is dropped.
+  public void testRmdPerFieldTimestampThrows() {
+    // Per-field timestamps only arise with write compute (partial updates), where the superset schema is used and no
+    // projection runs. Encountering one in the projection path indicates misuse and must be rejected.
     Schema inputValue = parse(
         "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
             + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"},\n"
@@ -223,116 +224,7 @@ public class TestVeniceSchemaProjector {
     srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
     srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
 
-    GenericRecord out = projector.projectRmd(srcRmd, writerRmd);
-
-    GenericRecord outPerField = (GenericRecord) out.get(TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(outPerField.get("f1"), 100L);
-    Assert.assertNull(outPerField.getSchema().getField("f2"));
-  }
-
-  @Test
-  public void testRmdCollectionMetadataReWrappedUnderTargetName() {
-    // Input value has an extra collection field so the CollectionMetadata counter (and record name) differs from
-    // the writer's. The surviving entry must be re-wrapped under the writer's record name.
-    Schema inputValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"pad\", \"type\": {\"type\": \"array\", \"items\": \"long\"}},\n"
-            + "    {\"name\": \"tags\", \"type\": {\"type\": \"array\", \"items\": \"string\"}}\n" + "  ]\n" + "}");
-    Schema writerValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"tags\", \"type\": {\"type\": \"array\", \"items\": \"string\"}}\n"
-            + "  ]\n" + "}");
-    Schema inputRmd = RMD_GEN.generateMetadataSchema(inputValue);
-    Schema writerRmd = RMD_GEN.generateMetadataSchema(writerValue);
-
-    Schema srcPerFieldSchema = inputRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    Schema srcCollSchema = srcPerFieldSchema.getField("tags").schema();
-    Schema writerPerFieldSchema = writerRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    Schema writerCollSchema = writerPerFieldSchema.getField("tags").schema();
-    Assert.assertNotEquals(
-        srcCollSchema.getName(),
-        writerCollSchema.getName(),
-        "precondition: source and target CollectionMetadata record names must differ");
-
-    GenericRecord srcColl = new GenericData.Record(srcCollSchema);
-    srcColl.put("topLevelFieldTimestamp", 55L);
-    srcColl.put("topLevelColoID", -1);
-    srcColl.put("putOnlyPartLength", 2);
-    srcColl.put("activeElementsTimestamps", new ArrayList<>(Arrays.asList(1L, 2L)));
-    srcColl.put("deletedElementsIdentities", new ArrayList<>());
-    srcColl.put("deletedElementsTimestamps", new ArrayList<>());
-
-    GenericRecord perField = new GenericData.Record(srcPerFieldSchema);
-    perField.put("pad", 0L);
-    perField.put("tags", srcColl);
-    GenericRecord srcRmd = new GenericData.Record(inputRmd);
-    srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
-    srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
-
-    GenericRecord out = projector.projectRmd(srcRmd, writerRmd);
-
-    GenericRecord outPerField = (GenericRecord) out.get(TIMESTAMP_FIELD_NAME);
-    GenericRecord outColl = (GenericRecord) outPerField.get("tags");
-    Assert.assertEquals(outColl.getSchema().getName(), writerCollSchema.getName());
-    Assert.assertEquals(outColl.get("topLevelFieldTimestamp"), 55L);
-    Assert.assertEquals(outColl.get("putOnlyPartLength"), 2);
-  }
-
-  @Test
-  public void testRmdPerFieldMissingSourceEntryThrowsInvariant() {
-    // Writer value declares f1 + f2 but the source per-field RMD only has f1 -> invariant violation.
-    Schema writerValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"},\n"
-            + "    {\"name\": \"f2\", \"type\": \"string\"}\n" + "  ]\n" + "}");
-    Schema sourceValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"}\n" + "  ]\n" + "}");
-    Schema writerRmd = RMD_GEN.generateMetadataSchema(writerValue);
-    Schema sourceRmd = RMD_GEN.generateMetadataSchema(sourceValue);
-
-    Schema srcPerFieldSchema = sourceRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    GenericRecord perField = new GenericData.Record(srcPerFieldSchema);
-    perField.put("f1", 1L);
-    GenericRecord srcRmd = new GenericData.Record(sourceRmd);
-    srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
-    srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
-
     Assert.expectThrows(VeniceException.class, () -> projector.projectRmd(srcRmd, writerRmd));
-  }
-
-  @Test
-  public void testRmdPerFieldMultipleSurvivingFieldsCopiedByName() {
-    // Input value has a, b, c; writer drops the MIDDLE field b. So surviving field c is at source position 2 but
-    // target position 1. With distinct timestamps, this proves entries are copied BY NAME (not by position) and that
-    // multiple surviving per-field timestamps are all preserved correctly.
-    Schema inputValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"a\", \"type\": \"string\"},\n"
-            + "    {\"name\": \"b\", \"type\": [\"null\", \"string\"], \"default\": null},\n"
-            + "    {\"name\": \"c\", \"type\": \"string\"}\n" + "  ]\n" + "}");
-    Schema writerValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"a\", \"type\": \"string\"},\n"
-            + "    {\"name\": \"c\", \"type\": \"string\"}\n" + "  ]\n" + "}");
-    Schema inputRmd = RMD_GEN.generateMetadataSchema(inputValue);
-    Schema writerRmd = RMD_GEN.generateMetadataSchema(writerValue);
-
-    Schema srcPerFieldSchema = inputRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    GenericRecord perField = new GenericData.Record(srcPerFieldSchema);
-    perField.put("a", 100L);
-    perField.put("b", 200L);
-    perField.put("c", 300L);
-    GenericRecord srcRmd = new GenericData.Record(inputRmd);
-    srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
-    srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
-
-    GenericRecord out = projector.projectRmd(srcRmd, writerRmd);
-
-    GenericRecord outPerField = (GenericRecord) out.get(TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(outPerField.get("a"), 100L);
-    Assert.assertEquals(outPerField.get("c"), 300L, "surviving field must be copied by name, not by source position");
-    Assert.assertNull(outPerField.getSchema().getField("b"), "dropped field must not appear in the projected RMD");
   }
 
   @Test
@@ -343,90 +235,6 @@ public class TestVeniceSchemaProjector {
             + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"}\n" + "  ]\n" + "}");
     Schema rmdSchema = RMD_GEN.generateMetadataSchema(valueSchema);
     Assert.assertNull(projector.projectRmd(null, rmdSchema));
-  }
-
-  @Test
-  public void testRmdMapCollectionMetadataReWrappedUnderTargetName() {
-    // Same as the array re-home test, but for a MAP field (separate RMD generation path). The extra map field shifts
-    // the CollectionMetadata counter so the surviving field's record name differs between source and writer.
-    Schema inputValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"pad\", \"type\": {\"type\": \"map\", \"values\": \"long\"}},\n"
-            + "    {\"name\": \"attrs\", \"type\": {\"type\": \"map\", \"values\": \"string\"}}\n" + "  ]\n" + "}");
-    Schema writerValue = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"attrs\", \"type\": {\"type\": \"map\", \"values\": \"string\"}}\n"
-            + "  ]\n" + "}");
-    Schema inputRmd = RMD_GEN.generateMetadataSchema(inputValue);
-    Schema writerRmd = RMD_GEN.generateMetadataSchema(writerValue);
-
-    Schema srcPerFieldSchema = inputRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    Schema srcCollSchema = srcPerFieldSchema.getField("attrs").schema();
-    Schema writerPerFieldSchema = writerRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    Schema writerCollSchema = writerPerFieldSchema.getField("attrs").schema();
-    Assert.assertNotEquals(
-        srcCollSchema.getName(),
-        writerCollSchema.getName(),
-        "precondition: source and target CollectionMetadata record names must differ");
-
-    GenericRecord srcColl = new GenericData.Record(srcCollSchema);
-    srcColl.put("topLevelFieldTimestamp", 77L);
-    srcColl.put("topLevelColoID", -1);
-    srcColl.put("putOnlyPartLength", 3);
-    srcColl.put("activeElementsTimestamps", new ArrayList<>(Arrays.asList(70L, 71L)));
-    srcColl.put("deletedElementsIdentities", new ArrayList<>());
-    srcColl.put("deletedElementsTimestamps", new ArrayList<>());
-
-    GenericRecord perField = new GenericData.Record(srcPerFieldSchema);
-    perField.put("pad", 0L);
-    perField.put("attrs", srcColl);
-    GenericRecord srcRmd = new GenericData.Record(inputRmd);
-    srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
-    srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
-
-    GenericRecord out = projector.projectRmd(srcRmd, writerRmd);
-
-    GenericRecord outPerField = (GenericRecord) out.get(TIMESTAMP_FIELD_NAME);
-    GenericRecord outColl = (GenericRecord) outPerField.get("attrs");
-    Assert.assertEquals(outColl.getSchema().getName(), writerCollSchema.getName());
-    Assert.assertEquals(outColl.get("topLevelFieldTimestamp"), 77L);
-    Assert.assertEquals(outColl.get("putOnlyPartLength"), 3);
-  }
-
-  @Test
-  public void testRmdCollectionMetadataIsDeepCopiedAndIndependent() {
-    // Mutating a nested list inside the source CollectionMetadata after projection must not affect the output.
-    Schema value = parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
-            + "  \"fields\": [\n" + "    {\"name\": \"tags\", \"type\": {\"type\": \"array\", \"items\": \"string\"}}\n"
-            + "  ]\n" + "}");
-    Schema rmdSchema = RMD_GEN.generateMetadataSchema(value);
-    Schema perFieldSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    Schema collSchema = perFieldSchema.getField("tags").schema();
-
-    List<Long> activeTs = new ArrayList<>(Arrays.asList(10L, 20L));
-    GenericRecord srcColl = new GenericData.Record(collSchema);
-    srcColl.put("topLevelFieldTimestamp", 5L);
-    srcColl.put("topLevelColoID", -1);
-    srcColl.put("putOnlyPartLength", 0);
-    srcColl.put("activeElementsTimestamps", activeTs);
-    srcColl.put("deletedElementsIdentities", new ArrayList<>());
-    srcColl.put("deletedElementsTimestamps", new ArrayList<>());
-
-    GenericRecord perField = new GenericData.Record(perFieldSchema);
-    perField.put("tags", srcColl);
-    GenericRecord srcRmd = new GenericData.Record(rmdSchema);
-    srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
-    srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
-
-    GenericRecord out = projector.projectRmd(srcRmd, rmdSchema);
-
-    GenericRecord outColl = (GenericRecord) ((GenericRecord) out.get(TIMESTAMP_FIELD_NAME)).get("tags");
-    @SuppressWarnings("unchecked")
-    List<Long> outActiveTs = (List<Long>) outColl.get("activeElementsTimestamps");
-    Assert.assertEquals(outActiveTs.size(), 2);
-    activeTs.clear();
-    Assert.assertEquals(outActiveTs.size(), 2, "mutating the source collection metadata must not affect the output");
   }
 
   @Test

@@ -53,6 +53,12 @@ public class VeniceSchemaProjector {
   /**
    * Project a Replication Metadata (RMD) record down to the writer's RMD schema, in lockstep with the value.
    *
+   * <p>Projection only runs when write compute is <em>not</em> enabled. In that mode the RMD timestamp is always a
+   * whole-record (value-level) {@code long}, so projection reduces to copying the {@code long} timestamp and the
+   * value-independent replication_checkpoint_vector onto a record under the target RMD schema. A per-field timestamp
+   * only arises with write compute (partial updates), where the corresponding superset schema is used and no
+   * projection is needed; encountering one here therefore indicates a misuse and is rejected.</p>
+   *
    * @param srcRmd the source RMD record (generated against the superset value schema), or {@code null} if the record
    *               carries no RMD (e.g. a batch record in a hybrid store)
    * @param targetRmdSchema the writer's RMD schema (generated against the writer value schema)
@@ -75,27 +81,14 @@ public class VeniceSchemaProjector {
     Schema.Field targetTimestampField = targetRmdSchema.getField(TIMESTAMP_FIELD_NAME);
     Object srcTimestamp = srcRmd.get(TIMESTAMP_FIELD_NAME);
     if (RmdUtils.getRmdTimestampType(srcTimestamp) == RmdTimestampType.PER_FIELD_TIMESTAMP) {
-      // Per-field timestamp record: rebuild against the target's per-field schema. The timestamp field is a
-      // union[long, perFieldRecord]; the per-field record is the second union branch.
-      GenericRecord srcPerField = (GenericRecord) srcTimestamp;
-      Schema targetPerFieldSchema = targetTimestampField.schema().getTypes().get(1);
-      GenericRecord targetPerField = new GenericData.Record(targetPerFieldSchema);
-      for (Schema.Field targetField: targetPerFieldSchema.getFields()) {
-        String fieldName = targetField.name();
-        if (srcPerField.getSchema().getField(fieldName) == null) {
-          // Invariant: a surviving value field must have a corresponding per-field RMD entry in the source.
-          throw new VeniceException(
-              "Per-field RMD entry '" + fieldName + "' is absent from the source RMD; source RMD does not cover the "
-                  + "writer schema's fields.");
-        }
-        targetPerField
-            .put(targetField.pos(), GenericData.get().deepCopy(targetField.schema(), srcPerField.get(fieldName)));
-      }
-      projected.put(targetTimestampField.pos(), targetPerField);
-    } else {
-      // Whole-record (value-level) long timestamp: copy as-is.
-      projected.put(targetTimestampField.pos(), srcTimestamp);
+      // Per-field timestamps only occur with write compute, where projection should never run (the superset schema is
+      // used instead). Reject rather than attempt to project a per-field RMD.
+      throw new VeniceException(
+          "Per-field timestamp RMD is not supported for schema projection; projection only applies to value-level "
+              + "(whole-record) timestamps. This indicates projection was attempted on a write-compute enabled store.");
     }
+    // Whole-record (value-level) long timestamp: set the long branch of the union as-is.
+    projected.put(targetTimestampField.pos(), srcTimestamp);
     return projected;
   }
 }
