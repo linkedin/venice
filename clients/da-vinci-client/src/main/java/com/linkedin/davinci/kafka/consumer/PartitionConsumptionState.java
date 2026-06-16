@@ -1037,6 +1037,21 @@ public class PartitionConsumptionState {
     this.storeLevelPaused = storeLevelPaused;
   }
 
+  /**
+   * True when this partition is paused because the SIT was created in future-slot-paused mode
+   * (non-target region waiting for targetRegionPromoted). Coordinated with storeLevelPaused:
+   * a partition only physically resumes when BOTH flags are false.
+   */
+  private volatile boolean futureSlotPaused = false;
+
+  public boolean isFutureSlotPaused() {
+    return futureSlotPaused;
+  }
+
+  public void setFutureSlotPaused(boolean futureSlotPaused) {
+    this.futureSlotPaused = futureSlotPaused;
+  }
+
   public void setTransientRecord(
       int kafkaClusterId,
       PubSubPosition consumedPosition,
