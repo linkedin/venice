@@ -7688,4 +7688,82 @@ public abstract class StoreIngestionTaskTest {
     negativeTs.producerMetadata = negativeMetadata;
     assertEquals(StoreIngestionTask.getHeartbeatProducerTimestamp(negativeTs), 0L);
   }
+
+  // -------------------------------------------------------------------------
+  // Future-slot pause / resume helpers
+  // -------------------------------------------------------------------------
+
+  /** Builds a mock-based SIT with the given pcsMap, versionTopic, and aggKafkaConsumerService injected via reflection. */
+  private StoreIngestionTask buildMinimalSitForFutureSlotTests(
+      VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap,
+      PubSubTopic vt,
+      AggKafkaConsumerService agg) throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    for (Object[] entry: new Object[][] { { "versionTopic", vt }, { "partitionConsumptionStateMap", pcsMap },
+        { "aggKafkaConsumerService", agg } }) {
+      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
+      f.setAccessible(true);
+      f.set(task, entry[1]);
+    }
+    doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
+    doCallRealMethod().when(task).resumeFromFutureSlotPause();
+    doCallRealMethod().when(task).isFutureSlotPaused();
+    return task;
+  }
+
+  /** Returns a mock PCS whose futureSlotPaused flag is backed by an AtomicBoolean for real state tracking. */
+  private PartitionConsumptionState mockPcsWithFutureSlotFlag(boolean storeLevelPaused) {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    AtomicBoolean futureSlotPaused = new AtomicBoolean(false);
+    doAnswer(inv -> {
+      futureSlotPaused.set(inv.getArgument(0));
+      return null;
+    }).when(pcs).setFutureSlotPaused(anyBoolean());
+    doAnswer(inv -> futureSlotPaused.get()).when(pcs).isFutureSlotPaused();
+    doReturn(storeLevelPaused).when(pcs).isStoreLevelPaused();
+    return pcs;
+  }
+
+  @Test
+  public void testFutureSlotPauseAndResume() throws Exception {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    // Pause
+    assertFalse(pcs.isFutureSlotPaused(), "should not be paused before pausePartitionForFutureSlot");
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
+    assertTrue(task.isFutureSlotPaused(), "isFutureSlotPaused() should return true");
+    verify(aggConsumerService).pauseConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_FOO)));
+
+    // Resume
+    task.resumeFromFutureSlotPause();
+    assertFalse(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be cleared after resume");
+    assertFalse(task.isFutureSlotPaused(), "isFutureSlotPaused() should return false after resume");
+    verify(aggConsumerService).resumeConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_FOO)));
+  }
+
+  @Test
+  public void testFutureSlotResumeDoesNotPhysicallyResumeWhenStoreLevelPauseActive() throws Exception {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(true); // store-level pause active
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
+
+    task.resumeFromFutureSlotPause();
+    assertFalse(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be cleared even when store-level paused");
+    // Store-level pause is still active: resumeConsumerFor must NOT be called
+    verify(aggConsumerService, never()).resumeConsumerFor(any(), any());
+  }
 }
