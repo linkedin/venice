@@ -319,7 +319,9 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
             backendConfig.getSnapshotCleanupIntervalInMins(),
             backendConfig.getMaxConcurrentBlobReceiveReplicas(),
-            backendConfig.getBlobTransferClientNettyWorkerThreadCount());
+            backendConfig.getBlobTransferClientNettyWorkerThreadCount(),
+            backendConfig.getBlobTransferClientCapacityPercent(),
+            backendConfig.isServerAcceptClientBlobRequestEnabled());
 
         blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
             .setClientConfig(clientConfig)
@@ -328,7 +330,12 @@ public class DaVinciBackend implements Closeable {
             .setStorageEngineRepository(storageService.getStorageEngineRepository())
             .setAggBlobTransferStats(aggBlobTransferStats)
             .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
-            .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
+            .setBlobTransferAclHandler(
+                BlobTransferUtils.createAclHandler(
+                    configLoader,
+                    Optional.empty(),
+                    backendConfig.isServerAcceptClientBlobRequestEnabled()))
+            .setServerFallbackEnabled(backendConfig.isDavinciBlobTransferServerFallbackEnabled())
             .setPushStatusNotifierSupplier(() -> ingestionListener)
             .setLogContext(backendConfig.getLogContext())
             .build();

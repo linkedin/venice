@@ -434,7 +434,8 @@
       "com.linkedin.venice.helix.ZkRoutersClusterManagerConfigChangeTest",
       "com.linkedin.venice.controller.migration.TestMigrationPushStrategyZKAccessor",
       "com.linkedin.venice.integration.utils.SystemExitPrevention",
-      "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers"
+      "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers",
+      "com.linkedin.venice.endToEnd.DaVinciClientServerFallbackBlobTransferTest"
     ]
   }
 }

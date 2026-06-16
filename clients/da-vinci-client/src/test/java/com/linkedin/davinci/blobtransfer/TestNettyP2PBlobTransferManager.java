@@ -127,7 +127,7 @@ public class TestNettyP2PBlobTransferManager {
     VeniceConfigLoader configLoader = Mockito.mock(VeniceConfigLoader.class);
 
     Mockito.when(configLoader.getCombinedProperties()).thenReturn(veniceProperties);
-    aclHandler = createAclHandler(configLoader);
+    aclHandler = createAclHandler(configLoader, Optional.empty(), false);
 
     blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     notifier = Mockito.mock(VeniceNotifier.class);
@@ -143,7 +143,9 @@ public class TestNettyP2PBlobTransferManager {
         blobTransferStats,
         sslFactory,
         aclHandler,
-        20);
+        20,
+        25,
+        true);
     client = Mockito.spy(
         new NettyFileTransferClient(
             port,
@@ -540,7 +542,9 @@ public class TestNettyP2PBlobTransferManager {
         blobTransferStats,
         sslFactory,
         aclHandler,
-        20);
+        20,
+        25,
+        true);
 
     NettyP2PBlobTransferManager newManager = new NettyP2PBlobTransferManager(
         newServer,
