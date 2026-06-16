@@ -577,24 +577,24 @@ public class TestVeniceControllerClusterConfig {
         () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties4)));
 
     // CONTROLLER_HELIX_INSTANCE_CAPACITY must be greater than 0
+    Properties clusterProperties5 = getBaseSingleRegionProperties(false);
+    clusterProperties5.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, 0);
+    assertThrows(
+        ConfigurationException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties5)));
+
+    // CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT must be greater than 0
     Properties clusterProperties6 = getBaseSingleRegionProperties(false);
-    clusterProperties6.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, 0);
+    clusterProperties6.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, 0);
     assertThrows(
         ConfigurationException.class,
         () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties6)));
 
-    // CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT must be greater than 0
-    Properties clusterProperties7 = getBaseSingleRegionProperties(false);
-    clusterProperties7.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, 0);
-    assertThrows(
-        ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties7)));
-
     // CONTROLLER_HELIX_INSTANCE_CAPACITY defaults when only CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT is defined.
-    Properties clusterProperties5 = getBaseSingleRegionProperties(false);
-    clusterProperties5.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
+    Properties clusterProperties7 = getBaseSingleRegionProperties(false);
+    clusterProperties7.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
     VeniceControllerClusterConfig clusterConfig =
-        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties5));
+        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties7));
     HelixCapacityConfig capacityConfig = clusterConfig.getHelixCapacityConfig();
     assertEquals(
         (int) capacityConfig.getHelixDefaultInstanceCapacityMap().get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
