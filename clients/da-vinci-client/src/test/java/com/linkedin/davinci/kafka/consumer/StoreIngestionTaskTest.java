@@ -7934,8 +7934,25 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
 
     task.resumeFromFutureSlotPause();
-    assertFalse(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be cleared even when store-level paused");
+    assertTrue(
+        pcs.isFutureSlotPaused(),
+        "PCS futureSlotPaused flag should remain true when store-level pause is still active");
     // Store-level pause is still active: resumeConsumerFor must NOT be called
     verify(aggConsumerService, never()).resumeConsumerFor(any(), any());
+  }
+
+  @Test
+  public void testPauseAfterStartOfPushFieldSetAndRead() throws Exception {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+    doCallRealMethod().when(task).isPauseAfterStartOfPush();
+    doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
+
+    // Verify the field can be set and read (SOP integration tested in Task 4)
+    assertFalse(task.isPauseAfterStartOfPush(), "pauseAfterStartOfPush should default to false");
+    task.setPauseAfterStartOfPush(true);
+    assertTrue(task.isPauseAfterStartOfPush(), "pauseAfterStartOfPush should be true after setter");
   }
 }
