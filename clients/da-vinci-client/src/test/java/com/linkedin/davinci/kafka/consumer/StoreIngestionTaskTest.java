@@ -7942,6 +7942,39 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
+  public void testQuotaResumeDoesNotOverrideFutureSlotPause() throws Exception {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false); // no store-level pause
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    // Wire pubSubTopicRepository so resumeConsumption can build the PubSubTopicPartition
+    Field repoField = StoreIngestionTask.class.getDeclaredField("pubSubTopicRepository");
+    repoField.setAccessible(true);
+    repoField.set(task, pubSubTopicRepository);
+
+    // Access the private resumeConsumption method via reflection
+    java.lang.reflect.Method resumeConsumptionMethod =
+        StoreIngestionTask.class.getDeclaredMethod("resumeConsumption", String.class, int.class);
+    resumeConsumptionMethod.setAccessible(true);
+
+    // Apply future-slot pause
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
+
+    // Fire quota resumeConsumption — must NOT physically resume the partition
+    resumeConsumptionMethod.invoke(task, vt.getName(), PARTITION_FOO);
+
+    // futureSlotPaused flag must still be set
+    assertTrue(pcs.isFutureSlotPaused(), "futureSlotPaused must remain true after quota resumeConsumption");
+    // Physical resume must not have been called
+    verify(aggConsumerService, never()).resumeConsumerFor(any(), any());
+  }
+
+  @Test
   public void testPauseAfterStartOfPushFieldSetAndRead() throws Exception {
     PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
     AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
