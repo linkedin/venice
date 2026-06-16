@@ -513,6 +513,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private boolean daVinciClientCustomLifecycleEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
+  /**
+   * When true, this SIT will pause Kafka consumption on each partition immediately after processing
+   * the Start-Of-Push control message. The partition remains paused until
+   * {@link #resumeFromFutureSlotPause()} is called.  Used by the DaVinci paused-SIT feature to
+   * hold a future-version SIT in a ready-but-paused state until the version is promoted.
+   */
+  volatile boolean pauseAfterStartOfPush = false;
 
   // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.
   protected final BlobTransferIngestionHelper blobTransferHelper;
@@ -6758,5 +6765,54 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp() > 0
             ? kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()
             : 0L;
+  }
+
+  /**
+   * Pause Kafka consumption for {@code partition} as part of the future-slot pause mechanism.
+   * Sets the {@link PartitionConsumptionState#setFutureSlotPaused} flag and physically pauses the
+   * consumer assignment via {@link AggKafkaConsumerService}.  No-ops if no PCS exists for the
+   * partition (the partition was never subscribed or has already been unsubscribed).
+   */
+  public void pausePartitionForFutureSlot(int partition) {
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
+    if (pcs == null) {
+      LOGGER.info("pausePartitionForFutureSlot: no PCS for partition {} in {}, skipping", partition, versionTopic);
+      return;
+    }
+    pcs.setFutureSlotPaused(true);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+    aggKafkaConsumerService.pauseConsumerFor(versionTopic, topicPartition);
+    LOGGER.info("pausePartitionForFutureSlot: paused partition {} in {}", partition, versionTopic);
+  }
+
+  /**
+   * Resume all partitions that were paused via the future-slot pause mechanism.
+   * Clears the {@link PartitionConsumptionState#setFutureSlotPaused} flag for every partition and
+   * physically resumes the consumer assignment — but only if the partition is not still held by a
+   * store-level pause ({@link PartitionConsumptionState#isStoreLevelPaused()}).
+   */
+  public void resumeFromFutureSlotPause() {
+    for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+      int partition = entry.getKey();
+      PartitionConsumptionState pcs = entry.getValue();
+      pcs.setFutureSlotPaused(false);
+      if (!pcs.isStoreLevelPaused()) {
+        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+        aggKafkaConsumerService.resumeConsumerFor(versionTopic, topicPartition);
+        LOGGER.info("resumeFromFutureSlotPause: resumed partition {} in {}", partition, versionTopic);
+      } else {
+        LOGGER.info(
+            "resumeFromFutureSlotPause: partition {} in {} is still store-level paused, skipping physical resume",
+            partition,
+            versionTopic);
+      }
+    }
+  }
+
+  /**
+   * Returns true if any partition in this SIT is currently paused via the future-slot pause mechanism.
+   */
+  public boolean isFutureSlotPaused() {
+    return partitionConsumptionStateMap.values().stream().anyMatch(PartitionConsumptionState::isFutureSlotPaused);
   }
 }
