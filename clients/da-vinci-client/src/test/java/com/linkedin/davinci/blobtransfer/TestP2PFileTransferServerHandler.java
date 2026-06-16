@@ -2,15 +2,18 @@ package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_REQUEST_ORIGIN;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferRequestOrigin;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.response.VeniceReadResponseStatus.TOO_MANY_REQUESTS;
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.ArgumentMatchers.any;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.blobtransfer.server.BlobTransferAdmissionController;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -74,7 +77,9 @@ public class TestP2PFileTransferServerHandler {
         blobTransferMaxTimeoutInMin,
         blobSnapshotManager,
         blobTransferStats,
-        maxAllowedConcurrentSnapshotUsers);
+        maxAllowedConcurrentSnapshotUsers,
+        new BlobTransferAdmissionController(maxAllowedConcurrentSnapshotUsers, 25),
+        true);
     ch = new EmbeddedChannel(serverHandler);
   }
 
@@ -88,6 +93,121 @@ public class TestP2PFileTransferServerHandler {
         e.printStackTrace();
       }
     });
+  }
+
+  @Test
+  public void testRejectClientOriginWhenClientReservationFull() {
+    // clientCap = 1 (25% of 4). Pre-occupy the only client slot so the incoming client-origin request is rejected at
+    // admission with 429, before any snapshot work -- independent of whether getTransferMetadata would succeed.
+    BlobTransferAdmissionController fullController = new BlobTransferAdmissionController(4, 25);
+    Assert.assertTrue(fullController.tryAdmitClient(), "Test setup: the single client slot should be claimable");
+    P2PFileTransferServerHandler clientHandler = new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        blobTransferStats,
+        4,
+        fullController,
+        true);
+    EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
+    clientChannel.attr(BLOB_TRANSFER_REQUEST_ORIGIN).set(BlobTransferRequestOrigin.CLIENT);
+
+    clientChannel.writeInbound(
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE"));
+
+    boolean foundTooManyRequestsResponse = false;
+    Object outbound;
+    while ((outbound = clientChannel.readOutbound()) != null) {
+      if (outbound instanceof FullHttpResponse
+          && ((FullHttpResponse) outbound).status().code() == TOO_MANY_REQUESTS.getCode()) {
+        foundTooManyRequestsResponse = true;
+      }
+    }
+    Assert.assertTrue(
+        foundTooManyRequestsResponse,
+        "Client-origin request must be rejected once the client reservation is full");
+    clientChannel.close();
+  }
+
+  @Test
+  public void testClientSlotReleasedWhenMetadataFails() {
+    // A client-origin request that fails getTransferMetadata (no storage engine in this mock setup) must release its
+    // admission slot immediately rather than holding it until the channel closes.
+    BlobTransferAdmissionController controller = new BlobTransferAdmissionController(4, 25); // clientCap = 1
+    P2PFileTransferServerHandler clientHandler = new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        blobTransferStats,
+        4,
+        controller,
+        true);
+    EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
+    clientChannel.attr(BLOB_TRANSFER_REQUEST_ORIGIN).set(BlobTransferRequestOrigin.CLIENT);
+
+    clientChannel.writeInbound(
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE"));
+
+    // The handler closes the channel on a failed client-origin metadata fetch, so channelInactive promptly releases
+    // the admission slot instead of pinning it on a kept-alive connection.
+    Assert.assertFalse(
+        clientChannel.isActive(),
+        "Channel must be closed after a failed client-origin metadata fetch so cleanup runs promptly");
+    Assert.assertEquals(
+        controller.getClientInFlight(),
+        0,
+        "A failed client-origin metadata fetch must release the admission slot immediately");
+    clientChannel.close();
+  }
+
+  @Test
+  public void testClientSlotReleasedWhenSnapshotMissing() throws Exception {
+    BlobTransferAdmissionController controller = new BlobTransferAdmissionController(4, 25); // clientCap = 1
+    P2PFileTransferServerHandler clientHandler = new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        blobTransferStats,
+        4,
+        controller,
+        true);
+    EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
+    clientChannel.attr(BLOB_TRANSFER_REQUEST_ORIGIN).set(BlobTransferRequestOrigin.CLIENT);
+
+    BlobTransferPartitionMetadata metadata = new BlobTransferPartitionMetadata();
+    Mockito.doReturn(metadata).when(blobSnapshotManager).getTransferMetadata(any(), any());
+    clientChannel.writeInbound(
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE"));
+
+    Assert.assertFalse(
+        clientChannel.isActive(),
+        "Channel must be closed after a post-admission client-origin error so cleanup runs promptly");
+    Assert.assertEquals(controller.getClientInFlight(), 0, "The client admission slot must be released promptly");
+    clientChannel.close();
+  }
+
+  @Test
+  public void testAdmissionControllerNotRequiredWhenAcceptDisabled() {
+    new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        blobTransferStats,
+        maxAllowedConcurrentSnapshotUsers,
+        null,
+        false);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testAdmissionControllerRequiredWhenAcceptEnabled() {
+    new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        blobTransferStats,
+        maxAllowedConcurrentSnapshotUsers,
+        null,
+        true);
   }
 
   @Test
@@ -132,8 +252,8 @@ public class TestP2PFileTransferServerHandler {
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
-    // Send maxAllowedConcurrentSnapshotUsers + 1 requests
-    for (int requestCount = 0; requestCount < maxAllowedConcurrentSnapshotUsers; requestCount++) {
+    // Send maxAllowedConcurrentSnapshotUsers + 1 requests so the final one exceeds the host budget.
+    for (int requestCount = 0; requestCount <= maxAllowedConcurrentSnapshotUsers; requestCount++) {
       FullHttpRequest request =
           new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
       ch.writeInbound(request);
