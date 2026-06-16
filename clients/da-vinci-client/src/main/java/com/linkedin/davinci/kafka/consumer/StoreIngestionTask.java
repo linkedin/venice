@@ -6760,8 +6760,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
       int partition = entry.getKey();
       PartitionConsumptionState pcs = entry.getValue();
-      pcs.setFutureSlotPaused(false);
       if (!pcs.isStoreLevelPaused()) {
+        pcs.setFutureSlotPaused(false);
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
         aggKafkaConsumerService.resumeConsumerFor(versionTopic, topicPartition);
         LOGGER.info("resumeFromFutureSlotPause: resumed partition {} in {}", partition, versionTopic);
@@ -6779,5 +6779,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public boolean isFutureSlotPaused() {
     return partitionConsumptionStateMap.values().stream().anyMatch(PartitionConsumptionState::isFutureSlotPaused);
+  }
+
+  public boolean isPauseAfterStartOfPush() {
+    return pauseAfterStartOfPush;
+  }
+
+  public void setPauseAfterStartOfPush(boolean pauseAfterStartOfPush) {
+    this.pauseAfterStartOfPush = pauseAfterStartOfPush;
   }
 }
