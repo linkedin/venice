@@ -527,16 +527,32 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
     }
 
-    // delayed ingestion is enabled, target region is not the current region
-    store.setTargetSwapRegion("dc-1");
+    // delayed ingestion is enabled, target region is NOT the current region (dc-0).
+    // targetSwapRegion must be set on the version (not just the store) for the check to apply.
+    // Non-target DVC clients no longer subscribe via VersionStatus.ONLINE;
+    // they wait for targetRegionPromoted=true set by DeferredVersionSwapService.
     Version version4 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version4.setTargetSwapRegion("dc-1"); // dc-0 is not a target region
     store.addVersion(version4);
-    backend.handleStoreChanged(storeBackend);
-
     store.setCurrentVersion(version4.getNumber());
     store.updateVersionStatus(version4.getNumber(), VersionStatus.ONLINE);
     backend.handleStoreChanged(storeBackend);
 
+    // ONLINE status alone must not trigger subscription for a non-target region.
+    assertFalse(
+        versionMap.containsKey(version4.kafkaTopicName()),
+        "Non-target region must not subscribe via ONLINE status");
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
+    }
+
+    // Once targetRegionPromoted flips to true, subscription must proceed.
+    store.setVersionTargetRegionPromoted(version4.getNumber(), true);
+    backend.handleStoreChanged(storeBackend);
+
+    assertTrue(
+        versionMap.containsKey(version4.kafkaTopicName()),
+        "Non-target region must subscribe after targetRegionPromoted=true");
     versionMap.get(version4.kafkaTopicName()).completePartition(0);
     backend.handleStoreChanged(storeBackend);
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {

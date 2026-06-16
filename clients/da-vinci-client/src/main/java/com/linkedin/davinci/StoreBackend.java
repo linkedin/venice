@@ -6,7 +6,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -294,25 +293,29 @@ public class StoreBackend {
     VeniceServerConfig veniceServerConfig = backend.getConfigLoader().getVeniceServerConfig();
     String currentRegion = veniceServerConfig.getRegionName();
     boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetVersion.getTargetSwapRegion());
-    boolean startIngestionInNonTargetRegion = isTargetRegionEnabled && !targetRegions.contains(currentRegion)
-        && targetVersion.getStatus() == VersionStatus.ONLINE;
+    // targetRegionPromoted=true means the target-region push completed and non-target DVC clients
+    // should now begin ingesting. This is set by DeferredVersionSwapService after the push succeeds
+    // in the target region, and is propagated to child controllers via the UpdateStore admin message.
+    boolean startIngestionOnTargetRegionPromoted =
+        isTargetRegionEnabled && !targetRegions.contains(currentRegion) && targetVersion.isTargetRegionPromoted();
 
     // Subscribe to the future version if:
     // 1. Target region push with delayed ingestion is not enabled
     // 2. Target region push with delayed ingestion is enabled and the current region is a target region
-    // 3. Target region push with delayed ingestion is enabled and the current region is a non target region
-    // and the wait time has elapsed. The wait time has elapsed when the version status is marked ONLINE
-    if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || !isTargetRegionEnabled) {
+    // 3. Target region push with delayed ingestion is enabled and the current region is a non-target
+    // region and the target region has been promoted (targetRegionPromoted flag is set by
+    // DeferredVersionSwapService once the push completes in target regions)
+    if (targetRegions.contains(currentRegion) || startIngestionOnTargetRegionPromoted || !isTargetRegionEnabled) {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
       // For future version subscription, we don't need to pass any timestamps or position map
       daVinciFutureVersion.subscribe(subscription, null, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     } else {
       LOGGER.info(
-          "Skipping subscribe to future version: {} in region: {} because the target version status is: {} and the target regions are: {}",
+          "Skipping subscribe to future version: {} in region: {} because targetRegionPromoted={} and target regions are: {}",
           targetVersion.kafkaTopicName(),
           currentRegion,
-          targetVersion.getStatus(),
+          targetVersion.isTargetRegionPromoted(),
           targetVersion.getTargetSwapRegion());
     }
   }
