@@ -1,11 +1,14 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
+import com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType;
 import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import org.apache.commons.lang3.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,17 +45,24 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
   private final int rateUpdatePercentage;
   private final boolean isWriteThrottler;
   private int signalIdleCount;
+  private final VeniceAdaptiveThrottlerType throttlerType;
+  private final AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats;
 
   public VeniceAdaptiveBlobTransferTrafficThrottler(
       int singleIdleThreshold,
       long baseRate,
       int rateUpdatePercentage,
-      boolean isWriteThrottler) {
+      boolean isWriteThrottler,
+      AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats) {
     this.throttlerName = (isWriteThrottler ? "Write" : "Read") + THROTTLER_NAME_SUFFIX;
     this.baseRate = baseRate;
     this.signalIdleThreshold = singleIdleThreshold;
     this.isWriteThrottler = isWriteThrottler;
     this.rateUpdatePercentage = rateUpdatePercentage;
+    this.throttlerType = isWriteThrottler
+        ? VeniceAdaptiveThrottlerType.BLOB_TRANSFER_WRITE_BANDWIDTH
+        : VeniceAdaptiveThrottlerType.BLOB_TRANSFER_READ_BANDWIDTH;
+    this.adaptiveThrottlingServiceStats = Validate.notNull(adaptiveThrottlingServiceStats);
     LOGGER.info(
         "Created adaptive throttler with name: {}, base rate: {}, change delta: {}",
         throttlerName,
@@ -96,6 +106,7 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
             currentFactor,
             currentFactor * baseRate / 100);
       }
+      recordCurrentThrottlerRate();
       return;
     }
     boolean hasBoosterRate = false;
@@ -135,6 +146,12 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
         signalIdleCount = 0;
       }
     }
+    recordCurrentThrottlerRate();
+  }
+
+  /** Emits the current adaptive throttle rate (bytes/sec) for this throttler each refresh tick. */
+  private void recordCurrentThrottlerRate() {
+    adaptiveThrottlingServiceStats.recordRateForAdaptiveThrottler(throttlerType, getCurrentThrottlerRate());
   }
 
   @Override
@@ -152,6 +169,10 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
     if (!this.globalChannelTrafficShapingHandler.compareAndSet(null, globalChannelTrafficShapingHandler)) {
       throw new UnsupportedOperationException("Cannot update GlobalChannelTrafficShapingHandler once initialized.");
     }
+    // Seed the gauge with the current limit when the throttler becomes active, so it reports the configured
+    // base rate immediately rather than 0 until the first signal-refresh tick (one interval, default 30s, after
+    // startup).
+    recordCurrentThrottlerRate();
   }
 
   void updateThrottlerNumber() {

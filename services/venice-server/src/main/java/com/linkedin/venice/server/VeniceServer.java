@@ -17,6 +17,7 @@ import com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -535,16 +536,20 @@ public class VeniceServer {
       VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
       VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
       if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {
+        AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats =
+            adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats();
         writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
             serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
             serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
             serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
-            true);
+            true,
+            adaptiveThrottlingServiceStats);
         readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
             serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
             serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
             serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
-            false);
+            false,
+            adaptiveThrottlingServiceStats);
         // Setup Limiter Signal for Read
         readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
         readThrottler

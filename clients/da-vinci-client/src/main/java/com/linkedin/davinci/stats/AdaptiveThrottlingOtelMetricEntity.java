@@ -23,6 +23,11 @@ public enum AdaptiveThrottlingOtelMetricEntity implements ModuleMetricEntityInte
       "adaptive_throttler.byte_count", MetricType.COUNTER, MetricUnit.BYTES,
       "Count of bytes observed by the adaptive bandwidth ingestion throttler",
       setOf(VENICE_CLUSTER_NAME, VENICE_ADAPTIVE_THROTTLER_TYPE)
+  ),
+  CURRENT_LIMIT(
+      "adaptive_throttler.current_limit", MetricType.ASYNC_GAUGE, MetricUnit.BYTES,
+      "Current adaptive throttle limit in bytes/sec reported by each adaptive bandwidth throttler",
+      setOf(VENICE_CLUSTER_NAME, VENICE_ADAPTIVE_THROTTLER_TYPE)
   );
 
   private final MetricEntity metricEntity;

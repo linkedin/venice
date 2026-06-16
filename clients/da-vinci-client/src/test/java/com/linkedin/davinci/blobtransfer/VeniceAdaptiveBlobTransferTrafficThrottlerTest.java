@@ -4,6 +4,8 @@ import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
+import com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
@@ -14,6 +16,7 @@ public class VeniceAdaptiveBlobTransferTrafficThrottlerTest {
   private VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler;
   private VeniceAdaptiveBlobTransferTrafficThrottler readThrottler;
   private GlobalChannelTrafficShapingHandler handlerMock;
+  private AdaptiveThrottlingServiceStats statsMock;
 
   private static final long BASE_RATE = 1000L;
   private static final int RATE_DELTA = 30;
@@ -21,8 +24,9 @@ public class VeniceAdaptiveBlobTransferTrafficThrottlerTest {
   @BeforeMethod
   public void setUp() {
     handlerMock = Mockito.mock(GlobalChannelTrafficShapingHandler.class);
-    writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(3, BASE_RATE, RATE_DELTA, true);
-    readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(2, BASE_RATE, RATE_DELTA, false);
+    statsMock = Mockito.mock(AdaptiveThrottlingServiceStats.class);
+    writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(3, BASE_RATE, RATE_DELTA, true, statsMock);
+    readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(2, BASE_RATE, RATE_DELTA, false, statsMock);
 
     writeThrottler.setGlobalChannelTrafficShapingHandler(handlerMock);
     readThrottler.setGlobalChannelTrafficShapingHandler(handlerMock);
@@ -96,12 +100,51 @@ public class VeniceAdaptiveBlobTransferTrafficThrottlerTest {
 
   @Test
   public void testNoHandlerDoesNotCrash() {
+    // Fresh stats so this assertion is isolated from the handler-wiring seed done in setUp().
+    AdaptiveThrottlingServiceStats freshStats = Mockito.mock(AdaptiveThrottlingServiceStats.class);
     VeniceAdaptiveBlobTransferTrafficThrottler throttler =
-        new VeniceAdaptiveBlobTransferTrafficThrottler(2, BASE_RATE, RATE_DELTA, true);
+        new VeniceAdaptiveBlobTransferTrafficThrottler(2, BASE_RATE, RATE_DELTA, true, freshStats);
 
     throttler.registerLimiterSignal(() -> true);
 
-    // Should log but not throw exception
+    // No traffic shaping handler is wired, so the throttler is inactive: it neither throws nor records.
     throttler.checkSignalAndAdjustThrottler();
+    verify(freshStats, never()).recordRateForAdaptiveThrottler(Mockito.any(), anyLong());
+  }
+
+  @Test
+  public void testSeedsCurrentLimitWhenHandlerWired() {
+    AdaptiveThrottlingServiceStats freshStats = Mockito.mock(AdaptiveThrottlingServiceStats.class);
+    VeniceAdaptiveBlobTransferTrafficThrottler throttler =
+        new VeniceAdaptiveBlobTransferTrafficThrottler(2, BASE_RATE, RATE_DELTA, true, freshStats);
+
+    // Wiring the handler seeds the gauge with the configured base limit immediately (no 0 until the first tick).
+    throttler.setGlobalChannelTrafficShapingHandler(Mockito.mock(GlobalChannelTrafficShapingHandler.class));
+    verify(freshStats)
+        .recordRateForAdaptiveThrottler(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_WRITE_BANDWIDTH, BASE_RATE);
+  }
+
+  @Test
+  public void testRecordsWriteRateUnderWriteType() {
+    writeThrottler.registerLimiterSignal(() -> true);
+
+    writeThrottler.checkSignalAndAdjustThrottler();
+
+    // After one limiter signal the write factor drops to 70%, i.e. 0.7 * BASE_RATE bytes/sec.
+    verify(statsMock).recordRateForAdaptiveThrottler(
+        VeniceAdaptiveThrottlerType.BLOB_TRANSFER_WRITE_BANDWIDTH,
+        (long) (0.7 * BASE_RATE));
+  }
+
+  @Test
+  public void testRecordsReadRateUnderReadType() {
+    readThrottler.registerBoosterSignal(() -> true);
+
+    readThrottler.checkSignalAndAdjustThrottler();
+
+    // A booster signal raises the read factor to 130%, i.e. 1.3 * BASE_RATE bytes/sec, recorded under the READ type.
+    verify(statsMock).recordRateForAdaptiveThrottler(
+        VeniceAdaptiveThrottlerType.BLOB_TRANSFER_READ_BANDWIDTH,
+        (long) (1.3 * BASE_RATE));
   }
 }
