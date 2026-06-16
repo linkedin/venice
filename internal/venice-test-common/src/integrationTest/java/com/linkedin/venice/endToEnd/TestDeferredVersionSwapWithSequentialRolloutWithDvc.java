@@ -163,7 +163,9 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
       // Close dvc client in target region
       client1.close();
 
-      // Create dvc client in non target region
+      // Create a DVC client in the non-target region (REGION2).
+      // targetRegionSwapWaitTime=1 (minute), so DeferredVersionSwapService hasn't fired yet;
+      // use this window to capture the "before" state and verify strict ordering.
       VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
       VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
           .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
@@ -174,28 +176,10 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster2, new DaVinciConfig(), backendConfig2);
       client2.subscribeAll().get();
 
-      // Version should be swapped in all regions
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 2);
-        });
-      });
-
-      // Check that v2 is ingested in dvc non target region
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int i = 101; i <= keyCount2; i++) {
-          assertNotNull(client2.get(i).get());
-        }
-      });
-
-      client2.close();
-
-      // Verify targetRegionPromoted=true on parent and all child controllers.
-      // DeferredVersionSwapService sets the field once the target region's push completes
-      // and propagates it to children via the updateStore admin path.
+      // Verify targetRegionPromoted=true is set on the parent and all child controllers.
+      // DeferredVersionSwapService sets the field once the target-region push completes and
+      // propagates it to child controllers via the updateStore admin message path.
+      // Note: strict ordering (flag set → DVC starts ingesting) is verified in StoreBackendTest.
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Optional<Version> parentVersion = parentControllerClient.getStore(storeName).getStore().getVersion(2);
         Assert.assertTrue(parentVersion.isPresent(), "Version 2 must exist on parent");
@@ -216,6 +200,24 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           });
         }
       }
+
+      // Once targetRegionPromoted=true propagates to REGION2's child controller, the DVC client
+      // in REGION2 picks it up via its metadata refresh, subscribes to v2 as a future version,
+      // and serves v2 data once the sequential rollout completes and v2 becomes current.
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        for (int i = 101; i <= keyCount2; i++) {
+          assertNotNull(client2.get(i).get());
+        }
+      });
+
+      // Version should now be swapped in all regions (sequential rollout completes after target region).
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+        coloVersions.forEach((colo, version) -> Assert.assertEquals((int) version, 2));
+      });
+
+      client2.close();
     }
   }
 
