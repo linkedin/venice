@@ -1065,15 +1065,19 @@ public final class StoreConfigUpdater {
       setStore.storeLifecycleHooks = Collections.emptyList();
     } else {
       List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
+      VeniceProperties controllerProps =
+          admin.getVeniceHelixAdmin().getMultiClusterConfigs().getCommonConfig().getProps();
       for (LifecycleHooksRecord record: newLifecycleHooks) {
         StoreLifecycleHooks storeLifecycleHook;
         try {
           storeLifecycleHook = ReflectUtils.callConstructor(
               ReflectUtils.loadClass(record.getStoreLifecycleHooksClassName()),
               new Class<?>[] { VeniceProperties.class },
-              new Object[] { VeniceProperties.empty() });
+              new Object[] { controllerProps });
         } catch (Exception e) {
-          throw new VeniceException("Failed to load class: " + record.getStoreLifecycleHooksClassName(), e);
+          throw new VeniceException(
+              "Failed to instantiate lifecycle hook class: " + record.getStoreLifecycleHooksClassName(),
+              e);
         }
         if (storeLifecycleHook.validateHookParams(
             clusterName,
