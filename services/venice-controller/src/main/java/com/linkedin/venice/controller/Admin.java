@@ -326,6 +326,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
   Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName);
 
+  /**
+   * Determine whether a destructive PubSub operation (topic truncation, retention update, or deletion) on the given
+   * topic is safe to execute, by checking whether the topic still backs a non-deprecated version (current, future, or
+   * backup) of its store in any region. See {@link TopicOperationSafetyVerdict} for the semantics of the result, in
+   * particular the additive nature of the check and how orphaned/unverifiable topics are handled.
+   */
+  TopicOperationSafetyVerdict checkTopicOperationSafety(String topicName);
+
   int getBackupVersion(String clusterName, String storeName);
 
   int getFutureVersion(String clusterName, String storeName);

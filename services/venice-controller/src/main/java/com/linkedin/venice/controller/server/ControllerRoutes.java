@@ -19,6 +19,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.InstanceRemovableStatuses;
+import com.linkedin.venice.controller.TopicOperationSafetyVerdict;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -26,6 +27,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
+import com.linkedin.venice.controllerapi.TopicOperationSafetyResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
@@ -153,6 +155,33 @@ public class ControllerRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  /**
+   * No ACL check; read-only pre-flight that reports whether a destructive PubSub operation on a topic is safe to run.
+   * @see Admin#checkTopicOperationSafety(String)
+   */
+  public Route checkTopicOperationSafety(Admin admin) {
+    return (request, response) -> {
+      TopicOperationSafetyResponse responseObject = new TopicOperationSafetyResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        String topicName = request.queryParams(TOPIC);
+        if (StringUtils.isEmpty(topicName)) {
+          throw new IllegalArgumentException("Param '" + TOPIC + "' is required");
+        }
+        TopicOperationSafetyVerdict verdict = admin.checkTopicOperationSafety(topicName);
+        responseObject.setCluster(verdict.getCluster() == null ? "" : verdict.getCluster());
+        responseObject.setName(verdict.getStoreName());
+        responseObject.setAllowed(verdict.isAllowed());
+        responseObject.setReason(verdict.getReason());
+        responseObject.setBlockingRegions(verdict.getBlockingRegions());
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }

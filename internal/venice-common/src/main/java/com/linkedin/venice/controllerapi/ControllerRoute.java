@@ -291,6 +291,7 @@ public enum ControllerRoute implements VeniceDimensionInterface {
       "/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)
   ), GET_PER_REGION_STORAGE_MODE("/get_per_region_storage_mode", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   GET_KAFKA_TOPIC_CONFIGS("/get_kafka_topic_configs", HttpMethod.GET, Collections.singletonList(TOPIC)),
+  CHECK_TOPIC_OPERATION_SAFETY("/check_topic_operation_safety", HttpMethod.GET, Collections.singletonList(TOPIC)),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
       "/update_kafka_topic_log_compaction", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_LOG_COMPACTION_ENABLED)
   ),

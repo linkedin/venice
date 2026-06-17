@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOV
 import static com.linkedin.venice.controllerapi.ControllerRoute.AUTO_MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_TOPIC_OPERATION_SAFETY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEAN_EXECUTION_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
@@ -665,6 +666,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         GET_KAFKA_TOPIC_CONFIGS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, controllerRoutes.getKafkaTopicConfigs(admin)));
+    httpService.get(
+        CHECK_TOPIC_OPERATION_SAFETY.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, controllerRoutes.checkTopicOperationSafety(admin)));
     httpService.post(
         UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, controllerRoutes.updateKafkaTopicLogCompaction(admin)));

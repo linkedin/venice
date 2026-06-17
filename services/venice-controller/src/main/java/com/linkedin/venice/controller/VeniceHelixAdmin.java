@@ -4078,6 +4078,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * A non-parent controller cannot observe the per-region current versions across all fabrics, so it cannot prove a
+   * topic is safe to operate on. Orphaned topics (no resolvable owning store/cluster) preserve legacy behavior and are
+   * allowed; everything else is reported as blocked so the caller reruns against the parent controller or overrides
+   * with --force.
+   */
+  @Override
+  public TopicOperationSafetyVerdict checkTopicOperationSafety(String topicName) {
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    StoreConfig storeConfig =
+        StringUtils.isEmpty(storeName) ? null : getStoreConfigRepo().getStoreConfig(storeName).orElse(null);
+    if (storeConfig == null || StringUtils.isEmpty(storeConfig.getCluster())) {
+      return TopicOperationSafetyVerdict
+          .allowed(topicName, storeName, null, "No owning store/cluster resolved for topic; operation allowed.");
+    }
+    return TopicOperationSafetyVerdict.blocked(
+        topicName,
+        storeName,
+        storeConfig.getCluster(),
+        "Topic safety cannot be verified on a non-parent controller (per-region current versions are not visible). "
+            + "Rerun against the parent controller or override with --force.",
+        Collections.emptyMap());
+  }
+
+  /**
    * @see Admin#deleteAllVersionsInStore(String, String)
    */
   @Override

@@ -2206,6 +2206,14 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * @see Admin#checkTopicOperationSafety(String)
+   */
+  @Override
+  public TopicOperationSafetyVerdict checkTopicOperationSafety(String topicName) {
+    return parentVersionOrchestrator.checkTopicOperationSafety(topicName);
+  }
+
+  /**
    * @return a RepushInfo object with store information retrieved from the specified cluster and fabric.
    */
   @Override

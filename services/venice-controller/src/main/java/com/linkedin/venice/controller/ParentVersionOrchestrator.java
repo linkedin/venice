@@ -13,9 +13,11 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -116,6 +118,89 @@ class ParentVersionOrchestrator {
             controllerClient -> controllerClient.getFutureVersions(clusterName, storeName),
             response -> response.getStoreStatusMap().get(storeName),
             String.valueOf(IGNORED_CURRENT_VERSION));
+  }
+
+  /**
+   * Multi-region safety check for a destructive PubSub operation on {@code topicName}. Resolves the owning cluster from
+   * store config, then fans out to every region to gather the current, future, and backup versions. The operation is
+   * blocked when the topic backs a non-deprecated version (current/future/backup) in any region, or when a region's
+   * current version cannot be read (unreachable, {@link #IGNORED_CURRENT_VERSION}) — in which case it cannot be proven
+   * safe. Orphaned topics (no resolvable store/cluster) are allowed, preserving legacy behavior.
+   */
+  TopicOperationSafetyVerdict checkTopicOperationSafety(String topicName) {
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    StoreConfig storeConfig = (storeName == null || storeName.isEmpty())
+        ? null
+        : parent.getVeniceHelixAdmin().getStoreConfigRepo().getStoreConfig(storeName).orElse(null);
+    if (storeConfig == null || storeConfig.getCluster() == null || storeConfig.getCluster().isEmpty()) {
+      return TopicOperationSafetyVerdict
+          .allowed(topicName, storeName, null, "No owning store/cluster resolved for topic; operation allowed.");
+    }
+    String clusterName = storeConfig.getCluster();
+
+    Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
+    // region -> human-readable reason the operation is blocked there.
+    Map<String, String> blockingRegions = new HashMap<>();
+
+    // Regions we could not reach cannot be proven safe -> fail safe and block.
+    for (Map.Entry<String, Integer> entry: currentVersions.entrySet()) {
+      if (entry.getValue() == IGNORED_CURRENT_VERSION) {
+        blockingRegions.put(entry.getKey(), "current version could not be read (region unreachable)");
+      }
+    }
+
+    if (Version.isRealTimeTopic(topicName)) {
+      // A real-time topic is shared across versions; it is unsafe to operate on while the store has any serving version
+      // in any region.
+      for (Map.Entry<String, Integer> entry: currentVersions.entrySet()) {
+        int current = entry.getValue();
+        if (current != IGNORED_CURRENT_VERSION && current != NON_EXISTING_VERSION) {
+          blockingRegions.putIfAbsent(entry.getKey(), "store has current version " + current);
+        }
+      }
+    } else {
+      int targetVersion = Version.parseVersionFromKafkaTopicName(topicName);
+      Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
+      Map<String, String> backupVersions = getBackupVersionsForMultiColos(clusterName, storeName);
+      for (String region: currentVersions.keySet()) {
+        if (blockingRegions.containsKey(region)) {
+          continue; // already blocked (unreachable)
+        }
+        if (currentVersions.get(region) == targetVersion) {
+          blockingRegions.put(region, "version " + targetVersion + " is the current version");
+        } else if (parseVersionOrIgnored(futureVersions.get(region)) == targetVersion) {
+          blockingRegions.put(region, "version " + targetVersion + " is a future version");
+        } else if (parseVersionOrIgnored(backupVersions.get(region)) == targetVersion) {
+          blockingRegions.put(region, "version " + targetVersion + " is a backup version");
+        }
+      }
+    }
+
+    if (blockingRegions.isEmpty()) {
+      return TopicOperationSafetyVerdict
+          .allowed(topicName, storeName, clusterName, "Topic does not back any non-deprecated version in any region.");
+    }
+    return TopicOperationSafetyVerdict.blocked(
+        topicName,
+        storeName,
+        clusterName,
+        "Topic backs a non-deprecated version (or could not be verified) in region(s): " + blockingRegions.keySet(),
+        blockingRegions);
+  }
+
+  /**
+   * Parse a version number from a multi-colo version string, returning {@link #IGNORED_CURRENT_VERSION} when the value
+   * is absent/non-numeric (e.g. the error sentinel, or no future/backup version exists).
+   */
+  private static int parseVersionOrIgnored(String versionStr) {
+    if (versionStr == null || versionStr.isEmpty()) {
+      return IGNORED_CURRENT_VERSION;
+    }
+    try {
+      return Integer.parseInt(versionStr.trim());
+    } catch (NumberFormatException e) {
+      return IGNORED_CURRENT_VERSION;
+    }
   }
 
   Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {

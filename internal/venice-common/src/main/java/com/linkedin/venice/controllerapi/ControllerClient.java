@@ -755,6 +755,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_KAFKA_TOPIC_CONFIGS, params, PubSubTopicConfigResponse.class);
   }
 
+  /**
+   * Read-only pre-flight check of whether a destructive PubSub operation on the given topic is safe to run. See
+   * {@link TopicOperationSafetyResponse} / the controller-side verdict for semantics.
+   */
+  public TopicOperationSafetyResponse checkTopicOperationSafety(String topicName) {
+    QueryParams params = newParams().add(TOPIC, topicName);
+    return request(ControllerRoute.CHECK_TOPIC_OPERATION_SAFETY, params, TopicOperationSafetyResponse.class);
+  }
+
   public ControllerResponse updateKafkaTopicLogCompaction(String kafkaTopicName, boolean logCompactionEnabled) {
     QueryParams params =
         newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_LOG_COMPACTION_ENABLED, logCompactionEnabled);
