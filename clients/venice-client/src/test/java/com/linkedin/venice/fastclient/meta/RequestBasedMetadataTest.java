@@ -13,7 +13,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -118,6 +120,36 @@ public class RequestBasedMetadataTest {
       e.printStackTrace();
     } finally {
       scheduler.shutdownNow();
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  /**
+   * Each metadata refresh pushes the serving set (all active versions' replicas) to the monitor; after the
+   * REPLICA1_NAME to NEW_REPLICA_NAME swap, the reconciliation must be invoked with a set that no longer has
+   * REPLICA1_NAME.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateCacheReconcilesHealthMonitorWithServingSet() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    InstanceHealthMonitor healthMonitor = clientConfig.getInstanceHealthMonitor();
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, true /* metadataChange */);
+      requestBasedMetadata.start();
+
+      // First refresh serves REPLICA1_NAME (partition 0) and REPLICA2_NAME (partition 1).
+      verify(healthMonitor, atLeastOnce())
+          .updateLiveInstanceSet(argThat(s -> s.contains(REPLICA1_NAME) && s.contains(REPLICA2_NAME)));
+
+      // After the metadata change, partition 0 is served by NEW_REPLICA_NAME instead of REPLICA1_NAME, so a later
+      // refresh must reconcile with a serving set that drops REPLICA1_NAME.
+      verify(healthMonitor, timeout(10 * Time.MS_PER_SECOND).atLeastOnce()).updateLiveInstanceSet(
+          argThat(s -> s.contains(NEW_REPLICA_NAME) && s.contains(REPLICA2_NAME) && !s.contains(REPLICA1_NAME)));
+    } finally {
       if (requestBasedMetadata != null) {
         requestBasedMetadata.close();
       }

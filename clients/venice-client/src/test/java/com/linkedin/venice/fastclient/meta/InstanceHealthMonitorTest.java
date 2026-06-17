@@ -22,6 +22,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -188,6 +189,106 @@ public class InstanceHealthMonitorTest {
           TimeUnit.SECONDS,
           true,
           () -> assertEquals(monitor.getPendingRequestCounter(instance), 0));
+    }
+  }
+
+  /**
+   * A host left in the unhealthy set but removed from the fleet must be evicted by updateLiveInstanceSet and not
+   * re-added by the still-failing heartbeat.
+   */
+  @Test
+  public void testUpdateLiveInstanceSetEvictsHostRemovedFromFleet() throws Exception {
+    Map<String, Long> requestPathToResponseDelayMap = new VeniceConcurrentHashMap<>();
+    Map<String, CompletableFuture<RestResponse>> requestPathToResponseFutureMap = new VeniceConcurrentHashMap<>();
+    CompletableFuture<RestResponse> hbResponseFuture =
+        CompletableFuture.completedFuture(new RestResponseBuilder().setStatus(SC_OK).build());
+    String hbPath = instance + "/" + QueryAction.HEALTH.toString().toLowerCase();
+    requestPathToResponseFutureMap.put(hbPath, hbResponseFuture);
+    // a large delay forces every heartbeat to this instance to time out, so it keeps failing
+    requestPathToResponseDelayMap.put(hbPath, 10000L);
+    MockClient client = new MockClient(requestPathToResponseDelayMap, requestPathToResponseFutureMap);
+
+    InstanceHealthMonitorConfig config = InstanceHealthMonitorConfig.builder()
+        .setRoutingRequestDefaultTimeoutMS(1000L)
+        .setRoutingPendingRequestCounterInstanceBlockThreshold(10)
+        .setHeartBeatIntervalSeconds(1)
+        .setHeartBeatRequestTimeoutMS(100L)
+        .setRoutingTimedOutRequestCounterResetDelayMS(2000)
+        .setClient(client)
+        .build();
+
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(config)) {
+      // Drive the instance into the unhealthy set via a timed-out user request + a failing heartbeat.
+      CompletableFuture<TransportClientResponse> requestFuture = new CompletableFuture<>();
+      ChainedCompletableFuture<Integer, Integer> chainedRequestFuture =
+          monitor.trackHealthBasedOnRequestToInstance(instance, requestFuture);
+      Thread.sleep(1500); // must exceed routingRequestDefaultTimeoutMS (1000ms) to trigger unhealthy detection
+      requestFuture.complete(null);
+      chainedRequestFuture.getOriginalFuture().complete(SC_GONE);
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertFalse(monitor.isInstanceHealthy(instance), "instance should be marked unhealthy"));
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+
+      // A refresh whose serving set still contains the host keeps it tracked (a live-but-unhealthy host).
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertFalse(monitor.isInstanceHealthy(instance));
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+
+      // An empty or null serving set is treated as "unknown" and must NOT wipe accumulated health state.
+      monitor.updateLiveInstanceSet(Collections.emptySet());
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+      monitor.updateLiveInstanceSet(null);
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+
+      // A refresh whose serving set no longer contains the host evicts it, and the still-failing heartbeat must not
+      // bring it back.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        assertTrue(
+            monitor.isInstanceHealthy(instance),
+            "host removed from the fleet should no longer be tracked as unhealthy");
+        assertEquals(monitor.getUnhealthyInstanceCount(), 0);
+      });
+    }
+  }
+
+  /**
+   * A drained (zero) pending-request counter for a departed host is evicted; a counter for a live host or one with an
+   * in-flight request is kept so accounting stays correct.
+   */
+  @Test
+  public void testUpdateLiveInstanceSetEvictsDrainedPendingRequestCounters() throws Exception {
+    InstanceHealthMonitorConfig config =
+        InstanceHealthMonitorConfig.builder().setRoutingRequestDefaultTimeoutMS(10000L).build();
+
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(config)) {
+      // Complete a request so the pending-request counter drains to 0 but the entry remains.
+      ChainedCompletableFuture<Integer, Integer> chainedFuture = monitor.trackHealthBasedOnRequestToInstance(instance);
+      chainedFuture.getOriginalFuture().complete(SC_OK);
+      waitQuietly(chainedFuture.getResultFuture());
+      assertEquals(monitor.getPendingRequestCounter(instance), 0);
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+
+      // A refresh that still lists the host keeps its drained counter.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+
+      // A refresh that drops the host evicts the drained counter.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      assertFalse(monitor.hasPendingRequestCounter(instance));
+
+      // An in-flight request (non-zero counter) is preserved even when the host is not in the serving set, so the
+      // accounting and its completion-time reset stay correct.
+      ChainedCompletableFuture<Integer, Integer> inFlightFuture = monitor.trackHealthBasedOnRequestToInstance(instance);
+      assertEquals(monitor.getPendingRequestCounter(instance), 1);
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+      assertEquals(monitor.getPendingRequestCounter(instance), 1);
+      inFlightFuture.getOriginalFuture().complete(SC_OK);
+      waitQuietly(inFlightFuture.getResultFuture());
     }
   }
 

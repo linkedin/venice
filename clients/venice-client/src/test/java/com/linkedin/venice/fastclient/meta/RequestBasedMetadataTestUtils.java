@@ -83,6 +83,7 @@ public class RequestBasedMetadataTestUtils {
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(mock(FastClientStats.class)).when(clientConfig).getStats(RequestType.SINGLE_GET);
+    doReturn(mock(InstanceHealthMonitor.class)).when(clientConfig).getInstanceHealthMonitor();
     return clientConfig;
   }
 

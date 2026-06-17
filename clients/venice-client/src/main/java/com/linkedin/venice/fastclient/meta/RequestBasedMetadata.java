@@ -529,6 +529,17 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionCompressionStrategyMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+
+      /*
+       * Reconcile instance-health tracking with the live serving set (all active versions' replicas) so departed
+       * hosts stop being tracked. See InstanceHealthMonitor#updateLiveInstanceSet.
+       */
+      Set<String> liveInstances = new HashSet<>();
+      for (List<String> replicas: readyToServeInstancesMap.values()) {
+        liveInstances.addAll(replicas);
+      }
+      getInstanceHealthMonitor().updateLiveInstanceSet(liveInstances);
+
       if (whetherToSwitchToFetchedCurrentVersion(
           storeName,
           activeVersions,
