@@ -7,12 +7,14 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.reliability.LoadController;
 import com.linkedin.venice.stats.ServerLoadStats;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,13 +38,18 @@ public class ServerLoadControllerHandler extends SimpleChannelInboundHandler<Htt
   private final LoadController loadController;
   private final ServerLoadStats loadStats;
 
-  public ServerLoadControllerHandler(VeniceServerConfig serverConfig, ServerLoadStats loadStats) {
+  public ServerLoadControllerHandler(
+      VeniceServerConfig serverConfig,
+      ServerLoadStats loadStats,
+      MetricsRepository metricsRepository) {
     this.serverConfig = serverConfig;
+    boolean selfContained = VeniceMetricsConfig.useSelfContainedStats(metricsRepository);
     this.loadController = LoadController.newBuilder()
         .setWindowSizeInSec(serverConfig.getLoadControllerWindowSizeInSec())
         .setAcceptMultiplier(serverConfig.getLoadControllerAcceptMultiplier())
         .setMaxRejectionRatio(serverConfig.getLoadControllerMaxRejectionRatio())
         .setRejectionRatioUpdateIntervalInSec(serverConfig.getLoadControllerRejectionRatioUpdateIntervalInSec())
+        .setUseIndependentCounter(selfContained)
         .build();
     this.loadStats = loadStats;
   }

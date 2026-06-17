@@ -41,16 +41,19 @@ public class OpenTelemetryMetricsSetup {
    */
   public static class OpenTelemetryMetricsSetupInfo {
     private final boolean emitOpenTelemetryMetrics;
+    private final boolean useSelfContainedStats;
     private final VeniceOpenTelemetryMetricsRepository otelRepository;
     private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
     private final Attributes baseAttributes;
 
     public OpenTelemetryMetricsSetupInfo(
         boolean emitOpenTelemetryMetrics,
+        boolean useSelfContainedStats,
         VeniceOpenTelemetryMetricsRepository otelRepository,
         Map<VeniceMetricsDimensions, String> baseDimensionsMap,
         Attributes baseAttributes) {
       this.emitOpenTelemetryMetrics = emitOpenTelemetryMetrics;
+      this.useSelfContainedStats = useSelfContainedStats;
       this.otelRepository = otelRepository;
       this.baseDimensionsMap = baseDimensionsMap;
       this.baseAttributes = baseAttributes;
@@ -58,6 +61,10 @@ public class OpenTelemetryMetricsSetup {
 
     public boolean emitOpenTelemetryMetrics() {
       return emitOpenTelemetryMetrics;
+    }
+
+    public boolean useSelfContainedStats() {
+      return useSelfContainedStats;
     }
 
     /** Returns {@code null} when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
@@ -303,7 +310,8 @@ public class OpenTelemetryMetricsSetup {
 
       Attributes baseAttributes = baseAttributesBuilder.build();
 
-      return new OpenTelemetryMetricsSetupInfo(true, otelRepository, baseDimensionsMap, baseAttributes);
+      boolean selfContained = veniceMetricsConfig.useSelfContainedStats();
+      return new OpenTelemetryMetricsSetupInfo(true, selfContained, otelRepository, baseDimensionsMap, baseAttributes);
     }
 
     /**
@@ -311,7 +319,12 @@ public class OpenTelemetryMetricsSetup {
      * the map (e.g., adding VENICE_STORE_NAME) don't need individual null guards.
      */
     private OpenTelemetryMetricsSetupInfo buildOtelDisabled() {
-      return new OpenTelemetryMetricsSetupInfo(false, null, Collections.emptyMap(), null);
+      return new OpenTelemetryMetricsSetupInfo(
+          false,
+          VeniceMetricsConfig.useSelfContainedStats(metricsRepository),
+          null,
+          Collections.emptyMap(),
+          null);
     }
   }
 

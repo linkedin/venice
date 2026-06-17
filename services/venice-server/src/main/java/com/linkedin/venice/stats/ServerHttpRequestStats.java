@@ -31,6 +31,8 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateFourEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import com.linkedin.venice.utils.concurrent.LatencyPercentileProvider;
+import com.linkedin.venice.utils.concurrent.LatencyPercentileProvider.LatencyType;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
@@ -92,6 +94,15 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
 
+  /**
+   * Optional sink for read-path latency samples consumed by {@code AdaptiveThrottlerSignalService}
+   * to compute its p99 signal without depending on Tehuti's windowed percentile. Null when the
+   * adaptive throttler is disabled.
+   */
+  private final LatencyPercentileProvider latencyPercentileProvider;
+  /** Category under which this instance's latency observations feed {@link #latencyPercentileProvider}. */
+  private final LatencyType latencySignalType;
+
   public ServerHttpRequestStats(
       MetricsRepository metricsRepository,
       String storeName,
@@ -101,7 +112,31 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
       ServerHttpRequestStats totalStats,
       boolean isDaVinciClient,
       boolean readOtelStatsEnabled) {
+    this(
+        metricsRepository,
+        storeName,
+        clusterName,
+        requestType,
+        isKeyValueProfilingEnabled,
+        totalStats,
+        isDaVinciClient,
+        readOtelStatsEnabled,
+        null);
+  }
+
+  public ServerHttpRequestStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      String clusterName,
+      RequestType requestType,
+      boolean isKeyValueProfilingEnabled,
+      ServerHttpRequestStats totalStats,
+      boolean isDaVinciClient,
+      boolean readOtelStatsEnabled,
+      LatencyPercentileProvider latencyPercentileProvider) {
     super(isDaVinciClient ? dummySystemStoreMetricRepo : metricsRepository, storeName, requestType);
+    this.latencyPercentileProvider = latencyPercentileProvider;
+    this.latencySignalType = resolveLatencySignalType(requestType);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
@@ -527,6 +562,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         statusCategory,
         veniceCategory,
         VeniceRequestKeyCountBucket.fromKeyCount(requestedKeyCount));
+    observeLatencyForSignal(latency);
   }
 
   public void recordErrorRequestAndLatency(
@@ -543,6 +579,28 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         statusCategory,
         veniceCategory,
         VeniceRequestKeyCountBucket.fromKeyCount(requestedKeyCount));
+    observeLatencyForSignal(latency);
+  }
+
+  private void observeLatencyForSignal(double latency) {
+    if (latencyPercentileProvider != null) {
+      latencyPercentileProvider.observe(latencySignalType, latency);
+    }
+  }
+
+  private static LatencyType resolveLatencySignalType(RequestType requestType) {
+    switch (requestType) {
+      case SINGLE_GET:
+        return LatencyType.SINGLE_GET;
+      case MULTI_GET:
+      case MULTI_GET_STREAMING:
+        return LatencyType.MULTI_GET;
+      case COMPUTE:
+      case COMPUTE_STREAMING:
+        return LatencyType.READ_COMPUTE;
+      default:
+        throw new IllegalArgumentException("Unhandled RequestType for latency signal: " + requestType);
+    }
   }
 
   private static HttpResponseStatusEnum resolveStatusEnum(HttpResponseStatus responseStatus) {

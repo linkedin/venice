@@ -18,16 +18,22 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class HelixGroupStatsTest {
-  @Test
-  public void testMetrics() {
+  @DataProvider(name = "groupAvgPaths")
+  public Object[][] groupAvgPaths() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "groupAvgPaths")
+  public void testMetrics(boolean useSelfContainedStats) {
     MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     String storeName = "test_store";
 
-    HelixGroupStats stats = new HelixGroupStats(metricsRepository, storeName);
+    HelixGroupStats stats = new HelixGroupStats(metricsRepository, storeName, useSelfContainedStats);
 
     // No data points
     assertEquals(stats.getGroupResponseWaitingTimeAvg(0), -1d);
@@ -282,8 +288,8 @@ public class HelixGroupStatsTest {
         otelMetricPrefix);
   }
 
-  @Test
-  public void testGroupResponseWaitingTimeMetric() {
+  @Test(dataProvider = "groupAvgPaths")
+  public void testGroupResponseWaitingTimeMetric(boolean useSelfContainedStats) {
     // Set up Venice metrics repository with both Tehuti and OpenTelemetry support
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     VeniceMetricsRepository metricsRepository =
@@ -291,7 +297,7 @@ public class HelixGroupStatsTest {
     String otelMetricPrefix = FAST_CLIENT.getMetricsPrefix();
     String storeName = "test_store";
 
-    HelixGroupStats stats = new HelixGroupStats(metricsRepository, storeName);
+    HelixGroupStats stats = new HelixGroupStats(metricsRepository, storeName, useSelfContainedStats);
 
     // Record response waiting times for different groups
     int groupId0 = 0;
@@ -329,7 +335,8 @@ public class HelixGroupStatsTest {
     double avgGroup2 = stats.getGroupResponseWaitingTimeAvg(groupId2);
     assertEquals(avgGroup2, 55.0, 0.01, "Group 2 average response waiting time should be 55.0ms");
 
-    // Verify Tehuti metric names exist
+    // Verify Tehuti metric names exist — both paths keep Tehuti joint recording active for
+    // dashboards, so these must be present regardless of flag.
     String expectedTehutiMetricNameGroup0 = "." + storeName + "_HelixGroupStats--group_0_response_waiting_time.Avg";
     assertNotNull(
         metrics.get(expectedTehutiMetricNameGroup0),
@@ -393,6 +400,46 @@ public class HelixGroupStatsTest {
         expectedAttributesGroup2,
         RoutingMetricEntity.HELIX_GROUP_CALL_TIME.getMetricEntity().getMetricName(),
         otelMetricPrefix);
+  }
+
+  /**
+   * Parity: two HelixGroupStats instances (one with Tehuti read path, one with independent read
+   * path) receive the identical recording sequence; asserts both report the same per-group avg.
+   * Guards against flipping the flag changing the routing decision.
+   */
+  @Test
+  public void testBothGroupAvgPathsAgree() {
+    MetricsRepository metricsRepositoryTehuti = new MetricsRepository();
+    MetricsRepository metricsRepositoryIndependent = new MetricsRepository();
+    String storeName = "parity_store";
+
+    HelixGroupStats tehuti = new HelixGroupStats(metricsRepositoryTehuti, storeName, false);
+    HelixGroupStats independent = new HelixGroupStats(metricsRepositoryIndependent, storeName, true);
+
+    double[] group0 = { 50, 100, 75 };
+    double[] group1 = { 120, 80 };
+    double[] group2 = { 30, 90, 60, 40 };
+
+    for (double v: group0) {
+      tehuti.recordGroupResponseWaitingTime(0, v);
+      independent.recordGroupResponseWaitingTime(0, v);
+    }
+    for (double v: group1) {
+      tehuti.recordGroupResponseWaitingTime(1, v);
+      independent.recordGroupResponseWaitingTime(1, v);
+    }
+    for (double v: group2) {
+      tehuti.recordGroupResponseWaitingTime(2, v);
+      independent.recordGroupResponseWaitingTime(2, v);
+    }
+
+    assertEquals(tehuti.getGroupResponseWaitingTimeAvg(0), independent.getGroupResponseWaitingTimeAvg(0), 0.01);
+    assertEquals(tehuti.getGroupResponseWaitingTimeAvg(1), independent.getGroupResponseWaitingTimeAvg(1), 0.01);
+    assertEquals(tehuti.getGroupResponseWaitingTimeAvg(2), independent.getGroupResponseWaitingTimeAvg(2), 0.01);
+
+    // Absent group returns -1 on both paths.
+    assertEquals(tehuti.getGroupResponseWaitingTimeAvg(99), -1d);
+    assertEquals(independent.getGroupResponseWaitingTimeAvg(99), -1d);
   }
 
 }

@@ -1226,6 +1226,8 @@ public class ConfigKeys {
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS =
       "server.adaptive.throttler.signal.refresh.interval.in.seconds";
 
+  // use.self.contained.stats is defined in VeniceMetricsConfig as a cross-cutting config.
+
   /**
    * A list of JVM arguments for forked child process, separated by semicolon.
    */

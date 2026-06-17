@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.utils.concurrent.LatencyPercentileProvider;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.grpc.ServerInterceptor;
 import io.netty.bootstrap.ServerBootstrap;
@@ -79,6 +80,40 @@ public class ListenerService extends AbstractVeniceService {
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+    this(
+        storageEngineRepository,
+        storeMetadataRepository,
+        schemaRepository,
+        customizedViewRepository,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
+        serverConfig,
+        metricsRepository,
+        sslFactory,
+        routerAccessController,
+        storeAccessController,
+        diskHealthService,
+        compressorFactory,
+        resourceReadUsageTracker,
+        null);
+  }
+
+  public ListenerService(
+      StorageEngineRepository storageEngineRepository,
+      ReadOnlyStoreRepository storeMetadataRepository,
+      ReadOnlySchemaRepository schemaRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
+      VeniceServerConfig serverConfig,
+      MetricsRepository metricsRepository,
+      Optional<SSLFactory> sslFactory,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
+      DiskHealthCheckService diskHealthService,
+      StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      LatencyPercentileProvider latencyPercentileProvider) {
 
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
@@ -126,7 +161,8 @@ public class ListenerService extends AbstractVeniceService {
         routerAccessController,
         storeAccessController,
         requestHandler,
-        storageEngineRepository);
+        storageEngineRepository,
+        latencyPercentileProvider);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();

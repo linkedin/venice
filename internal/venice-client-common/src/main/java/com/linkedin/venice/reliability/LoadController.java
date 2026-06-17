@@ -8,6 +8,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.SampledCount;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,54 +24,71 @@ import org.apache.logging.log4j.Logger;
  * 3. It uses the following formula to calculate the rejection ratio:
  *    max(0, (requestRate - acceptMultiplier * acceptRate) / (requestRate + 1))
  *
- * Here is how the rejection ratio calculation being implemented here:
- * 1. This class is using a sliding window to calcuate the request rate and accept rate.
- * 2. The window size is controlled by {@link #windowSizeInSec}.
- * 3. To reduce the overhead of calculating the rejection ratio, we only calculate it every
+ * Implementation:
+ * 1. Requests and accepts are tracked over a sliding window (Tehuti path) or since the last
+ *    measurement (independent-counter path). See {@link Builder#setUseIndependentCounter}.
+ * 2. To reduce the overhead of calculating the rejection ratio, we only calculate it every
  *    {@link #rejectionRatioUpdateIntervalInSec}.
- * 4. This class also limits the maximum rejection ratio to {@link #maxRejectionRatio} to avoid
+ * 3. This class also limits the maximum rejection ratio to {@link #maxRejectionRatio} to avoid
  *    rejecting every request, otherwise, the backend won't be able to recover automatically.
- * 5. We can tune {@link #acceptMultiplier} to control the rejection ratio.
+ * 4. We can tune {@link #acceptMultiplier} to control the rejection ratio.
+ *
+ * <p><b>Backing counter:</b> two implementations coexist and are selected at construction via
+ * {@link Builder#setUseIndependentCounter(boolean)} (default {@code false}):
+ * <ul>
+ *   <li>{@code false} — legacy Tehuti {@link SampledCount} in a local {@link MetricsRepository}
+ *       (the {@code MetricsRepository} is not exported; it serves purely as windowed-count state).</li>
+ *   <li>{@code true} — two {@link LongAdder}s reset on each ratio update, so the load-shedding
+ *       decision remains functional even when the Tehuti dependency is removed. The effective
+ *       window is {@link #rejectionRatioUpdateIntervalInSec}; {@code windowSizeInSec} is
+ *       ignored for this path.</li>
+ * </ul>
+ * Both paths produce equivalent rejection ratios for the same input sequence; {@code true} removes
+ * the coupling to Tehuti.
  */
 public class LoadController {
   private final static Logger LOGGER = LogManager.getLogger(LoadController.class);
-  private final int windowSizeInSec;
   private final int rejectionRatioUpdateIntervalInSec;
   private final double maxRejectionRatio;
   private final Time time;
   private final double acceptMultiplier;
 
-  private final Sensor requestSensor;
-  private final Metric requestMetric;
-  private final Sensor acceptSensor;
-  private final Metric acceptMetric;
+  private final CountProvider requestCounter;
+  private final CountProvider acceptCounter;
 
   private volatile long nextRejectionRatioUpdateTime = -1;
   private volatile double rejectionRatio = 0;
 
   private LoadController(Builder builder) {
-    this.windowSizeInSec = builder.windowSizeInSec;
     this.rejectionRatioUpdateIntervalInSec = builder.rejectionRatioUpdateIntervalInSec;
-    if (this.rejectionRatioUpdateIntervalInSec >= this.windowSizeInSec) {
-      throw new IllegalArgumentException("Rejection ratio update interval should be less than window size");
-    }
     this.maxRejectionRatio = builder.maxRejectionRatio;
     this.acceptMultiplier = builder.acceptMultiplier;
     this.time = builder.time;
-    MetricsRepository metricsRepository =
-        new MetricsRepository(new MetricConfig().timeWindow(windowSizeInSec, TimeUnit.SECONDS));
-    this.requestSensor = metricsRepository.sensor("request");
-    this.requestMetric = requestSensor.add("request", new SampledCount());
-    this.acceptSensor = metricsRepository.sensor("accept");
-    this.acceptMetric = acceptSensor.add("accept", new SampledCount());
+    if (builder.useIndependentCounter) {
+      this.requestCounter = new LongAdderCountProvider();
+      this.acceptCounter = new LongAdderCountProvider();
+    } else {
+      int windowSizeInSec = builder.windowSizeInSec;
+      if (this.rejectionRatioUpdateIntervalInSec >= windowSizeInSec) {
+        throw new IllegalArgumentException("Rejection ratio update interval should be less than window size");
+      }
+      MetricsRepository metricsRepository =
+          new MetricsRepository(new MetricConfig().timeWindow(windowSizeInSec, TimeUnit.SECONDS));
+      Sensor requestSensor = metricsRepository.sensor("request");
+      Metric requestMetric = requestSensor.add("request", new SampledCount());
+      Sensor acceptSensor = metricsRepository.sensor("accept");
+      Metric acceptMetric = acceptSensor.add("accept", new SampledCount());
+      this.requestCounter = new TehutiCountProvider(requestSensor, requestMetric);
+      this.acceptCounter = new TehutiCountProvider(acceptSensor, acceptMetric);
+    }
   }
 
   public void recordRequest() {
-    requestSensor.record();
+    requestCounter.record();
   }
 
   public void recordAccept() {
-    acceptSensor.record();
+    acceptCounter.record();
   }
 
   public double getRejectionRatio() {
@@ -81,8 +99,8 @@ public class LoadController {
       if (time.getMilliseconds() < nextRejectionRatioUpdateTime) {
         return rejectionRatio;
       }
-      double requestCount = getMetricValue(requestMetric);
-      double acceptCount = getMetricValue(acceptMetric);
+      double requestCount = requestCounter.count();
+      double acceptCount = acceptCounter.count();
       if (requestCount == 0.0d) {
         rejectionRatio = 0;
       } else {
@@ -100,11 +118,6 @@ public class LoadController {
     return getRejectionRatio() > 0;
   }
 
-  private double getMetricValue(Metric metric) {
-    double value = metric.value();
-    return Double.isFinite(value) ? value : 0.0;
-  }
-
   public boolean shouldRejectRequest() {
     double rejectRatio = getRejectionRatio();
     if (rejectRatio == 0) {
@@ -120,12 +133,66 @@ public class LoadController {
     return new Builder();
   }
 
+  private interface CountProvider {
+    void record();
+
+    /*
+     * Returns the event count for the current measurement window. Semantics differ by
+     * implementation: {@link TehutiCountProvider} returns a rolling windowed count (non-destructive,
+     * re-readable); {@link LongAdderCountProvider} drains via {@code sumThenReset()} — calling
+     * this method a second time in the same measurement cycle returns 0. Callers must invoke
+     * {@code count()} exactly once per {@link LoadController#getRejectionRatio()} update cycle.
+     */
+    double count();
+  }
+
+  private static final class TehutiCountProvider implements CountProvider {
+    private final Sensor sensor;
+    private final Metric metric;
+
+    TehutiCountProvider(Sensor sensor, Metric metric) {
+      this.sensor = sensor;
+      this.metric = metric;
+    }
+
+    @Override
+    public void record() {
+      sensor.record();
+    }
+
+    @Override
+    public double count() {
+      double value = metric.value();
+      return Double.isFinite(value) ? value : 0.0;
+    }
+  }
+
+  /*
+   * Independent counter: a single LongAdder per request/accept stream. count() drains via
+   * sumThenReset() so each ratio update sees only events since the last measurement. Safe because
+   * getRejectionRatio() calls count() inside a synchronized block — only one thread drains at a time.
+   */
+  private static final class LongAdderCountProvider implements CountProvider {
+    private final LongAdder adder = new LongAdder();
+
+    @Override
+    public void record() {
+      adder.increment();
+    }
+
+    @Override
+    public double count() {
+      return adder.sumThenReset();
+    }
+  }
+
   public static class Builder {
     private int windowSizeInSec;
     private int rejectionRatioUpdateIntervalInSec;
     private double maxRejectionRatio;
     private double acceptMultiplier;
     private Time time = new SystemTime();
+    private boolean useIndependentCounter = false;
 
     public Builder setWindowSizeInSec(int windowSizeInSec) {
       this.windowSizeInSec = windowSizeInSec;
@@ -149,6 +216,11 @@ public class LoadController {
 
     public Builder setTime(Time time) {
       this.time = time;
+      return this;
+    }
+
+    public Builder setUseIndependentCounter(boolean useIndependentCounter) {
+      this.useIndependentCounter = useIndependentCounter;
       return this;
     }
 

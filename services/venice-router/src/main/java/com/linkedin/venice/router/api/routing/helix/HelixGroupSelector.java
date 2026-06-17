@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api.routing.helix;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +31,8 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
       HelixInstanceConfigRepository instanceConfigRepository,
       HelixGroupSelectionStrategyEnum strategyEnum,
       TimeoutProcessor timeoutProcessor) {
-    this.helixGroupStats = new HelixGroupStats(metricsRepository);
+    boolean selfContained = VeniceMetricsConfig.useSelfContainedStats(metricsRepository);
+    this.helixGroupStats = new HelixGroupStats(metricsRepository, selfContained);
     this.instanceConfigRepository = instanceConfigRepository;
     Class<? extends HelixGroupSelectionStrategy> strategyClass = strategyEnum.getStrategyClass();
     if (strategyClass.equals(HelixGroupLeastLoadedStrategy.class)) {
