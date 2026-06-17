@@ -38,6 +38,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -46,9 +47,11 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
@@ -62,6 +65,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -945,13 +949,59 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   }
 
   /**
-   * Verifies that a non-existent lifecycle hook class name causes {@code applyOnParent} to throw.
+   * A lifecycle hook that records the {@link VeniceProperties} passed to its constructor.
+   * Used to assert that {@code applyOnParent} passes real controller props, not empty ones.
    */
-  @Test(expectedExceptions = Exception.class)
+  public static class PropsCapturingHook extends StoreLifecycleHooks {
+    static volatile VeniceProperties capturedProps;
+
+    public PropsCapturingHook(VeniceProperties props) {
+      super(props);
+      capturedProps = props;
+    }
+  }
+
+  /**
+   * Verifies that {@code applyOnParent} passes the real controller {@link VeniceProperties} to
+   * the lifecycle hook constructor, not {@code VeniceProperties.empty()}. This is the core
+   * behavioral contract introduced by this fix: hooks that require real infrastructure config
+   * in their constructor must receive it during pre-flight validation.
+   */
+  @Test
+  public void testApplyOnParent_LifecycleHookReceivesRealControllerProps() {
+    String storeName = Utils.getUniqueString("parent-props-hook");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(mock(VeniceControllerMultiClusterConfig.class, RETURNS_DEEP_STUBS)).when(internalAdmin)
+        .getMultiClusterConfigs();
+    parentAdmin.initStorageCluster(clusterName);
+
+    PropsCapturingHook.capturedProps = null;
+    String hookClassName = StoreConfigUpdaterTest.class.getName() + "$PropsCapturingHook";
+    LifecycleHooksRecord hook = new LifecycleHooksRecordImpl(hookClassName, Collections.emptyMap());
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setStoreLifecycleHooks(Collections.singletonList(hook));
+
+    parentAdmin.updateStore(clusterName, storeName, params);
+
+    assertNotNull(PropsCapturingHook.capturedProps, "Hook constructor must receive non-null VeniceProperties");
+    assertNotSame(
+        VeniceProperties.empty(),
+        PropsCapturingHook.capturedProps,
+        "Hook constructor must receive real controller props, not VeniceProperties.empty()");
+  }
+
+  /**
+   * Verifies that a non-existent lifecycle hook class name causes {@code applyOnParent} to throw
+   * a {@link VeniceException} — the class-existence check is preserved.
+   */
+  @Test(expectedExceptions = VeniceException.class)
   public void testApplyOnParent_LifecycleHookWithMissingClass_Throws() {
     String storeName = Utils.getUniqueString("parent-missing-hook");
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(mock(VeniceControllerMultiClusterConfig.class, RETURNS_DEEP_STUBS)).when(internalAdmin)
+        .getMultiClusterConfigs();
     parentAdmin.initStorageCluster(clusterName);
 
     LifecycleHooksRecord hook =
