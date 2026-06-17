@@ -943,4 +943,22 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     return admin;
   }
+
+  /**
+   * Verifies that a non-existent lifecycle hook class name causes {@code applyOnParent} to throw.
+   */
+  @Test(expectedExceptions = Exception.class)
+  public void testApplyOnParent_LifecycleHookWithMissingClass_Throws() {
+    String storeName = Utils.getUniqueString("parent-missing-hook");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    LifecycleHooksRecord hook =
+        new LifecycleHooksRecordImpl("com.example.NonExistentLifecycleHook", Collections.emptyMap());
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setStoreLifecycleHooks(Collections.singletonList(hook));
+
+    parentAdmin.updateStore(clusterName, storeName, params);
+  }
 }
