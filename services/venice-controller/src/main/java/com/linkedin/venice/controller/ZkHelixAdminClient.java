@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
@@ -234,6 +235,14 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     idealState.setRebalancerClassName(WagedRebalancer.class.getName());
     helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
     helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
+  }
+
+  /**
+   * @see HelixAdminClient#setupCustomizedStateConfig(String)
+   */
+  @Override
+  public void setupCustomizedStateConfig(String clusterName) {
+    HelixUtils.setupCustomizedStateConfig(helixAdmin, clusterName);
   }
 
   /**

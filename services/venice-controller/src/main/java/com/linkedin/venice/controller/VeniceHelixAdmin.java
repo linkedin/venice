@@ -1063,7 +1063,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     // The customized state config may get wiped or have never been written to ZK cluster config before, we need to
     // enable at first.
-    HelixUtils.setupCustomizedStateConfig(admin, clusterName);
+    helixAdminClient.setupCustomizedStateConfig(clusterName);
     // The resource and partition may be disabled for this controller before, we need to enable again at first. Then the
     // state transition will be triggered.
     List<String> partitionNames =
@@ -1140,7 +1140,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public boolean isClusterValid(String clusterName) {
-    return admin.getClusters().contains(clusterName);
+    return helixAdminClient.isVeniceStorageClusterCreated(clusterName);
   }
 
   protected HelixAdmin getHelixAdmin() {

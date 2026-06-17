@@ -52,6 +52,13 @@ public interface HelixAdminClient {
   void createVeniceStorageClusterLegacy(String clusterName);
 
   /**
+   * Enable the customized state config on the given storage cluster. The customized state config may get
+   * wiped or may never have been written to the ZK cluster config before, so it needs to be (re)enabled.
+   * @param clusterName of the Venice storage cluster.
+   */
+  void setupCustomizedStateConfig(String clusterName);
+
+  /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
    * @param clusterName of the Venice storage cluster.
    * @return true or false.
