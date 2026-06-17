@@ -7974,9 +7974,73 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(task).isPauseAfterStartOfPush();
     doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
 
-    // Verify the field can be set and read (SOP integration tested in Task 4)
+    // Verify the field can be set and read (SOP integration tested in testProcessStartOfPushPausesPartitionWhenFlagSet)
     assertFalse(task.isPauseAfterStartOfPush(), "pauseAfterStartOfPush should default to false");
     task.setPauseAfterStartOfPush(true);
     assertTrue(task.isPauseAfterStartOfPush(), "pauseAfterStartOfPush should be true after setter");
+  }
+
+  @Test
+  public void testProcessStartOfPushPausesPartitionWhenFlagSet() throws Exception {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
+    doReturn(PARTITION_FOO).when(pcs).getPartition();
+    doReturn(false).when(pcs).isEndOfPushReceived();
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    // Wire additional fields needed by processStartOfPush
+    StorageMetadataService sms = mock(StorageMetadataService.class);
+    StoreVersionState svs = new StoreVersionState();
+    svs.sorted = false;
+    doReturn(svs).when(sms).computeStoreVersionState(anyString(), any());
+
+    VeniceServerConfig serverCfg = mock(VeniceServerConfig.class);
+    RocksDBServerConfig rocksDBCfg = mock(RocksDBServerConfig.class);
+    doReturn(false).when(rocksDBCfg).isBlobFilesEnabled();
+    doReturn(rocksDBCfg).when(serverCfg).getRocksDBServerConfig();
+
+    IngestionNotificationDispatcher dispatcher = mock(IngestionNotificationDispatcher.class);
+
+    for (Object[] entry: new Object[][] { { "storageMetadataService", sms }, { "serverConfig", serverCfg },
+        { "kafkaVersionTopic", topic }, { "ingestionNotificationDispatcher", dispatcher },
+        { "activeKeyCountForAllBatchPushEnabled", false }, { "activeKeyCountForHybridStoreEnabled", false } }) {
+      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
+      f.setAccessible(true);
+      f.set(task, entry[1]);
+    }
+
+    doCallRealMethod().when(task).processStartOfPush(any(), any(), any());
+    doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
+    doCallRealMethod().when(task).isPauseAfterStartOfPush();
+    doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
+    doReturn(false).when(task).isHybridMode();
+    doNothing().when(task).beginBatchWrite(anyBoolean(), any());
+
+    // Build a minimal SOP KME and ControlMessage
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    ControlMessage cm = new ControlMessage();
+    StartOfPush sop = new StartOfPush();
+    sop.sorted = false;
+    sop.chunked = false;
+    cm.controlMessageUnion = sop;
+
+    // Case 1: pauseAfterStartOfPush=false — partition should NOT be paused
+    task.setPauseAfterStartOfPush(false);
+    task.processStartOfPush(kme, cm, pcs);
+    verify(dispatcher).reportStarted(pcs);
+    assertFalse(pcs.isFutureSlotPaused(), "partition should NOT be paused when pauseAfterStartOfPush=false");
+    verify(aggConsumerService, never()).pauseConsumerFor(any(), any());
+
+    // Case 2: pauseAfterStartOfPush=true — partition MUST be paused after reportStarted
+    task.setPauseAfterStartOfPush(true);
+    task.processStartOfPush(kme, cm, pcs);
+    verify(dispatcher, times(2)).reportStarted(pcs); // called once more
+    assertTrue(pcs.isFutureSlotPaused(), "partition should be paused when pauseAfterStartOfPush=true");
+    verify(aggConsumerService).pauseConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_FOO)));
   }
 }
