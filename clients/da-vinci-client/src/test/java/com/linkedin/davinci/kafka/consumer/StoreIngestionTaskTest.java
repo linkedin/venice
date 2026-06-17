@@ -7865,18 +7865,19 @@ public abstract class StoreIngestionTaskTest {
   // Future-slot pause / resume helpers
   // -------------------------------------------------------------------------
 
-  /** Builds a mock-based SIT with the given pcsMap, versionTopic, and aggKafkaConsumerService injected via reflection. */
+  /**
+   * Builds a mock-based SIT for future-slot pause/resume tests.
+   * Uses {@code doReturn()} stubs for all field accessors instead of reflection.
+   */
   private StoreIngestionTask buildMinimalSitForFutureSlotTests(
       VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap,
       PubSubTopic vt,
-      AggKafkaConsumerService agg) throws Exception {
+      AggKafkaConsumerService agg) {
     StoreIngestionTask task = mock(StoreIngestionTask.class);
-    for (Object[] entry: new Object[][] { { "versionTopic", vt }, { "partitionConsumptionStateMap", pcsMap },
-        { "aggKafkaConsumerService", agg }, { "pubSubTopicRepository", pubSubTopicRepository } }) {
-      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
-      f.setAccessible(true);
-      f.set(task, entry[1]);
-    }
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(vt).when(task).getVersionTopic();
+    doReturn(agg).when(task).getAggKafkaConsumerService();
+    doReturn(pubSubTopicRepository).when(task).getPubSubTopicRepository();
     doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
     doCallRealMethod().when(task).resumeFromFutureSlotPause();
     doCallRealMethod().when(task).isFutureSlotPaused();
@@ -7898,7 +7899,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testFutureSlotPauseAndResume() throws Exception {
+  public void testFutureSlotPauseAndResume() {
     PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
     AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
     PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
@@ -7922,7 +7923,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testFutureSlotResumeDoesNotPhysicallyResumeWhenStoreLevelPauseActive() throws Exception {
+  public void testFutureSlotResumeDoesNotPhysicallyResumeWhenStoreLevelPauseActive() {
     PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
     AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
     PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(true); // store-level pause active
@@ -7943,7 +7944,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testQuotaResumeDoesNotOverrideFutureSlotPause() throws Exception {
+  public void testQuotaResumeDoesNotOverrideFutureSlotPause() {
     PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
     AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
     PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false); // no store-level pause
@@ -7966,11 +7967,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testPauseAfterStartOfPushFieldSetAndRead() throws Exception {
-    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
-    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
-    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
-    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+  public void testPauseAfterStartOfPushFieldSetAndRead() {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
     doCallRealMethod().when(task).isPauseAfterStartOfPush();
     doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
 
@@ -7981,7 +7979,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testProcessStartOfPushPausesPartitionWhenFlagSet() throws Exception {
+  public void testProcessStartOfPushPausesPartitionWhenFlagSet() {
     PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
     AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
     PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
@@ -7990,9 +7988,6 @@ public abstract class StoreIngestionTaskTest {
     VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
     pcsMap.put(PARTITION_FOO, pcs);
 
-    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
-
-    // Wire additional fields needed by processStartOfPush
     StorageMetadataService sms = mock(StorageMetadataService.class);
     StoreVersionState svs = new StoreVersionState();
     svs.sorted = false;
@@ -8005,14 +8000,15 @@ public abstract class StoreIngestionTaskTest {
 
     IngestionNotificationDispatcher dispatcher = mock(IngestionNotificationDispatcher.class);
 
-    for (Object[] entry: new Object[][] { { "storageMetadataService", sms }, { "serverConfig", serverCfg },
-        { "kafkaVersionTopic", topic }, { "ingestionNotificationDispatcher", dispatcher },
-        { "activeKeyCountForAllBatchPushEnabled", false }, { "activeKeyCountForHybridStoreEnabled", false } }) {
-      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
-      f.setAccessible(true);
-      f.set(task, entry[1]);
-    }
-
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(vt).when(task).getVersionTopic();
+    doReturn(aggConsumerService).when(task).getAggKafkaConsumerService();
+    doReturn(pubSubTopicRepository).when(task).getPubSubTopicRepository();
+    doReturn(sms).when(task).getStorageMetadataService();
+    doReturn(serverCfg).when(task).getServerConfig();
+    doReturn(topic).when(task).getKafkaVersionTopic();
+    doReturn(dispatcher).when(task).getIngestionNotificationDispatcher();
     doCallRealMethod().when(task).processStartOfPush(any(), any(), any());
     doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
     doCallRealMethod().when(task).isPauseAfterStartOfPush();
