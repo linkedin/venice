@@ -52,7 +52,7 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
   private static final String REGION3 = "dc-2";
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-  private static final int TEST_TIMEOUT = 180_000;
+  private static final int TEST_TIMEOUT = 600_000;
 
   @Override
   protected int getNumberOfRegions() {
@@ -83,7 +83,9 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
   public void testDvcDelayedIngestionWithTargetRegionSequentialRollout() throws Exception {
     // Setup job properties
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
-    storeParms.setTargetRegionSwapWaitTime(1);
+    // Use a large wait time so DeferredVersionSwapService does not fire automatically.
+    // Promotion is triggered programmatically after verifying the paused-SIT state.
+    storeParms.setTargetRegionSwapWaitTime(10);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     String keySchemaStr = "\"int\"";
     String valueSchemaStr = "\"int\"";
@@ -163,7 +165,9 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
       // Close dvc client in target region
       client1.close();
 
-      // Create dvc client in non target region
+      // Create client2 in the non-target region (REGION2) while targetRegionPromoted is still false.
+      // subscribeAll() is called without .get() because the returned future includes the paused v2
+      // future-version subscription, which never completes while paused. Instead we poll for v1.
       VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
       VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
           .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
@@ -172,30 +176,32 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           .build();
       DaVinciClient<Object, Object> client2 =
           ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster2, new DaVinciConfig(), backendConfig2);
-      client2.subscribeAll().get();
+      client2.subscribeAll();
 
-      // Version should be swapped in all regions
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 2);
-        });
-      });
-
-      // Check that v2 is ingested in dvc non target region
+      // Paused-SIT: wait until v1 (the current version in REGION2) is bootstrapped and readable.
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int i = 101; i <= keyCount2; i++) {
-          assertNotNull(client2.get(i).get());
-        }
+        assertNotNull(client2.get(1).get(), "v1 key 1 must be readable in REGION2 before promotion");
       });
+      for (int i = 1; i <= keyCount; i++) {
+        assertNotNull(client2.get(i).get(), "v1 key " + i + " must be readable in REGION2 before promotion");
+      }
+      // Paused-SIT: v2-only data must NOT be readable yet — the v2 SIT in REGION2 consumed
+      // Start-Of-Push (registering this DVC as a push reporter) but is paused before data records.
+      for (int i = keyCount + 1; i <= keyCount2; i++) {
+        Assert.assertNull(
+            client2.get(i).get(),
+            "v2-only key " + i + " must NOT be readable before targetRegionPromoted — v2 SIT is paused");
+      }
 
-      client2.close();
+      // Programmatically trigger promotion: set targetRegionSwapWaitTime=0 so
+      // DeferredVersionSwapService fires on its next check (every 100ms).
+      ControllerResponse updateResp =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+      Assert.assertFalse(updateResp.isError(), "Failed to trigger promotion: " + updateResp.getError());
 
-      // Verify targetRegionPromoted=true on parent and all child controllers.
-      // DeferredVersionSwapService sets the field once the target region's push completes
-      // and propagates it to children via the updateStore admin path.
+      // Verify targetRegionPromoted=true is set on the parent and all child controllers.
+      // DeferredVersionSwapService sets the field once the target-region push completes
+      // and propagates it to children via the updateStore admin message path.
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Optional<Version> parentVersion = parentControllerClient.getStore(storeName).getStore().getVersion(2);
         Assert.assertTrue(parentVersion.isPresent(), "Version 2 must exist on parent");
@@ -216,6 +222,23 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           });
         }
       }
+
+      // Once targetRegionPromoted=true propagates to REGION2's child controller, the DVC picks it
+      // up via metadata refresh, the paused v2 SIT resumes ingestion, and v2 data becomes readable.
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        for (int i = 101; i <= keyCount2; i++) {
+          assertNotNull(client2.get(i).get(), "v2 key " + i + " must be readable after targetRegionPromoted");
+        }
+      });
+
+      // Version should now be swapped in all regions (sequential rollout completes after target region).
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+        coloVersions.forEach((colo, version) -> Assert.assertEquals((int) version, 2));
+      });
+
+      client2.close();
     }
   }
 
