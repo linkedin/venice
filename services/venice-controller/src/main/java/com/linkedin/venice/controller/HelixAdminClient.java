@@ -40,14 +40,8 @@ public interface HelixAdminClient {
   void createVeniceStorageCluster(String clusterName, ClusterConfig clusterConfig, RESTConfig restConfig);
 
   /**
-   * Legacy (non-HAAS) creation of a Venice storage cluster and its registration as a resource in the
-   * Venice controller cluster. Creates the storage Helix cluster with the non-HAAS cluster properties
-   * (auto-join, optional delayed rebalance, persist-best-possible-assignment, topology awareness) and a
-   * LeaderStandby state model, then registers it as a controller-cluster resource using
-   * {@link org.apache.helix.controller.rebalancer.DelayedAutoRebalancer} +
-   * {@link org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy}. No-op if the cluster
-   * already exists. This consolidates the operations previously performed inline by
-   * {@code VeniceHelixAdmin} via its own {@link org.apache.helix.HelixAdmin}.
+   * Legacy (non-HAAS) creation of a Venice storage cluster: creates the storage Helix cluster and
+   * registers it as a resource in the Venice controller cluster. No-op if the cluster already exists.
    * @param clusterName of the Venice storage cluster.
    */
   void createVeniceStorageClusterLegacy(String clusterName);
