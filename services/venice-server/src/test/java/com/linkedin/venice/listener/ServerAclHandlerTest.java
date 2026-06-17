@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.protocols.IngestionMonitorRequest;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import io.grpc.Attributes;
 import io.grpc.Grpc;
@@ -125,6 +126,22 @@ public class ServerAclHandlerTest {
     VeniceClientRequest request = VeniceClientRequest.newBuilder().setMethod("GET").build();
     response.onMessage(request);
     verify(call).close(Status.PERMISSION_DENIED, headers);
+  }
+
+  @Test
+  public void testGrpcForwardsNonVeniceClientRequest() {
+    // A message from another gRPC service (e.g. the ingestion monitor) is not a VeniceClientRequest and must be
+    // forwarded rather than cast, guarding the read-service ACL chain against a ClassCastException.
+    ServerCall.Listener delegate = mock(ServerCall.Listener.class);
+    when(handler.startCall(any(), any())).thenReturn(delegate);
+
+    ServerCall.Listener response = aclHandler.interceptCall(call, headers, handler);
+    IngestionMonitorRequest monitorRequest =
+        IngestionMonitorRequest.newBuilder().setVersionTopic("testStore_v1").setPartition(0).build();
+    response.onMessage(monitorRequest);
+
+    verify(delegate).onMessage(monitorRequest);
+    verify(call, never()).close(any(), any());
   }
 
   public static class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {

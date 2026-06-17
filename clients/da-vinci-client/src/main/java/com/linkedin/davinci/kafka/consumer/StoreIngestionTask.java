@@ -5317,16 +5317,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (writerSchemaId > 0) {
           valueSchemaId = writerSchemaId;
         }
-        long putElapsedNs = System.nanoTime() - startTimeNs;
-        if (recordMetrics) {
-          double putLatency = putElapsedNs / 1_000_000.0;
-          versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
-          if (tehutiRecordMetrics) {
-            hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
+        if (recordMetrics || ingestionMonitor != null) {
+          long putElapsedNs = System.nanoTime() - startTimeNs;
+          if (recordMetrics) {
+            double putLatency = putElapsedNs / 1_000_000.0;
+            versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
+            if (tehutiRecordMetrics) {
+              hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
+            }
           }
-        }
-        if (ingestionMonitor != null) {
-          ingestionMonitor.recordStoragePutLatencyNs(putElapsedNs);
+          if (ingestionMonitor != null) {
+            ingestionMonitor.recordStoragePutLatencyNs(putElapsedNs);
+          }
         }
         break;
 

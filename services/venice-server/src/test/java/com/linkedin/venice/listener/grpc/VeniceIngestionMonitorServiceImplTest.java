@@ -2,8 +2,11 @@ package com.linkedin.venice.listener.grpc;
 
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -18,11 +21,14 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.stub.StreamObserver;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -173,5 +179,47 @@ public class VeniceIngestionMonitorServiceImplTest {
     assertTrue(responses.hasNext());
     // Should still work, just with clamped interval
     assertNotNull(responses.next());
+  }
+
+  @Test
+  public void testNonServerCallStreamObserverFailsWithInternal() {
+    // gRPC normally hands the service a ServerCallStreamObserver; a wrapping interceptor could break that.
+    // The service must fail fast with INTERNAL and leave no monitor attached, rather than throw mid-registration.
+    VeniceIngestionMonitorServiceImpl service = new VeniceIngestionMonitorServiceImpl(mockIngestionService);
+    @SuppressWarnings("unchecked")
+    StreamObserver<IngestionMonitorResponse> observer = mock(StreamObserver.class);
+    IngestionMonitorRequest request = IngestionMonitorRequest.newBuilder()
+        .setVersionTopic(VERSION_TOPIC)
+        .setPartition(PARTITION)
+        .setIntervalMs(1000)
+        .build();
+
+    service.monitorIngestion(request, observer);
+
+    ArgumentCaptor<Throwable> errorCaptor = ArgumentCaptor.forClass(Throwable.class);
+    verify(observer).onError(errorCaptor.capture());
+    assertEquals(Status.fromThrowable(errorCaptor.getValue()).getCode(), Status.Code.INTERNAL);
+    assertNull(realPcs.getIngestionMonitor(), "No monitor should be attached after a rejected cast");
+  }
+
+  @Test
+  public void testMonitorIngestionRejectedAfterClose() {
+    // After close(), new sessions must be rejected with UNAVAILABLE and must not attach a monitor.
+    VeniceIngestionMonitorServiceImpl service = new VeniceIngestionMonitorServiceImpl(mockIngestionService);
+    service.close();
+    @SuppressWarnings("unchecked")
+    StreamObserver<IngestionMonitorResponse> observer = mock(StreamObserver.class);
+    IngestionMonitorRequest request = IngestionMonitorRequest.newBuilder()
+        .setVersionTopic(VERSION_TOPIC)
+        .setPartition(PARTITION)
+        .setIntervalMs(1000)
+        .build();
+
+    service.monitorIngestion(request, observer);
+
+    ArgumentCaptor<Throwable> errorCaptor = ArgumentCaptor.forClass(Throwable.class);
+    verify(observer).onError(errorCaptor.capture());
+    assertEquals(Status.fromThrowable(errorCaptor.getValue()).getCode(), Status.Code.UNAVAILABLE);
+    assertNull(realPcs.getIngestionMonitor(), "No monitor should be attached after close()");
   }
 }

@@ -129,7 +129,7 @@ public class PartitionIngestionMonitorTest {
     long expectedRecords = (long) numThreads * recordsPerThread;
     long expectedBytes = expectedRecords * 10;
 
-    // Due to LongAdder's eventual consistency, values should be exact
+    // Values should be exact: the snapshot is taken after the latch, with no concurrent updates in flight.
     assertEquals(snapshot.getRecordsIngestedPerSec(), expectedRecords, 0.001);
     assertEquals(snapshot.getBytesIngestedPerSec(), expectedBytes, 0.001);
     assertEquals(snapshot.getLeaderRecordsProducedPerSec(), expectedRecords, 0.001);

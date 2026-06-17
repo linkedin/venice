@@ -98,7 +98,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       // RT DIV sync relay, which keys its fail-fast off this future). On success it is completed in the drainer.
       leaderProducedRecordContext.completePersistedToDBFuture(e);
     } else {
-      long callbackStartNs = System.nanoTime();
+      // Look up the monitor once: when no session is attached this keeps the success hot path free of any
+      // extra timing work (zero-cost when not in use), and the same reference is reused for every metric below.
+      PartitionIngestionMonitor ingestionMonitor = partitionConsumptionState.getIngestionMonitor();
+      long callbackStartNs = ingestionMonitor != null ? System.nanoTime() : 0;
       long currentTimeForMetricsMs = System.currentTimeMillis();
       /**
        * performs some sanity checks for chunks.
@@ -147,9 +150,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
                 LEADER_PRODUCER_COMPLETION_LATENCY_THRESHOLD_MS);
           }
         }
-        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
-        if (monitor != null) {
-          monitor.recordLeaderCompletionLatencyNs(System.nanoTime() - produceTimeNs);
+        if (ingestionMonitor != null) {
+          ingestionMonitor.recordLeaderCompletionLatencyNs(System.nanoTime() - produceTimeNs);
         }
         if (ingestionTask.isHybridMode() && sourceConsumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
             && partitionConsumptionState.hasLagCaughtUp()) {
@@ -235,10 +237,9 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
                   LatencyUtils.getElapsedTimeFromMsToMs(currentTimeForMetricsMs),
                   currentTimeForMetricsMs);
         }
-        PartitionIngestionMonitor callbackMonitor = partitionConsumptionState.getIngestionMonitor();
-        if (callbackMonitor != null) {
-          callbackMonitor.recordLeaderCallbackLatencyNs(System.nanoTime() - callbackStartNs);
-          callbackMonitor.recordLeaderProduced(producedRecordSize);
+        if (ingestionMonitor != null) {
+          ingestionMonitor.recordLeaderCallbackLatencyNs(System.nanoTime() - callbackStartNs);
+          ingestionMonitor.recordLeaderProduced(producedRecordSize);
         }
         this.onCompletionCallback.accept(produceResult);
       } catch (Exception oe) {

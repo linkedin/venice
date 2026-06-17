@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.protocols.IngestionMonitorRequest;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
@@ -443,5 +444,29 @@ public class ServerStoreAclHandlerTest {
     handler.validateStoreAclForGRPC(onAuthenticatedConsumer, authenticatedRequest, serverCall, headers);
     verify(onAuthenticatedConsumer, times(1)).accept(eq(authenticatedRequest));
     clearInvocations(onAuthenticatedConsumer);
+  }
+
+  @Test
+  public void testValidateStoreAclForGRPCForwardsNonVeniceClientRequest() {
+    // A gRPC message from another service (e.g. the ingestion monitor) is not a VeniceClientRequest. The store
+    // ACL handler must forward it rather than cast it, so a service sharing the read service's gRPC interceptor
+    // chain cannot trigger a ClassCastException.
+    Consumer<IngestionMonitorRequest> onAuthenticatedConsumer = spy(Consumer.class);
+    ServerCall<IngestionMonitorRequest, Object> serverCall = spy(ServerCall.class);
+    Metadata headers = new Metadata();
+
+    IdentityParser identityParser = mock(IdentityParser.class);
+    MockAccessController accessController = new MockAccessController(QueryAction.STORAGE);
+    ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
+    ServerStoreAclHandler handler =
+        new ServerStoreAclHandler(identityParser, accessController, metadataRepository, 1000);
+
+    IngestionMonitorRequest monitorRequest =
+        IngestionMonitorRequest.newBuilder().setVersionTopic(TEST_STORE_VERSION).setPartition(0).build();
+    handler.validateStoreAclForGRPC(onAuthenticatedConsumer, monitorRequest, serverCall, headers);
+
+    // Forwarded as-is, with no store-level ACL evaluation and without closing the call.
+    verify(onAuthenticatedConsumer, times(1)).accept(eq(monitorRequest));
+    verify(serverCall, never()).close(any(), any());
   }
 }

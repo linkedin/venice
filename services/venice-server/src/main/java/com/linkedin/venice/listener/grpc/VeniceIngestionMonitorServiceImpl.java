@@ -98,6 +98,17 @@ public class VeniceIngestionMonitorServiceImpl
       return;
     }
 
+    // gRPC normally hands us a ServerCallStreamObserver, but a wrapping interceptor could break that.
+    // Verify the cast before registering anything so a failure can't leak a session or an attached monitor.
+    if (!(responseObserver instanceof ServerCallStreamObserver)) {
+      responseObserver.onError(
+          Status.INTERNAL.withDescription("Unsupported response observer type for ingestion monitoring")
+              .asRuntimeException());
+      return;
+    }
+    ServerCallStreamObserver<IngestionMonitorResponse> serverObserver =
+        (ServerCallStreamObserver<IngestionMonitorResponse>) responseObserver;
+
     // Create the monitor and atomically register the session to prevent duplicates
     PartitionIngestionMonitor monitor = new PartitionIngestionMonitor();
     ActiveSession newSession = new ActiveSession(null, monitor, pcs);
@@ -109,11 +120,17 @@ public class VeniceIngestionMonitorServiceImpl
       return;
     }
 
+    // If close() flipped `closed` after our entry check, abandon this registration so the session cannot
+    // outlive shutdown with a monitor still attached (close() may have already passed this key while draining).
+    if (closed.get()) {
+      activeSessions.remove(sessionKey, newSession);
+      responseObserver.onError(
+          Status.UNAVAILABLE.withDescription("Ingestion monitor service is shutting down").asRuntimeException());
+      return;
+    }
+
     // Attach monitor to PCS now that we own the session
     pcs.setIngestionMonitor(monitor);
-
-    ServerCallStreamObserver<IngestionMonitorResponse> serverObserver =
-        (ServerCallStreamObserver<IngestionMonitorResponse>) responseObserver;
 
     // Register cancel handler before scheduling to avoid missing early disconnects
     serverObserver.setOnCancelHandler(() -> {
@@ -196,6 +213,13 @@ public class VeniceIngestionMonitorServiceImpl
     // Future is now set before the first tick fires (initial delay = intervalMs)
     newSession.setFuture(future);
 
+    // The cancel handler may have fired (and cleanup() run) before the future was published above, in which
+    // case cleanup() saw a null future and could not cancel it. If our session is no longer registered the
+    // task is orphaned, so cancel the now-published future to stop it ticking against a detached session.
+    if (activeSessions.get(sessionKey) != newSession) {
+      future.cancel(false);
+    }
+
     LOGGER.info("Started ingestion monitoring session for {} with interval {}ms", sessionKey, intervalMs);
   }
 
@@ -221,16 +245,20 @@ public class VeniceIngestionMonitorServiceImpl
     // Mark closed first so that any concurrent monitorIngestion call sees the shutdown and either
     // rejects early or, if it sneaks past the early check, fails on the scheduler and self-cleans.
     closed.set(true);
-    // Cancel all active sessions
-    for (String sessionKey: activeSessions.keySet()) {
-      ActiveSession session = activeSessions.remove(sessionKey);
-      if (session != null) {
-        ScheduledFuture<?> future = session.getFuture();
-        if (future != null) {
-          future.cancel(false);
-        }
-        if (session.pcs.getIngestionMonitor() == session.monitor) {
-          session.pcs.setIngestionMonitor(null);
+    // Drain in a loop: a monitorIngestion call that passed the early closed-check may still register a session
+    // concurrently with this iteration, so keep draining until none remain. New registrations observe `closed`
+    // and self-abandon, which bounds the in-flight count and lets this terminate.
+    while (!activeSessions.isEmpty()) {
+      for (String sessionKey: activeSessions.keySet()) {
+        ActiveSession session = activeSessions.remove(sessionKey);
+        if (session != null) {
+          ScheduledFuture<?> future = session.getFuture();
+          if (future != null) {
+            future.cancel(false);
+          }
+          if (session.pcs.getIngestionMonitor() == session.monitor) {
+            session.pcs.setIngestionMonitor(null);
+          }
         }
       }
     }
