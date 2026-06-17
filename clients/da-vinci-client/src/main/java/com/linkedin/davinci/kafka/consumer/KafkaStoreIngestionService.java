@@ -870,6 +870,34 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   /**
+   * Start consumption for the given partition, optionally creating the ingestion task in a paused
+   * state so it stops after receiving START_OF_PUSH (future-slot pause for DaVinci).
+   *
+   * @param veniceStore  Store version config.
+   * @param partitionId  Partition to subscribe.
+   * @param pubSubPosition Starting offset hint.
+   * @param createPaused If {@code true}, the {@link StoreIngestionTask} will be flagged to pause
+   *                     after START_OF_PUSH. Only valid for DaVinci clients.
+   * @throws VeniceException if {@code createPaused=true} and this is not a DaVinci client.
+   */
+  public void startConsumption(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Optional<PubSubPosition> pubSubPosition,
+      boolean createPaused) {
+    if (createPaused && !isDaVinciClient) {
+      throw new VeniceException("createPaused=true is only valid for DaVinci clients, not Venice servers");
+    }
+    startConsumption(veniceStore, partitionId, pubSubPosition);
+    if (createPaused) {
+      StoreIngestionTask task = getStoreIngestionTask(veniceStore.getStoreVersionName());
+      if (task != null) {
+        task.setPauseAfterStartOfPush(true);
+      }
+    }
+  }
+
+  /**
    * This method closes the specified {@link StoreIngestionTask} and waits for the configurable
    * {@code server.shutdown.sit.wait.time.seconds} (default 20s) for it to fully shut down.
    * @param topicName Topic name of the ingestion task to be shutdown.
