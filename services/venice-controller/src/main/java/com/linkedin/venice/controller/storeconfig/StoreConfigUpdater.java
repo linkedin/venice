@@ -1075,7 +1075,9 @@ public final class StoreConfigUpdater {
               new Class<?>[] { VeniceProperties.class },
               new Object[] { controllerProps });
         } catch (Exception e) {
-          throw new VeniceException("Failed to load class: " + record.getStoreLifecycleHooksClassName(), e);
+          throw new VeniceException(
+              "Failed to instantiate lifecycle hook class: " + record.getStoreLifecycleHooksClassName(),
+              e);
         }
         if (storeLifecycleHook.validateHookParams(
             clusterName,

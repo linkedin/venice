@@ -38,7 +38,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -75,7 +75,9 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.mockito.ArgumentCaptor;
@@ -950,14 +952,14 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
   /**
    * A lifecycle hook that records the {@link VeniceProperties} passed to its constructor.
-   * Used to assert that {@code applyOnParent} passes real controller props, not empty ones.
+   * Uses {@link AtomicReference} to avoid writing to a static field from an instance method.
    */
   public static class PropsCapturingHook extends StoreLifecycleHooks {
-    static volatile VeniceProperties capturedProps;
+    static final AtomicReference<VeniceProperties> capturedProps = new AtomicReference<>();
 
     public PropsCapturingHook(VeniceProperties props) {
       super(props);
-      capturedProps = props;
+      capturedProps.set(props);
     }
   }
 
@@ -972,11 +974,18 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     String storeName = Utils.getUniqueString("parent-props-hook");
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(mock(VeniceControllerMultiClusterConfig.class, RETURNS_DEEP_STUBS)).when(internalAdmin)
-        .getMultiClusterConfigs();
+
+    Properties rawProps = new Properties();
+    rawProps.setProperty("grpc.endpoint", "test-host:1234");
+    VeniceProperties controllerProps = new VeniceProperties(rawProps);
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(controllerProps).when(mockClusterConfig).getProps();
+    VeniceControllerMultiClusterConfig mockMultiConfig = mock(VeniceControllerMultiClusterConfig.class);
+    doReturn(mockClusterConfig).when(mockMultiConfig).getCommonConfig();
+    doReturn(mockMultiConfig).when(internalAdmin).getMultiClusterConfigs();
     parentAdmin.initStorageCluster(clusterName);
 
-    PropsCapturingHook.capturedProps = null;
+    PropsCapturingHook.capturedProps.set(null);
     String hookClassName = StoreConfigUpdaterTest.class.getName() + "$PropsCapturingHook";
     LifecycleHooksRecord hook = new LifecycleHooksRecordImpl(hookClassName, Collections.emptyMap());
     UpdateStoreQueryParams params =
@@ -984,11 +993,10 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     parentAdmin.updateStore(clusterName, storeName, params);
 
-    assertNotNull(PropsCapturingHook.capturedProps, "Hook constructor must receive non-null VeniceProperties");
-    assertNotSame(
-        VeniceProperties.empty(),
-        PropsCapturingHook.capturedProps,
-        "Hook constructor must receive real controller props, not VeniceProperties.empty()");
+    assertSame(
+        controllerProps,
+        PropsCapturingHook.capturedProps.get(),
+        "Hook constructor must receive the exact controller VeniceProperties instance");
   }
 
   /**
