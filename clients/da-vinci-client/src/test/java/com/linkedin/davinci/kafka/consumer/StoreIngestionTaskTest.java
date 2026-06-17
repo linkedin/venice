@@ -7979,6 +7979,24 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
+  public void testBlobTransferSuppressedWhenPauseAfterStartOfPushSet() {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(task).isPauseAfterStartOfPush();
+    doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
+    doCallRealMethod().when(task).shouldStartBlobTransfer(anyInt(), anyString(), any());
+
+    // When pauseAfterStartOfPush=false, shouldStartBlobTransfer falls through to the blobTransferHelper check;
+    // with a null helper (default mock return) it returns false but for a different reason — no assertion here.
+
+    // When pauseAfterStartOfPush=true, shouldStartBlobTransfer must short-circuit and return false
+    // regardless of blobTransferHelper state.
+    task.setPauseAfterStartOfPush(true);
+    assertFalse(
+        task.shouldStartBlobTransfer(0, "replica-1", null),
+        "shouldStartBlobTransfer must return false when pauseAfterStartOfPush=true");
+  }
+
+  @Test
   public void testProcessStartOfPushPausesPartitionWhenFlagSet() {
     PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
     AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);

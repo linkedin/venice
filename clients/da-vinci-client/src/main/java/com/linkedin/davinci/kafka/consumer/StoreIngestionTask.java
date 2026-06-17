@@ -3061,6 +3061,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Returns true if blob transfer is configured and the replica is lagged enough to benefit from it.
    */
   protected boolean shouldStartBlobTransfer(int partition, String replicaId, ConsumerAction consumerAction) {
+    if (pauseAfterStartOfPush) {
+      return false; // future-slot paused SIT: skip blob transfer, will ingest via Kafka after resume
+    }
     if (blobTransferHelper == null) {
       return false;
     }
