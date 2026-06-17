@@ -54,7 +54,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
-import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
@@ -6822,90 +6821,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // TODO remove this method once we are fully on HaaS
   // Create the controller cluster for venice cluster assignment if required.
   private void createControllerClusterIfRequired() {
-    if (admin.getClusters().contains(controllerClusterName)) {
-      LOGGER.info("Cluster: {} already exists.", controllerClusterName);
-      return;
-    }
-
-    boolean isClusterCreated = admin.addCluster(controllerClusterName, false);
-    if (isClusterCreated == false) {
-      /**
-       * N.B.: {@link HelixAdmin#addCluster(String, boolean)} has a somewhat quirky implementation:
-       *
-       * When it returns true, it does not necessarily mean the cluster is fully created, because it
-       * short-circuits the rest of its work if it sees the top-level znode is present.
-       *
-       * When it returns false, it means the cluster is either not created at all or is only partially
-       * created.
-       *
-       * Therefore, when calling this function twice in a row, it is possible that the first invocation
-       * may do a portion of the setup work, and then fail on a subsequent step (thus returning false);
-       * and that the second invocation would short-circuit when seeing that the initial portion of the
-       * work is done (thus returning true). In this case, however, the cluster is actually not created.
-       *
-       * Because the function swallows any errors (though still logs them, thankfully) and only returns
-       * a boolean, it is impossible to catch the specific exception that prevented the first invocation
-       * from working, hence why our own logs instruct the operator to look for previous Helix logs for
-       * the details...
-       *
-       * In the main code, I (FGV) believe we don't retry the #addCluster() call, so we should not fall
-       * in the scenario where this returns true and we mistakenly think the cluster exists. This does
-       * happen in the integration test suite, however, which retries service creation several times
-       * if it gets any exception.
-       *
-       * In any case, if we call this function twice and progress past this code block, the cluster-config
-       * write below ({@link HelixAdminClient#updateClusterConfigs}, backed by the Helix ConfigAccessor) fails
-       * with symptoms like:
-       *
-       * org.apache.helix.HelixException: cluster venice-controllers is not setup yet
-       *
-       * Thus, if you see this, it is actually because {@link HelixAdmin#addCluster(String, boolean)}
-       * returned true even though the Helix cluster is only partially setup.
-       */
-      throw new VeniceException(
-          "admin.addCluster() for '" + controllerClusterName + "' returned false. "
-              + "Look for previous errors logged by Helix for more details...");
-    }
     /**
-     * The controller-cluster resources are managed by WAGED (see {@link #createClusterIfRequired(String)}). This
-     * mirrors the WAGED cluster config that the HaaS path applies in
-     * {@link ZkHelixAdminClient#createVeniceControllerCluster()} so both paths assign the controller-cluster resource
-     * the same way. Keep the two in sync when changing WAGED tuning.
+     * Delegate to {@link HelixAdminClient#createVeniceControllerCluster()} so that ALL Helix-admin
+     * operations on the controller cluster go through the single {@link #helixAdminClient}, rather
+     * than the duplicate {@link #admin} {@link HelixAdmin} held directly by this class.
+     *
+     * {@link ZkHelixAdminClient#createVeniceControllerCluster()} is a strict superset of the previous
+     * inline logic (same ALLOW_PARTICIPANT_AUTO_JOIN + TOPOLOGY_AWARE_ENABLED=false config and
+     * LeaderStandby state model, plus retry logic and the same {@code persistBestPossibleAssignment}
+     * /capacity/cloud-config handling already used by the HAAS path). It is idempotent and a no-op if
+     * the controller cluster already exists.
      */
-    ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
-    clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
-    // Topology and fault-zone fields are used by the rebalancer (WAGED for the controller cluster) to spread a
-    // resource's replicas across fault zones; the controller cluster does not enable fault-zone-aware placement.
-    clusterConfig.setTopologyAwareEnabled(false);
-    clusterConfig.setPersistBestPossibleAssignment(true);
-    // WAGED computes its baseline assignment asynchronously by default, so the first rebalance pipeline run returns an
-    // empty assignment and the real one only lands after the async baseline finishes and re-triggers the pipeline.
-    // Because the non-HaaS controller runs this pipeline in-process and blocks on the controller-cluster resource
-    // becoming visible in the external view during startup (waitUntilClusterResourceIsVisibleInEV), that async
-    // convergence can miss the startup window. Force synchronous global rebalance so the assignment is computed on the
-    // first pipeline run. The HaaS path does not need this because a dedicated always-on Helix controller runs the
-    // pipeline independently of controller startup.
-    clusterConfig.setGlobalRebalanceAsyncMode(false);
-
-    // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost of
-    // rebalancing for the controller is cheap as it is stateless.
-    clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
-
-    HelixCapacityConfig helixCapacityConfig = multiClusterConfigs.getHelixCapacityConfig();
-    clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
-    // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
-    // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes the
-    // current top-state distribution into account when rebalancing.
-    clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
-    clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
-
-    /**
-     * {@link HelixAdminClient#updateClusterConfigs(String, ClusterConfig)} persists the structured cluster config via
-     * the Helix ConfigAccessor and throws a HelixException if the previous
-     * {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
-     */
-    helixAdminClient.updateClusterConfigs(controllerClusterName, clusterConfig);
-    admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
+    helixAdminClient.createVeniceControllerCluster();
   }
 
   private void setupStorageClusterAsNeeded(String clusterName) {

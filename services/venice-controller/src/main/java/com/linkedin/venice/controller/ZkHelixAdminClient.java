@@ -99,6 +99,14 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         // resource's replicas across fault zones; the controller cluster does not enable fault-zone-aware placement.
         clusterConfig.setTopologyAwareEnabled(false);
         clusterConfig.setPersistBestPossibleAssignment(true);
+        // WAGED computes its baseline assignment asynchronously by default, so the first rebalance pipeline run returns
+        // an empty assignment and the real one only lands after the async baseline finishes and re-triggers the
+        // pipeline. Because the non-HaaS controller runs this pipeline in-process and blocks on the controller-cluster
+        // resource becoming visible in the external view during startup (waitUntilClusterResourceIsVisibleInEV), that
+        // async convergence can miss the startup window. Force synchronous global rebalance so the assignment is
+        // computed on the first pipeline run. The HaaS path does not need this (a dedicated always-on Helix controller
+        // runs the pipeline independently of controller startup) but is unaffected by it.
+        clusterConfig.setGlobalRebalanceAsyncMode(false);
 
         // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
         // of rebalancing for the controller is cheap as it is stateless.
