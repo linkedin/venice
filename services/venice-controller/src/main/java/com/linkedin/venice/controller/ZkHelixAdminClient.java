@@ -246,6 +246,14 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
+   * @see HelixAdminClient#getHelixAdmin()
+   */
+  @Override
+  public HelixAdmin getHelixAdmin() {
+    return helixAdmin;
+  }
+
+  /**
    * @see HelixAdminClient#isVeniceStorageClusterInControllerCluster(String)
    */
   @Override

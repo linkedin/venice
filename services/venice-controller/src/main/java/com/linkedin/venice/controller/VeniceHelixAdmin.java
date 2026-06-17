@@ -297,9 +297,7 @@ import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
-import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
-import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
@@ -361,7 +359,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   static final int VERSION_ID_UNSET = -1;
 
   // TODO remove this field and all invocations once we are fully on HaaS. Use the helixAdminClient instead.
-  private final HelixAdmin admin;
   /**
    * Client/wrapper used for performing Helix operations in Venice.
    */
@@ -535,23 +532,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.fabricControllerClientProvider =
         new FabricControllerClientProvider(multiClusterConfigs, sslFactory, d2Clients);
 
-    // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
-    ZkClient zkClientForHelixAdmin = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
-    zkClientForHelixAdmin
-        .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client-for-helix-admin"));
-    /**
-     * N.B.: The following setup steps are necessary when using the {@link ZKHelixAdmin} constructor which takes
-     * in an external {@link ZkClient}.
-     *
-     * {@link ZkClient#setZkSerializer(ZkSerializer)} is necessary, otherwise Helix will throw:
-     *
-     * org.apache.helix.zookeeper.zkclient.exception.ZkMarshallingError: java.io.NotSerializableException: org.apache.helix.ZNRecord
-     */
-    zkClientForHelixAdmin.setZkSerializer(new ZNRecordSerializer());
-    if (!zkClientForHelixAdmin.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
-      throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
-    }
-    this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
+    // All Helix-admin operations (storage clusters, the controller cluster, and the HAAS grand cluster)
+    // go through this single client, which owns its own Helix ZK connection(s). VeniceHelixAdmin no longer
+    // holds a separate ZKHelixAdmin of its own.
     this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
     // There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
     this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
@@ -1144,7 +1127,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   protected HelixAdmin getHelixAdmin() {
-    return this.admin;
+    return helixAdminClient.getHelixAdmin();
   }
 
   /**
@@ -6584,7 +6567,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       helixManager.disconnect();
       topicManagerRepository.close();
       zkClient.close();
-      admin.close();
       helixAdminClient.close();
     } catch (Exception e) {
       throw new VeniceException("Can not stop controller correctly.", e);

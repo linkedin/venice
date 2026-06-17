@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.helix.HelixAdmin;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.IdealState;
@@ -57,6 +58,14 @@ public interface HelixAdminClient {
    * @param clusterName of the Venice storage cluster.
    */
   void setupCustomizedStateConfig(String clusterName);
+
+  /**
+   * Returns the underlying {@link HelixAdmin} used for storage-cluster operations. This is a low-level
+   * escape hatch for raw Helix operations not otherwise exposed by this interface (e.g. used by tests
+   * and maintenance tooling). Prefer the dedicated methods on this interface for normal operations.
+   * @return the storage-cluster {@link HelixAdmin}.
+   */
+  HelixAdmin getHelixAdmin();
 
   /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
