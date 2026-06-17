@@ -105,6 +105,13 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
     return new ForwardingServerCallListener.SimpleForwardingServerCallListener<ReqT>(next.startCall(call, headers)) {
       @Override
       public void onMessage(ReqT message) {
+        // The component-level (router) ACL model only applies to read-service requests, which arrive as
+        // VeniceClientRequest. Other gRPC services (e.g. the ingestion monitor) use different message types;
+        // pass those through so they are neither mis-cast nor rejected by the read-service ACL.
+        if (!(message instanceof VeniceClientRequest)) {
+          super.onMessage(message);
+          return;
+        }
         String method = ((VeniceClientRequest) message).getMethod();
         String clientAddr =
             Objects.requireNonNull(call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR)).toString();

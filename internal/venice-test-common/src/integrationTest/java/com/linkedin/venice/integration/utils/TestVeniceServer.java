@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -51,7 +52,8 @@ public class TestVeniceServer extends VeniceServer {
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      Optional<KafkaStoreIngestionService> kafkaStoreIngestionService) {
 
     return new ListenerService(
         storageEngineRepository,
@@ -67,7 +69,8 @@ public class TestVeniceServer extends VeniceServer {
         storeAccessController,
         diskHealthService,
         compressorFactory,
-        resourceReadUsageTracker) {
+        resourceReadUsageTracker,
+        kafkaStoreIngestionService) {
       @Override
       protected StorageReadRequestHandler createRequestHandler(
           ThreadPoolExecutor executor,

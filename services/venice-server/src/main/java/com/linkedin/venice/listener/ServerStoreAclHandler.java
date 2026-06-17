@@ -106,6 +106,13 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
       ReqT message,
       ServerCall<ReqT, RespT> call,
       Metadata headers) {
+    // The store-level read ACL is keyed on VeniceClientRequest's resourceName/method. Other gRPC services
+    // (e.g. the ingestion monitor) use different message types that carry neither, so forward them rather than
+    // mis-cast. Such diagnostic endpoints are gated by mutual TLS rather than store-level read ACL.
+    if (!(message instanceof VeniceClientRequest)) {
+      onAuthenticated.accept(message);
+      return;
+    }
     VeniceClientRequest request = (VeniceClientRequest) message;
     // For now, GRPC only supports STORAGE query
     String resourceName = request.getResourceName();

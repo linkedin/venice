@@ -3482,6 +3482,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         recordProcessedRecordStats(partitionConsumptionState, recordSize);
       }
+      PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordIngested(recordSize);
+      }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
     /*
@@ -4467,6 +4471,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         }
       }
+      PartitionIngestionMonitor e2eMonitor = partitionConsumptionState.getIngestionMonitor();
+      if (e2eMonitor != null) {
+        e2eMonitor.recordE2EProcessingLatencyNs(System.nanoTime() - beforeProcessingRecordTimestampNs);
+      }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.accept(e);
       LOGGER.debug(
@@ -5166,8 +5174,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     boolean recordMetrics = this.recordLevelMetricEnabled.get();
     boolean traceEnabled = LOGGER.isTraceEnabled();
-    // Avoid nanoTime overhead when neither record-level metrics nor trace logging is needed
-    long startTimeNs = (recordMetrics || traceEnabled) ? System.nanoTime() : 0;
+    PartitionIngestionMonitor ingestionMonitor = partitionConsumptionState.getIngestionMonitor();
+    // Avoid nanoTime overhead when neither record-level metrics, trace logging, nor a live
+    // ingestion monitor is attached
+    long startTimeNs = (recordMetrics || traceEnabled || ingestionMonitor != null) ? System.nanoTime() : 0;
     boolean tehutiRecordMetrics = isEmitTehutiMetricsEnabled() && recordMetrics;
 
     switch (messageType) {
@@ -5307,11 +5317,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (writerSchemaId > 0) {
           valueSchemaId = writerSchemaId;
         }
-        if (recordMetrics) {
-          double putLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
-          versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
-          if (tehutiRecordMetrics) {
-            hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
+        if (recordMetrics || ingestionMonitor != null) {
+          long putElapsedNs = System.nanoTime() - startTimeNs;
+          if (recordMetrics) {
+            double putLatency = putElapsedNs / 1_000_000.0;
+            versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
+            if (tehutiRecordMetrics) {
+              hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
+            }
+          }
+          if (ingestionMonitor != null) {
+            ingestionMonitor.recordStoragePutLatencyNs(putElapsedNs);
           }
         }
         break;
