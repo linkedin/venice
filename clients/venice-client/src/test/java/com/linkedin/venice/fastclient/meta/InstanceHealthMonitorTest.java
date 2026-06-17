@@ -160,7 +160,13 @@ public class InstanceHealthMonitorTest {
       CompletableFuture<TransportClientResponse> requestFuture = new CompletableFuture<>();
       ChainedCompletableFuture<Integer, Integer> chainedRequestFuture =
           monitor.trackHealthBasedOnRequestToInstance(instance, requestFuture);
-      Thread.sleep(1500); // must exceed routingRequestDefaultTimeoutMS (1000ms) to trigger unhealthy detection
+      // Wait for the routing request to time out (it completes the request future) before completing the request,
+      // so the timeout is not cancelled and the instance is marked suspicious.
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertTrue(requestFuture.isCompletedExceptionally(), "routing request should have timed out"));
       requestFuture.complete(null);
       chainedRequestFuture.getOriginalFuture().complete(SC_GONE);
       // Pending request counter will be reset with a delay
@@ -198,38 +204,14 @@ public class InstanceHealthMonitorTest {
    */
   @Test
   public void testUpdateLiveInstanceSetEvictsHostRemovedFromFleet() throws Exception {
-    Map<String, Long> requestPathToResponseDelayMap = new VeniceConcurrentHashMap<>();
-    Map<String, CompletableFuture<RestResponse>> requestPathToResponseFutureMap = new VeniceConcurrentHashMap<>();
-    CompletableFuture<RestResponse> hbResponseFuture =
-        CompletableFuture.completedFuture(new RestResponseBuilder().setStatus(SC_OK).build());
-    String hbPath = instance + "/" + QueryAction.HEALTH.toString().toLowerCase();
-    requestPathToResponseFutureMap.put(hbPath, hbResponseFuture);
-    // a large delay forces every heartbeat to this instance to time out, so it keeps failing
-    requestPathToResponseDelayMap.put(hbPath, 10000L);
-    MockClient client = new MockClient(requestPathToResponseDelayMap, requestPathToResponseFutureMap);
-
-    InstanceHealthMonitorConfig config = InstanceHealthMonitorConfig.builder()
-        .setRoutingRequestDefaultTimeoutMS(1000L)
-        .setRoutingPendingRequestCounterInstanceBlockThreshold(10)
-        .setHeartBeatIntervalSeconds(1)
-        .setHeartBeatRequestTimeoutMS(100L)
-        .setRoutingTimedOutRequestCounterResetDelayMS(2000)
-        .setClient(client)
-        .build();
-
-    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(config)) {
-      // Drive the instance into the unhealthy set via a timed-out user request + a failing heartbeat.
-      CompletableFuture<TransportClientResponse> requestFuture = new CompletableFuture<>();
-      ChainedCompletableFuture<Integer, Integer> chainedRequestFuture =
-          monitor.trackHealthBasedOnRequestToInstance(instance, requestFuture);
-      Thread.sleep(1500); // must exceed routingRequestDefaultTimeoutMS (1000ms) to trigger unhealthy detection
-      requestFuture.complete(null);
-      chainedRequestFuture.getOriginalFuture().complete(SC_GONE);
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(failingHeartbeatConfig())) {
+      // A request to the host hangs, so the routing timeout + failing heartbeat mark it unhealthy.
+      monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>());
       TestUtils.waitForNonDeterministicAssertion(
           5,
           TimeUnit.SECONDS,
           true,
-          () -> assertFalse(monitor.isInstanceHealthy(instance), "instance should be marked unhealthy"));
+          () -> assertFalse(monitor.isInstanceHealthy(instance), "slow host should be marked unhealthy"));
       assertEquals(monitor.getUnhealthyInstanceCount(), 1);
 
       // A refresh whose serving set still contains the host keeps it tracked (a live-but-unhealthy host).
@@ -252,6 +234,64 @@ public class InstanceHealthMonitorTest {
             "host removed from the fleet should no longer be tracked as unhealthy");
         assertEquals(monitor.getUnhealthyInstanceCount(), 0);
       });
+    }
+  }
+
+  /**
+   * Unhealthy-host lifecycle: a slow host is marked unhealthy by the monitor, evicted when it leaves the serving set,
+   * then rejoins clean.
+   */
+  @Test
+  public void testUnhealthyHostEvictedThenRejoinsClean() throws Exception {
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(failingHeartbeatConfig())) {
+      // Host is in the cluster; a request to it hangs, so the routing timeout + failing heartbeat mark it unhealthy.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>());
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        assertFalse(monitor.isInstanceHealthy(instance), "slow host should be marked unhealthy");
+        assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+      });
+
+      // Host leaves the cluster: the next serving set drops it, so the monitor evicts it.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        assertTrue(monitor.isInstanceHealthy(instance), "departed host should no longer be tracked");
+        assertEquals(monitor.getUnhealthyInstanceCount(), 0);
+      });
+
+      // The same host returns and starts clean.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertTrue(monitor.isInstanceHealthy(instance), "rejoined host should start clean");
+      assertEquals(monitor.getUnhealthyInstanceCount(), 0);
+    }
+  }
+
+  /**
+   * Healthy-host lifecycle: even a host that never went unhealthy has its tracking state evicted when it leaves the
+   * serving set, and rejoins clean.
+   */
+  @Test
+  public void testHealthyHostEvictedThenRejoinsClean() throws Exception {
+    InstanceHealthMonitorConfig config =
+        InstanceHealthMonitorConfig.builder().setRoutingRequestDefaultTimeoutMS(10000L).build();
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(config)) {
+      // Host is in the cluster and serves a successful request, so it is tracked (a drained counter) and healthy.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      ChainedCompletableFuture<Integer, Integer> chainedFuture = monitor.trackHealthBasedOnRequestToInstance(instance);
+      chainedFuture.getOriginalFuture().complete(SC_OK);
+      waitQuietly(chainedFuture.getResultFuture());
+      assertTrue(monitor.isInstanceHealthy(instance));
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+
+      // Host leaves the cluster: even though it is healthy, its tracking state is evicted.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      assertTrue(monitor.isInstanceHealthy(instance));
+      assertFalse(monitor.hasPendingRequestCounter(instance));
+
+      // The same host returns clean.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertTrue(monitor.isInstanceHealthy(instance));
+      assertFalse(monitor.hasPendingRequestCounter(instance));
     }
   }
 
@@ -290,6 +330,24 @@ public class InstanceHealthMonitorTest {
       inFlightFuture.getOriginalFuture().complete(SC_OK);
       waitQuietly(inFlightFuture.getResultFuture());
     }
+  }
+
+  /** Config whose heartbeat to {@link #instance} always times out, so the instance stays unhealthy once tracked. */
+  private static InstanceHealthMonitorConfig failingHeartbeatConfig() {
+    Map<String, CompletableFuture<RestResponse>> futureMap = new VeniceConcurrentHashMap<>();
+    Map<String, Long> delayMap = new VeniceConcurrentHashMap<>();
+    String hbPath = instance + "/" + QueryAction.HEALTH.toString().toLowerCase();
+    futureMap.put(hbPath, CompletableFuture.completedFuture(new RestResponseBuilder().setStatus(SC_OK).build()));
+    // a large delay forces every heartbeat to this instance to time out, so it keeps failing
+    delayMap.put(hbPath, 10000L);
+    return InstanceHealthMonitorConfig.builder()
+        .setRoutingRequestDefaultTimeoutMS(1000L)
+        .setRoutingPendingRequestCounterInstanceBlockThreshold(10)
+        .setHeartBeatIntervalSeconds(1)
+        .setHeartBeatRequestTimeoutMS(100L)
+        .setRoutingTimedOutRequestCounterResetDelayMS(2000)
+        .setClient(new MockClient(delayMap, futureMap))
+        .build();
   }
 
   private void waitQuietly(CompletableFuture future) throws InterruptedException {

@@ -201,6 +201,75 @@ public class RequestBasedMetadataTestUtils {
     return d2TransportClient;
   }
 
+  /**
+   * A {@link D2TransportClient} whose METADATA endpoint returns three responses in sequence, driving REPLICA1_NAME
+   * through present -> absent (replaced by NEW_REPLICA_NAME) -> present across three refreshes.
+   */
+  public static D2TransportClient getMockD2TransportClientCycling(String storeName) {
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+
+    Map<CharSequence, List<CharSequence>> withReplica1 = new HashMap<>();
+    withReplica1.put("0", Collections.singletonList(REPLICA1_NAME));
+    withReplica1.put("1", Collections.singletonList(REPLICA2_NAME));
+    Map<CharSequence, List<CharSequence>> withoutReplica1 = new HashMap<>();
+    withoutReplica1.put("0", Collections.singletonList(NEW_REPLICA_NAME));
+    withoutReplica1.put("1", Collections.singletonList(REPLICA2_NAME));
+
+    int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
+    CompletableFuture<TransportClientResponse> state1 = CompletableFuture.completedFuture(
+        new TransportClientResponse(
+            metadataResponseSchemaId,
+            CompressionStrategy.NO_OP,
+            buildCyclingMetadataBody(withReplica1)));
+    CompletableFuture<TransportClientResponse> state2 = CompletableFuture.completedFuture(
+        new TransportClientResponse(
+            metadataResponseSchemaId + 1,
+            CompressionStrategy.NO_OP,
+            buildCyclingMetadataBody(withoutReplica1)));
+    CompletableFuture<TransportClientResponse> state3 = CompletableFuture.completedFuture(
+        new TransportClientResponse(
+            metadataResponseSchemaId,
+            CompressionStrategy.NO_OP,
+            buildCyclingMetadataBody(withReplica1)));
+
+    when(d2TransportClient.get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName)))
+        .thenReturn(state1, state2, state3);
+
+    TransportClientResponse dictionaryResponse = new TransportClientResponse(0, CompressionStrategy.NO_OP, DICTIONARY);
+    doReturn(CompletableFuture.completedFuture(dictionaryResponse)).when(d2TransportClient)
+        .get(eq(QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION));
+
+    return d2TransportClient;
+  }
+
+  private static byte[] buildCyclingMetadataBody(Map<CharSequence, List<CharSequence>> routeMap) {
+    Map<String, String> partitionerParams = new HashMap<>();
+    partitionerParams.put("testKey", "testValue");
+    VersionProperties versionProperties = new VersionProperties(
+        CURRENT_VERSION,
+        CompressionStrategy.ZSTD_WITH_DICT.getValue(),
+        2,
+        "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
+        Collections.unmodifiableMap(partitionerParams),
+        1);
+    Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
+    helixGroupMap.put(REPLICA1_NAME, 0);
+    helixGroupMap.put(REPLICA2_NAME, 1);
+    helixGroupMap.put(NEW_REPLICA_NAME, 0);
+    MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
+        versionProperties,
+        Collections.singletonList(CURRENT_VERSION),
+        Collections.singletonMap("1", KEY_SCHEMA),
+        Collections.singletonMap("1", VALUE_SCHEMA),
+        1,
+        routeMap,
+        helixGroupMap,
+        150,
+        ExternalStorageReadMode.VENICE_ONLY.getValue());
+    return SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
+        .serialize(metadataResponse);
+  }
+
   public static D2ServiceDiscovery getMockD2ServiceDiscovery(D2TransportClient d2TransportClient, String storeName) {
     D2ServiceDiscovery d2ServiceDiscovery = mock(D2ServiceDiscovery.class);
     D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = new D2ServiceDiscoveryResponse();
