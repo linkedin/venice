@@ -15,7 +15,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -141,8 +140,10 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata = getMockMetaData(clientConfig, storeName, true /* metadataChange */);
       requestBasedMetadata.start();
 
-      // First refresh serves REPLICA1_NAME (partition 0) and REPLICA2_NAME (partition 1).
-      verify(healthMonitor, atLeastOnce())
+      // First refresh serves REPLICA1_NAME (partition 0) and REPLICA2_NAME (partition 1). start() runs the first
+      // refresh synchronously, so this invocation has already happened; the timeout just keeps it consistent with the
+      // async second verify below.
+      verify(healthMonitor, timeout(10 * Time.MS_PER_SECOND).atLeastOnce())
           .updateLiveInstanceSet(argThat(s -> s.contains(REPLICA1_NAME) && s.contains(REPLICA2_NAME)));
 
       // After the metadata change, partition 0 is served by NEW_REPLICA_NAME instead of REPLICA1_NAME, so a later
