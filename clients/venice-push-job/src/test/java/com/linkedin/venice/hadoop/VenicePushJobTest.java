@@ -16,6 +16,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
@@ -34,6 +35,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
@@ -367,7 +369,6 @@ public class VenicePushJobTest {
     setting.storeName = TEST_STORE;
     setting.controllerRetries = 1;
     setting.enableWriteCompute = false;
-    setting.valueSchemaProjectionEnabled = true;
     setting.targetWriterValueSchemaId = 7;
     setting.valueSchema = NAME_RECORD_V2_SCHEMA;
     setting.valueSchemaString = NAME_RECORD_V2_SCHEMA.toString();
@@ -381,31 +382,30 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testValidateValueSchemaDoesNotProjectWhenFeatureFlagDisabled() {
-    // Even with a valid superset input and a target writer schema id, projection must NOT happen when the
-    // feature flag is off; the job falls through to the normal "schema not registered" failure path instead.
+  public void testValidateValueSchemaSkipsProjectionWhenInputMatchesDifferentRegisteredSchemaId() {
+    // Input value schema already matches a registered value schema (id 3), but the supplied target writer value schema
+    // id (7) is different. Projection must be skipped and the matched schema id used.
     ControllerClient mockClient = mock(ControllerClient.class);
 
     SchemaResponse valueSchemaIdResponse = new SchemaResponse();
-    valueSchemaIdResponse.setError("Could not find any registered value schema for the input value schema.");
+    valueSchemaIdResponse.setId(3);
+    valueSchemaIdResponse.setSchemaStr(NAME_RECORD_V2_SCHEMA.toString());
     doReturn(valueSchemaIdResponse).when(mockClient)
         .getValueSchemaID(eq(TEST_STORE), eq(NAME_RECORD_V2_SCHEMA.toString()));
-    MultiSchemaResponse allValueSchemaResponse = new MultiSchemaResponse();
-    allValueSchemaResponse.setError("not relevant to this test");
-    doReturn(allValueSchemaResponse).when(mockClient).getAllValueSchema(eq(TEST_STORE));
 
     VenicePushJob vpj = getSpyVenicePushJob(new Properties(), mockClient);
     PushJobSetting setting = vpj.getPushJobSetting();
     setting.storeName = TEST_STORE;
     setting.controllerRetries = 1;
     setting.enableWriteCompute = false;
-    setting.valueSchemaProjectionEnabled = false;
     setting.targetWriterValueSchemaId = 7;
     setting.valueSchema = NAME_RECORD_V2_SCHEMA;
     setting.valueSchemaString = NAME_RECORD_V2_SCHEMA.toString();
 
-    Assert.assertThrows(VeniceException.class, () -> vpj.validateAndRetrieveValueSchemas(mockClient, setting, false));
+    vpj.validateAndRetrieveValueSchemas(mockClient, setting, false);
+
     Assert.assertFalse(setting.projectInputToWriterSchema);
+    Assert.assertEquals(setting.valueSchemaId, 3);
     verify(mockClient, never()).getValueSchema(eq(TEST_STORE), eq(7));
   }
 
@@ -429,7 +429,6 @@ public class VenicePushJobTest {
     setting.storeName = TEST_STORE;
     setting.controllerRetries = 1;
     setting.enableWriteCompute = false;
-    setting.valueSchemaProjectionEnabled = true;
     setting.targetWriterValueSchemaId = 7;
     setting.valueSchema = NAME_RECORD_V1_SCHEMA;
     setting.valueSchemaString = NAME_RECORD_V1_SCHEMA.toString();
@@ -456,7 +455,6 @@ public class VenicePushJobTest {
     setting.storeName = TEST_STORE;
     setting.controllerRetries = 1;
     setting.enableWriteCompute = false;
-    setting.valueSchemaProjectionEnabled = true;
     setting.targetWriterValueSchemaId = 7;
     setting.valueSchema = NAME_RECORD_V2_SCHEMA;
     setting.valueSchemaString = NAME_RECORD_V2_SCHEMA.toString();
@@ -1070,6 +1068,32 @@ public class VenicePushJobTest {
     props.put(SOURCE_KAFKA, true);
     props.put(SOURCE_ETL, true);
     new VenicePushJob(PUSH_JOB_ID, props);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*not supported together with write compute.*")
+  public void testGetPushJobSettingThrowsWhenProjectionEnabledWithWriteCompute() {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, 7);
+    props.put(ENABLE_WRITE_COMPUTE, true);
+    new VenicePushJob(PUSH_JOB_ID, props);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*not supported together with incremental push.*")
+  public void testGetPushJobSettingThrowsWhenProjectionEnabledWithIncrementalPush() {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, 7);
+    props.put(INCREMENTAL_PUSH, true);
+    new VenicePushJob(PUSH_JOB_ID, props);
+  }
+
+  @Test
+  public void testGetPushJobSettingDoesNotThrowWhenProjectionEnabledForBatchPush() {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, 7);
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      PushJobSetting setting = vpj.getPushJobSetting();
+      assertEquals(setting.targetWriterValueSchemaId, 7);
+    }
   }
 
   @Test

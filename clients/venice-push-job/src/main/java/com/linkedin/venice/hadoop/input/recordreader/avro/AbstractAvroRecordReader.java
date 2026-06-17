@@ -212,7 +212,7 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       }
       return updateBuilder.build();
     }
-    if (schemaProjector != null && valueObject != null) {
+    if (writerValueSchema != null && valueObject != null) {
       if (!(valueObject instanceof GenericRecord)) {
         throw new VeniceException("Retrieved record is not an Avro generic record; cannot project to writer schema");
       }

@@ -348,15 +348,6 @@ public final class VenicePushJobConstants {
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
 
   /**
-   * Feature flag controlling input value-schema projection. When enabled (and {@link #TARGET_WRITER_VALUE_SCHEMA_ID_PROP}
-   * is set to a positive id), input records whose value schema is a strict superset of the target writer value schema
-   * are projected down to it via {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}. Defaults to
-   * {@link #DEFAULT_INPUT_VALUE_SCHEMA_PROJECTION_ENABLED}; acts as a kill-switch for the feature.
-   */
-  public static final String INPUT_VALUE_SCHEMA_PROJECTION_ENABLED = "input.value.schema.projection.enabled";
-  public static final boolean DEFAULT_INPUT_VALUE_SCHEMA_PROJECTION_ENABLED = false;
-
-  /**
    * Optional writer (target) value schema ID. When set, input records are projected down to this schema
    * via {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}; the input schema must
    * be a strict superset of it.

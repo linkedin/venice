@@ -45,7 +45,7 @@ public class VeniceSchemaProjector {
             "Writer value field '" + fieldName + "' is absent from the input value schema; writer schema is not a "
                 + "subset of the input schema.");
       }
-      projected.put(writerField.pos(), GenericData.get().deepCopy(writerField.schema(), src.get(fieldName)));
+      projected.put(writerField.pos(), src.get(fieldName));
     }
     return projected;
   }
@@ -72,11 +72,12 @@ public class VeniceSchemaProjector {
     }
     GenericRecord projected = new GenericData.Record(targetRmdSchema);
 
-    // replication_checkpoint_vector is value-independent; copy verbatim.
+    // NOTE: This only handles the current (v1) RMD schema shape, which has exactly two top-level fields:
+    // {@code timestamp} and {@code replication_checkpoint_vector}. Both are hard-coded below. If the RMD schema is
+    // ever evolved (e.g. a new top-level field is added or these are restructured), this method will silently drop
+    // the new field(s) and MUST be revisited to project them;
     Schema.Field rcvField = targetRmdSchema.getField(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME);
-    projected.put(
-        rcvField.pos(),
-        GenericData.get().deepCopy(rcvField.schema(), srcRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)));
+    projected.put(rcvField.pos(), srcRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME));
 
     Schema.Field targetTimestampField = targetRmdSchema.getField(TIMESTAMP_FIELD_NAME);
     Object srcTimestamp = srcRmd.get(TIMESTAMP_FIELD_NAME);

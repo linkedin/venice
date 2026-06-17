@@ -139,7 +139,7 @@ public class TestVeniceSchemaProjector {
   }
 
   @Test
-  public void testRetainedValuesAreDeepCopiedAndIndependent() {
+  public void testRetainedValuesAreSharedByReference() {
     Schema input = parse(
         "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"fields\": [\n"
             + "    {\"name\": \"nums\", \"type\": {\"type\": \"array\", \"items\": \"int\"}},\n"
@@ -154,11 +154,7 @@ public class TestVeniceSchemaProjector {
 
     GenericRecord out = projector.projectValue(src, writer);
 
-    @SuppressWarnings("unchecked")
-    List<Object> outList = (List<Object>) out.get("nums");
-    Assert.assertEquals(outList.size(), 3);
-    srcList.clear();
-    Assert.assertEquals(outList.size(), 3, "mutating the source list must not affect the projected output");
+    Assert.assertSame(out.get("nums"), srcList);
   }
 
   @Test
@@ -265,7 +261,7 @@ public class TestVeniceSchemaProjector {
   }
 
   @Test
-  public void testReplicationCheckpointVectorIsDeepCopied() {
+  public void testReplicationCheckpointVectorIsSharedByReference() {
     Schema valueSchema = parse(
         "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
             + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"}\n" + "  ]\n" + "}");
@@ -277,10 +273,6 @@ public class TestVeniceSchemaProjector {
 
     GenericRecord out = projector.projectRmd(srcRmd, rmdSchema);
 
-    @SuppressWarnings("unchecked")
-    List<Long> outRcv = (List<Long>) out.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME);
-    Assert.assertEquals(outRcv.size(), 3);
-    rcv.clear();
-    Assert.assertEquals(outRcv.size(), 3, "mutating the source RCV must not affect the projected output");
+    Assert.assertSame(out.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME), rcv);
   }
 }

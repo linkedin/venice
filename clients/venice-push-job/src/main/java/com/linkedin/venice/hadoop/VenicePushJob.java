@@ -26,7 +26,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_BATCH_BYTES
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_INPUT_VALUE_SCHEMA_PROJECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
@@ -42,7 +41,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RA
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_VALUE_SCHEMA_PROJECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_SERVER_NAME;
@@ -429,9 +427,23 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.repushUseFallbackValueSchemaId =
         props.getBoolean(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, false);
     pushJobSettingToReturn.isCompliancePush = props.getBoolean(COMPLIANCE_PUSH, false);
-    pushJobSettingToReturn.valueSchemaProjectionEnabled =
-        props.getBoolean(INPUT_VALUE_SCHEMA_PROJECTION_ENABLED, DEFAULT_INPUT_VALUE_SCHEMA_PROJECTION_ENABLED);
     pushJobSettingToReturn.targetWriterValueSchemaId = props.getInt(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, -1);
+    if (pushJobSettingToReturn.targetWriterValueSchemaId > 0) {
+      // Input value-schema projection is only supported for full (batch) pushes. It is incompatible with write compute
+      // (which relies on the superset schema and per-field-timestamp RMD that projection cannot handle) and with
+      // incremental push (which writes partial updates/RMD to the real-time topic). Fail fast on misconfiguration
+      // rather than projecting silently or failing at a later stage.
+      if (pushJobSettingToReturn.enableWriteCompute) {
+        throw new VeniceException(
+            "Input value schema projection (" + TARGET_WRITER_VALUE_SCHEMA_ID_PROP
+                + ") is not supported together with write compute (" + ENABLE_WRITE_COMPUTE + ").");
+      }
+      if (pushJobSettingToReturn.isIncrementalPush) {
+        throw new VeniceException(
+            "Input value schema projection (" + TARGET_WRITER_VALUE_SCHEMA_ID_PROP
+                + ") is not supported together with incremental push (" + INCREMENTAL_PUSH + ").");
+      }
+    }
     pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
         props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
@@ -2312,15 +2324,14 @@ public class VenicePushJob implements AutoCloseable {
           setting.controllerRetries,
           c -> c.getValueSchemaID(setting.storeName, pushJobSetting.valueSchemaString));
     }
-    if (getValueSchemaIdResponse.isError() && setting.valueSchemaProjectionEnabled
-        && setting.targetWriterValueSchemaId > 0) {
+    if (getValueSchemaIdResponse.isError() && setting.targetWriterValueSchemaId > 0) {
       // Input value schema does not match any registered value schema. The user has supplied a target writer value
       // schema ID to project input records down to; validate the superset relationship and enable projection.
       configureValueSchemaProjection(controllerClient, setting);
       LOGGER.info(
           "Got schema id: {} (projection target) for value schema: {} of store: {}",
-          pushJobSetting.valueSchemaId,
-          pushJobSetting.valueSchemaString,
+          setting.valueSchemaId,
+          setting.valueSchemaString,
           setting.storeName);
       return;
     }
@@ -2358,6 +2369,15 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       // Get value schema ID successfully
       setSchemaIdPropInPushJobSetting(pushJobSetting, getValueSchemaIdResponse, setting.enableWriteCompute);
+      if (setting.targetWriterValueSchemaId > 0
+          && getValueSchemaIdResponse.getId() != setting.targetWriterValueSchemaId) {
+        LOGGER.warn(
+            "Input value schema matches registered value schema id: {} for store: {}, which differs from the supplied "
+                + "target writer value schema id: {}. Skipping projection and pushing with the matched schema id.",
+            getValueSchemaIdResponse.getId(),
+            setting.storeName,
+            setting.targetWriterValueSchemaId);
+      }
     }
     LOGGER.info(
         "Got schema id: {} for value schema: {} of store: {}",
@@ -2375,8 +2395,8 @@ public class VenicePushJob implements AutoCloseable {
   private void configureValueSchemaProjection(ControllerClient controllerClient, PushJobSetting setting) {
     int writerSchemaId = setting.targetWriterValueSchemaId;
     LOGGER.info(
-        "Input value schema is not registered; attempting projection to target writer value schema id: {} for store: {} "
-            + "(input value schema projection feature flag is enabled). Input value schema: {}",
+        "Input value schema is not registered; attempting projection to target writer value schema id: {} for "
+            + "store: {}. Input value schema: {}",
         writerSchemaId,
         setting.storeName,
         setting.valueSchemaString);

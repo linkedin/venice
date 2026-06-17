@@ -8,7 +8,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV2Schema;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_VALUE_SCHEMA_PROJECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -39,8 +38,7 @@ import org.testng.annotations.Test;
 /**
  * End-to-end coverage for input value-schema projection in VPJ: input data whose value schema is a strict superset of a
  * registered writer (target) value schema is projected down to the writer schema (via {@code VeniceSchemaProjector})
- * before serialization. Gated by the {@code input.value.schema.projection.enabled} feature flag plus an explicit
- * {@code target.writer.value.schema.id}.
+ * before serialization. Enabled by setting {@code target.writer.value.schema.id} to a positive id.
  */
 public class TestPushJobWithValueSchemaProjection {
   private static final int TEST_TIMEOUT = 90 * Time.MS_PER_SECOND;
@@ -62,7 +60,7 @@ public class TestPushJobWithValueSchemaProjection {
 
   /**
    * Happy path: store is registered with the writer schema (V1); input data uses a strict superset schema (V2, which
-   * adds {@code age}). With the feature flag on and the target writer schema id supplied, each record is projected down
+   * adds {@code age}). With the target writer schema id supplied, each record is projected down
    * to V1 and the push completes. Reading the data back returns V1 records with the {@code age} field dropped.
    */
   @Test(timeOut = TEST_TIMEOUT)
@@ -85,7 +83,6 @@ public class TestPushJobWithValueSchemaProjection {
       Assert.assertTrue(writerSchemaId > 0);
     }
 
-    props.setProperty(INPUT_VALUE_SCHEMA_PROJECTION_ENABLED, "true");
     props.setProperty(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, Integer.toString(writerSchemaId));
 
     try (VenicePushJob job = new VenicePushJob("test-push-projection-happy-path", props)) {
@@ -122,7 +119,6 @@ public class TestPushJobWithValueSchemaProjection {
     createStoreForJob(veniceCluster, STRING_SCHEMA.toString(), NAME_RECORD_V1_SCHEMA.toString(), props).close();
 
     int nonExistentWriterSchemaId = 9999;
-    props.setProperty(INPUT_VALUE_SCHEMA_PROJECTION_ENABLED, "true");
     props.setProperty(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, Integer.toString(nonExistentWriterSchemaId));
 
     try (VenicePushJob job = new VenicePushJob("test-push-projection-missing-id", props)) {
@@ -156,7 +152,6 @@ public class TestPushJobWithValueSchemaProjection {
       writerSchemaId = writerSchemaIdResponse.getId();
     }
 
-    props.setProperty(INPUT_VALUE_SCHEMA_PROJECTION_ENABLED, "true");
     props.setProperty(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, Integer.toString(writerSchemaId));
 
     try (VenicePushJob job = new VenicePushJob("test-push-projection-not-superset", props)) {
