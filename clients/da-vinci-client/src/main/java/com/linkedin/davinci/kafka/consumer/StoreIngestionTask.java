@@ -1163,7 +1163,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return returnStatus;
   }
 
-  private void beginBatchWrite(boolean sorted, PartitionConsumptionState partitionConsumptionState) {
+  void beginBatchWrite(boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(sorted, partitionConsumptionState);
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
@@ -3869,7 +3869,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     });
   }
 
-  private void processStartOfPush(
+  void processStartOfPush(
       KafkaMessageEnvelope startOfPushKME,
       ControlMessage controlMessage,
       PartitionConsumptionState partitionConsumptionState) {
@@ -3962,6 +3962,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
 
     ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
+    if (pauseAfterStartOfPush) {
+      pausePartitionForFutureSlot(partitionConsumptionState.getPartition());
+    }
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
