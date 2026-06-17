@@ -2,7 +2,6 @@ package com.linkedin.davinci;
 
 import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.config.StoreBackendConfig;
-import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -292,36 +291,47 @@ public class StoreBackend {
       return;
     }
 
-    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
-    VeniceServerConfig veniceServerConfig = backend.getConfigLoader().getVeniceServerConfig();
-    String currentRegion = veniceServerConfig.getRegionName();
-    boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetVersion.getTargetSwapRegion());
-    // targetRegionPromoted=true means the target-region push completed and non-target DVC clients
-    // should now begin ingesting. This is set by DeferredVersionSwapService after the push succeeds
-    // in the target region, and is propagated to child controllers via the UpdateStore admin message.
-    boolean startIngestionOnTargetRegionPromoted =
-        isTargetRegionEnabled && !targetRegions.contains(currentRegion) && targetVersion.isTargetRegionPromoted();
+    boolean createPaused = shouldCreatePaused(targetVersion);
+    LOGGER.info("Subscribing to future version {} (createPaused={})", targetVersion.kafkaTopicName(), createPaused);
+    setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
+    // For future version subscription, we don't need to pass any timestamps or position map
+    daVinciFutureVersion.subscribe(subscription, null, null, createPaused)
+        .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+  }
 
-    // Subscribe to the future version if:
-    // 1. Target region push with delayed ingestion is not enabled
-    // 2. Target region push with delayed ingestion is enabled and the current region is a target region
-    // 3. Target region push with delayed ingestion is enabled and the current region is a non-target
-    // region and the target region has been promoted (targetRegionPromoted flag is set by
-    // DeferredVersionSwapService once the push completes in target regions)
-    if (targetRegions.contains(currentRegion) || startIngestionOnTargetRegionPromoted || !isTargetRegionEnabled) {
-      LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
-      setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
-      // For future version subscription, we don't need to pass any timestamps or position map
-      daVinciFutureVersion.subscribe(subscription, null, null, false)
-          .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
-    } else {
-      LOGGER.info(
-          "Skipping subscribe to future version: {} in region: {} because targetRegionPromoted={} and target regions are: {}",
-          targetVersion.kafkaTopicName(),
-          currentRegion,
-          targetVersion.isTargetRegionPromoted(),
-          targetVersion.getTargetSwapRegion());
+  /**
+   * Resume the future version's ingestion if it was created paused and the target-region push has
+   * since been promoted (i.e. {@code shouldCreatePaused} now returns {@code false}).
+   */
+  synchronized void maybeResumeDaVinciFutureVersion() {
+    if (daVinciFutureVersion == null || !daVinciFutureVersion.isPaused()) {
+      return;
     }
+    if (!shouldCreatePaused(daVinciFutureVersion.getVersion())) {
+      LOGGER.info("Resuming future-slot-paused SIT for version {}", daVinciFutureVersion.getVersion().kafkaTopicName());
+      daVinciFutureVersion.resume();
+    }
+  }
+
+  /**
+   * Returns {@code true} when the future version should be started in a paused state.
+   *
+   * <p>A version is created paused when a target-region push is in progress and this DVC instance
+   * is NOT in the target region. Once the push completes in the target region the
+   * {@code targetRegionPromoted} flag is set, at which point this method returns {@code false} and
+   * the caller can call {@link #maybeResumeDaVinciFutureVersion()} to resume ingestion.
+   */
+  private boolean shouldCreatePaused(Version version) {
+    String targetSwapRegion = version.getTargetSwapRegion();
+    if (StringUtils.isEmpty(targetSwapRegion)) {
+      return false; // no target-region push — always active
+    }
+    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetSwapRegion);
+    String currentRegion = backend.getConfigLoader().getVeniceServerConfig().getRegionName();
+    if (targetRegions.contains(currentRegion)) {
+      return false; // this IS the target region — always active
+    }
+    return !version.isTargetRegionPromoted(); // non-target: paused until promoted
   }
 
   /**

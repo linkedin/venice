@@ -607,6 +607,9 @@ public class DaVinciBackend implements Closeable {
 
     storeBackend.validateDaVinciAndVeniceCurrentVersion();
     storeBackend.tryDeleteInvalidDaVinciFutureVersion();
+    // If the future version was created paused (non-target region SIT), check whether it should
+    // now be resumed (e.g. targetRegionPromoted just flipped to true).
+    storeBackend.maybeResumeDaVinciFutureVersion();
     /**
      * Future version may not meet the swapping condition when local partitions finished ingestion, thus everytime
      * when store config has been changed in the Venice backend, we need to check if we could swap the future version
