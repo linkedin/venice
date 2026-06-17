@@ -3547,10 +3547,14 @@ public class AdminTool {
     // Extract host from server URL
     String host;
     try {
-      java.net.URI uri = new java.net.URI(serverUrl);
-      host = uri.getHost();
-    } catch (Exception e) {
+      host = new java.net.URI(serverUrl).getHost();
+    } catch (java.net.URISyntaxException e) {
       throw new VeniceException("Invalid server URL: " + serverUrl, e);
+    }
+    if (host == null || host.isEmpty()) {
+      throw new VeniceException(
+          "Cannot derive host from server URL '" + serverUrl
+              + "'. Please provide a URL with an explicit scheme and host, e.g. https://host:port.");
     }
 
     io.grpc.ManagedChannel channel = null;
