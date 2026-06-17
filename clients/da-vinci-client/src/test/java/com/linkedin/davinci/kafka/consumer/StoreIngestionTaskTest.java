@@ -7700,7 +7700,7 @@ public abstract class StoreIngestionTaskTest {
       AggKafkaConsumerService agg) throws Exception {
     StoreIngestionTask task = mock(StoreIngestionTask.class);
     for (Object[] entry: new Object[][] { { "versionTopic", vt }, { "partitionConsumptionStateMap", pcsMap },
-        { "aggKafkaConsumerService", agg } }) {
+        { "aggKafkaConsumerService", agg }, { "pubSubTopicRepository", pubSubTopicRepository } }) {
       Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
       f.setAccessible(true);
       f.set(task, entry[1]);
@@ -7708,6 +7708,7 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
     doCallRealMethod().when(task).resumeFromFutureSlotPause();
     doCallRealMethod().when(task).isFutureSlotPaused();
+    doCallRealMethod().when(task).resumeConsumption(anyString(), anyInt());
     return task;
   }
 
@@ -7779,22 +7780,12 @@ public abstract class StoreIngestionTaskTest {
 
     StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
 
-    // Wire pubSubTopicRepository so resumeConsumption can build the PubSubTopicPartition
-    Field repoField = StoreIngestionTask.class.getDeclaredField("pubSubTopicRepository");
-    repoField.setAccessible(true);
-    repoField.set(task, pubSubTopicRepository);
-
-    // Access the private resumeConsumption method via reflection
-    java.lang.reflect.Method resumeConsumptionMethod =
-        StoreIngestionTask.class.getDeclaredMethod("resumeConsumption", String.class, int.class);
-    resumeConsumptionMethod.setAccessible(true);
-
     // Apply future-slot pause
     task.pausePartitionForFutureSlot(PARTITION_FOO);
     assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
 
     // Fire quota resumeConsumption — must NOT physically resume the partition
-    resumeConsumptionMethod.invoke(task, vt.getName(), PARTITION_FOO);
+    task.resumeConsumption(vt.getName(), PARTITION_FOO);
 
     // futureSlotPaused flag must still be set
     assertTrue(pcs.isFutureSlotPaused(), "futureSlotPaused must remain true after quota resumeConsumption");
