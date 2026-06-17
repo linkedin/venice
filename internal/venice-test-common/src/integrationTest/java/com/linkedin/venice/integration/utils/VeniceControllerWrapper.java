@@ -20,6 +20,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
@@ -254,6 +255,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
             .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
             .put(extraProps.toProperties())
+            // Match the controller-cluster replication factor to the number of controllers (capped at the
+            // production default of 3) so Helix WAGED can place the controller-cluster resource on a cluster
+            // with fewer than 3 controllers. Applied after extraProps so specific tests can override it.
+            .putIfAbsent(CONTROLLER_CLUSTER_REPLICA, Math.min(options.getNumberOfControllers(), 3))
             // Set store recreation time window to 0 seconds by default to allow immediate recreation in tests
             // This is set after extraProps so tests can override it if needed
             .putIfAbsent(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 0)

@@ -138,6 +138,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .veniceZkBasePath(options.getVeniceZkBasePath())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())
+              .numberOfControllers(options.getNumberOfControllers())
               .rebalanceDelayMs(options.getRebalanceDelayMs())
               .clusterToD2(clusterToD2)
               .clusterToServerD2(clusterToServerD2)

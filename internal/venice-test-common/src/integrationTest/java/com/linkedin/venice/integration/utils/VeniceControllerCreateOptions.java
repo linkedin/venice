@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_CONTROLLERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
@@ -29,6 +30,7 @@ public class VeniceControllerCreateOptions {
   private final int partitionSize;
   private final int numberOfPartitions;
   private final int maxNumberOfPartitions;
+  private final int numberOfControllers;
   private final long rebalanceDelayMs;
   private final String[] clusterNames;
   private final Map<String, String> clusterToD2;
@@ -52,6 +54,7 @@ public class VeniceControllerCreateOptions {
     partitionSize = builder.partitionSize;
     numberOfPartitions = builder.numberOfPartitions;
     maxNumberOfPartitions = builder.maxNumberOfPartitions;
+    numberOfControllers = builder.numberOfControllers;
     rebalanceDelayMs = builder.rebalanceDelayMs;
     clusterNames = builder.clusterNames;
     clusterToD2 = builder.clusterToD2;
@@ -93,6 +96,9 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("maxNumberOfPartitions:")
         .append(maxNumberOfPartitions)
+        .append(", ")
+        .append("numberOfControllers:")
+        .append(numberOfControllers)
         .append(", ")
         .append("rebalanceDelayMs:")
         .append(rebalanceDelayMs)
@@ -170,6 +176,10 @@ public class VeniceControllerCreateOptions {
     return maxNumberOfPartitions;
   }
 
+  public int getNumberOfControllers() {
+    return numberOfControllers;
+  }
+
   public long getRebalanceDelayMs() {
     return rebalanceDelayMs;
   }
@@ -234,6 +244,7 @@ public class VeniceControllerCreateOptions {
     private int partitionSize = DEFAULT_PARTITION_SIZE_BYTES;
     private int numberOfPartitions = DEFAULT_NUMBER_OF_PARTITIONS;
     private int maxNumberOfPartitions = DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+    private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private Map<String, String> clusterToD2 = null;
     private Map<String, String> clusterToServerD2 = null;
@@ -300,6 +311,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder numberOfPartitions(int numberOfPartitions) {
       this.numberOfPartitions = numberOfPartitions;
+      return this;
+    }
+
+    public Builder numberOfControllers(int numberOfControllers) {
+      this.numberOfControllers = numberOfControllers;
       return this;
     }
 
