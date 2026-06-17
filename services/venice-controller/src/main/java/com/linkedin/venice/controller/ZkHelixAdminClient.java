@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.RetryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -22,10 +23,12 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.RESTConfig;
+import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -172,6 +175,65 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       throw new VeniceException(
           "Failed to create Helix cluster: " + clusterName + " after 3 attempts. HelixAdmin#addCluster returned false");
     }
+  }
+
+  /**
+   * @see HelixAdminClient#createVeniceStorageClusterLegacy(String)
+   */
+  @Override
+  public void createVeniceStorageClusterLegacy(String clusterName) {
+    if (helixAdmin.getClusters().contains(clusterName)) {
+      LOGGER.info("Cluster: {} already exists.", clusterName);
+      return;
+    }
+
+    if (!helixAdmin.addCluster(clusterName, false)) {
+      LOGGER.info("Cluster: {} creation returned false.", clusterName);
+      return;
+    }
+
+    VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
+    HelixConfigScope clusterConfigScope =
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
+    Map<String, String> helixClusterProperties = new HashMap<>();
+    helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+    long delayedTime = config.getDelayToRebalanceMS();
+    if (delayedTime > 0) {
+      helixClusterProperties
+          .put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), String.valueOf(delayedTime));
+    }
+    helixClusterProperties
+        .put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
+    helixClusterProperties.put(
+        ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(),
+        String.valueOf(config.isServerHelixClusterTopologyAware()));
+    if (config.isServerHelixClusterTopologyAware()) {
+      helixClusterProperties
+          .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), config.getServerHelixClusterTopology());
+      helixClusterProperties
+          .put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), config.getServerHelixClusterFaultZoneType());
+    }
+
+    helixAdmin.setConfig(clusterConfigScope, helixClusterProperties);
+    LOGGER.info(
+        "Cluster creation: {} completed, auto join to true. Delayed rebalance time: {}ms",
+        clusterName,
+        delayedTime);
+    helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
+
+    helixAdmin.addResource(
+        controllerClusterName,
+        clusterName,
+        CONTROLLER_CLUSTER_PARTITION_COUNT,
+        LeaderStandbySMD.name,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
+    int controllerClusterReplica = config.getControllerClusterReplica();
+    idealState.setReplicas(String.valueOf(controllerClusterReplica));
+    idealState.setMinActiveReplicas(Math.max(controllerClusterReplica - 1, 1));
+    idealState.setRebalancerClassName(WagedRebalancer.class.getName());
+    helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
+    helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
   }
 
   /**

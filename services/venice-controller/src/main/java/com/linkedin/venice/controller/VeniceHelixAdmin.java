@@ -297,21 +297,18 @@ import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
-import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
-import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.MaintenanceSignal;
 import org.apache.helix.model.RESTConfig;
-import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -349,7 +346,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final String kafkaSSLBootstrapServers;
   private final Map<String, AdminConsumerService> adminConsumerServices = new ConcurrentHashMap<>();
 
-  private static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
   private static final long CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5);
   private static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
@@ -6870,59 +6866,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   // TODO remove this method once we are fully on HaaS
   private void createClusterIfRequired(String clusterName) {
-    if (admin.getClusters().contains(clusterName)) {
-      LOGGER.info("Cluster: {} already exists.", clusterName);
-      return;
-    }
-
-    boolean isClusterCreated = admin.addCluster(clusterName, false);
-    if (!isClusterCreated) {
-      LOGGER.info("Cluster: {} creation returned false.", clusterName);
-      return;
-    }
-
-    VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-    HelixConfigScope clusterConfigScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
-    Map<String, String> helixClusterProperties = new HashMap<>();
-    helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
-    long delayedTime = config.getDelayToRebalanceMS();
-    if (delayedTime > 0) {
-      helixClusterProperties
-          .put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), String.valueOf(delayedTime));
-    }
-    helixClusterProperties
-        .put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
-    helixClusterProperties.put(
-        ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(),
-        String.valueOf(config.isServerHelixClusterTopologyAware()));
-    if (config.isServerHelixClusterTopologyAware()) {
-      helixClusterProperties
-          .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), config.getServerHelixClusterTopology());
-      helixClusterProperties
-          .put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), config.getServerHelixClusterFaultZoneType());
-    }
-
-    admin.setConfig(clusterConfigScope, helixClusterProperties);
-    LOGGER.info(
-        "Cluster creation: {} completed, auto join to true. Delayed rebalance time: {}ms",
-        clusterName,
-        delayedTime);
-    admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
-
-    admin.addResource(
-        controllerClusterName,
-        clusterName,
-        CONTROLLER_CLUSTER_NUMBER_OF_PARTITION,
-        LeaderStandbySMD.name,
-        IdealState.RebalanceMode.FULL_AUTO.toString());
-    IdealState idealState = admin.getResourceIdealState(controllerClusterName, clusterName);
-    int controllerClusterReplica = config.getControllerClusterReplica();
-    idealState.setReplicas(String.valueOf(controllerClusterReplica));
-    idealState.setMinActiveReplicas(Math.max(controllerClusterReplica - 1, 1));
-    idealState.setRebalancerClassName(WagedRebalancer.class.getName());
-    admin.setResourceIdealState(controllerClusterName, clusterName, idealState);
-    admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
+    /**
+     * Delegate to {@link HelixAdminClient#createVeniceStorageClusterLegacy(String)} so that this
+     * legacy (non-HAAS) storage-cluster setup goes through the single {@link #helixAdminClient} rather
+     * than the duplicate {@link #admin} {@link HelixAdmin} held directly by this class. The delegated
+     * method relocates the previous inline logic (cluster creation with the same properties +
+     * LeaderStandby state model, then controller-cluster resource registration using the WAGED
+     * rebalancer). No ZK-address or behaviour change.
+     */
+    helixAdminClient.createVeniceStorageClusterLegacy(clusterName);
   }
 
   public boolean updateIdealState(String clusterName, String resourceName, int minReplica) {
