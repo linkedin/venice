@@ -5,7 +5,9 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
@@ -57,6 +59,40 @@ public class VeniceServerConfigTest {
     assertEquals(jvmArgs.size(), 2);
     assertEquals(jvmArgs.get(0), "-Xms256M");
     assertEquals(jvmArgs.get(1), "-Xmx256G");
+  }
+
+  @Test
+  public void testAaDcrBugInjectionEnabledForStore() {
+    // Default: empty map, nothing is enabled.
+    Properties props = populatedBasicProperties();
+    props.put(LOCAL_REGION_NAME, "ei-ltx1");
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isAaDcrBugInjectionEnabledForStore("store_a"));
+
+    // store_a targets this server's region (ei-ltx1) -> enabled; store_b targets another allowed region -> disabled.
+    props.put(SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP, "store_a:ei-ltx1,store_b:ei4");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(config.getRegionName(), "ei-ltx1");
+    assertTrue(config.isAaDcrBugInjectionEnabledForStore("store_a"));
+    assertFalse(config.isAaDcrBugInjectionEnabledForStore("store_b"));
+    // Store not present in the map -> disabled.
+    assertFalse(config.isAaDcrBugInjectionEnabledForStore("store_c"));
+
+    // Same map but on a server in a different region -> store_b becomes the enabled one, store_a disabled.
+    props.put(LOCAL_REGION_NAME, "ei4");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isAaDcrBugInjectionEnabledForStore("store_a"));
+    assertTrue(config.isAaDcrBugInjectionEnabledForStore("store_b"));
+  }
+
+  @Test
+  public void testAaDcrBugInjectionNotEnabledForNonAllowlistedRegion() {
+    // A production (non-allowlisted) region must never enable injection, and the server must still boot normally.
+    Properties props = populatedBasicProperties();
+    props.put(LOCAL_REGION_NAME, "prod-ltx1");
+    props.put(SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP, "store_a:prod-ltx1");
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isAaDcrBugInjectionEnabledForStore("store_a"));
   }
 
   @Test

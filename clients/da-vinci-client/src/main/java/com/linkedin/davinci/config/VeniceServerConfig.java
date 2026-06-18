@@ -67,6 +67,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCH
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
@@ -284,8 +285,10 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -512,6 +515,19 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableDatabaseMemoryStats;
 
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
+
+  /**
+   * TEST-ONLY. Regions allowed for A/A DCR bug injection: EI (ei4, ei-ltx1). This hardcoded allowlist prevents enabling
+   * the chaos knob in prod. Stores mapped to regions not in this set cause startup failure.
+   */
+  private static final Set<String> AA_DCR_BUG_INJECTION_ALLOWED_REGIONS =
+      Collections.unmodifiableSet(new HashSet<>(Arrays.asList("ei-ltx1", "ei4")));
+
+  /**
+   * TEST-ONLY. Map of {@code storeName -> regionName} for which A/A DCR bug injection is enabled. See
+   * {@link com.linkedin.venice.ConfigKeys#SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP}.
+   */
+  private final Map<String, String> aaDcrBugInjectionStoreToRegionMap;
 
   private final int databaseLookupQueueCapacity;
   private final int computeQueueCapacity;
@@ -939,6 +955,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     storeToEarlyTerminationThresholdMSMapProp.forEach(
         (storeName, thresholdStr) -> storeToEarlyTerminationThresholdMSMap
             .put(storeName, Integer.parseInt(thresholdStr.trim())));
+    aaDcrBugInjectionStoreToRegionMap =
+        serverProperties.getMap(SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP, Collections.emptyMap());
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
@@ -1612,6 +1630,27 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public Map<String, Integer> getStoreToEarlyTerminationThresholdMSMap() {
     return storeToEarlyTerminationThresholdMSMap;
+  }
+
+  /**
+   * TEST-ONLY. Returns true when A/A DCR injection is active for the store on this server (store region == local region).
+   * If the region is not in the EI allowlist, injection is refused and logged to prevent enabling in prod.
+   * See {@link com.linkedin.venice.ConfigKeys#SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP}.
+   */
+  public boolean isAaDcrBugInjectionEnabledForStore(String storeName) {
+    String region = aaDcrBugInjectionStoreToRegionMap.get(storeName);
+    if (region == null || !region.equals(getRegionName())) {
+      return false;
+    }
+    if (!AA_DCR_BUG_INJECTION_ALLOWED_REGIONS.contains(region)) {
+      LOGGER.error(
+          "Refusing TEST-ONLY A/A DCR bug injection for store '{}': region '{}' is not in the EI allowlist {}. Must not be configured for prod.",
+          storeName,
+          region,
+          AA_DCR_BUG_INJECTION_ALLOWED_REGIONS);
+      return false;
+    }
+    return true;
   }
 
   public int getDatabaseLookupQueueCapacity() {

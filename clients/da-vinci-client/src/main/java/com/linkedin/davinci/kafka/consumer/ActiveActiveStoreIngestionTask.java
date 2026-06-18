@@ -126,6 +126,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   /** RMD bytes (ts=0) without schema ID prefix. For non-chunked PUTs (schema ID varies). */
   private final byte[] defaultBatchRmdBytes;
 
+  /**
+   * TEST-ONLY. When {@code true}, this server is the bug-injection region for this store, so the A/A DCR write
+   * timestamp is reflected ({@code Long.MAX_VALUE - ts}) to invert the "newer wins" ordering into "older wins",
+   * deliberately diverging the two regions. See
+   * {@link com.linkedin.venice.ConfigKeys#SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP}.
+   */
+  private final boolean dcrBugInjectionEnabled;
+
   public ActiveActiveStoreIngestionTask(
       StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
@@ -179,6 +187,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             getServerConfig().isActiveActiveCollectionFieldElementReplacementEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
+
+    this.dcrBugInjectionEnabled = serverConfig.isAaDcrBugInjectionEnabledForStore(storeName);
+    if (this.dcrBugInjectionEnabled) {
+      LOGGER.warn(
+          "TEST-ONLY A/A DCR bug injection is ENABLED for store: {} on region: {}. DCR write timestamps will be "
+              + "reflected so the older write wins, intentionally diverging this region from the others. This MUST "
+              + "NEVER be enabled in production.",
+          storeName,
+          serverConfig.getRegionName());
+    }
 
     this.addRmdToBatchPushForHybridStores =
         !isDaVinciClient() && serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
@@ -572,7 +590,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partition,
         beforeProcessingBatchRecordsTimestampMs);
 
-    final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
+    long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
+    if (dcrBugInjectionEnabled) {
+      // TEST-ONLY: reflect the timestamp so "newer wins" becomes "older wins", diverging this region from the others.
+      writeTimestamp = Long.MAX_VALUE - writeTimestamp;
+    }
 
     final MergeConflictResult mergeConflictResult;
 

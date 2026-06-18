@@ -3526,4 +3526,12 @@ public class ConfigKeys {
    */
   public static final String PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS =
       "partial.update.amplification.report.interval.ms";
+
+  /**
+   * TEST-ONLY. Regions allowed for A/A DCR bug injection: EI (ei4, ei-ltx1). Map of store->region used to inject a
+   * bug into A/A DCR for testing in EI. MUST NEVER be enabled in prod. Injection is refused (and logged) for regions
+   * not in the server's EI allowlist.
+   */
+  public static final String SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP =
+      "server.aa.dcr.bug.injection.store.to.region.map";
 }
