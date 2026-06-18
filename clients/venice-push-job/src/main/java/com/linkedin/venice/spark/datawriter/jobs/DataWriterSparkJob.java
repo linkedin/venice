@@ -22,6 +22,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRIN
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_RMD_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_VALUE_SCHEMA_STRING_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.hadoop.PushJobSetting;
@@ -96,6 +98,20 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
         setInputConf(sparkSession, dataFrameReader, GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, String.valueOf(true));
         setInputConf(sparkSession, dataFrameReader, UPDATE_SCHEMA_STRING_PROP, pushJobSetting.valueSchemaString);
       }
+      if (pushJobSetting.projectInputToWriterSchema) {
+        setInputConf(
+            sparkSession,
+            dataFrameReader,
+            WRITER_VALUE_SCHEMA_STRING_PROP,
+            pushJobSetting.writerValueSchemaString);
+        if (pushJobSetting.replicationMetadataSchemaString != null) {
+          setInputConf(
+              sparkSession,
+              dataFrameReader,
+              WRITER_RMD_SCHEMA_STRING_PROP,
+              pushJobSetting.replicationMetadataSchemaString);
+        }
+      }
       setInputConf(sparkSession, dataFrameReader, VSON_PUSH, String.valueOf(false));
     } else {
       setInputConf(sparkSession, dataFrameReader, VSON_PUSH, String.valueOf(true));
@@ -114,6 +130,14 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       if (pushJobSetting.generatePartialUpdateRecordFromInput) {
         updateSchema = AvroCompatibilityHelper.parse(pushJobSetting.valueSchemaString);
       }
+      Schema writerValueSchema = null;
+      Schema writerRmdSchema = null;
+      if (pushJobSetting.projectInputToWriterSchema) {
+        writerValueSchema = AvroCompatibilityHelper.parse(pushJobSetting.writerValueSchemaString);
+        if (pushJobSetting.replicationMetadataSchemaString != null) {
+          writerRmdSchema = AvroCompatibilityHelper.parse(pushJobSetting.replicationMetadataSchemaString);
+        }
+      }
 
       GenericRecord rowRecord = RowToAvroConverter.convert(record, pushJobSetting.inputDataSchema);
       VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(
@@ -122,7 +146,9 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
           pushJobSetting.valueField,
           pushJobSetting.rmdField,
           pushJobSetting.etlValueSchemaTransformation,
-          updateSchema);
+          updateSchema,
+          writerValueSchema,
+          writerRmdSchema);
 
       AvroWrapper<IndexedRecord> recordAvroWrapper = new AvroWrapper<>(rowRecord);
       final byte[] inputKeyBytes = recordReader.getKeyBytes(recordAvroWrapper, null);

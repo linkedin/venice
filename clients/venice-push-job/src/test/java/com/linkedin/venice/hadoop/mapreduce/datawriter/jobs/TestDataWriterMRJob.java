@@ -1,12 +1,20 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_RMD_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_VALUE_SCHEMA_STRING_PROP;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.utils.TestWriteUtils;
 import java.io.IOException;
+import org.apache.avro.Schema;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -135,5 +143,47 @@ public class TestDataWriterMRJob {
     DataWriterMRJob mrJob = createMRJobWithMockCluster(runningJob);
     // Should not throw when staging dir doesn't exist
     mrJob.close();
+  }
+
+  @Test
+  public void testSetupInputFormatConfPlumbsWriterSchemasWhenProjecting() {
+    Schema writerValueSchema = TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+    Schema writerRmdSchema = RmdSchemaGenerator.generateMetadataSchema(writerValueSchema, 1);
+
+    PushJobSetting setting = avroProjectionPushJobSetting();
+    setting.projectInputToWriterSchema = true;
+    setting.writerValueSchemaString = writerValueSchema.toString();
+    setting.replicationMetadataSchemaString = writerRmdSchema.toString();
+
+    JobConf jobConf = new JobConf();
+    new DataWriterMRJob().setupInputFormatConf(jobConf, setting);
+
+    Assert.assertEquals(jobConf.get(WRITER_VALUE_SCHEMA_STRING_PROP), writerValueSchema.toString());
+    Assert.assertEquals(jobConf.get(WRITER_RMD_SCHEMA_STRING_PROP), writerRmdSchema.toString());
+  }
+
+  @Test
+  public void testSetupInputFormatConfOmitsWriterSchemasWhenNotProjecting() {
+    PushJobSetting setting = avroProjectionPushJobSetting();
+    setting.projectInputToWriterSchema = false;
+
+    JobConf jobConf = new JobConf();
+    new DataWriterMRJob().setupInputFormatConf(jobConf, setting);
+
+    assertNull(jobConf.get(WRITER_VALUE_SCHEMA_STRING_PROP));
+    assertNull(jobConf.get(WRITER_RMD_SCHEMA_STRING_PROP));
+  }
+
+  private PushJobSetting avroProjectionPushJobSetting() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.isSourceKafka = false;
+    setting.isAvro = true;
+    setting.inputURI = System.getProperty("java.io.tmpdir");
+    setting.keyField = "key";
+    setting.valueField = "value";
+    setting.rmdField = "rmd";
+    setting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
+    setting.inputDataSchemaString = TestWriteUtils.STRING_TO_NAME_RECORD_V2_SCHEMA.toString();
+    return setting;
   }
 }
