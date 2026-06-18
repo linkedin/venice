@@ -6873,6 +6873,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // choose proper instance to hold the replica.
     helixClusterProperties
         .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
+    // The controller cluster resources are managed by WAGED (set in createClusterIfRequired). WAGED computes its
+    // baseline assignment asynchronously by default, so the first rebalance pipeline run returns an empty assignment
+    // and the real one only lands after the async baseline finishes and re-triggers the pipeline. Because the
+    // non-HaaS controller runs this pipeline in-process and blocks on the controller-cluster resource becoming
+    // visible in the external view during startup (waitUntilClusterResourceIsVisibleInEV), that async convergence
+    // can miss the startup window. Force synchronous global rebalance so the assignment is computed on the first
+    // pipeline run.
+    helixClusterProperties
+        .put(ClusterConfig.ClusterConfigProperty.GLOBAL_REBALANCE_ASYNC_MODE.name(), String.valueOf(false));
     /**
      * This {@link HelixAdmin#setConfig(HelixConfigScope, Map)} function will throw a HelixException if
      * the previous {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
