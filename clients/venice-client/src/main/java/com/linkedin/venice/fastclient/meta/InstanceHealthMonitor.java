@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.meta;
 import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
 import static org.apache.hc.core5.http.HttpStatus.SC_SERVICE_UNAVAILABLE;
 
+import com.google.common.collect.ImmutableSet;
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
@@ -16,7 +17,6 @@ import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -52,10 +52,14 @@ public class InstanceHealthMonitor implements Closeable {
   private final Set<String> suspiciousInstanceSet = new ConcurrentSkipListSet<>();
 
   /**
-   * Instances currently serving this store, refreshed via {@link #updateLiveInstanceSet(Set)}. Empty means "not yet
-   * known", so liveness filtering fails open.
+   * The store's ready-to-serve instances from the metadata routing table, replaced on each metadata refresh via
+   * {@link #updateLiveInstanceSet(Set)}; empty before the first refresh (see {@link #isInstanceLive(String)}).
+   *
+   * <p>The {@link ImmutableSet} type plus a volatile reference is the whole thread-safety story (no lock needed): the
+   * value can never be mutated in place, so the metadata thread may swap the reference at any time and concurrent
+   * reads in {@link #isInstanceLive(String)} stay safe.
    */
-  private volatile Set<String> liveInstanceSet = Collections.emptySet();
+  private volatile ImmutableSet<String> liveInstanceSet = ImmutableSet.of();
 
   private final TimeoutProcessor timeoutProcessor;
 
@@ -286,8 +290,8 @@ public class InstanceHealthMonitor implements Closeable {
     if (liveInstances == null || liveInstances.isEmpty()) {
       return;
     }
-    // Own a private snapshot so a caller mutating its set can't affect the hb flow
-    Set<String> liveSnapshot = Collections.unmodifiableSet(new HashSet<>(liveInstances));
+    // Own a private immutable snapshot so a caller mutating its set can't affect the hb flow.
+    ImmutableSet<String> liveSnapshot = ImmutableSet.copyOf(liveInstances);
     liveInstanceSet = liveSnapshot;
     unhealthyInstanceSet.retainAll(liveSnapshot);
     suspiciousInstanceSet.retainAll(liveSnapshot);
@@ -300,7 +304,10 @@ public class InstanceHealthMonitor implements Closeable {
     loadController.retainInstances(liveSnapshot);
   }
 
-  /** True if the instance still serves this store, or the serving set is unknown (fail open before first refresh). */
+  /**
+   * Whether {@code instance} still serves this store. Returns {@code true} when the serving set is empty (before the
+   * first metadata refresh): a defensive check so a host is never excluded before the serving set is known;
+   */
   private boolean isInstanceLive(String instance) {
     Set<String> liveInstances = liveInstanceSet;
     return liveInstances.isEmpty() || liveInstances.contains(instance);
