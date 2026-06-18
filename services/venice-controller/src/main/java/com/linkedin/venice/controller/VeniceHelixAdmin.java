@@ -6873,8 +6873,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
     clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
-    // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
-    // choose proper instance to hold the replica.
+    // Topology and fault-zone fields are used by the rebalancer (WAGED for the controller cluster) to spread a
+    // resource's replicas across fault zones; the controller cluster does not enable fault-zone-aware placement.
     clusterConfig.setTopologyAwareEnabled(false);
     clusterConfig.setPersistBestPossibleAssignment(true);
     // WAGED computes its baseline assignment asynchronously by default, so the first rebalance pipeline run returns an
