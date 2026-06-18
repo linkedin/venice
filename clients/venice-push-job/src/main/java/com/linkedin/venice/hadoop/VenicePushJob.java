@@ -2614,10 +2614,12 @@ public class VenicePushJob implements AutoCloseable {
    *   <li>the store's effective rewind is below the configured threshold (not worth the merge cost).</li>
    * </ul>
    *
-   * <p><b>Control plane only:</b> shortening the rewind is correct ONLY when the batch dataset already
-   * incorporates real-time data up to {@code T} (the offline merge data plane). The master flag defaults to
-   * off and must remain off in production until that data plane is in place; otherwise the shortened rewind
-   * would skip nearline writes between the offline cutoff and {@code T} (a data gap).
+   * <p><b>Correctness:</b> shortening the rewind is correct ONLY when the batch dataset already incorporates
+   * real-time data up to {@code T} (the offline merge data plane in {@link #runSnapshotAtTMergePush}). To keep the
+   * server's REWIND_FROM_SOP rewind starting at or before the snapshot's coverage regardless of how long the merge
+   * takes, that path stamps the Start-Of-Push with the job start time (see
+   * {@link #snapshotAtTStartOfPushTimestampMs}) rather than the real (late) broadcast time. The master flag
+   * defaults to off and must remain off in production until the full data plane is wired end to end.
    *
    * @return {@code true} iff the rewind override was applied.
    */
@@ -2686,6 +2688,20 @@ public class VenicePushJob implements AutoCloseable {
     return true;
   }
 
+  /**
+   * The Start-Of-Push producer timestamp to stamp for the snapshot-at-T merge push. The server computes an A/A
+   * hybrid store's REWIND_FROM_SOP rewind start as {@code SOP messageTimestamp - rewindTimeInSecondsOverride}, and
+   * the override is {@code (jobStart - cutoff) + buffer}. Stamping the SOP with the job start time therefore pins
+   * the server's rewind start to {@code cutoff - buffer} (or {@code jobStart - buffer} when no cutoff is set) — at
+   * or before the snapshot's coverage, with the buffer as safety overlap — deterministically and independent of
+   * how long the offline merge took to produce the SOP. Using the real (late) broadcast time instead would let the
+   * rewind start drift past the snapshot's coverage on a long merge and silently drop the real-time writes in the
+   * gap.
+   */
+  static long snapshotAtTStartOfPushTimestampMs(PushJobSetting setting) {
+    return setting.jobStartTimeMs;
+  }
+
   static Map<Integer, String> parseSnapshotAtTRegionBrokers(String config) {
     Map<Integer, String> regionBrokers = new HashMap<>();
     if (config == null || config.trim().isEmpty()) {
@@ -2701,10 +2717,35 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException(
             "Invalid " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " entry '" + trimmed + "'; expected 'coloId=broker'.");
       }
-      regionBrokers
-          .put(Integer.parseInt(trimmed.substring(0, separator).trim()), trimmed.substring(separator + 1).trim());
+      int coloId = Integer.parseInt(trimmed.substring(0, separator).trim());
+      String brokerAddress = trimmed.substring(separator + 1).trim();
+      if (brokerAddress.isEmpty()) {
+        throw new VeniceException(
+            "Invalid " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " entry '" + trimmed + "'; the broker address is empty.");
+      }
+      if (regionBrokers.containsKey(coloId)) {
+        throw new VeniceException(
+            "Duplicate coloId " + coloId + " in " + SNAPSHOT_AT_T_RT_REGION_BROKERS
+                + "; each region must be listed exactly once.");
+      }
+      regionBrokers.put(coloId, brokerAddress);
     }
     return regionBrokers;
+  }
+
+  /**
+   * The real-time topic names the snapshot-at-T merge reads for {@code storeInfo}: the regular RT, plus the
+   * separate RT topic when the store has separate-real-time-topic enabled. This mirrors the server, which during a
+   * hybrid rewind subscribes to both topics per region; reading only the regular RT would drop every write that
+   * landed on the separate RT (incremental-push data). Both topics live on the same per-region broker, so each is
+   * read from every configured region.
+   */
+  static List<String> snapshotAtTRtTopicNames(StoreInfo storeInfo) {
+    String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+    if (storeInfo.isSeparateRealTimeTopicEnabled()) {
+      return Arrays.asList(realTimeTopicName, Utils.getSeparateRealTimeTopicName(storeInfo));
+    }
+    return Collections.singletonList(realTimeTopicName);
   }
 
   /**
@@ -2729,19 +2770,22 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     Map<ByteBuffer, ByteBuffer> batchValues = readBatchInputForSnapshot();
-    String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+    List<String> realTimeTopicNames = snapshotAtTRtTopicNames(storeInfo);
     long cutoffMs = setting.snapshotAtTCutoffEpochSeconds > 0 ? setting.snapshotAtTCutoffEpochSeconds * 1000 : 0L;
     SnapshotAtTRtReader rtReader = new SnapshotAtTRtReader();
     List<SnapshotAtTRtRecord> rtRecords = new ArrayList<>();
     for (Map.Entry<Integer, String> region: setting.snapshotAtTRtRegionBrokers.entrySet()) {
-      rtRecords.addAll(
-          rtReader.readRegion(
-              snapshotConsumerProps(region.getValue()),
-              region.getValue(),
-              realTimeTopicName,
-              setting.partitionCount,
-              cutoffMs,
-              region.getKey()));
+      VeniceProperties consumerProps = snapshotConsumerProps(region.getValue());
+      for (String realTimeTopicName: realTimeTopicNames) {
+        rtRecords.addAll(
+            rtReader.readRegion(
+                consumerProps,
+                region.getValue(),
+                realTimeTopicName,
+                setting.partitionCount,
+                cutoffMs,
+                region.getKey()));
+      }
     }
 
     SnapshotAtTSchemaRepository schemaRepository =
@@ -2778,7 +2822,8 @@ public class VenicePushJob implements AutoCloseable {
           setting.isChunkingEnabled,
           setting.topicCompressionStrategy,
           compressionDictionary,
-          Collections.emptyMap());
+          Collections.emptyMap(),
+          snapshotAtTStartOfPushTimestampMs(setting));
       SnapshotAtTPushExecutor.Stats stats = new SnapshotAtTPushExecutor()
           .execute(dataWriter, batchValues, setting.valueSchemaId, rtRecords, merger, compressor);
       dataWriter.broadcastEndOfPush(Collections.emptyMap());
@@ -2809,7 +2854,14 @@ public class VenicePushJob implements AutoCloseable {
       for (FileStatus status: fs.listStatus(inputPath, PATH_FILTER)) {
         try (VeniceAvroFileIterator iterator = new VeniceAvroFileIterator(fs, status.getPath(), recordReader)) {
           while (iterator.next()) {
-            batchValues.put(ByteBuffer.wrap(iterator.getCurrentKey()), ByteBuffer.wrap(iterator.getCurrentValue()));
+            byte[] value = iterator.getCurrentValue();
+            if (value == null) {
+              // ETL/Avro inputs encode a delete as a null value. In a fresh version an absent key already means
+              // deleted, and any real RT write for the key wins over batch data regardless, so there is nothing
+              // to seed for it.
+              continue;
+            }
+            batchValues.put(ByteBuffer.wrap(iterator.getCurrentKey()), ByteBuffer.wrap(value));
           }
         }
       }

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
@@ -23,6 +24,9 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.BiConsumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -132,7 +136,99 @@ public class SnapshotAtTRecordMergerTest {
     assertEquals(((Number) timestampRecord.get("field2")).longValue(), 0L);
   }
 
+  /**
+   * The fold must converge to the same result no matter the order RT records are applied in. The executor sorts a
+   * key's records by timestamp before folding, but the fold itself must be commutative (this is what makes an
+   * out-of-order / distributed merge safe). One key, batch base + cross-colo out-of-order PUT(100,colo0),
+   * DELETE(200,colo1), PUT(300,colo0) [latest -> wins], PUT(50,colo1): value-level DCR must converge to the ts=300
+   * PUT in any order, dropping every superseded write.
+   */
+  @Test
+  public void testFoldIsOrderIndependentAcrossColosForPutAndDelete() {
+    List<BiConsumer<SnapshotAtTRecordMerger, KeyMergeState>> ops = Arrays.asList(
+        (m, s) -> m.applyPut(s, serializeValue("ts100", "b"), VALUE_SCHEMA_ID, 100L, 0),
+        (m, s) -> m.applyDelete(s, 200L, 1),
+        (m, s) -> m.applyPut(s, serializeValue("winner", "b"), VALUE_SCHEMA_ID, 300L, 0),
+        (m, s) -> m.applyPut(s, serializeValue("ts50", "b"), VALUE_SCHEMA_ID, 50L, 1));
+
+    MergedRecord ascending = foldInOrder(ops, new int[] { 3, 0, 1, 2 }, false);
+    MergedRecord scrambled = foldInOrder(ops, new int[] { 2, 0, 3, 1 }, false);
+
+    for (MergedRecord record: Arrays.asList(ascending, scrambled)) {
+      assertFalse(record.isDelete());
+      assertEquals(valueField(record, "field1"), "winner");
+      assertEquals(valueLevelRmdTimestamp(record), 300L);
+    }
+  }
+
+  /**
+   * Field-level (write-compute) DCR resolves each field by its own per-field timestamp, so folding UPDATEs in any
+   * order must converge to the same per-field winner: UPDATE field1@100, field2@300, field1@200 (latest for
+   * field1) -> field1="f1-200", field2="f2-300".
+   */
+  @Test
+  public void testFoldIsOrderIndependentForFieldLevelUpdates() {
+    List<BiConsumer<SnapshotAtTRecordMerger, KeyMergeState>> ops = Arrays.asList(
+        (m, s) -> m.applyUpdate(
+            s,
+            serializeUpdate(setField("field1", "f1-100")),
+            VALUE_SCHEMA_ID,
+            UPDATE_PROTOCOL_VERSION,
+            100L,
+            0),
+        (m, s) -> m.applyUpdate(
+            s,
+            serializeUpdate(setField("field2", "f2-300")),
+            VALUE_SCHEMA_ID,
+            UPDATE_PROTOCOL_VERSION,
+            300L,
+            1),
+        (m, s) -> m.applyUpdate(
+            s,
+            serializeUpdate(setField("field1", "f1-200")),
+            VALUE_SCHEMA_ID,
+            UPDATE_PROTOCOL_VERSION,
+            200L,
+            0));
+
+    MergedRecord ascending = foldInOrder(ops, new int[] { 0, 2, 1 }, true);
+    MergedRecord scrambled = foldInOrder(ops, new int[] { 1, 2, 0 }, true);
+
+    for (MergedRecord record: Arrays.asList(ascending, scrambled)) {
+      assertFalse(record.isDelete());
+      assertEquals(valueField(record, "field1"), "f1-200");
+      assertEquals(valueField(record, "field2"), "f2-300");
+      GenericRecord timestampRecord = fieldLevelRmdTimestampRecord(record);
+      assertEquals(((Number) timestampRecord.get("field1")).longValue(), 200L);
+      assertEquals(((Number) timestampRecord.get("field2")).longValue(), 300L);
+    }
+  }
+
   // ---- helpers ----
+
+  /** Fold the given ops onto a fresh batch-seeded state in the given order, returning the finished record. */
+  private MergedRecord foldInOrder(
+      List<BiConsumer<SnapshotAtTRecordMerger, KeyMergeState>> ops,
+      int[] order,
+      boolean fieldLevelTimestamp) {
+    SnapshotAtTRecordMerger merger =
+        new SnapshotAtTRecordMerger(schemaRepository, STORE, rmdVersion, fieldLevelTimestamp);
+    KeyMergeState state = merger.seedFromBatch(serializeValue("batch", "b"), VALUE_SCHEMA_ID);
+    for (int index: order) {
+      ops.get(index).accept(merger, state);
+    }
+    return merger.finalizeRecord(state);
+  }
+
+  private GenericRecord setField(String fieldName, String value) {
+    return new UpdateBuilderImpl(updateSchema).setNewFieldValue(fieldName, value).build();
+  }
+
+  private String valueField(MergedRecord record, String fieldName) {
+    GenericRecord value = (GenericRecord) MapOrderPreservingSerDeFactory.getDeserializer(valueSchema, valueSchema)
+        .deserialize(record.getValue());
+    return value.get(fieldName).toString();
+  }
 
   private ByteBuffer serializeValue(String field1, String field2) {
     GenericRecord record = new GenericData.Record(valueSchema);

@@ -111,6 +111,7 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
@@ -119,6 +120,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -539,6 +541,28 @@ public class VenicePushJobTest {
   }
 
   /**
+   * Snapshot-at-T stamps the SOP with the job start time, so the server's REWIND_FROM_SOP rewind start
+   * (SOP messageTimestamp - rewindTimeInSecondsOverride) is pinned to (cutoff - buffer) regardless of how long the
+   * merge takes. It must never drift past the snapshot's cutoff, which would silently drop real-time writes.
+   */
+  @Test
+  public void testSnapshotAtTStartOfPushTimestampPinsServerRewindToCutoff() {
+    PushJobSetting setting = newSnapshotAtTSetting();
+    long nowSeconds = setting.jobStartTimeMs / 1000;
+    long twoHours = 2 * 60 * 60;
+    long cutoffSeconds = nowSeconds - twoHours;
+    setting.snapshotAtTCutoffEpochSeconds = cutoffSeconds;
+    assertTrue(VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+
+    // The server computes rewindStart = SOP messageTimestamp - rewindTimeInSecondsOverride.
+    long sopTimestampMs = VenicePushJob.snapshotAtTStartOfPushTimestampMs(setting);
+    long serverRewindStartMs = sopTimestampMs - setting.rewindTimeInSecondsOverride * 1000;
+    // Pinned to (cutoff - buffer): at or before the snapshot's coverage, with the buffer as safety overlap.
+    assertEquals(serverRewindStartMs, cutoffSeconds * 1000 - setting.snapshotAtTRewindBufferSeconds * 1000);
+    assertTrue(serverRewindStartMs <= cutoffSeconds * 1000, "rewind start must not drift past the snapshot cutoff");
+  }
+
+  /**
    * Integration: the per-VPJ knobs, parsed by getPushJobSetting and gated by
    * maybeApplySnapshotAtTRewindOverride, must carry the shortened rewind into the controller's
    * version-creation request (requestTopicForWrites).
@@ -608,6 +632,36 @@ public class VenicePushJobTest {
     assertEquals(VenicePushJob.parseSnapshotAtTRegionBrokers("0=brokerA; ").size(), 1);
     // A malformed entry (missing '=') is rejected.
     assertThrows(VeniceException.class, () -> VenicePushJob.parseSnapshotAtTRegionBrokers("no-equals"));
+    // An empty broker address is rejected: it would later fail to connect, or be mistaken for a valid region.
+    assertThrows(VeniceException.class, () -> VenicePushJob.parseSnapshotAtTRegionBrokers("0="));
+    // A duplicate coloId is rejected: silently overwriting it would drop one region's real-time data.
+    assertThrows(VeniceException.class, () -> VenicePushJob.parseSnapshotAtTRegionBrokers("0=brokerA;0=brokerB"));
+  }
+
+  /**
+   * For a store with separate-real-time-topic enabled, the snapshot-at-T merge must read BOTH the regular RT and
+   * the separate RT topic (mirroring the server, which subscribes to both), otherwise every write that landed on
+   * the separate RT (incremental-push data) would be lost from the offline merge.
+   */
+  @Test
+  public void testSnapshotAtTRtTopicNamesIncludesSeparateRtWhenEnabled() {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setName(TEST_STORE);
+    storeInfo.setVersions(Collections.emptyList());
+    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(3600, 1000, -1, BufferReplayPolicy.REWIND_FROM_SOP));
+    String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+
+    storeInfo.setSeparateRealTimeTopicEnabled(false);
+    assertEquals(
+        VenicePushJob.snapshotAtTRtTopicNames(storeInfo),
+        Collections.singletonList(realTimeTopicName),
+        "Only the regular RT should be read when separate-RT is disabled");
+
+    storeInfo.setSeparateRealTimeTopicEnabled(true);
+    List<String> withSeparate = VenicePushJob.snapshotAtTRtTopicNames(storeInfo);
+    assertEquals(withSeparate.size(), 2, "Both the regular RT and the separate RT should be read");
+    assertEquals(withSeparate.get(0), realTimeTopicName);
+    assertEquals(withSeparate.get(1), realTimeTopicName + Utils.SEPARATE_TOPIC_SUFFIX);
   }
 
   /**

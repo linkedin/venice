@@ -57,6 +57,41 @@ public class SnapshotAtTSchemaRepositoryTest {
   }
 
   @Test
+  public void testFromControllerThrowsOnEmptyValueSchemas() {
+    // A successful-but-empty value-schema response leaves no latest value schema id; the merge would later get a
+    // null superset schema, so fail fast at construction instead.
+    ControllerClient client = mock(ControllerClient.class);
+    when(client.getAllValueSchema(STORE)).thenReturn(emptyResponse());
+    when(client.getAllReplicationMetadataSchemas(STORE)).thenReturn(emptyResponse());
+    when(client.getAllValueAndDerivedSchema(STORE)).thenReturn(emptyResponse());
+    assertThrows(VeniceException.class, () -> SnapshotAtTSchemaRepository.fromController(client, STORE));
+  }
+
+  @Test
+  public void testFromControllerThrowsOnRmdSchemaError() {
+    // Conflict resolution depends on RMD schemas; an RMD fetch error must abort, not proceed with empty RMD.
+    ControllerClient client = mock(ControllerClient.class);
+    when(client.getAllValueSchema(STORE)).thenReturn(valueSchemaResponse());
+    MultiSchemaResponse rmdError = new MultiSchemaResponse();
+    rmdError.setError("rmd boom");
+    when(client.getAllReplicationMetadataSchemas(STORE)).thenReturn(rmdError);
+    when(client.getAllValueAndDerivedSchema(STORE)).thenReturn(emptyResponse());
+    assertThrows(VeniceException.class, () -> SnapshotAtTSchemaRepository.fromController(client, STORE));
+  }
+
+  @Test
+  public void testFromControllerThrowsOnDerivedSchemaError() {
+    // Write-compute (partial-update) merges depend on derived schemas; a derived fetch error must abort.
+    ControllerClient client = mock(ControllerClient.class);
+    when(client.getAllValueSchema(STORE)).thenReturn(valueSchemaResponse());
+    when(client.getAllReplicationMetadataSchemas(STORE)).thenReturn(emptyResponse());
+    MultiSchemaResponse derivedError = new MultiSchemaResponse();
+    derivedError.setError("derived boom");
+    when(client.getAllValueAndDerivedSchema(STORE)).thenReturn(derivedError);
+    assertThrows(VeniceException.class, () -> SnapshotAtTSchemaRepository.fromController(client, STORE));
+  }
+
+  @Test
   public void testUnsupportedMethodsThrow() {
     ControllerClient client = mock(ControllerClient.class);
     when(client.getAllValueSchema(STORE)).thenReturn(valueSchemaResponse());

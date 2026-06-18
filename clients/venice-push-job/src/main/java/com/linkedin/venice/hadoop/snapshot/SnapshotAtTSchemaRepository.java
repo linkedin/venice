@@ -55,28 +55,38 @@ public class SnapshotAtTSchemaRepository implements ReadOnlySchemaRepository {
       valueSchemas.put(schema.getId(), new SchemaEntry(schema.getId(), schema.getSchemaStr()));
       latestValueSchemaId = Math.max(latestValueSchemaId, schema.getId());
     }
+    if (valueSchemas.isEmpty()) {
+      throw new VeniceException(
+          "No value schemas returned for store " + storeName + "; cannot run the snapshot-at-T merge.");
+    }
 
+    // RMD and derived schemas are required for correct conflict resolution / write-compute merges, so a fetch
+    // error must abort the push rather than silently proceed with an empty schema set.
     Map<Long, RmdSchemaEntry> rmdSchemas = new HashMap<>();
     int rmdVersionId = -1;
     MultiSchemaResponse rmdResponse = controllerClient.getAllReplicationMetadataSchemas(storeName);
-    if (!rmdResponse.isError()) {
-      for (MultiSchemaResponse.Schema schema: rmdResponse.getSchemas()) {
-        rmdSchemas.put(
-            key(schema.getRmdValueSchemaId(), schema.getId()),
-            new RmdSchemaEntry(schema.getRmdValueSchemaId(), schema.getId(), schema.getSchemaStr()));
-        rmdVersionId = Math.max(rmdVersionId, schema.getId());
-      }
+    if (rmdResponse.isError()) {
+      throw new VeniceException(
+          "Failed to fetch replication-metadata schemas for store " + storeName + ": " + rmdResponse.getError());
+    }
+    for (MultiSchemaResponse.Schema schema: rmdResponse.getSchemas()) {
+      rmdSchemas.put(
+          key(schema.getRmdValueSchemaId(), schema.getId()),
+          new RmdSchemaEntry(schema.getRmdValueSchemaId(), schema.getId(), schema.getSchemaStr()));
+      rmdVersionId = Math.max(rmdVersionId, schema.getId());
     }
 
     Map<Long, DerivedSchemaEntry> derivedSchemas = new HashMap<>();
     MultiSchemaResponse derivedResponse = controllerClient.getAllValueAndDerivedSchema(storeName);
-    if (!derivedResponse.isError()) {
-      for (MultiSchemaResponse.Schema schema: derivedResponse.getSchemas()) {
-        if (schema.getDerivedSchemaId() > 0) {
-          derivedSchemas.put(
-              key(schema.getId(), schema.getDerivedSchemaId()),
-              new DerivedSchemaEntry(schema.getId(), schema.getDerivedSchemaId(), schema.getSchemaStr()));
-        }
+    if (derivedResponse.isError()) {
+      throw new VeniceException(
+          "Failed to fetch derived schemas for store " + storeName + ": " + derivedResponse.getError());
+    }
+    for (MultiSchemaResponse.Schema schema: derivedResponse.getSchemas()) {
+      if (schema.getDerivedSchemaId() > 0) {
+        derivedSchemas.put(
+            key(schema.getId(), schema.getDerivedSchemaId()),
+            new DerivedSchemaEntry(schema.getId(), schema.getDerivedSchemaId(), schema.getSchemaStr()));
       }
     }
 

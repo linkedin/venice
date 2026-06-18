@@ -38,6 +38,7 @@ import static org.testng.Assert.fail;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
@@ -85,6 +86,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -195,6 +197,63 @@ public class VeniceWriterUnitTest {
     assertEquals(
         ((Delete) actualValue2.payloadUnion).replicationMetadataPayload,
         WriterChunkingHelper.EMPTY_BYTE_BUFFER);
+  }
+
+  /**
+   * Snapshot-at-T needs the Start-Of-Push to carry a controlled producer timestamp so the server's
+   * REWIND_FROM_SOP rewind lands at a deterministic point regardless of how long the offline merge took. The
+   * timestamped overload must stamp exactly that value on the SOP control message, while the normal overload
+   * keeps using the writer's clock.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testBroadcastStartOfPushStampsCallerSuppliedTimestamp() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer("\"string\"");
+    VeniceWriterOptions options =
+        new VeniceWriterOptions.Builder("test_sop_timestamp").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+
+    // The custom timestamp is a small, obviously-not-a-clock value so it is unambiguously the one we passed in.
+    long sopTimestamp = 12345L;
+    VeniceWriter<Object, Object, Object> timestampedWriter =
+        new VeniceWriter(options, VeniceProperties.empty(), mockedProducer);
+    timestampedWriter.broadcastStartOfPush(
+        false,
+        false,
+        CompressionStrategy.NO_OP,
+        Optional.empty(),
+        Collections.emptyMap(),
+        sopTimestamp);
+    assertEquals(
+        startOfPushMessageTimestamp(mockedProducer),
+        sopTimestamp,
+        "SOP must carry the caller-supplied producer messageTimestamp");
+
+    // The normal overload keeps using the writer's real clock (a current epoch-ms value, not the custom value).
+    clearInvocations(mockedProducer);
+    VeniceWriter<Object, Object, Object> defaultWriter =
+        new VeniceWriter(options, VeniceProperties.empty(), mockedProducer);
+    defaultWriter.broadcastStartOfPush(Collections.emptyMap());
+    long defaultSopTimestamp = startOfPushMessageTimestamp(mockedProducer);
+    assertTrue(defaultSopTimestamp > 1_000_000_000_000L, "Default SOP must use the writer's real clock");
+  }
+
+  private static long startOfPushMessageTimestamp(PubSubProducerAdapter mockedProducer) {
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), any(), kmeCaptor.capture(), any(), any());
+    for (KafkaMessageEnvelope kme: kmeCaptor.getAllValues()) {
+      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()
+          && ((ControlMessage) kme.payloadUnion).controlMessageType == ControlMessageType.START_OF_PUSH.getValue()) {
+        return kme.producerMetadata.messageTimestamp;
+      }
+    }
+    throw new AssertionError("No Start-Of-Push control message was produced");
   }
 
   @Test(timeOut = TIMEOUT)

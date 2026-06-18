@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.snapshot;
 
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -89,6 +90,16 @@ public class SnapshotAtTRtReader {
         TopicManager topicManager =
             new TopicManagerRepository(topicManagerContext, brokerAddress).getLocalTopicManager();
         PubSubConsumerAdapter consumer = clientsFactory.getConsumerAdapterFactory().create(consumerContext)) {
+      // The separate RT topic may not exist yet for a store that has it enabled but has taken no incremental
+      // push; an absent topic genuinely has no records to merge, so return empty rather than failing the read.
+      if (!topicManager.containsTopic(rtTopic)) {
+        LOGGER.info(
+            "RT topic {} does not exist on broker {} (colo {}); nothing to read.",
+            rtTopicName,
+            brokerAddress,
+            coloId);
+        return records;
+      }
       Map<PubSubTopicPartition, PubSubPosition> startPositions =
           topicManager.getStartPositionsForTopicWithRetries(rtTopic);
       Map<PubSubTopicPartition, PubSubPosition> endPositions = topicManager.getEndPositionsForTopicWithRetries(rtTopic);
@@ -128,12 +139,14 @@ public class SnapshotAtTRtReader {
         }
         consumer.unSubscribe(topicPartition);
         if (consumed < target) {
-          LOGGER.warn(
-              "RT read of {} partition {} stopped early: consumed {} of {} expected records.",
-              rtTopicName,
-              partition,
-              consumed,
-              target);
+          throw new VeniceException(
+              String.format(
+                  "Snapshot-at-T RT read of %s partition %d is incomplete: consumed %d of %d expected records. "
+                      + "Aborting to avoid producing a partial merged dataset (potential data loss).",
+                  rtTopicName,
+                  partition,
+                  consumed,
+                  target));
         }
       }
     }
