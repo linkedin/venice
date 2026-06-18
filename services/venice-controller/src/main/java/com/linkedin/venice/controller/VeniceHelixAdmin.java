@@ -54,6 +54,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
@@ -6851,11 +6852,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * happen in the integration test suite, however, which retries service creation several times
        * if it gets any exception.
        *
-       * In any case, if we call this function twice and progress past this code block, another Helix
-       * function below, {@link HelixAdmin#setConfig(HelixConfigScope, Map)}, fails with the following
-       * symptoms:
+       * In any case, if we call this function twice and progress past this code block, the cluster-config
+       * write below ({@link HelixAdminClient#updateClusterConfigs}, backed by the Helix ConfigAccessor) fails
+       * with symptoms like:
        *
-       * org.apache.helix.HelixException: fail to set config. cluster: venice-controllers is NOT setup.
+       * org.apache.helix.HelixException: cluster venice-controllers is not setup yet
        *
        * Thus, if you see this, it is actually because {@link HelixAdmin#addCluster(String, boolean)}
        * returned true even though the Helix cluster is only partially setup.
@@ -6864,29 +6865,49 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           "admin.addCluster() for '" + controllerClusterName + "' returned false. "
               + "Look for previous errors logged by Helix for more details...");
     }
-    HelixConfigScope configScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(controllerClusterName)
-            .build();
-    Map<String, String> helixClusterProperties = new HashMap<String, String>();
-    helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+    /**
+     * The controller-cluster resources are managed by WAGED (see {@link #createClusterIfRequired(String)}). This
+     * mirrors the WAGED cluster config that the HaaS path applies in
+     * {@link ZkHelixAdminClient#createVeniceControllerCluster()} so both paths assign the controller-cluster resource
+     * the same way. Keep the two in sync when changing WAGED tuning.
+     */
+    ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
+    clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
     // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
     // choose proper instance to hold the replica.
-    helixClusterProperties
-        .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
-    // The controller cluster resources are managed by WAGED (set in createClusterIfRequired). WAGED computes its
-    // baseline assignment asynchronously by default, so the first rebalance pipeline run returns an empty assignment
-    // and the real one only lands after the async baseline finishes and re-triggers the pipeline. Because the
-    // non-HaaS controller runs this pipeline in-process and blocks on the controller-cluster resource becoming
-    // visible in the external view during startup (waitUntilClusterResourceIsVisibleInEV), that async convergence
-    // can miss the startup window. Force synchronous global rebalance so the assignment is computed on the first
-    // pipeline run.
-    helixClusterProperties
-        .put(ClusterConfig.ClusterConfigProperty.GLOBAL_REBALANCE_ASYNC_MODE.name(), String.valueOf(false));
+    clusterConfig.setTopologyAwareEnabled(false);
+    clusterConfig.setPersistBestPossibleAssignment(true);
+    // WAGED computes its baseline assignment asynchronously by default, so the first rebalance pipeline run returns an
+    // empty assignment and the real one only lands after the async baseline finishes and re-triggers the pipeline.
+    // Because the non-HaaS controller runs this pipeline in-process and blocks on the controller-cluster resource
+    // becoming visible in the external view during startup (waitUntilClusterResourceIsVisibleInEV), that async
+    // convergence can miss the startup window. Force synchronous global rebalance so the assignment is computed on the
+    // first pipeline run. The HaaS path does not need this because a dedicated always-on Helix controller runs the
+    // pipeline independently of controller startup.
+    clusterConfig.setGlobalRebalanceAsyncMode(false);
+
+    if (multiClusterConfigs.getHelixGlobalRebalancePreference() != null) {
+      // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost of
+      // rebalancing for the controller is cheap as it is stateless.
+      clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
+    }
+
+    HelixCapacityConfig helixCapacityConfig = multiClusterConfigs.getHelixCapacityConfig();
+    if (helixCapacityConfig != null) {
+      clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
+      // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
+      // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes the
+      // current top-state distribution into account when rebalancing.
+      clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
+      clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
+    }
+
     /**
-     * This {@link HelixAdmin#setConfig(HelixConfigScope, Map)} function will throw a HelixException if
-     * the previous {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
+     * {@link HelixAdminClient#updateClusterConfigs(String, ClusterConfig)} persists the structured cluster config via
+     * the Helix ConfigAccessor and throws a HelixException if the previous
+     * {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
      */
-    admin.setConfig(configScope, helixClusterProperties);
+    helixAdminClient.updateClusterConfigs(controllerClusterName, clusterConfig);
     admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
   }
 
