@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -27,6 +28,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
@@ -118,6 +120,101 @@ public class RequestBasedMetadataTest {
       e.printStackTrace();
     } finally {
       scheduler.shutdownNow();
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  /**
+   * Each metadata refresh pushes the serving set (all active versions' replicas) to the monitor; after the
+   * REPLICA1_NAME to NEW_REPLICA_NAME swap, the reconciliation must be invoked with a set that no longer has
+   * REPLICA1_NAME.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateCacheReconcilesHealthMonitorWithServingSet() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    InstanceHealthMonitor healthMonitor = clientConfig.getInstanceHealthMonitor();
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, true /* metadataChange */);
+      requestBasedMetadata.start();
+
+      // First refresh serves REPLICA1_NAME (partition 0) and REPLICA2_NAME (partition 1). start() runs the first
+      // refresh synchronously, so this invocation has already happened; the timeout just keeps it consistent with the
+      // async second verify below.
+      verify(healthMonitor, timeout(10 * Time.MS_PER_SECOND).atLeastOnce())
+          .updateLiveInstanceSet(argThat(s -> s.contains(REPLICA1_NAME) && s.contains(REPLICA2_NAME)));
+
+      // After the metadata change, partition 0 is served by NEW_REPLICA_NAME instead of REPLICA1_NAME, so a later
+      // refresh must reconcile with a serving set that drops REPLICA1_NAME.
+      verify(healthMonitor, timeout(10 * Time.MS_PER_SECOND).atLeastOnce()).updateLiveInstanceSet(
+          argThat(s -> s.contains(NEW_REPLICA_NAME) && s.contains(REPLICA2_NAME) && !s.contains(REPLICA1_NAME)));
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  /**
+   * Host lifecycle exercised through the real {@link RequestBasedMetadata} refresh + reconciliation and a real
+   * {@link InstanceHealthMonitor} (transport and metadata responses are mocked): a hung request marks a host
+   * unhealthy, a refresh that drops the host evicts it, and a refresh that re-adds it leaves it clean.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testHostLifecycleThroughMetadataRefreshAndRequestPath() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    // No-op refresh executor so only this test drives refreshes (via updateCache) and the metadata sequence is
+    // consumed in order.
+    ScheduledExecutorService noOpRefreshExecutor = mock(ScheduledExecutorService.class);
+    ClientConfig clientConfig =
+        RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false, noOpRefreshExecutor);
+
+    // Real monitor whose heartbeat client never responds, so a suspicious instance becomes unhealthy on the next beat.
+    InstanceHealthMonitor realMonitor = new InstanceHealthMonitor(
+        InstanceHealthMonitorConfig.builder()
+            .setRoutingRequestDefaultTimeoutMS(1000L)
+            .setHeartBeatIntervalSeconds(1)
+            .setHeartBeatRequestTimeoutMS(100L)
+            .setRoutingTimedOutRequestCounterResetDelayMS(2000)
+            .setClient(mock(Client.class))
+            .build());
+    doReturn(realMonitor).when(clientConfig).getInstanceHealthMonitor();
+
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      D2TransportClient d2TransportClient = RequestBasedMetadataTestUtils.getMockD2TransportClientCycling(storeName);
+      requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(getMockD2ServiceDiscovery(d2TransportClient, storeName));
+
+      // State 1: REPLICA1_NAME and REPLICA2_NAME serving (the first refresh runs synchronously in start()).
+      requestBasedMetadata.start();
+
+      // A hung request to REPLICA1_NAME: the routing timeout marks it suspicious and the failing heartbeat then marks
+      // it unhealthy.
+      requestBasedMetadata
+          .trackHealthBasedOnRequestToInstance(REPLICA1_NAME, CURRENT_VERSION, 0, new CompletableFuture<>());
+      waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+        assertFalse(realMonitor.isInstanceHealthy(REPLICA1_NAME));
+        assertEquals(realMonitor.getUnhealthyInstanceCount(), 1);
+      });
+
+      // State 2: a refresh drops REPLICA1_NAME, so reconciliation evicts it and it is healthy again.
+      requestBasedMetadata.updateCache(false);
+      waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+        assertTrue(realMonitor.isInstanceHealthy(REPLICA1_NAME));
+        assertEquals(realMonitor.getUnhealthyInstanceCount(), 0);
+      });
+
+      // State 3: a refresh re-adds REPLICA1_NAME; it returns clean.
+      requestBasedMetadata.updateCache(false);
+      assertTrue(realMonitor.isInstanceHealthy(REPLICA1_NAME));
+      assertEquals(realMonitor.getUnhealthyInstanceCount(), 0);
+    } finally {
       if (requestBasedMetadata != null) {
         requestBasedMetadata.close();
       }

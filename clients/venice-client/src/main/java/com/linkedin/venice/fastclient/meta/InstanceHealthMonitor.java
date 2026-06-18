@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.meta;
 import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
 import static org.apache.hc.core5.http.HttpStatus.SC_SERVICE_UNAVAILABLE;
 
+import com.google.common.collect.ImmutableSet;
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
@@ -49,6 +50,16 @@ public class InstanceHealthMonitor implements Closeable {
   private final Map<String, Integer> pendingRequestCounterMap = new VeniceConcurrentHashMap<>();
   private final Set<String> unhealthyInstanceSet = new ConcurrentSkipListSet<>();
   private final Set<String> suspiciousInstanceSet = new ConcurrentSkipListSet<>();
+
+  /**
+   * The store's ready-to-serve instances from the metadata routing table, replaced on each metadata refresh via
+   * {@link #updateLiveInstanceSet(Set)}; empty before the first refresh (see {@link #isInstanceLive(String)}).
+   *
+   * <p>The {@link ImmutableSet} type plus a volatile reference is the whole thread-safety story (no lock needed): the
+   * value can never be mutated in place, so the metadata thread may swap the reference at any time and concurrent
+   * reads in {@link #isInstanceLive(String)} stay safe.
+   */
+  private volatile ImmutableSet<String> liveInstanceSet = ImmutableSet.of();
 
   private final TimeoutProcessor timeoutProcessor;
 
@@ -116,7 +127,8 @@ public class InstanceHealthMonitor implements Closeable {
             finalTimeoutFuture.cancel();
           }
           if (throwable != null) {
-            if (!unhealthyInstanceSet.contains(instance)) {
+            // Skip hosts removed since the last refresh, so a heartbeat in flight during a prune does not re-add them.
+            if (isInstanceLive(instance) && !unhealthyInstanceSet.contains(instance)) {
               LOGGER.warn(
                   "Heartbeat to instance: {} failed with exception: {}, will add it to unhealthy instance set",
                   instance,
@@ -171,14 +183,17 @@ public class InstanceHealthMonitor implements Closeable {
           /** Using a special http status to indicate the timed out request */
           () -> {
             transportFuture.completeExceptionally(new VeniceClientHttpException("Request timed out", SC_GONE));
-            String logMessage = String.format(
-                "Request to instance: %s timed out after %d ms, will start sending heart-beat to this instance to check whether it is healthy or not",
-                instance,
-                config.getRoutingRequestDefaultTimeoutMS());
-            if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
-              LOGGER.warn(logMessage);
+            // Only track a host still in the fleet, so a timeout to a removed host does not resurrect heartbeats.
+            if (isInstanceLive(instance)) {
+              String logMessage = String.format(
+                  "Request to instance: %s timed out after %d ms, will start sending heart-beat to this instance to check whether it is healthy or not",
+                  instance,
+                  config.getRoutingRequestDefaultTimeoutMS());
+              if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+                LOGGER.warn(logMessage);
+              }
+              suspiciousInstanceSet.add(instance);
             }
-            suspiciousInstanceSet.add(instance);
           },
           config.getRoutingRequestDefaultTimeoutMS(),
           TimeUnit.MILLISECONDS);
@@ -265,9 +280,47 @@ public class InstanceHealthMonitor implements Closeable {
     return unhealthyInstanceSet.size();
   }
 
+  /**
+   * Reconcile all per-instance state (suspicious/unhealthy sets, pending-request counters, load controllers) with the
+   * store's current serving set on every metadata refresh, dropping hosts that left the fleet — otherwise they would
+   * be tracked and sent heart-beat indefinitely. A null or empty set means "not yet known" and is ignored, so a
+   * transient empty refresh cannot wipe accumulated state.
+   */
+  void updateLiveInstanceSet(Set<String> liveInstances) {
+    if (liveInstances == null || liveInstances.isEmpty()) {
+      return;
+    }
+    // Own a private immutable snapshot so a caller mutating its set can't affect the hb flow.
+    ImmutableSet<String> liveSnapshot = ImmutableSet.copyOf(liveInstances);
+    liveInstanceSet = liveSnapshot;
+    unhealthyInstanceSet.retainAll(liveSnapshot);
+    suspiciousInstanceSet.retainAll(liveSnapshot);
+    // Drop counters for departed hosts, but keep in-flight (non-zero) ones so their completion reset stays correct.
+    for (String instance: pendingRequestCounterMap.keySet()) {
+      if (!liveSnapshot.contains(instance)) {
+        pendingRequestCounterMap.computeIfPresent(instance, (k, count) -> count == 0 ? null : count);
+      }
+    }
+    loadController.retainInstances(liveSnapshot);
+  }
+
+  /**
+   * Whether {@code instance} still serves this store. Returns {@code true} when the serving set is empty (before the
+   * first metadata refresh): a defensive check so a host is never excluded before the serving set is known;
+   */
+  private boolean isInstanceLive(String instance) {
+    Set<String> liveInstances = liveInstanceSet;
+    return liveInstances.isEmpty() || liveInstances.contains(instance);
+  }
+
   public int getPendingRequestCounter(String instance) {
     Integer pendingRequestCounter = pendingRequestCounterMap.get(instance);
     return pendingRequestCounter == null ? 0 : pendingRequestCounter;
+  }
+
+  /** Visible for testing: whether a pending-request counter entry currently exists for the instance. */
+  boolean hasPendingRequestCounter(String instance) {
+    return pendingRequestCounterMap.containsKey(instance);
   }
 
   @Override

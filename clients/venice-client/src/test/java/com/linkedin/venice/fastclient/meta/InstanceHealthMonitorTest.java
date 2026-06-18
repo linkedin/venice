@@ -22,6 +22,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -159,7 +160,13 @@ public class InstanceHealthMonitorTest {
       CompletableFuture<TransportClientResponse> requestFuture = new CompletableFuture<>();
       ChainedCompletableFuture<Integer, Integer> chainedRequestFuture =
           monitor.trackHealthBasedOnRequestToInstance(instance, requestFuture);
-      Thread.sleep(1500); // must exceed routingRequestDefaultTimeoutMS (1000ms) to trigger unhealthy detection
+      // Wait for the routing request to time out (it completes the request future) before completing the request,
+      // so the timeout is not cancelled and the instance is marked suspicious.
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertTrue(requestFuture.isCompletedExceptionally(), "routing request should have timed out"));
       requestFuture.complete(null);
       chainedRequestFuture.getOriginalFuture().complete(SC_GONE);
       // Pending request counter will be reset with a delay
@@ -189,6 +196,158 @@ public class InstanceHealthMonitorTest {
           true,
           () -> assertEquals(monitor.getPendingRequestCounter(instance), 0));
     }
+  }
+
+  /**
+   * A host left in the unhealthy set but removed from the fleet must be evicted by updateLiveInstanceSet and not
+   * re-added by the still-failing heartbeat.
+   */
+  @Test
+  public void testUpdateLiveInstanceSetEvictsHostRemovedFromFleet() throws Exception {
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(failingHeartbeatConfig())) {
+      // A request to the host hangs, so the routing timeout + failing heartbeat mark it unhealthy.
+      monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>());
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertFalse(monitor.isInstanceHealthy(instance), "slow host should be marked unhealthy"));
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+
+      // A refresh whose serving set still contains the host keeps it tracked (a live-but-unhealthy host).
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertFalse(monitor.isInstanceHealthy(instance));
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+
+      // An empty or null serving set is treated as "unknown" and must NOT wipe accumulated health state.
+      monitor.updateLiveInstanceSet(Collections.emptySet());
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+      monitor.updateLiveInstanceSet(null);
+      assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+
+      // A refresh whose serving set no longer contains the host evicts it, and the still-failing heartbeat must not
+      // bring it back.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        assertTrue(
+            monitor.isInstanceHealthy(instance),
+            "host removed from the fleet should no longer be tracked as unhealthy");
+        assertEquals(monitor.getUnhealthyInstanceCount(), 0);
+      });
+    }
+  }
+
+  /**
+   * Unhealthy-host lifecycle: a slow host is marked unhealthy by the monitor, evicted when it leaves the serving set,
+   * then rejoins clean.
+   */
+  @Test
+  public void testUnhealthyHostEvictedThenRejoinsClean() throws Exception {
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(failingHeartbeatConfig())) {
+      // Host is in the cluster; a request to it hangs, so the routing timeout + failing heartbeat mark it unhealthy.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>());
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        assertFalse(monitor.isInstanceHealthy(instance), "slow host should be marked unhealthy");
+        assertEquals(monitor.getUnhealthyInstanceCount(), 1);
+      });
+
+      // Host leaves the cluster: the next serving set drops it, so the monitor evicts it.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        assertTrue(monitor.isInstanceHealthy(instance), "departed host should no longer be tracked");
+        assertEquals(monitor.getUnhealthyInstanceCount(), 0);
+      });
+
+      // The same host returns and starts clean.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertTrue(monitor.isInstanceHealthy(instance), "rejoined host should start clean");
+      assertEquals(monitor.getUnhealthyInstanceCount(), 0);
+    }
+  }
+
+  /**
+   * Healthy-host lifecycle: even a host that never went unhealthy has its tracking state evicted when it leaves the
+   * serving set, and rejoins clean.
+   */
+  @Test
+  public void testHealthyHostEvictedThenRejoinsClean() throws Exception {
+    InstanceHealthMonitorConfig config =
+        InstanceHealthMonitorConfig.builder().setRoutingRequestDefaultTimeoutMS(10000L).build();
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(config)) {
+      // Host is in the cluster and serves a successful request, so it is tracked (a drained counter) and healthy.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      ChainedCompletableFuture<Integer, Integer> chainedFuture = monitor.trackHealthBasedOnRequestToInstance(instance);
+      chainedFuture.getOriginalFuture().complete(SC_OK);
+      waitQuietly(chainedFuture.getResultFuture());
+      assertTrue(monitor.isInstanceHealthy(instance));
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+
+      // Host leaves the cluster: even though it is healthy, its tracking state is evicted.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      assertTrue(monitor.isInstanceHealthy(instance));
+      assertFalse(monitor.hasPendingRequestCounter(instance));
+
+      // The same host returns clean.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertTrue(monitor.isInstanceHealthy(instance));
+      assertFalse(monitor.hasPendingRequestCounter(instance));
+    }
+  }
+
+  /**
+   * A drained (zero) pending-request counter for a departed host is evicted; a counter for a live host or one with an
+   * in-flight request is kept so accounting stays correct.
+   */
+  @Test
+  public void testUpdateLiveInstanceSetEvictsDrainedPendingRequestCounters() throws Exception {
+    InstanceHealthMonitorConfig config =
+        InstanceHealthMonitorConfig.builder().setRoutingRequestDefaultTimeoutMS(10000L).build();
+
+    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(config)) {
+      // Complete a request so the pending-request counter drains to 0 but the entry remains.
+      ChainedCompletableFuture<Integer, Integer> chainedFuture = monitor.trackHealthBasedOnRequestToInstance(instance);
+      chainedFuture.getOriginalFuture().complete(SC_OK);
+      waitQuietly(chainedFuture.getResultFuture());
+      assertEquals(monitor.getPendingRequestCounter(instance), 0);
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+
+      // A refresh that still lists the host keeps its drained counter.
+      monitor.updateLiveInstanceSet(Collections.singleton(instance));
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+
+      // A refresh that drops the host evicts the drained counter.
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      assertFalse(monitor.hasPendingRequestCounter(instance));
+
+      // An in-flight request (non-zero counter) is preserved even when the host is not in the serving set, so the
+      // accounting and its completion-time reset stay correct.
+      ChainedCompletableFuture<Integer, Integer> inFlightFuture = monitor.trackHealthBasedOnRequestToInstance(instance);
+      assertEquals(monitor.getPendingRequestCounter(instance), 1);
+      monitor.updateLiveInstanceSet(Collections.singleton("https://other.host:4321"));
+      assertTrue(monitor.hasPendingRequestCounter(instance));
+      assertEquals(monitor.getPendingRequestCounter(instance), 1);
+      inFlightFuture.getOriginalFuture().complete(SC_OK);
+      waitQuietly(inFlightFuture.getResultFuture());
+    }
+  }
+
+  /** Config whose heartbeat to {@link #instance} always times out, so the instance stays unhealthy once tracked. */
+  private static InstanceHealthMonitorConfig failingHeartbeatConfig() {
+    Map<String, CompletableFuture<RestResponse>> futureMap = new VeniceConcurrentHashMap<>();
+    Map<String, Long> delayMap = new VeniceConcurrentHashMap<>();
+    String hbPath = instance + "/" + QueryAction.HEALTH.toString().toLowerCase();
+    futureMap.put(hbPath, CompletableFuture.completedFuture(new RestResponseBuilder().setStatus(SC_OK).build()));
+    // a large delay forces every heartbeat to this instance to time out, so it keeps failing
+    delayMap.put(hbPath, 10000L);
+    return InstanceHealthMonitorConfig.builder()
+        .setRoutingRequestDefaultTimeoutMS(1000L)
+        .setRoutingPendingRequestCounterInstanceBlockThreshold(10)
+        .setHeartBeatIntervalSeconds(1)
+        .setHeartBeatRequestTimeoutMS(100L)
+        .setRoutingTimedOutRequestCounterResetDelayMS(2000)
+        .setClient(new MockClient(delayMap, futureMap))
+        .build();
   }
 
   private void waitQuietly(CompletableFuture future) throws InterruptedException {

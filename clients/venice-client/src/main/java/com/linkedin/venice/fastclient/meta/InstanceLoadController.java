@@ -5,6 +5,7 @@ import com.linkedin.venice.reliability.LoadController;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
+import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -91,4 +92,8 @@ public class InstanceLoadController {
     return getLoadController(instanceId).getRejectionRatio();
   }
 
+  /** Drop {@link LoadController} state for hosts no longer serving the store, so the map does not grow unbounded. */
+  void retainInstances(Set<String> liveInstances) {
+    instanceLoadControllerMap.keySet().retainAll(liveInstances);
+  }
 }
