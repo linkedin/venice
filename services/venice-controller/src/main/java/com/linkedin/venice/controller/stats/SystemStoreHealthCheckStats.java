@@ -32,9 +32,11 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
   private final Sensor badMetaSystemStoreCountSensor;
   private final Sensor badPushStatusSystemStoreCountSensor;
   private final Sensor notRepairableSystemStoreCountSensor;
+  private final Sensor systemStoreHealthCheckErrorCountSensor;
   private final AtomicLong badMetaSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong badPushStatusSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong notRepairableSystemStoreCounter = new AtomicLong(0);
+  private final AtomicLong systemStoreHealthCheckErrorCounter = new AtomicLong(0);
 
   public SystemStoreHealthCheckStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -54,6 +56,10 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
         new AsyncGauge(
             (ignored, ignored2) -> notRepairableSystemStoreCounter.get(),
             SystemStoreHealthCheckTehutiMetricNameEnum.NOT_REPAIRABLE_SYSTEM_STORE_COUNT.getMetricName()));
+    systemStoreHealthCheckErrorCountSensor = registerSensorIfAbsent(
+        new AsyncGauge(
+            (ignored, ignored2) -> systemStoreHealthCheckErrorCounter.get(),
+            SystemStoreHealthCheckTehutiMetricNameEnum.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT.getMetricName()));
 
     // OTel setup
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
@@ -93,6 +99,13 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes,
         notRepairableSystemStoreCounter::get);
+
+    AsyncMetricEntityStateBase.create(
+        SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        baseAttributes,
+        systemStoreHealthCheckErrorCounter::get);
   }
 
   public AtomicLong getBadMetaSystemStoreCounter() {
@@ -107,8 +120,13 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     return notRepairableSystemStoreCounter;
   }
 
+  public AtomicLong getSystemStoreHealthCheckErrorCounter() {
+    return systemStoreHealthCheckErrorCounter;
+  }
+
   enum SystemStoreHealthCheckTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    BAD_META_SYSTEM_STORE_COUNT, BAD_PUSH_STATUS_SYSTEM_STORE_COUNT, NOT_REPAIRABLE_SYSTEM_STORE_COUNT
+    BAD_META_SYSTEM_STORE_COUNT, BAD_PUSH_STATUS_SYSTEM_STORE_COUNT, NOT_REPAIRABLE_SYSTEM_STORE_COUNT,
+    SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT
   }
 
   public enum SystemStoreHealthCheckOtelMetricEntity implements ModuleMetricEntityInterface {
@@ -120,6 +138,11 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     SYSTEM_STORE_UNREPAIRABLE_COUNT(
         "system_store.health_check.unrepairable_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
         "System stores that cannot be repaired", setOf(VENICE_CLUSTER_NAME)
+    ),
+    SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT(
+        "system_store.health_check.error_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+        "Cumulative count of system store health-check invocations that failed by throwing or returning null",
+        setOf(VENICE_CLUSTER_NAME)
     );
 
     private final MetricEntity metricEntity;

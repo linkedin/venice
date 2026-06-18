@@ -11,11 +11,13 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,8 +27,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
+import com.linkedin.venice.controller.systemstore.SystemStoreHealthChecker.HealthCheckResult;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -36,7 +37,6 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Arrays;
@@ -48,6 +48,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -76,121 +77,13 @@ public class SystemStoreRepairTaskTest {
     systemStoreRepairTask.run();
 
     // Only venice-3 is the leader cluster and has system store repair task enabled.
-    verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-1"), anySet(), anySet(), anyMap());
-    verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-2"), anySet(), anySet(), anyMap());
-    verify(systemStoreRepairTask).checkSystemStoresHealth(eq("venice-3"), anySet(), anySet(), anyMap());
-
+    verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-1"), anySet());
+    verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-2"), anySet());
+    verify(systemStoreRepairTask).checkSystemStoresHealth(eq("venice-3"), anySet());
   }
 
   @Test
-  public void testPeriodicCheckHeartbeat() {
-
-    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
-
-    String clusterName = "venice";
-
-    String userStoreName1 = "testStore";
-    String metaStoreName1 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName1);
-    String pushStatusStoreName1 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName1);
-
-    String userStoreName2 = "testStore2";
-    String metaStoreName2 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName2);
-    String pushStatusStoreName2 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName2);
-
-    Map<String, Long> systemStoreToHeartbeatTimestampMap = new HashMap<>();
-    systemStoreToHeartbeatTimestampMap.put(metaStoreName1, 100L);
-    systemStoreToHeartbeatTimestampMap.put(pushStatusStoreName1, 100L);
-    systemStoreToHeartbeatTimestampMap.put(metaStoreName2, 100L);
-    systemStoreToHeartbeatTimestampMap.put(pushStatusStoreName2, 100L);
-
-    Set<String> unhealthySystemStoreSet = new HashSet<>();
-    Set<String> unreachableSystemStoreSet = new HashSet<>();
-    doCallRealMethod().when(systemStoreRepairTask)
-        .checkHeartbeatFromSystemStores(anyString(), anySet(), anySet(), anyMap(), anyInt());
-    // Check is not enabled.
-    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(false);
-    doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
-    doReturn(1).when(systemStoreRepairTask).getHeartbeatCheckIntervalInSeconds();
-    systemStoreRepairTask.checkHeartbeatFromSystemStores(
-        clusterName,
-        unhealthySystemStoreSet,
-        unreachableSystemStoreSet,
-        systemStoreToHeartbeatTimestampMap,
-        5);
-    Assert.assertEquals(unhealthySystemStoreSet.size(), 0);
-    Assert.assertEquals(unreachableSystemStoreSet.size(), 0);
-
-    // Always stale
-    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, metaStoreName1)).thenReturn(10L);
-    // First stale, then healthy HB
-    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName1)).thenReturn(10L)
-        .thenReturn(100L);
-    // Always not reachable
-    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, metaStoreName2)).thenReturn(-1L);
-    // First not reachable, then healthy HB
-    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName2)).thenReturn(-1L)
-        .thenReturn(100L);
-
-    // Check is enabled.
-    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(true);
-    systemStoreRepairTask.checkHeartbeatFromSystemStores(
-        clusterName,
-        unhealthySystemStoreSet,
-        unreachableSystemStoreSet,
-        systemStoreToHeartbeatTimestampMap,
-        5);
-    Assert.assertEquals(unhealthySystemStoreSet.size(), 2);
-    Assert.assertEquals(unreachableSystemStoreSet.size(), 1);
-  }
-
-  @Test
-  public void testCheckHeartbeat() {
-    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
-    String clusterName = "venice";
-    String userStoreName1 = "testStore";
-    String metaStoreName1 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName1);
-    String pushStatusStoreName1 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName1);
-
-    String userStoreName2 = "testStore2";
-    String metaStoreName2 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName2);
-    String pushStatusStoreName2 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName2);
-
-    SystemStoreHeartbeatResponse heartbeatResponse1 = new SystemStoreHeartbeatResponse();
-    heartbeatResponse1.setHeartbeatTimestamp(10L);
-    SystemStoreHeartbeatResponse heartbeatResponse2 = new SystemStoreHeartbeatResponse();
-    heartbeatResponse2.setHeartbeatTimestamp(11L);
-    SystemStoreHeartbeatResponse heartbeatResponse3 = new SystemStoreHeartbeatResponse();
-    heartbeatResponse3.setHeartbeatTimestamp(-1L);
-
-    ControllerClient client1 = mock(ControllerClient.class);
-    when(client1.getHeartbeatFromSystemStore(metaStoreName1)).thenReturn(heartbeatResponse1);
-    when(client1.getHeartbeatFromSystemStore(pushStatusStoreName1)).thenReturn(heartbeatResponse1);
-    when(client1.getHeartbeatFromSystemStore(metaStoreName2)).thenReturn(heartbeatResponse1);
-    when(client1.getHeartbeatFromSystemStore(pushStatusStoreName2)).thenReturn(heartbeatResponse1);
-
-    ControllerClient client2 = mock(ControllerClient.class);
-    when(client2.getHeartbeatFromSystemStore(metaStoreName1)).thenReturn(heartbeatResponse2);
-    when(client2.getHeartbeatFromSystemStore(pushStatusStoreName1)).thenReturn(heartbeatResponse3);
-    when(client2.getHeartbeatFromSystemStore(metaStoreName2)).thenReturn(heartbeatResponse1);
-    when(client2.getHeartbeatFromSystemStore(pushStatusStoreName2)).thenReturn(heartbeatResponse1);
-
-    when(systemStoreRepairTask.getHeartbeatFromSystemStore(anyString(), anyString())).thenCallRealMethod();
-    doCallRealMethod().when(systemStoreRepairTask)
-        .checkHeartbeatFromSystemStores(anyString(), anySet(), anySet(), anyMap(), anyInt());
-    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
-
-    controllerClientMap.put("region1", client1);
-    controllerClientMap.put("region2", client2);
-    when(systemStoreRepairTask.getControllerClientMap(clusterName)).thenReturn(controllerClientMap);
-
-    Assert.assertEquals(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, metaStoreName1), 10L);
-    Assert.assertEquals(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName1), -1L);
-    Assert.assertEquals(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, metaStoreName2), 10L);
-    Assert.assertEquals(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName2), 10L);
-  }
-
-  @Test
-  public void testSendHeartbeat() {
+  public void testPreFilterSystemStores() {
     Version staleVersion = mock(Version.class);
     doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(100)).when(staleVersion).getCreatedTime();
     Version newVersion = mock(Version.class);
@@ -264,41 +157,233 @@ public class SystemStoreRepairTaskTest {
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
     doReturn(30).when(systemStoreRepairTask).getVersionRefreshThresholdInDays();
     when(systemStoreRepairTask.getParentAdmin()).thenReturn(veniceParentHelixAdmin);
-    doCallRealMethod().when(systemStoreRepairTask).checkAndSendHeartbeatToSystemStores(anyString(), anySet(), anyMap());
+    doCallRealMethod().when(systemStoreRepairTask).preFilterSystemStores(anyString(), anySet());
     when(systemStoreRepairTask.getIsRunning()).thenReturn(isRunning);
 
+    // shouldContinue returns false -> early exit
     when(systemStoreRepairTask.shouldContinue(cluster)).thenReturn(false);
-    Set<String> newUnhealthySystemStoreSet = new HashSet<>();
-    Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
+    Set<String> unhealthySet = new HashSet<>();
+    Set<String> candidates = systemStoreRepairTask.preFilterSystemStores(cluster, unhealthySet);
+    Assert.assertTrue(unhealthySet.isEmpty());
+    Assert.assertTrue(candidates.isEmpty());
 
-    systemStoreRepairTask
-        .checkAndSendHeartbeatToSystemStores(cluster, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
-    Assert.assertTrue(newUnhealthySystemStoreSet.isEmpty());
-    Assert.assertTrue(systemStoreToHeartbeatTimestampMap.isEmpty());
-
+    // shouldContinue returns true -> full filter
     isRunning.set(true);
     when(systemStoreRepairTask.shouldContinue(cluster)).thenReturn(true);
-    systemStoreRepairTask
-        .checkAndSendHeartbeatToSystemStores(cluster, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
-    /**
-     * It is expected to NOT check current version as it is always 0 in parent controller.
-     */
-    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 4);
-    Assert.assertTrue(
-        newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore3)));
-    Assert.assertTrue(
-        newUnhealthySystemStoreSet
-            .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore3)));
+    unhealthySet = new HashSet<>();
+    candidates = systemStoreRepairTask.preFilterSystemStores(cluster, unhealthySet);
 
-    /**
-     * All other stores should have new timestamp sent.
-     */
-    Assert.assertEquals(systemStoreToHeartbeatTimestampMap.size(), 2);
-    Assert.assertNotNull(
-        systemStoreToHeartbeatTimestampMap
-            .get(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore1)));
-    Assert.assertNotNull(
-        systemStoreToHeartbeatTimestampMap.get(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore2)));
+    // testStore3 has system store flags disabled -> 2 unhealthy
+    // metaStore1 has no version -> 1 more unhealthy (stale)
+    // pushStatusStore2 has stale version -> 1 more unhealthy (stale)
+    // Total unhealthy: 4
+    Assert.assertEquals(unhealthySet.size(), 4);
+    Assert.assertTrue(unhealthySet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore3)));
+    Assert.assertTrue(
+        unhealthySet.contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore3)));
+
+    // Candidates should be stores that passed all filters (pushStatusStore1 and metaStore2)
+    Assert.assertEquals(candidates.size(), 2);
+    Assert.assertTrue(
+        candidates.contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore1)));
+    Assert.assertTrue(candidates.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore2)));
+  }
+
+  @Test
+  public void testCheckSystemStoresHealthMixedResults() {
+    // Checker returns HEALTHY and UNHEALTHY for the stores it decided on; candidates missing from the result map
+    // are deferred to the next round (NOT marked unhealthy), so an aborted checker can't inflate unhealthy counts.
+    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
+    String cluster = "venice";
+
+    Set<String> candidates = new HashSet<>(Arrays.asList("store_a", "store_b", "store_c"));
+    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
+    doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
+
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    Map<String, HealthCheckResult> results = new HashMap<>();
+    results.put("store_a", HealthCheckResult.HEALTHY);
+    results.put("store_b", HealthCheckResult.UNHEALTHY);
+    // store_c has no result — checker aborted before reaching a decision; should be deferred.
+    doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
+    doReturn(checker).when(task).getHealthChecker();
+
+    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
+
+    Set<String> unhealthySet = new HashSet<>();
+    task.checkSystemStoresHealth(cluster, unhealthySet);
+
+    Assert.assertEquals(unhealthySet.size(), 1);
+    Assert.assertFalse(unhealthySet.contains("store_a"));
+    Assert.assertTrue(unhealthySet.contains("store_b"));
+    Assert.assertFalse(unhealthySet.contains("store_c"), "stores missing from checker result should be deferred");
+  }
+
+  @Test
+  public void testCheckSystemStoresHealthEmptyResultsDoesNotInflateUnhealthy() {
+    // When the checker aborts very early (e.g., leadership lost) and returns an empty result map, candidates
+    // should be deferred to the next round instead of all being marked unhealthy.
+    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
+    String cluster = "venice";
+
+    Set<String> candidates = new HashSet<>(Arrays.asList("store_a", "store_b", "store_c"));
+    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
+    doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
+
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    doReturn(Collections.emptyMap()).when(checker).checkHealth(eq(cluster), anySet());
+    doReturn(checker).when(task).getHealthChecker();
+
+    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
+
+    Set<String> unhealthySet = new HashSet<>();
+    task.checkSystemStoresHealth(cluster, unhealthySet);
+
+    Assert.assertTrue(unhealthySet.isEmpty(), "empty checker result should not flag any store as unhealthy");
+  }
+
+  @Test
+  public void testCheckSystemStoresHealthAllHealthy() {
+    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
+    String cluster = "venice";
+
+    Set<String> candidates = new HashSet<>(Arrays.asList("store_a", "store_b"));
+    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
+    doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
+
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    Map<String, HealthCheckResult> results = new HashMap<>();
+    results.put("store_a", HealthCheckResult.HEALTHY);
+    results.put("store_b", HealthCheckResult.HEALTHY);
+    doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
+    doReturn(checker).when(task).getHealthChecker();
+
+    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
+
+    Set<String> unhealthySet = new HashSet<>();
+    task.checkSystemStoresHealth(cluster, unhealthySet);
+
+    Assert.assertTrue(unhealthySet.isEmpty());
+  }
+
+  @Test
+  public void testCheckSystemStoresHealthRecoversFromCheckerException() {
+    // A misbehaving (e.g., pluggable override) health checker that throws must not take down the cluster round.
+    // Stores already flagged unhealthy by pre-filtering must still be repairable; only the health-check
+    // candidates are deferred.
+    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
+    String cluster = "venice";
+
+    Set<String> candidates = new HashSet<>(Arrays.asList("candidate_a", "candidate_b"));
+    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
+    // Simulate pre-filter already adding one store as unhealthy via the side-effect set.
+    doAnswer(invocation -> {
+      Set<String> unhealthy = invocation.getArgument(1);
+      unhealthy.add("pre_filtered_bad");
+      return candidates;
+    }).when(task).preFilterSystemStores(anyString(), anySet());
+
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    when(checker.checkHealth(eq(cluster), anySet())).thenThrow(new RuntimeException("checker boom"));
+    doReturn(checker).when(task).getHealthChecker();
+
+    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
+    AtomicLong errorCounter = new AtomicLong(0);
+    doReturn(errorCounter).when(task).getSystemStoreHealthCheckErrorCounter(cluster);
+
+    Set<String> unhealthySet = new HashSet<>();
+    task.checkSystemStoresHealth(cluster, unhealthySet);
+
+    // Pre-filtered store stays unhealthy (will be repaired); candidates are deferred (not falsely flagged).
+    Assert.assertTrue(unhealthySet.contains("pre_filtered_bad"));
+    Assert.assertFalse(unhealthySet.contains("candidate_a"));
+    Assert.assertFalse(unhealthySet.contains("candidate_b"));
+    Assert.assertEquals(unhealthySet.size(), 1);
+    // A checker that throws must bump the error metric so a persistently broken checker is alertable rather than
+    // silently deferring every round.
+    Assert.assertEquals(errorCounter.get(), 1L, "a thrown checker exception should increment the error counter");
+  }
+
+  @Test
+  public void testCheckSystemStoresHealthIgnoresNonCandidateResults() {
+    // A misbehaving (e.g., pluggable override) checker may return a store that was not among the candidates.
+    // Such entries must be ignored so they cannot pollute the unhealthy set or the bad-store metric (which would
+    // otherwise throw on an arbitrary, non-system-store name).
+    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
+    String cluster = "venice";
+
+    Set<String> candidates = new HashSet<>(Collections.singletonList("store_a"));
+    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
+    doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
+
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    Map<String, HealthCheckResult> results = new HashMap<>();
+    results.put("store_a", HealthCheckResult.HEALTHY);
+    // Not a candidate; an arbitrary name a buggy override should never be able to inject into repair.
+    results.put("rogue_non_candidate_store", HealthCheckResult.UNHEALTHY);
+    doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
+    doReturn(checker).when(task).getHealthChecker();
+
+    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
+
+    Set<String> unhealthySet = new HashSet<>();
+    task.checkSystemStoresHealth(cluster, unhealthySet);
+
+    Assert.assertTrue(
+        unhealthySet.isEmpty(),
+        "a result for a non-candidate store must be ignored and never added to the unhealthy set");
+  }
+
+  @Test
+  public void testCheckSystemStoresHealthHandlesNullResult() {
+    // A misbehaving checker that returns null (instead of a possibly-empty map) must not abort the cluster round.
+    // Stores already flagged by pre-filtering must still be repairable; the health-check candidates are deferred.
+    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
+    String cluster = "venice";
+
+    Set<String> candidates = new HashSet<>(Arrays.asList("candidate_a", "candidate_b"));
+    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
+    doAnswer(invocation -> {
+      Set<String> unhealthy = invocation.getArgument(1);
+      unhealthy.add("pre_filtered_bad");
+      return candidates;
+    }).when(task).preFilterSystemStores(anyString(), anySet());
+
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    doReturn(null).when(checker).checkHealth(eq(cluster), anySet());
+    doReturn(checker).when(task).getHealthChecker();
+
+    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
+    AtomicLong errorCounter = new AtomicLong(0);
+    doReturn(errorCounter).when(task).getSystemStoreHealthCheckErrorCounter(cluster);
+
+    Set<String> unhealthySet = new HashSet<>();
+    task.checkSystemStoresHealth(cluster, unhealthySet);
+
+    Assert.assertTrue(unhealthySet.contains("pre_filtered_bad"));
+    Assert.assertFalse(unhealthySet.contains("candidate_a"));
+    Assert.assertFalse(unhealthySet.contains("candidate_b"));
+    Assert.assertEquals(unhealthySet.size(), 1);
+    // A checker that returns null must bump the error metric, same as a thrown exception.
+    Assert.assertEquals(errorCounter.get(), 1L, "a null checker result should increment the error counter");
   }
 
   @Test
@@ -314,8 +399,8 @@ public class SystemStoreRepairTaskTest {
     doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
 
     doReturn(1).when(systemStoreRepairTask).getRepairJobCheckIntervalInSeconds();
-    doReturn(1).when(systemStoreRepairTask).getHeartbeatWaitTimeInSeconds();
     doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
+    doReturn(-1).when(systemStoreRepairTask).getMaxRepairPerRound();
 
     // Real stats for metric verification
     String metricPrefix = "controller";
@@ -455,5 +540,142 @@ public class SystemStoreRepairTaskTest {
         clusterAttrs,
         "system_store.health_check.unrepairable_count",
         metricPrefix);
+  }
+
+  @Test
+  public void testRepairMaxPerRoundLimit() {
+    String clusterName = "test-cluster";
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    doCallRealMethod().when(systemStoreRepairTask).repairBadSystemStore(anyString(), anySet());
+    doCallRealMethod().when(systemStoreRepairTask).pollSystemStorePushStatus(anyString(), anyMap(), anySet(), anyInt());
+    doReturn(true).when(systemStoreRepairTask).shouldContinue(anyString());
+    doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
+
+    VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
+
+    doReturn(1).when(systemStoreRepairTask).getRepairJobCheckIntervalInSeconds();
+    doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
+    // Set limit to 1
+    doReturn(1).when(systemStoreRepairTask).getMaxRepairPerRound();
+
+    String systemStore1 = VeniceSystemStoreUtils.getMetaStoreName("testStore1");
+    String systemStore2 = VeniceSystemStoreUtils.getMetaStoreName("testStore2");
+    String systemStore3 = VeniceSystemStoreUtils.getMetaStoreName("testStore3");
+    Set<String> unhealthySystemStoreSet = new HashSet<>();
+    unhealthySystemStoreSet.add(systemStore1);
+    unhealthySystemStoreSet.add(systemStore2);
+    unhealthySystemStoreSet.add(systemStore3);
+
+    Version version = mock(Version.class);
+    doReturn(5).when(version).getNumber();
+    doReturn(version).when(systemStoreRepairTask).getNewSystemStoreVersion(anyString(), anyString(), anyString());
+
+    Admin.OfflinePushStatusInfo goodPushStatus = mock(Admin.OfflinePushStatusInfo.class);
+    doReturn(ExecutionStatus.COMPLETED).when(goodPushStatus).getExecutionStatus();
+    when(parentHelixAdmin.getOffLinePushStatus(anyString(), anyString())).thenReturn(goodPushStatus);
+
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+    // Only 1 store should have been repaired (removed from unhealthy set), 2 remain. The repaired store is
+    // picked randomly from the unhealthy set (we shuffle to avoid both HashSet-order starvation and
+    // sort-order starvation), so we only assert the count, not the identity.
+    Assert.assertEquals(unhealthySystemStoreSet.size(), 2);
+    // Sanity check: exactly one of the original three was repaired (removed) — not zero, not multiple.
+    int remaining = 0;
+    if (unhealthySystemStoreSet.contains(systemStore1)) {
+      remaining++;
+    }
+    if (unhealthySystemStoreSet.contains(systemStore2)) {
+      remaining++;
+    }
+    if (unhealthySystemStoreSet.contains(systemStore3)) {
+      remaining++;
+    }
+    Assert.assertEquals(remaining, 2, "exactly one of the seeded stores should have been repaired");
+  }
+
+  @Test
+  public void testRepairMaxPerRoundCapCountsFailedAttempts() {
+    // Repairs that fail fast (materialization throws) must still consume the per-round cap. Otherwise a burst of
+    // failing stores would let one round attempt the entire unhealthy set and defeat the throttle.
+    String clusterName = "test-cluster";
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    doCallRealMethod().when(systemStoreRepairTask).repairBadSystemStore(anyString(), anySet());
+    doCallRealMethod().when(systemStoreRepairTask).pollSystemStorePushStatus(anyString(), anyMap(), anySet(), anyInt());
+    doReturn(true).when(systemStoreRepairTask).shouldContinue(anyString());
+    doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
+
+    VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
+    doReturn(1).when(systemStoreRepairTask).getRepairJobCheckIntervalInSeconds();
+    doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
+    // Cap of 1 repair per round.
+    doReturn(1).when(systemStoreRepairTask).getMaxRepairPerRound();
+    // Wire the real not-repairable accounting so we can assert the metric, not just the unhealthy-set size.
+    doCallRealMethod().when(systemStoreRepairTask).updateNotRepairableSystemStoreCount(anyString(), anySet());
+    AtomicLong notRepairableCounter = new AtomicLong(0);
+    doReturn(notRepairableCounter).when(systemStoreRepairTask).getNotRepairableSystemStoreCounter(clusterName);
+
+    Set<String> unhealthySystemStoreSet = new HashSet<>();
+    unhealthySystemStoreSet.add(VeniceSystemStoreUtils.getMetaStoreName("testStore1"));
+    unhealthySystemStoreSet.add(VeniceSystemStoreUtils.getMetaStoreName("testStore2"));
+    unhealthySystemStoreSet.add(VeniceSystemStoreUtils.getMetaStoreName("testStore3"));
+
+    // Every materialization fails fast.
+    doThrow(new VeniceException("materialization failed")).when(systemStoreRepairTask)
+        .getNewSystemStoreVersion(anyString(), anyString(), anyString());
+
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+
+    // Despite all attempts failing, the cap of 1 must stop the loop after a single attempt.
+    verify(systemStoreRepairTask, times(1)).getNewSystemStoreVersion(anyString(), anyString(), anyString());
+    // No store was repaired, so all three remain unhealthy (the other two were deferred, never attempted).
+    Assert.assertEquals(unhealthySystemStoreSet.size(), 3);
+    // Only the single attempted-but-failed store is "not repairable"; the two cap-deferred stores were never
+    // attempted and must NOT inflate the metric.
+    Assert.assertEquals(
+        notRepairableCounter.get(),
+        1L,
+        "cap-deferred stores (never attempted) must not be counted as not-repairable");
+  }
+
+  @Test
+  public void testRepairMaxPerRoundExactlyAtLimitRepairsAll() {
+    // Boundary: when the cap equals the number of unhealthy stores, every store is repaired and none is deferred.
+    // Guards the `>=` comparison in SystemStoreRepairTask#repairBadSystemStore against an off-by-one regression.
+    String clusterName = "test-cluster";
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    doCallRealMethod().when(systemStoreRepairTask).repairBadSystemStore(anyString(), anySet());
+    doCallRealMethod().when(systemStoreRepairTask).pollSystemStorePushStatus(anyString(), anyMap(), anySet(), anyInt());
+    doReturn(true).when(systemStoreRepairTask).shouldContinue(anyString());
+    doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
+
+    VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
+    doReturn(1).when(systemStoreRepairTask).getRepairJobCheckIntervalInSeconds();
+    doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
+    // Cap exactly equals the unhealthy-store count: all should be repaired, none deferred.
+    doReturn(3).when(systemStoreRepairTask).getMaxRepairPerRound();
+
+    Set<String> unhealthySystemStoreSet = new HashSet<>();
+    unhealthySystemStoreSet.add(VeniceSystemStoreUtils.getMetaStoreName("testStore1"));
+    unhealthySystemStoreSet.add(VeniceSystemStoreUtils.getMetaStoreName("testStore2"));
+    unhealthySystemStoreSet.add(VeniceSystemStoreUtils.getMetaStoreName("testStore3"));
+
+    Version version = mock(Version.class);
+    doReturn(5).when(version).getNumber();
+    doReturn(version).when(systemStoreRepairTask).getNewSystemStoreVersion(anyString(), anyString(), anyString());
+
+    Admin.OfflinePushStatusInfo goodPushStatus = mock(Admin.OfflinePushStatusInfo.class);
+    doReturn(ExecutionStatus.COMPLETED).when(goodPushStatus).getExecutionStatus();
+    when(parentHelixAdmin.getOffLinePushStatus(anyString(), anyString())).thenReturn(goodPushStatus);
+
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+
+    // Cap == unhealthy count, so every store is attempted and (push COMPLETED) repaired; none deferred, none left.
+    verify(systemStoreRepairTask, times(3)).getNewSystemStoreVersion(anyString(), anyString(), anyString());
+    Assert.assertTrue(
+        unhealthySystemStoreSet.isEmpty(),
+        "when the cap equals the unhealthy-store count, every store should be repaired and none deferred");
   }
 }
