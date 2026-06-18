@@ -104,6 +104,18 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           throw new VeniceBlobTransferFileNotFoundException(
               "Requested files from remote peer are not found. Response: " + response.status());
         } else {
+          // Unusual / non-standard status (e.g. "999 Unknown") that the blob server never deliberately emits
+          // (it only returns 200/400/403/404/405/408/429/500). A 999 typically means the response was malformed
+          // or the connection was torn down mid-transfer by a peer that was shutting down / draining. Log rich
+          // context here because the propagated exception message keeps only the status and loses the peer host,
+          // decoder result, and headers that are needed to tell a torn response apart from a real server error.
+          LOGGER.warn(
+              "Unexpected non-OK response while fetching blob for replica: {} from peer: {}. Status: {}, decoderResult: {}, headers: {}",
+              replicaId,
+              ctx.channel().remoteAddress(),
+              response.status(),
+              response.decoderResult(),
+              response.headers());
           throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
         }
       }

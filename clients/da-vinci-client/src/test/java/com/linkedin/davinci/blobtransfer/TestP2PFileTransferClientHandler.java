@@ -143,6 +143,23 @@ public class TestP2PFileTransferClientHandler {
   }
 
   @Test
+  public void testFailToGetResponseForUnusualStatus() {
+    // Non-standard status such as "999 Unknown" is never deliberately emitted by the blob server; it typically
+    // means a malformed/torn response from a peer shutting down mid-transfer. It must still surface as a
+    // VeniceException carrying the status, and exercises the diagnostic logging path added for this case.
+    DefaultHttpResponse response =
+        new DefaultHttpResponse(HttpVersion.HTTP_1_1, new HttpResponseStatus(999, "Unknown"));
+    ch.writeInbound(response);
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertEquals(e.getCause().getMessage(), "Failed to fetch file from remote peer. Response: 999 Unknown");
+    }
+  }
+
+  @Test
   public void testInvalidResponseHeader() {
     DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
