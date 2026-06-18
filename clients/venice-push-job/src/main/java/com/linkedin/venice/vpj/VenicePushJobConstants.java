@@ -37,6 +37,10 @@ public final class VenicePushJobConstants {
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
   public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
   public static final String UPDATE_SCHEMA_STRING_PROP = "update.schema";
+  /** Serialized writer (target) value schema to project superset input records down to. Set when projection is enabled. */
+  public static final String WRITER_VALUE_SCHEMA_STRING_PROP = "writer.value.schema";
+  /** Serialized writer (target) RMD schema to project superset input RMD down to. Set when projection is enabled and input carries RMD. */
+  public static final String WRITER_RMD_SCHEMA_STRING_PROP = "writer.rmd.schema";
   public static final String RMD_SCHEMA_PROP = "rmd.schema";
 
   // This is a temporary config used to rollout the native input format for Spark. This will be removed soon
@@ -342,6 +346,13 @@ public final class VenicePushJobConstants {
   public static final FsPermission PERMISSION_700 = FsPermission.createImmutable((short) 0700);
 
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
+
+  /**
+   * Optional writer (target) value schema ID. When set, input records are projected down to this schema
+   * via {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}; the input schema must
+   * be a strict superset of it.
+   */
+  public static final String TARGET_WRITER_VALUE_SCHEMA_ID_PROP = "target.writer.value.schema.id";
 
   public static final String RMD_SCHEMA_ID_PROP = "rmd.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";

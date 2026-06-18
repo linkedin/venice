@@ -199,6 +199,15 @@ public class PushJobSetting implements Serializable {
   public ETLValueSchemaTransformation etlValueSchemaTransformation;
   public Map<Integer, String> newKmeSchemasFromController;
 
+  /**
+   * Schema-projection: target writer value schema to project superset
+   * input records down to (see {@code TARGET_WRITER_VALUE_SCHEMA_ID_PROP}).
+   * */
+  public int targetWriterValueSchemaId = -1;
+  public boolean projectInputToWriterSchema;
+  public Schema writerValueSchema;
+  public String writerValueSchemaString;
+
   // Additional inferred properties
   public boolean inputHasRecords;
   public long inputFileDataSizeInBytes;
