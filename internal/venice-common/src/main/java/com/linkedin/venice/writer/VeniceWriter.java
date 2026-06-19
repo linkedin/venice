@@ -2757,24 +2757,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       boolean incrementSequenceNumber,
       LeaderMetadataWrapper leaderMetadataWrapper,
       long logicalTs) {
-    return getKafkaMessageEnvelope(
-        messageType,
-        isEndOfSegment,
-        partition,
-        incrementSequenceNumber,
-        leaderMetadataWrapper,
-        logicalTs,
-        USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP);
-  }
-
-  KafkaMessageEnvelope getKafkaMessageEnvelope(
-      MessageType messageType,
-      boolean isEndOfSegment,
-      int partition,
-      boolean incrementSequenceNumber,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      long logicalTs,
-      long messageTimestamp) {
     // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.messageType = messageType.getValue();
@@ -2789,8 +2771,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     } else {
       producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     }
-    producerMetadata.messageTimestamp =
-        messageTimestamp == USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP ? time.getMilliseconds() : messageTimestamp;
+    producerMetadata.messageTimestamp = time.getMilliseconds();
     producerMetadata.logicalTimestamp = logicalTs;
     kafkaValue.producerMetadata = producerMetadata;
 
@@ -2807,6 +2788,33 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       kafkaValue.leaderMetadataFooter.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
     }
 
+    return kafkaValue;
+  }
+
+  /**
+   * Builds the envelope via the overridable 6-arg {@link #getKafkaMessageEnvelope(MessageType, boolean, int,
+   * boolean, LeaderMetadataWrapper, long)} — so {@link VeniceWriter} subclasses that override it still participate
+   * on every send path — then pins the producer {@code messageTimestamp} when the caller supplied a non-sentinel
+   * value (snapshot-at-T's Start-Of-Push). Otherwise the writer-clock timestamp set by the 6-arg method stands.
+   */
+  KafkaMessageEnvelope getKafkaMessageEnvelope(
+      MessageType messageType,
+      boolean isEndOfSegment,
+      int partition,
+      boolean incrementSequenceNumber,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      long messageTimestamp) {
+    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(
+        messageType,
+        isEndOfSegment,
+        partition,
+        incrementSequenceNumber,
+        leaderMetadataWrapper,
+        logicalTs);
+    if (messageTimestamp != USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP) {
+      kafkaValue.producerMetadata.messageTimestamp = messageTimestamp;
+    }
     return kafkaValue;
   }
 

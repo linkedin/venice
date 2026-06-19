@@ -90,6 +90,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -242,6 +243,53 @@ public class VeniceWriterUnitTest {
     defaultWriter.broadcastStartOfPush(Collections.emptyMap());
     long defaultSopTimestamp = startOfPushMessageTimestamp(mockedProducer);
     assertTrue(defaultSopTimestamp > 1_000_000_000_000L, "Default SOP must use the writer's real clock");
+  }
+
+  /**
+   * A VeniceWriter subclass that overrides the public 6-arg getKafkaMessageEnvelope — as the forward-compatibility
+   * test writer (VeniceWriterWithNewerProtocol) does — must have its override invoked on the put() data path. The
+   * snapshot-at-T SOP-timestamp change threads an extra messageTimestamp argument; it must build through the
+   * overridable 6-arg method, not route the data path around it (which silently degraded the newer-protocol writer
+   * to a normal one and broke ConsumerIntegrationTest forward-compatibility).
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testSubclassGetKafkaMessageEnvelopeOverrideIsUsedOnDataPath() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer("\"string\"");
+    VeniceWriterOptions options =
+        new VeniceWriterOptions.Builder("test_override_used").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    AtomicInteger overrideInvocations = new AtomicInteger();
+    VeniceWriter<String, String, byte[]> writer =
+        new VeniceWriter<String, String, byte[]>(options, VeniceProperties.empty(), mockedProducer) {
+          @Override
+          public KafkaMessageEnvelope getKafkaMessageEnvelope(
+              MessageType messageType,
+              boolean isEndOfSegment,
+              int partition,
+              boolean incrementSequenceNumber,
+              LeaderMetadataWrapper leaderMetadataWrapper,
+              long logicalTs) {
+            overrideInvocations.incrementAndGet();
+            return super.getKafkaMessageEnvelope(
+                messageType,
+                isEndOfSegment,
+                partition,
+                incrementSequenceNumber,
+                leaderMetadataWrapper,
+                logicalTs);
+          }
+        };
+    writer.put("k", "v", 1);
+    assertTrue(
+        overrideInvocations.get() > 0,
+        "The 6-arg getKafkaMessageEnvelope override must be invoked on the put() path");
   }
 
   private static long startOfPushMessageTimestamp(PubSubProducerAdapter mockedProducer) {
