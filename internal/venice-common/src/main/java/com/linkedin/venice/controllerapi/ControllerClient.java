@@ -128,7 +128,11 @@ public class ControllerClient implements Closeable {
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int QUERY_HEARTBEAT_TIMEOUT = 10 * Time.MS_PER_SECOND;
-  private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600 * Time.MS_PER_SECOND;
+  // Default per-request timeout for controller calls. This must exceed the controller-side
+  // offline.job.start.timeout.ms (16 min): the request_topic (version creation) call blocks on the
+  // controller for up to that duration while it waits for the new version's replicas to be assigned,
+  // so a shorter client timeout would expire first and retry the non-idempotent create.
+  private static final int DEFAULT_REQUEST_TIMEOUT_MS = 17 * Time.MS_PER_MINUTE;
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);

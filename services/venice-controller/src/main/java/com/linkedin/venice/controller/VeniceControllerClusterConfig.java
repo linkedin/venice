@@ -765,10 +765,10 @@ public class VeniceControllerClusterConfig {
     this.maxNumberOfPartitions = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
     this.partitionCountRoundUpEnabled = props.getBoolean(ENABLE_PARTITION_COUNT_ROUND_UP, false);
     this.partitionCountRoundUpSize = props.getInt(PARTITION_COUNT_ROUND_UP_SIZE, 1);
-    // Controller-side ceiling for addVersion to wait for a new version's replicas to be assigned. This
-    // exceeds the controller client's per-request timeout (ControllerClient.DEFAULT_REQUEST_TIMEOUT_MS,
-    // 10 min): on slow assignment the client times out first and version creation fails, so raise the
-    // client request timeout to match if a client must wait the full duration.
+    // Controller-side ceiling for addVersion to wait for a new version's replicas to be assigned. The
+    // controller client's per-request timeout (ControllerClient.DEFAULT_REQUEST_TIMEOUT_MS) is set above
+    // this so the request_topic call does not expire client-side and retry the non-idempotent create
+    // while the controller is still waiting.
     this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(16));
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
