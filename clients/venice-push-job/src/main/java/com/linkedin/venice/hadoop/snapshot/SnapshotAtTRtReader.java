@@ -2,12 +2,6 @@ package com.linkedin.venice.hadoop.snapshot;
 
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.Update;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
@@ -23,7 +17,6 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -128,7 +121,7 @@ public class SnapshotAtTRtReader {
           emptyPolls = 0;
           for (DefaultPubSubMessage message: messages) {
             consumed++;
-            SnapshotAtTRtRecord record = toRtRecord(message, coloId, cutoffTimestampMs);
+            SnapshotAtTRtRecord record = SnapshotAtTRtRecordDecoder.decode(message, coloId, cutoffTimestampMs);
             if (record != null) {
               records.add(record);
             }
@@ -152,69 +145,5 @@ public class SnapshotAtTRtReader {
     }
     LOGGER.info("Read {} RT records from {} (colo {}).", records.size(), rtTopicName, coloId);
     return records;
-  }
-
-  private static SnapshotAtTRtRecord toRtRecord(DefaultPubSubMessage message, int coloId, long cutoffTimestampMs) {
-    KafkaKey key = message.getKey();
-    if (key.isControlMessage() || key.isGlobalRtDiv()) {
-      return null;
-    }
-    KafkaMessageEnvelope envelope = message.getValue();
-    long writeTimestamp = envelope.producerMetadata.logicalTimestamp >= 0
-        ? envelope.producerMetadata.logicalTimestamp
-        : envelope.producerMetadata.messageTimestamp;
-    if (cutoffTimestampMs > 0 && writeTimestamp > cutoffTimestampMs) {
-      return null;
-    }
-    // Copy the key/value bytes out of the consumed message immediately: the message envelope's buffers may be
-    // pooled/reused by the consumer on the next poll, and these records are processed only after the whole read
-    // completes.
-    ByteBuffer keyBytes = copy(ByteBuffer.wrap(key.getKey(), 0, key.getKeyLength()));
-    MessageType messageType = MessageType.valueOf(envelope);
-    switch (messageType) {
-      case PUT:
-        Put put = (Put) envelope.payloadUnion;
-        return new SnapshotAtTRtRecord(
-            SnapshotAtTRtRecord.Op.PUT,
-            keyBytes,
-            copy(put.putValue),
-            put.schemaId,
-            -1,
-            writeTimestamp,
-            coloId);
-      case UPDATE:
-        Update update = (Update) envelope.payloadUnion;
-        return new SnapshotAtTRtRecord(
-            SnapshotAtTRtRecord.Op.UPDATE,
-            keyBytes,
-            copy(update.updateValue),
-            update.schemaId,
-            update.updateSchemaId,
-            writeTimestamp,
-            coloId);
-      case DELETE:
-        Delete delete = (Delete) envelope.payloadUnion;
-        return new SnapshotAtTRtRecord(
-            SnapshotAtTRtRecord.Op.DELETE,
-            keyBytes,
-            null,
-            delete.schemaId,
-            -1,
-            writeTimestamp,
-            coloId);
-      default:
-        return null;
-    }
-  }
-
-  /** Copy a buffer's remaining content into a fresh, independently-owned ByteBuffer. */
-  private static ByteBuffer copy(ByteBuffer source) {
-    if (source == null) {
-      return null;
-    }
-    ByteBuffer duplicate = source.duplicate();
-    byte[] bytes = new byte[duplicate.remaining()];
-    duplicate.get(bytes);
-    return ByteBuffer.wrap(bytes);
   }
 }
