@@ -181,6 +181,15 @@ public abstract class AbstractStoragePartition {
   }
 
   /**
+   * Reads the value and replication metadata for a key in a single storage lookup. Returns {@code [value, rmd]}.
+   * Only {@link MergedValueRmdRocksDBStoragePartition}, which co-locates value and RMD in one column family,
+   * supports this; other partitions throw {@link VeniceUnsupportedOperationException}.
+   */
+  public byte[][] getValueAndReplicationMetadata(ByteBuffer key) {
+    throw new VeniceUnsupportedOperationException("getValueAndReplicationMetadata");
+  }
+
+  /**
    * This API deletes a record from RocksDB but updates the metadata in ByteBuffer format and puts it into RocksDB.
    * Only {@link ReplicationMetadataRocksDBStoragePartition} will execute this method,
    * other storage partition implementation will VeniceUnsupportedOperationException.

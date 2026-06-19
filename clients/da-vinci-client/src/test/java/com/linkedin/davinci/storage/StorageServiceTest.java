@@ -1,6 +1,7 @@
 package com.linkedin.davinci.storage;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -112,7 +113,7 @@ public class StorageServiceTest {
     when(configLoader.getStoreConfig(eq(resourceName), eq(PersistenceType.BLACK_HOLE))).thenReturn(storeVersionConfig);
 
     StorageEngine mockStorageEngine = mock(StorageEngine.class);
-    when(mockStorageEngineFactory.getStorageEngine(storeVersionConfig, false)).thenReturn(mockStorageEngine);
+    when(mockStorageEngineFactory.getStorageEngine(storeVersionConfig, false, false)).thenReturn(mockStorageEngine);
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
     when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitionSet);
     when(mockStorageEngine.getStoreVersionName()).thenReturn(resourceName);
@@ -294,7 +295,8 @@ public class StorageServiceTest {
 
     // Capture the boolean argument to verify RMD is enabled
     ArgumentCaptor<Boolean> rmdCaptor = ArgumentCaptor.forClass(Boolean.class);
-    when(mockFactory.getStorageEngine(eq(mockStoreVersionConfig), rmdCaptor.capture())).thenReturn(mockEngine);
+    when(mockFactory.getStorageEngine(eq(mockStoreVersionConfig), rmdCaptor.capture(), anyBoolean()))
+        .thenReturn(mockEngine);
 
     StorageService storageService =
         createStorageServiceForRmdTest(mockStoreRepo, mockServerConfig, mockFactory, mockStoreVersionConfig);
@@ -336,7 +338,8 @@ public class StorageServiceTest {
     when(mockEngine.getStoreVersionName()).thenReturn(topicName);
 
     ArgumentCaptor<Boolean> rmdCaptor = ArgumentCaptor.forClass(Boolean.class);
-    when(mockFactory.getStorageEngine(eq(mockStoreVersionConfig), rmdCaptor.capture())).thenReturn(mockEngine);
+    when(mockFactory.getStorageEngine(eq(mockStoreVersionConfig), rmdCaptor.capture(), anyBoolean()))
+        .thenReturn(mockEngine);
 
     StorageService storageService =
         createStorageServiceForRmdTest(mockStoreRepo, mockServerConfig, mockFactory, mockStoreVersionConfig);
@@ -378,7 +381,8 @@ public class StorageServiceTest {
     when(mockEngine.getStoreVersionName()).thenReturn(topicName);
 
     ArgumentCaptor<Boolean> rmdCaptor = ArgumentCaptor.forClass(Boolean.class);
-    when(mockFactory.getStorageEngine(eq(mockStoreVersionConfig), rmdCaptor.capture())).thenReturn(mockEngine);
+    when(mockFactory.getStorageEngine(eq(mockStoreVersionConfig), rmdCaptor.capture(), anyBoolean()))
+        .thenReturn(mockEngine);
 
     StorageService storageService =
         createStorageServiceForRmdTest(mockStoreRepo, mockServerConfig, mockFactory, mockStoreVersionConfig);

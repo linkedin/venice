@@ -130,6 +130,16 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   byte[] getReplicationMetadata(int partitionId, ByteBuffer key);
 
   /**
+   * Reads the value and replication metadata for a key in a single storage lookup, for storage formats that
+   * co-locate them in one column family. Returns {@code [value, rmd]} (the array, or either element, may be
+   * null when absent). The default is unsupported; only partitions that store value and RMD together (the
+   * merged value-RMD column family) support this.
+   */
+  default byte[][] getValueAndReplicationMetadata(int partitionId, ByteBuffer key) {
+    throw new UnsupportedOperationException("getValueAndReplicationMetadata");
+  }
+
+  /**
    * Put the offset associated with the partitionId into the metadata partition.
    */
   void putPartitionOffset(int partitionId, OffsetRecord offsetRecord);
