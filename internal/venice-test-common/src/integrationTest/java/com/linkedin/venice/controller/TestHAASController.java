@@ -15,6 +15,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -36,6 +37,8 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -407,6 +410,25 @@ public class TestHAASController {
     }
   }
 
+  /**
+   * The production {@link VeniceControllerClusterConfig} always provides a non-null Helix rebalance preference and
+   * capacity config (production defaults), so stub these on the mock multi-cluster config used by the HaaS tests to
+   * mirror that contract. Without this the controller-cluster setup would dereference a null capacity config.
+   */
+  private void stubControllerClusterHelixDefaults(VeniceControllerMultiClusterConfig multiClusterConfig) {
+    Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> rebalancePreference = new HashMap<>();
+    rebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS, 10);
+    rebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT, 1);
+    rebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE, 0);
+    doReturn(rebalancePreference).when(multiClusterConfig).getHelixGlobalRebalancePreference();
+
+    HelixCapacityConfig capacityConfig = new HelixCapacityConfig(
+        Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+        Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, 10000),
+        Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, 100));
+    doReturn(capacityConfig).when(multiClusterConfig).getHelixCapacityConfig();
+  }
+
   private void initializeClusters(HelixAdminClient client, int parallelism) throws InterruptedException {
     ExecutorService executorService = new ThreadPoolExecutor(
         parallelism,
@@ -447,6 +469,7 @@ public class TestHAASController {
       doReturn(3).when(clusterConfig).getControllerClusterReplica();
       doReturn("").when(clusterConfig).getControllerResourceInstanceGroupTag();
       doReturn(clusterConfig).when(controllerMultiClusterConfig).getControllerConfig(anyString());
+      stubControllerClusterHelixDefaults(controllerMultiClusterConfig);
 
       initializeClusters(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository()), 3);
     }
@@ -497,6 +520,7 @@ public class TestHAASController {
       doReturn("").when(commonConfig).getControllerResourceInstanceGroupTag();
       doReturn(commonConfig).when(controllerMultiClusterConfig).getControllerConfig(anyString());
       doReturn(commonConfig).when(controllerMultiClusterConfig).getCommonConfig();
+      stubControllerClusterHelixDefaults(controllerMultiClusterConfig);
 
       ZkHelixAdminClient client = new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository());
       initializeClusters(client, 1);
