@@ -1,15 +1,12 @@
 package com.linkedin.venice.hadoop.snapshot;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 
 
@@ -25,7 +22,7 @@ public class SnapshotAtTSchemaRepository implements ReadOnlySchemaRepository {
   private final Map<Long, DerivedSchemaEntry> derivedSchemas;
   private final int rmdVersionId;
 
-  private SnapshotAtTSchemaRepository(
+  SnapshotAtTSchemaRepository(
       Map<Integer, SchemaEntry> valueSchemas,
       int latestValueSchemaId,
       Map<Long, RmdSchemaEntry> rmdSchemas,
@@ -44,57 +41,21 @@ public class SnapshotAtTSchemaRepository implements ReadOnlySchemaRepository {
   }
 
   public static SnapshotAtTSchemaRepository fromController(ControllerClient controllerClient, String storeName) {
-    Map<Integer, SchemaEntry> valueSchemas = new HashMap<>();
-    int latestValueSchemaId = -1;
-    MultiSchemaResponse valueResponse = controllerClient.getAllValueSchema(storeName);
-    if (valueResponse.isError()) {
-      throw new VeniceException(
-          "Failed to fetch value schemas for store " + storeName + ": " + valueResponse.getError());
-    }
-    for (MultiSchemaResponse.Schema schema: valueResponse.getSchemas()) {
-      valueSchemas.put(schema.getId(), new SchemaEntry(schema.getId(), schema.getSchemaStr()));
-      latestValueSchemaId = Math.max(latestValueSchemaId, schema.getId());
-    }
-    if (valueSchemas.isEmpty()) {
-      throw new VeniceException(
-          "No value schemas returned for store " + storeName + "; cannot run the snapshot-at-T merge.");
-    }
-
-    // RMD and derived schemas are required for correct conflict resolution / write-compute merges, so a fetch
-    // error must abort the push rather than silently proceed with an empty schema set.
-    Map<Long, RmdSchemaEntry> rmdSchemas = new HashMap<>();
-    int rmdVersionId = -1;
-    MultiSchemaResponse rmdResponse = controllerClient.getAllReplicationMetadataSchemas(storeName);
-    if (rmdResponse.isError()) {
-      throw new VeniceException(
-          "Failed to fetch replication-metadata schemas for store " + storeName + ": " + rmdResponse.getError());
-    }
-    for (MultiSchemaResponse.Schema schema: rmdResponse.getSchemas()) {
-      rmdSchemas.put(
-          key(schema.getRmdValueSchemaId(), schema.getId()),
-          new RmdSchemaEntry(schema.getRmdValueSchemaId(), schema.getId(), schema.getSchemaStr()));
-      rmdVersionId = Math.max(rmdVersionId, schema.getId());
-    }
-
-    Map<Long, DerivedSchemaEntry> derivedSchemas = new HashMap<>();
-    MultiSchemaResponse derivedResponse = controllerClient.getAllValueAndDerivedSchema(storeName);
-    if (derivedResponse.isError()) {
-      throw new VeniceException(
-          "Failed to fetch derived schemas for store " + storeName + ": " + derivedResponse.getError());
-    }
-    for (MultiSchemaResponse.Schema schema: derivedResponse.getSchemas()) {
-      if (schema.getDerivedSchemaId() > 0) {
-        derivedSchemas.put(
-            key(schema.getId(), schema.getDerivedSchemaId()),
-            new DerivedSchemaEntry(schema.getId(), schema.getDerivedSchemaId(), schema.getSchemaStr()));
-      }
-    }
-
-    return new SnapshotAtTSchemaRepository(valueSchemas, latestValueSchemaId, rmdSchemas, derivedSchemas, rmdVersionId);
+    return SnapshotAtTSchemaBundle.fromController(controllerClient, storeName).buildRepository();
   }
 
-  private static long key(int valueSchemaId, int subId) {
+  static long key(int valueSchemaId, int subId) {
     return (((long) valueSchemaId) << 32) | (subId & 0xffffffffL);
+  }
+
+  /** The high 32 bits of a {@link #key} (the value / rmd-value schema id). */
+  static int keyHighBits(long key) {
+    return (int) (key >> 32);
+  }
+
+  /** The low 32 bits of a {@link #key} (the protocol / derived schema id). */
+  static int keyLowBits(long key) {
+    return (int) key;
   }
 
   @Override
