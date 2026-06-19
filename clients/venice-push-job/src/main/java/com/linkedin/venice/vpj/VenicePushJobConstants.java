@@ -340,6 +340,13 @@ public final class VenicePushJobConstants {
   public static final String SNAPSHOT_AT_T_RT_REGION_BROKERS = "snapshot.at.t.rt.region.brokers";
 
   /**
+   * When {@code true} (and snapshot-at-T mode is active), the batch+RT merge runs as a distributed Spark job
+   * ({@code SnapshotAtTDataWriterSparkJob}) instead of the single-process in-memory merge, so it is memory-bounded
+   * per task and scales to production datasets. Defaults to {@code false}.
+   */
+  public static final String SNAPSHOT_AT_T_DISTRIBUTED_MERGE_ENABLED = "snapshot.at.t.distributed.merge.enabled";
+
+  /**
    * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
    * not poll for the status of the job to complete. Using this flag means that a user must manually mark the job success
    * or failed.

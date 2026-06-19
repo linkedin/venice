@@ -81,6 +81,10 @@ public class PushJobSetting implements Serializable {
   public boolean snapshotAtTRewindApplied;
   // Per-region RT source brokers (colo id -> broker address) for the snapshot-at-T merge.
   public Map<Integer, String> snapshotAtTRtRegionBrokers;
+  // When true, the snapshot-at-T batch+RT merge runs as a distributed Spark job instead of single-process.
+  public boolean snapshotAtTDistributedMergeEnabled;
+  // The store's schemas, fetched on the driver and broadcast to executors by the distributed merge job.
+  public transient com.linkedin.venice.hadoop.snapshot.SnapshotAtTSchemaBundle snapshotAtTSchemaBundle;
   public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean versionSeparateRealTimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;

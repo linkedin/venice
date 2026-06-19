@@ -77,6 +77,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_DISTRIBUTED_MERGE_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_ENABLED;
@@ -134,10 +135,12 @@ import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTDataWriterSparkJob;
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTPushExecutor;
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRecordMerger;
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRtReader;
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRtRecord;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTSchemaBundle;
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTSchemaRepository;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
@@ -597,6 +600,8 @@ public class VenicePushJob implements AutoCloseable {
         props.getLong(SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS, DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS);
     pushJobSettingToReturn.snapshotAtTRtRegionBrokers =
         parseSnapshotAtTRegionBrokers(props.getString(SNAPSHOT_AT_T_RT_REGION_BROKERS, ""));
+    pushJobSettingToReturn.snapshotAtTDistributedMergeEnabled =
+        props.getBoolean(SNAPSHOT_AT_T_DISTRIBUTED_MERGE_ENABLED, false);
 
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
@@ -885,6 +890,7 @@ public class VenicePushJob implements AutoCloseable {
         }
       }
       maybeApplySnapshotAtTRewindOverride(pushJobSetting);
+      maybeSetupSnapshotAtTDistributedMerge(pushJobSetting, controllerClient);
       checkRegularPushWithTTLRepush(controllerClient, pushJobSetting);
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
@@ -934,9 +940,10 @@ public class VenicePushJob implements AutoCloseable {
         if (pushJobSetting.repushTTLEnabled || pushJobSetting.materializedViewConfigFlatMap != null) {
           buildHDFSSchemaDir();
         }
-        if (pushJobSetting.snapshotAtTRewindApplied) {
-          // Snapshot-at-T mode owns Start/End-Of-Push and the data via a single writer (one producer), so DIV
-          // stays consistent. The controller does not send SOP for this mode (see createNewStoreVersion).
+        if (pushJobSetting.snapshotAtTRewindApplied && !pushJobSetting.snapshotAtTDistributedMergeEnabled) {
+          // Single-process snapshot-at-T: one writer owns Start/End-Of-Push and the data (one producer, so DIV
+          // stays consistent), and the controller does not send SOP for this mode (see createNewStoreVersion). The
+          // distributed-merge variant instead runs as a normal data-writer job below (controller sends SOP).
           runSnapshotAtTMergePush(controllerClient);
         } else {
           if (pushJobSetting.sendControlMessagesDirectly) {
@@ -2702,6 +2709,21 @@ public class VenicePushJob implements AutoCloseable {
     return setting.jobStartTimeMs;
   }
 
+  /**
+   * When the distributed-merge flag is on for an active snapshot-at-T push, fetch the store's schemas on the driver
+   * (to broadcast to executors) and route the merge through {@link SnapshotAtTDataWriterSparkJob} -- a normal
+   * data-writer job whose input is the distributed batch+RT cogroup -- instead of the single-process merge. A no-op
+   * when the flag is off or the rewind override was not applied, so the default path is unchanged.
+   */
+  void maybeSetupSnapshotAtTDistributedMerge(PushJobSetting setting, ControllerClient controllerClient) {
+    if (!setting.snapshotAtTRewindApplied || !setting.snapshotAtTDistributedMergeEnabled) {
+      return;
+    }
+    setting.snapshotAtTSchemaBundle = SnapshotAtTSchemaBundle.fromController(controllerClient, setting.storeName);
+    setting.dataWriterComputeJobClass = SnapshotAtTDataWriterSparkJob.class;
+    LOGGER.info("Snapshot-at-T: routing the merge through the distributed Spark job for store {}.", setting.storeName);
+  }
+
   static Map<Integer, String> parseSnapshotAtTRegionBrokers(String config) {
     Map<Integer, String> regionBrokers = new HashMap<>();
     if (config == null || config.trim().isEmpty()) {
@@ -2740,7 +2762,7 @@ public class VenicePushJob implements AutoCloseable {
    * landed on the separate RT (incremental-push data). Both topics live on the same per-region broker, so each is
    * read from every configured region.
    */
-  static List<String> snapshotAtTRtTopicNames(StoreInfo storeInfo) {
+  public static List<String> snapshotAtTRtTopicNames(StoreInfo storeInfo) {
     String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
     if (storeInfo.isSeparateRealTimeTopicEnabled()) {
       return Arrays.asList(realTimeTopicName, Utils.getSeparateRealTimeTopicName(storeInfo));
@@ -2905,9 +2927,10 @@ public class VenicePushJob implements AutoCloseable {
       VeniceProperties props,
       Optional<ByteBuffer> optionalCompressionDictionary) {
     Version.PushType pushType = getPushType(setting);
-    // Snapshot-at-T sends its own Start-Of-Push from the same writer as the data, so the controller must not.
-    boolean askControllerToSendControlMessage =
-        !setting.sendControlMessagesDirectly && !setting.snapshotAtTRewindApplied;
+    // Single-process snapshot-at-T sends its own Start-Of-Push from the same writer as the data, so the controller
+    // must not. The distributed-merge variant is a normal multi-writer data-writer job, so the controller sends SOP.
+    boolean askControllerToSendControlMessage = !setting.sendControlMessagesDirectly
+        && !(setting.snapshotAtTRewindApplied && !setting.snapshotAtTDistributedMergeEnabled);
     final String partitioners = props.getString(VENICE_PARTITIONERS, DefaultVenicePartitioner.class.getName());
 
     Optional<String> dictionary;
