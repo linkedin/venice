@@ -5,18 +5,24 @@ import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRecordMerger.MergedRecord;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Properties;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.CoGroupFunction;
+import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.KeyValueGroupedDataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.apache.spark.sql.types.DataTypes;
@@ -81,6 +87,36 @@ public final class SnapshotAtTSparkMerge {
         rtByKey,
         new MergeCoGroupFunction(bundle, batchValueSchemaId, rmdProtocolVersion, rmdUseFieldLevelTimestamp),
         RowEncoder.apply(DEFAULT_SCHEMA));
+  }
+
+  /**
+   * Build the RT {@link #RT_SCHEMA} DataFrame by reading every {@link SnapshotAtTRtSplit} in parallel: one Spark
+   * task per split reads only that split's bounded partition-range via {@link SnapshotAtTRtSplitReader}, so RT is
+   * never drained into a single process. The split planning (which queries brokers) happens on the driver; this
+   * distributes the reads.
+   *
+   * @param splits the region/topic/partition splits to read (from {@link SnapshotAtTRtSplitPlanner})
+   * @param baseProps the job's pubsub client config (each split overlays its own broker)
+   * @param cutoffTimestampMs include only RT records with write timestamp &le; this; {@code <= 0} means no bound
+   */
+  public static Dataset<Row> readRtDataFrame(
+      SparkSession spark,
+      List<SnapshotAtTRtSplit> splits,
+      VeniceProperties baseProps,
+      long cutoffTimestampMs) {
+    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(spark.sparkContext());
+    // Capture only serializable state (Properties, primitives, serializable splits) in the executor closure.
+    Properties props = baseProps.toProperties();
+    JavaRDD<Row> rtRows = sparkContext.parallelize(splits).flatMap((FlatMapFunction<SnapshotAtTRtSplit, Row>) split -> {
+      List<SnapshotAtTRtRecord> records =
+          new SnapshotAtTRtSplitReader().read(split, new VeniceProperties(props), cutoffTimestampMs);
+      List<Row> rows = new ArrayList<>(records.size());
+      for (SnapshotAtTRtRecord record: records) {
+        rows.add(rtRecordToRow(record));
+      }
+      return rows.iterator();
+    });
+    return spark.createDataFrame(rtRows, RT_SCHEMA);
   }
 
   /** Convert one normalized RT record to an {@link #RT_SCHEMA} row (driver side, when building the RT DataFrame). */
