@@ -80,11 +80,6 @@ public class SnapshotAtTPushExecutor {
     for (SnapshotAtTRtRecord rt: rtRecords) {
       rtByKey.computeIfAbsent(rt.getKey(), k -> new ArrayList<>()).add(rt);
     }
-    // Folding order does not change the converged DCR result, but a deterministic timestamp order keeps runs
-    // reproducible and mirrors how a server applies writes.
-    for (List<SnapshotAtTRtRecord> perKey: rtByKey.values()) {
-      perKey.sort(Comparator.comparingLong(SnapshotAtTRtRecord::getWriteTimestamp));
-    }
 
     Set<ByteBuffer> allKeys = new LinkedHashSet<>(batchValuesByKey.keySet());
     allKeys.addAll(rtByKey.keySet());
@@ -93,44 +88,14 @@ public class SnapshotAtTPushExecutor {
     for (ByteBuffer key: allKeys) {
       ByteBuffer batchValue = batchValuesByKey.get(key);
       List<SnapshotAtTRtRecord> perKeyRt = rtByKey.get(key);
-
-      KeyMergeState state = batchValue != null
-          ? merger.seedFromBatch(batchValue.duplicate(), batchValueSchemaId)
-          : merger.newState(batchValueSchemaId);
       if (batchValue != null && perKeyRt == null) {
         stats.batchOnlyKeys++;
       }
       if (perKeyRt != null) {
         stats.rtTouchedKeys++;
-        for (SnapshotAtTRtRecord rt: perKeyRt) {
-          switch (rt.getOp()) {
-            case PUT:
-              merger.applyPut(
-                  state,
-                  rt.getPayload().duplicate(),
-                  rt.getValueSchemaId(),
-                  rt.getWriteTimestamp(),
-                  rt.getColoId());
-              break;
-            case UPDATE:
-              merger.applyUpdate(
-                  state,
-                  rt.getPayload().duplicate(),
-                  rt.getValueSchemaId(),
-                  rt.getUpdateProtocolVersion(),
-                  rt.getWriteTimestamp(),
-                  rt.getColoId());
-              break;
-            case DELETE:
-              merger.applyDelete(state, rt.getWriteTimestamp(), rt.getColoId());
-              break;
-            default:
-              throw new IllegalStateException("Unexpected RT op: " + rt.getOp());
-          }
-        }
       }
 
-      MergedRecord merged = merger.finalizeRecord(state);
+      MergedRecord merged = mergeKey(batchValue, batchValueSchemaId, perKeyRt, merger);
       byte[] keyBytes = toByteArray(key);
       if (merged.isDelete()) {
         writer.delete(
@@ -157,6 +122,58 @@ public class SnapshotAtTPushExecutor {
         batchValuesByKey.size(),
         stats.rtTouchedKeys);
     return stats;
+  }
+
+  /**
+   * Merge one key: seed from its batch value (if any), fold its RT records in write-timestamp order, and finalize
+   * to a {@link MergedRecord}. This is the per-key reducer body shared by this single-process executor and the
+   * distributed (Spark) cogroup, so both produce identical merged records. Conflict resolution is
+   * timestamp-commutative, so the sort only makes runs reproducible; it does not change the converged result.
+   *
+   * @param batchValue the key's batch value (no schema-id prefix), or {@code null} if the key has no batch value
+   * @param batchValueSchemaId the value schema id the batch value is serialized with
+   * @param perKeyRtRecords the key's RT records across all regions (may be {@code null}/empty)
+   * @param merger the merge engine (its rmdUseFieldLevelTimestamp must match the store config)
+   */
+  public static MergedRecord mergeKey(
+      ByteBuffer batchValue,
+      int batchValueSchemaId,
+      List<SnapshotAtTRtRecord> perKeyRtRecords,
+      SnapshotAtTRecordMerger merger) {
+    KeyMergeState state = batchValue != null
+        ? merger.seedFromBatch(batchValue.duplicate(), batchValueSchemaId)
+        : merger.newState(batchValueSchemaId);
+    if (perKeyRtRecords != null && !perKeyRtRecords.isEmpty()) {
+      List<SnapshotAtTRtRecord> sorted = new ArrayList<>(perKeyRtRecords);
+      sorted.sort(Comparator.comparingLong(SnapshotAtTRtRecord::getWriteTimestamp));
+      for (SnapshotAtTRtRecord rt: sorted) {
+        switch (rt.getOp()) {
+          case PUT:
+            merger.applyPut(
+                state,
+                rt.getPayload().duplicate(),
+                rt.getValueSchemaId(),
+                rt.getWriteTimestamp(),
+                rt.getColoId());
+            break;
+          case UPDATE:
+            merger.applyUpdate(
+                state,
+                rt.getPayload().duplicate(),
+                rt.getValueSchemaId(),
+                rt.getUpdateProtocolVersion(),
+                rt.getWriteTimestamp(),
+                rt.getColoId());
+            break;
+          case DELETE:
+            merger.applyDelete(state, rt.getWriteTimestamp(), rt.getColoId());
+            break;
+          default:
+            throw new IllegalStateException("Unexpected RT op: " + rt.getOp());
+        }
+      }
+    }
+    return merger.finalizeRecord(state);
   }
 
   private static byte[] compress(VeniceCompressor compressor, byte[] value) {
