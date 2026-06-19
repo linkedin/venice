@@ -6886,21 +6886,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // pipeline independently of controller startup.
     clusterConfig.setGlobalRebalanceAsyncMode(false);
 
-    if (multiClusterConfigs.getHelixGlobalRebalancePreference() != null) {
-      // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost of
-      // rebalancing for the controller is cheap as it is stateless.
-      clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
-    }
+    // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost of
+    // rebalancing for the controller is cheap as it is stateless.
+    clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
 
     HelixCapacityConfig helixCapacityConfig = multiClusterConfigs.getHelixCapacityConfig();
-    if (helixCapacityConfig != null) {
-      clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
-      // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
-      // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes the
-      // current top-state distribution into account when rebalancing.
-      clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
-      clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
-    }
+    clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
+    // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
+    // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes the
+    // current top-state distribution into account when rebalancing.
+    clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
+    clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
 
     /**
      * {@link HelixAdminClient#updateClusterConfigs(String, ClusterConfig)} persists the structured cluster config via

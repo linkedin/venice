@@ -100,22 +100,18 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         clusterConfig.setTopologyAwareEnabled(false);
         clusterConfig.setPersistBestPossibleAssignment(true);
 
-        if (multiClusterConfigs.getHelixGlobalRebalancePreference() != null) {
-          // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
-          // of rebalancing for the controller is cheap as it is stateless.
-          clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
-        }
+        // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
+        // of rebalancing for the controller is cheap as it is stateless.
+        clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
 
         HelixCapacityConfig helixCapacityConfig = multiClusterConfigs.getHelixCapacityConfig();
-        if (multiClusterConfigs.getHelixCapacityConfig() != null) {
-          clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
+        clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
 
-          // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
-          // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
-          // the current top-state distribution into account when rebalancing.
-          clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
-          clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
-        }
+        // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
+        // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
+        // the current top-state distribution into account when rebalancing.
+        clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
+        clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
 
         if (multiClusterConfigs.getControllerHelixParticipantDeregistrationTimeoutMs() >= 0) {
           clusterConfig.getRecord()
