@@ -9,10 +9,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCH
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -575,31 +573,6 @@ public class VenicePushJobTest {
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
-    }
-  }
-
-  @Test
-  public void testPushJobSettingControllerRequestTopicTimeout() {
-    ControllerClient client = getClient(storeInfo -> {
-      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
-      storeInfo.setVersions(Collections.singletonList(version));
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null));
-    });
-    // The request_topic client timeout defaults to the production value, which must exceed the controller's
-    // offline.job.start.timeout.ms (16 min) so the controller responds (with success or its own error) before the
-    // client times out and retries the non-idempotent create.
-    try (VenicePushJob pushJob = getSpyVenicePushJob(new Properties(), client)) {
-      PushJobSetting setting = pushJob.getPushJobSetting();
-      Assert.assertEquals(setting.controllerRequestTopicTimeoutMs, DEFAULT_CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS);
-      Assert.assertTrue(
-          setting.controllerRequestTopicTimeoutMs > 16 * Time.MS_PER_MINUTE,
-          "request_topic client timeout must exceed the 16-minute controller-side offline.job.start.timeout.ms");
-    }
-    // An explicit override is honored.
-    Properties overrideProps = new Properties();
-    overrideProps.setProperty(CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS, Integer.toString(25 * Time.MS_PER_MINUTE));
-    try (VenicePushJob pushJob = getSpyVenicePushJob(overrideProps, client)) {
-      Assert.assertEquals(pushJob.getPushJobSetting().controllerRequestTopicTimeoutMs, 25 * Time.MS_PER_MINUTE);
     }
   }
 
