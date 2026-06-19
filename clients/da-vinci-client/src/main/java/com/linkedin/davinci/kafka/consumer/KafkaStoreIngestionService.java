@@ -645,6 +645,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private StoreIngestionTask createStoreIngestionTask(
       VeniceStoreVersionConfig veniceStoreVersionConfig,
       int partitionId) {
+    return createStoreIngestionTask(veniceStoreVersionConfig, partitionId, false);
+  }
+
+  private StoreIngestionTask createStoreIngestionTask(
+      VeniceStoreVersionConfig veniceStoreVersionConfig,
+      int partitionId,
+      boolean pauseAfterStartOfPush) {
     String topicName = veniceStoreVersionConfig.getStoreVersionName();
 
     // For view topic, we need to use internal view store name
@@ -669,7 +676,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     };
 
-    return ingestionTaskFactory.getNewIngestionTask(
+    StoreIngestionTask task = ingestionTaskFactory.getNewIngestionTask(
         storageService,
         store,
         version,
@@ -680,6 +687,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         cacheBackend,
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
+    // Set before the task is submitted to the executor so the flag is visible before
+    // any partition is subscribed and before any SOP can be processed.
+    if (pauseAfterStartOfPush) {
+      task.setPauseAfterStartOfPush(true);
+    }
+    return task;
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -820,16 +833,40 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       Optional<PubSubPosition> pubSubPosition) {
+    startConsumption(veniceStore, partitionId, pubSubPosition, false);
+  }
+
+  /**
+   * Start consumption for the given partition, optionally creating the ingestion task in a paused
+   * state so it stops after receiving START_OF_PUSH (future-slot pause for DaVinci).
+   *
+   * <p>When {@code createPaused=true}, {@code pauseAfterStartOfPush} is set on the
+   * {@link StoreIngestionTask} inside the topic lock, before the task is submitted to the executor
+   * and before any partition is subscribed — guaranteeing that SOP cannot be processed with the
+   * flag unset.
+   *
+   * @param createPaused If {@code true}, the SIT will pause after consuming START_OF_PUSH.
+   *                     Only valid for DaVinci clients.
+   * @throws VeniceException if {@code createPaused=true} and this is not a DaVinci client.
+   */
+  public void startConsumption(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Optional<PubSubPosition> pubSubPosition,
+      boolean createPaused) {
+    if (createPaused && !isDaVinciClient) {
+      throw new VeniceException("createPaused=true is only valid for DaVinci clients, not Venice servers");
+    }
 
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      // Create new store ingestion task atomically.
+      // Create new store ingestion task atomically, flagging it before submit if createPaused.
       AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
       StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
         if (v == null || !v.isIngestionTaskActive()) {
           createNewStoreIngestionTask.set(true);
-          return createStoreIngestionTask(veniceStore, partitionId);
+          return createStoreIngestionTask(veniceStore, partitionId, createPaused);
         }
         return v;
       });
@@ -870,35 +907,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
       storeIngestionTask.subscribePartition(partition, pubSubPosition);
     }
-    LOGGER.info("Started Consuming - Replica: {}.", Utils.getReplicaId(topic, partitionId));
-  }
-
-  /**
-   * Start consumption for the given partition, optionally creating the ingestion task in a paused
-   * state so it stops after receiving START_OF_PUSH (future-slot pause for DaVinci).
-   *
-   * @param veniceStore  Store version config.
-   * @param partitionId  Partition to subscribe.
-   * @param pubSubPosition Starting offset hint.
-   * @param createPaused If {@code true}, the {@link StoreIngestionTask} will be flagged to pause
-   *                     after START_OF_PUSH. Only valid for DaVinci clients.
-   * @throws VeniceException if {@code createPaused=true} and this is not a DaVinci client.
-   */
-  public void startConsumption(
-      VeniceStoreVersionConfig veniceStore,
-      int partitionId,
-      Optional<PubSubPosition> pubSubPosition,
-      boolean createPaused) {
-    if (createPaused && !isDaVinciClient) {
-      throw new VeniceException("createPaused=true is only valid for DaVinci clients, not Venice servers");
-    }
-    startConsumption(veniceStore, partitionId, pubSubPosition);
-    if (createPaused) {
-      StoreIngestionTask task = getStoreIngestionTask(veniceStore.getStoreVersionName());
-      if (task != null) {
-        task.setPauseAfterStartOfPush(true);
-      }
-    }
+    LOGGER.info(
+        "Started Consuming{} - Replica: {}.",
+        createPaused ? " (paused)" : "",
+        Utils.getReplicaId(topic, partitionId));
   }
 
   /**
