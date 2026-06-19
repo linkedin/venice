@@ -20,11 +20,13 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTION
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_BATCH_BYTES_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
@@ -403,6 +405,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+    pushJobSettingToReturn.controllerRequestTopicTimeoutMs =
+        props.getInt(CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS, DEFAULT_CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSettingToReturn.pollJobStatusIntervalMs =
         props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
@@ -2613,7 +2617,8 @@ public class VenicePushJob implements AutoCloseable {
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,
             setting.pushToSeparateRealtimeTopicEnabled,
-            props.getInt(REPUSH_TTL_SECONDS, -1)));
+            props.getInt(REPUSH_TTL_SECONDS, -1),
+            setting.controllerRequestTopicTimeoutMs));
     if (versionCreationResponse.isError()) {
       handleVersionCreationError(versionCreationResponse);
       throw new VeniceException(

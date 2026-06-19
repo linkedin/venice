@@ -54,6 +54,7 @@ public final class VenicePushJobConstants {
   public static final String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
   public static final String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
   public static final String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
+  public static final String CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS = "controller.request.topic.timeout.ms";
   public static final String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
   public static final String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
   public static final String PUSH_JOB_TIMEOUT_OVERRIDE_MS = "push.job.timeout.override.ms";
@@ -479,6 +480,12 @@ public final class VenicePushJobConstants {
    * The default total time we wait before failing a job if the job status stays in UNKNOWN state.
    */
   public static final long DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = 30 * Time.MS_PER_MINUTE;
+  /**
+   * Client-side request timeout for the version-creation (request_topic) call. This must be larger than the
+   * controller's {@code offline.job.start.timeout.ms} so the controller responds (with success or its own error)
+   * before the client times out and retries the non-idempotent create. Defaults above that 16-minute production value.
+   */
+  public static final int DEFAULT_CONTROLLER_REQUEST_TOPIC_TIMEOUT_MS = 20 * Time.MS_PER_MINUTE;
   public static final String NON_CRITICAL_EXCEPTION = "This exception does not fail the push job. ";
 
   /** Sample size to collect for building dictionary: Can be assigned a max of 2GB as {@link ZstdDictTrainer} in ZSTD library takes in sample size as int */

@@ -411,6 +411,52 @@ public class ControllerClient implements Closeable {
       int repushSourceVersion,
       boolean pushToSeparateRealtimeTopic,
       int repushTtlSeconds) {
+    return requestTopicForWrites(
+        storeName,
+        storeSize,
+        pushType,
+        pushJobId,
+        sendStartOfPush,
+        sorted,
+        wcEnabled,
+        partitioners,
+        compressionDictionary,
+        sourceGridFabric,
+        batchJobHeartbeatEnabled,
+        rewindTimeInSecondsOverride,
+        deferVersionSwap,
+        targetedRegions,
+        repushSourceVersion,
+        pushToSeparateRealtimeTopic,
+        repushTtlSeconds,
+        DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /**
+   * Same as {@link #requestTopicForWrites} but with a caller-supplied request timeout. Version creation can block on the
+   * controller for up to its {@code offline.job.start.timeout.ms} while it waits for the new version's replicas to be
+   * assigned. A caller that must tolerate a long wait should pass a timeout greater than that controller-side value;
+   * otherwise the request times out client-side and is retried, which creates extra abandoned versions.
+   */
+  public VersionCreationResponse requestTopicForWrites(
+      String storeName,
+      long storeSize,
+      PushType pushType,
+      String pushJobId,
+      boolean sendStartOfPush,
+      boolean sorted,
+      boolean wcEnabled,
+      Optional<String> partitioners,
+      Optional<String> compressionDictionary,
+      Optional<String> sourceGridFabric,
+      boolean batchJobHeartbeatEnabled,
+      long rewindTimeInSecondsOverride,
+      boolean deferVersionSwap,
+      String targetedRegions,
+      int repushSourceVersion,
+      boolean pushToSeparateRealtimeTopic,
+      int repushTtlSeconds,
+      int timeoutMs) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -432,7 +478,14 @@ public class ControllerClient implements Closeable {
       params.add(TARGETED_REGIONS, targetedRegions);
     }
 
-    return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
+    return request(
+        ControllerRoute.REQUEST_TOPIC,
+        params,
+        VersionCreationResponse.class,
+        timeoutMs,
+        DEFAULT_MAX_ATTEMPTS,
+        null,
+        null);
   }
 
   /**

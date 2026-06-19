@@ -43,6 +43,7 @@ public class PushJobSetting implements Serializable {
   public String incrementalPushVersion;
   public boolean isDuplicateKeyAllowed;
   public int controllerRetries;
+  public int controllerRequestTopicTimeoutMs;
   public int controllerStatusPollRetries;
   public long pollJobStatusIntervalMs;
   public long jobStatusInUnknownStateTimeoutMs;
