@@ -172,6 +172,7 @@ public class BlobTransferManagerBuilder {
               blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
               blobTransferConfig.getBlobReceiveTimeoutInMin(),
               blobTransferConfig.getBlobReceiveReaderIdleTimeInSeconds(),
+              blobTransferConfig.getP2pTransferClientNettyWorkerThreadCount(),
               globalTrafficHandler,
               getAggBlobTransferStats(),
               sslFactory,

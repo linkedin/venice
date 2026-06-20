@@ -149,6 +149,7 @@ public class TestNettyP2PBlobTransferManager {
             30,
             60,
             blobTransferMaxTimeoutInMin,
+            Math.max(4, Runtime.getRuntime().availableProcessors() / 5),
             globalChannelTrafficShapingHandler,
             blobTransferStats,
             sslFactory,
@@ -520,6 +521,7 @@ public class TestNettyP2PBlobTransferManager {
             30,
             0, // general transfer timeout immediately
             10,
+            Math.max(4, Runtime.getRuntime().availableProcessors() / 5),
             newGlobalChannelTrafficShapingHandler,
             blobTransferStats,
             sslFactory,

@@ -10,18 +10,30 @@ import javax.annotation.Nullable;
  * that embed the threadpool can't shut themselves down).
  */
 public class DaemonThreadFactory implements ThreadFactory {
+  // Sentinel meaning "leave the thread's priority at the JVM default (inherited from the creating thread)".
+  public static final int UNSPECIFIED_PRIORITY = -1;
   protected final AtomicInteger threadNumber;
   private final String namePrefix;
   private final LogContext logContext;
+  private final int priority;
 
   public DaemonThreadFactory(String threadNamePrefix, @Nullable LogContext logContext) {
-    this.threadNumber = new AtomicInteger(0);
-    this.namePrefix = threadNamePrefix;
-    this.logContext = logContext;
+    this(threadNamePrefix, UNSPECIFIED_PRIORITY, logContext);
   }
 
   public DaemonThreadFactory(String threadNamePrefix) {
     this(threadNamePrefix, null);
+  }
+
+  /**
+   * @param priority the {@link Thread#setPriority(int) priority} for created threads, or {@link #UNSPECIFIED_PRIORITY}
+   *                 to leave it at the JVM default.
+   */
+  public DaemonThreadFactory(String threadNamePrefix, int priority, @Nullable LogContext logContext) {
+    this.threadNumber = new AtomicInteger(0);
+    this.namePrefix = threadNamePrefix;
+    this.logContext = logContext;
+    this.priority = priority;
   }
 
   @Override
@@ -37,6 +49,9 @@ public class DaemonThreadFactory implements ThreadFactory {
 
     Thread t = new Thread(wrapped, namePrefix + "-t" + threadNumber.getAndIncrement());
     t.setDaemon(true);
+    if (priority != UNSPECIFIED_PRIORITY) {
+      t.setPriority(priority);
+    }
     return t;
   }
 }

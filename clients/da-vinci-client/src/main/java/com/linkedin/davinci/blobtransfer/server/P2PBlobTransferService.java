@@ -16,6 +16,7 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
+import io.netty.util.concurrent.DefaultThreadFactory;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,6 +24,13 @@ import org.apache.logging.log4j.Logger;
 
 public class P2PBlobTransferService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(P2PBlobTransferService.class);
+  // Blob transfer is not latency sensitive, so its Netty event-loop threads run below normal priority so they yield to
+  // the read/write hot path under CPU contention.
+  private static final int BLOB_TRANSFER_SERVER_NETTY_THREAD_PRIORITY = 4;
+  // Size the worker event-loop pool at 20% of available cores (min 4) instead of a hardcoded count, since blob transfer
+  // is not latency sensitive and does not need a large dedicated I/O pool.
+  private static final int BLOB_TRANSFER_SERVER_NETTY_WORKER_THREAD_COUNT =
+      Math.max(4, Runtime.getRuntime().availableProcessors() / 5);
 
   private final ServerBootstrap serverBootstrap;
   private EventLoopGroup bossGroup;
@@ -51,13 +59,22 @@ public class P2PBlobTransferService extends AbstractVeniceService {
 
     Class<? extends ServerChannel> socketChannelClass = NioServerSocketChannel.class;
 
+    // Name the event-loop threads and run them below normal priority since blob transfer is not latency sensitive.
+    // daemon=false preserves the behavior of Netty's default thread factory for these groups.
+    DefaultThreadFactory bossThreadFactory =
+        new DefaultThreadFactory("Venice-BlobTransfer-Server-Boss", false, BLOB_TRANSFER_SERVER_NETTY_THREAD_PRIORITY);
+    DefaultThreadFactory workerThreadFactory = new DefaultThreadFactory(
+        "Venice-BlobTransfer-Server-Worker",
+        false,
+        BLOB_TRANSFER_SERVER_NETTY_THREAD_PRIORITY);
+
     if (Epoll.isAvailable()) {
-      bossGroup = new EpollEventLoopGroup(1);
-      workerGroup = new EpollEventLoopGroup(32);
+      bossGroup = new EpollEventLoopGroup(1, bossThreadFactory);
+      workerGroup = new EpollEventLoopGroup(BLOB_TRANSFER_SERVER_NETTY_WORKER_THREAD_COUNT, workerThreadFactory);
       socketChannelClass = EpollServerSocketChannel.class;
     } else {
-      bossGroup = new NioEventLoopGroup(1);
-      workerGroup = new NioEventLoopGroup(32);
+      bossGroup = new NioEventLoopGroup(1, bossThreadFactory);
+      workerGroup = new NioEventLoopGroup(BLOB_TRANSFER_SERVER_NETTY_WORKER_THREAD_COUNT, workerThreadFactory);
     }
 
     serverBootstrap.group(bossGroup, workerGroup)
