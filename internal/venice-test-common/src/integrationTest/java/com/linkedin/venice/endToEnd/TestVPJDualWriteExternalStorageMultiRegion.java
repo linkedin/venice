@@ -7,6 +7,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithSt
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -64,6 +66,9 @@ import org.testng.annotations.Test;
  *       reaches {@code configure()} on the executor.</li>
  *   <li><b>Batching:</b> {@code batchSize=1} flushes one record per {@code batchPut}; {@code batchSize=25}
  *       flushes a full 25-record batch (the store is pinned to a single partition for determinism).</li>
+ *   <li><b>Throttling:</b> a generous per-region record/byte write quota is configured so the dual-write
+ *       throttler is constructed and exercised on the write path end-to-end, without slowing the push or
+ *       dropping records.</li>
  *   <li><b>Ingestion unaffected:</b> Venice still serves every record in the {@code DUAL_WRITE} region.</li>
  * </ul>
  */
@@ -96,6 +101,11 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
     props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
     props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, InMemoryExternalStorageWriter.class.getName());
     props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE, String.valueOf(batchSize));
+    // Enable per-region external-write throttling end-to-end. The store is pinned to a single partition, so the
+    // per-task rate equals the global rate; both quotas are deliberately generous so the throttler is built and
+    // exercised on the write path without measurably slowing the push or ever dropping a record.
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND, "100000");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND, "100000000");
     // Probe an arbitrary push.job.external.storage.* key to verify driver->executor prefix forwarding reaches
     // configure(). Read back via forwardedConfigObservedFor().
     String expectedProbeValue = "probe-value-for-b" + batchSize;

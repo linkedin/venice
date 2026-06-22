@@ -62,6 +62,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -123,6 +125,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageWriteThrottler;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.hadoop.validation.NoOpValidator;
@@ -883,6 +886,9 @@ public class VenicePushJob implements AutoCloseable {
           props,
           optionalCompressionDictionary);
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
+      // Fail fast here (driver-side, before the data-writer job launches) if external-storage dual-write
+      // throttling is misconfigured for the partition count just assigned to this version.
+      validateExternalStorageDualWriteQuota(pushJobSetting);
 
       // Fetch the version config for separateRealTimeTopicEnabled after version creation,
       Version createdVersion = getStoreVersion(pushJobSetting.storeName, pushJobSetting.version);
@@ -2643,6 +2649,22 @@ public class VenicePushJob implements AutoCloseable {
 
   private Version.PushType getPushType(PushJobSetting pushJobSetting) {
     return pushJobSetting.isIncrementalPush ? Version.PushType.INCREMENTAL : Version.PushType.BATCH;
+  }
+
+  /**
+   * Fail fast on the driver — before launching the data-writer job and allocating its cluster resources — when
+   * external-storage dual-write throttling is misconfigured for the partition count assigned to this version.
+   * Partition count is only known after {@link #createNewStoreVersion}, so this is the earliest it can run (not
+   * before topic creation). The executor-side throttler re-validates as a backstop.
+   */
+  private void validateExternalStorageDualWriteQuota(PushJobSetting setting) {
+    if (setting.dualWriteTargetRegions.isEmpty()) {
+      return;
+    }
+    ExternalStorageWriteThrottler.validateQuota(
+        props.getLong(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND, -1),
+        props.getLong(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND, -1),
+        setting.partitionCount);
   }
 
   /**

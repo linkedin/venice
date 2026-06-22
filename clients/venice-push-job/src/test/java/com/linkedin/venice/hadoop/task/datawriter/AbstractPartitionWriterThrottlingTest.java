@@ -15,14 +15,17 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.throttle.GuavaRateLimiter;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.BeforeMethod;
@@ -31,7 +34,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for incremental push throttling functionality in AbstractPartitionWriter.
+ * Unit tests for throttling functionality in AbstractPartitionWriter: incremental-push write-quota
+ * throttling and external-storage dual-write per-region throttler wiring.
  */
 public class AbstractPartitionWriterThrottlingTest {
   private TestablePartitionWriter partitionWriter;
@@ -287,6 +291,74 @@ public class AbstractPartitionWriterThrottlingTest {
     VeniceRateLimiter throttler = partitionWriter.getRecordsThrottler();
     assertNotNull(throttler, "Throttler should be created despite invalid time window");
     assertTrue(throttler instanceof TokenBucket, "Should still be TokenBucket with fallback time window");
+  }
+
+  // --- External-storage dual-write throttler wiring -----------------------------------------------
+
+  @Test
+  public void testExternalStorageThrottlersDisabledWhenNoQuotaConfigured() {
+    Properties props = createBaseProperties();
+    setupMockConfigProvider(props);
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    assertNull(
+        partitionWriter.buildExternalStorageThrottlers(-1, -1, 2),
+        "No external-storage throttlers when neither record nor byte quota is configured");
+  }
+
+  @Test
+  public void testExternalStorageThrottlersOnePerRegionSplitAcrossPartitions() {
+    Properties props = createBaseProperties();
+    props.setProperty(PARTITION_COUNT, "4");
+    setupMockConfigProvider(props);
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    List<ExternalStorageWriteThrottler> throttlers = partitionWriter.buildExternalStorageThrottlers(1000, 8000, 3);
+    assertNotNull(throttlers, "Throttlers should be built when a quota is configured");
+    assertEquals(throttlers.size(), 3, "One throttler per region");
+    for (int i = 0; i < throttlers.size(); i++) {
+      assertNotNull(throttlers.get(i), "Region " + i + " should have a throttler");
+      assertEquals(
+          throttlers.get(i).getRecordRateLimiter().getQuota(),
+          250L,
+          "1000 records/sec split across 4 partition-writer tasks -> 250/sec each");
+      assertEquals(
+          throttlers.get(i).getByteRateLimiter().getQuota(),
+          2000L,
+          "8000 bytes/sec split across 4 partition-writer tasks -> 2000/sec each");
+    }
+    // Independent instances per region so each region keeps its full per-region budget (separate buckets).
+    assertTrue(throttlers.get(0) != throttlers.get(1), "Per-region throttler instances must be independent");
+    assertTrue(throttlers.get(1) != throttlers.get(2), "Per-region throttler instances must be independent");
+  }
+
+  @Test
+  public void testExternalStorageThrottlersWithOnlyByteQuotaConfigured() {
+    Properties props = createBaseProperties();
+    props.setProperty(PARTITION_COUNT, "2");
+    setupMockConfigProvider(props);
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    List<ExternalStorageWriteThrottler> throttlers = partitionWriter.buildExternalStorageThrottlers(-1, 8000, 2);
+    assertNotNull(throttlers);
+    assertEquals(throttlers.size(), 2);
+    assertNull(throttlers.get(0).getRecordRateLimiter(), "Record dimension disabled");
+    assertEquals(throttlers.get(0).getByteRateLimiter().getQuota(), 4000L, "8000/sec across 2 tasks -> 4000/sec");
+  }
+
+  @Test
+  public void testExternalStorageThrottlersFailFastWhenQuotaBelowPartitionCount() {
+    Properties props = createBaseProperties();
+    props.setProperty(PARTITION_COUNT, "4");
+    setupMockConfigProvider(props);
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    // 2 records/sec cannot be split across 4 tasks without giving someone 0/sec -> fail fast.
+    assertThrows(VeniceException.class, () -> partitionWriter.buildExternalStorageThrottlers(2, -1, 3));
   }
 
   private void setupMockConfigProvider(Properties props) {

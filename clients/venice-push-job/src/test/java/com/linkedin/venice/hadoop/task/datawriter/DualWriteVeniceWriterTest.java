@@ -16,6 +16,7 @@ import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.io.IOException;
@@ -405,6 +406,144 @@ public class DualWriteVeniceWriterTest {
     }
   }
 
+  // --- Throttling tests ----------------------------------------------------------------------------
+
+  @Test
+  public void throttlesEachRegionWithRecordAndByteCountsBeforeBatchPut() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter dc0 = new RecordingExternalStorageWriter();
+    RecordingExternalStorageWriter dc1 = new RecordingExternalStorageWriter();
+    RecordingRateLimiter dc0Records = new RecordingRateLimiter();
+    RecordingRateLimiter dc0Bytes = new RecordingRateLimiter();
+    RecordingRateLimiter dc1Records = new RecordingRateLimiter();
+    RecordingRateLimiter dc1Bytes = new RecordingRateLimiter();
+    List<ExternalStorageWriteThrottler> throttlers = Arrays.asList(
+        new ExternalStorageWriteThrottler(dc0Records, dc0Bytes),
+        new ExternalStorageWriteThrottler(dc1Records, dc1Bytes));
+    try (DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(dc0, dc1), throttlers, 1, 0, 0L)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+      writer.put(key(2), value(2), SCHEMA_ID, null);
+    }
+    // batchSize=1 -> one record per batch -> one throttle charge per region per put.
+    assertEquals(dc0Records.acquired, Arrays.asList(1, 1), "dc0 record limiter charged the per-batch record count");
+    assertEquals(dc1Records.acquired, Arrays.asList(1, 1), "dc1 record limiter charged the per-batch record count");
+    assertEquals(
+        dc0Bytes.acquired,
+        Arrays.asList(expectedBytes(1), expectedBytes(2)),
+        "dc0 byte limiter charged key + schema-id-prefix + value bytes");
+    assertEquals(dc1Bytes.acquired, Arrays.asList(expectedBytes(1), expectedBytes(2)));
+  }
+
+  @Test
+  public void throttleChargesWholeBatchOnceWhenBuffered() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    RecordingRateLimiter records = new RecordingRateLimiter();
+    RecordingRateLimiter bytes = new RecordingRateLimiter();
+    List<ExternalStorageWriteThrottler> throttlers = Arrays.asList(new ExternalStorageWriteThrottler(records, bytes));
+    try (DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(external), throttlers, 3, 0, 0L)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+      writer.put(key(2), value(2), SCHEMA_ID, null);
+      writer.put(key(3), value(3), SCHEMA_ID, null);
+    }
+    // A single 3-record batch -> one charge of 3 records and the summed byte count.
+    assertEquals(records.acquired, Arrays.asList(3), "buffered batch charges the record limiter once for the batch");
+    assertEquals(bytes.acquired, Arrays.asList(expectedBytes(1) + expectedBytes(2) + expectedBytes(3)));
+  }
+
+  @Test
+  public void throttlerRejectionBlocksBatchPutAndKafkaProduce() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    RecordingRateLimiter records = new RecordingRateLimiter();
+    records.throwOnAcquire = new RuntimeException("quota exceeded boom");
+    List<ExternalStorageWriteThrottler> throttlers = Arrays.asList(new ExternalStorageWriteThrottler(records, null));
+    DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(external), throttlers, 1, 0, 0L);
+    try {
+      RuntimeException raised =
+          expectThrows(RuntimeException.class, () -> writer.put(key(1), value(1), SCHEMA_ID, null));
+      assertTrue(
+          raised.getMessage().contains("quota exceeded boom"),
+          "throttle failure should propagate to the caller; got: " + raised.getMessage());
+      assertEquals(
+          external.batchPutAttempts,
+          0,
+          "throttle runs before batchPut, so a throttle failure must skip the external write entirely");
+      verify(kafkaWriter, never()).put(any(), any(), anyInt(), any());
+    } finally {
+      // The throttle rejection cleared the buffer, so close()'s flush/drain is a no-op that won't throw.
+      writer.close();
+    }
+  }
+
+  @Test
+  public void throttlesOnlyRegionsWithAThrottlerWhenAnEntryIsNull() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter dc0 = new RecordingExternalStorageWriter();
+    RecordingExternalStorageWriter dc1 = new RecordingExternalStorageWriter();
+    RecordingRateLimiter dc0Records = new RecordingRateLimiter();
+    // dc1's entry is null -> that region is unthrottled, but must still be written.
+    List<ExternalStorageWriteThrottler> throttlers =
+        Arrays.asList(new ExternalStorageWriteThrottler(dc0Records, null), null);
+    try (DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(dc0, dc1), throttlers, 1, 0, 0L)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+    }
+    assertEquals(dc0Records.acquired, Arrays.asList(1), "dc0 is throttled");
+    assertEquals(dc0.batchPutInvocations.size(), 1, "dc0 still written");
+    assertEquals(dc1.batchPutInvocations.size(), 1, "dc1 has a null throttler entry but is still written");
+  }
+
+  @Test
+  public void emptyFlushDoesNotInvokeThrottler() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    RecordingRateLimiter records = new RecordingRateLimiter();
+    List<ExternalStorageWriteThrottler> throttlers = Arrays.asList(new ExternalStorageWriteThrottler(records, null));
+    try (DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(external), throttlers, 1, 0, 0L)) {
+      writer.flush(); // nothing buffered
+    }
+    assertTrue(records.acquired.isEmpty(), "An empty drain must not charge the throttler (avoids acquiring 0 permits)");
+    assertEquals(external.batchPutInvocations.size(), 0, "No batchPut for an empty buffer");
+  }
+
+  @Test
+  public void recordOnlyThrottlingChargesRecordsAndSkipsByteSum() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    RecordingRateLimiter records = new RecordingRateLimiter();
+    // Record-only throttler (no byte limiter) -> the anyByteThrottling=false branch; the byte sum is skipped.
+    List<ExternalStorageWriteThrottler> throttlers = Arrays.asList(new ExternalStorageWriteThrottler(records, null));
+    try (DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(external), throttlers, 2, 0, 0L)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+      writer.put(key(2), value(2), SCHEMA_ID, null);
+    }
+    // One 2-record batch -> record limiter charged once with the batch record count; no byte charge happens.
+    assertEquals(records.acquired, Arrays.asList(2), "record-only throttler charges the record count");
+    assertEquals(external.batchPutInvocations.size(), 1);
+  }
+
+  @Test
+  public void rejectsThrottlerListSizeMismatch() {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mock(AbstractVeniceWriter.class);
+    RecordingExternalStorageWriter dc0 = new RecordingExternalStorageWriter();
+    RecordingExternalStorageWriter dc1 = new RecordingExternalStorageWriter();
+    List<ExternalStorageWriteThrottler> oneThrottler =
+        Arrays.asList(new ExternalStorageWriteThrottler(new RecordingRateLimiter(), null));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(dc0, dc1), oneThrottler, 1, 0, 0L));
+  }
+
+  private static int expectedBytes(int i) {
+    return key(i).length + ExternalStorageRecord.SCHEMA_ID_PREFIX_LENGTH + value(i).length;
+  }
+
   private static AbstractVeniceWriter<byte[], byte[], byte[]> mockKafkaWriter() {
     @SuppressWarnings("unchecked")
     AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mock(AbstractVeniceWriter.class);
@@ -471,6 +610,42 @@ public class DualWriteVeniceWriterTest {
       if (throwOnClose != null) {
         throw throwOnClose;
       }
+    }
+  }
+
+  /**
+   * Records the units charged to each dimension so throttling tests can assert what the wrapper passed,
+   * without depending on real (timing-based) rate limiting. {@code throwOnAcquire} simulates a limiter that
+   * rejects, to prove throttling runs before the external write.
+   */
+  private static final class RecordingRateLimiter implements VeniceRateLimiter {
+    final List<Integer> acquired = new ArrayList<>();
+    RuntimeException throwOnAcquire = null;
+
+    @Override
+    public boolean tryAcquirePermit(int units) {
+      if (throwOnAcquire != null) {
+        throw throwOnAcquire;
+      }
+      acquired.add(units);
+      return true;
+    }
+
+    @Override
+    public void acquirePermit(int units) {
+      if (throwOnAcquire != null) {
+        throw throwOnAcquire;
+      }
+      acquired.add(units);
+    }
+
+    @Override
+    public void setQuota(long quota) {
+    }
+
+    @Override
+    public long getQuota() {
+      return 0;
     }
   }
 }
