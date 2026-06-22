@@ -23,6 +23,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
@@ -399,6 +401,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final boolean isActiveActiveReplicationEnabled;
 
+  /** Shared Caffeine cache for hot transient records across all partitions. Nullable when disabled. */
+  private final Cache<PartitionConsumptionState.HotRecordCacheKey, PartitionConsumptionState.TransientRecord> hotRecordCache;
+  private final int minValueSizeForHotCache;
+
   /**
    * This would be the number of partitions in the StorageEngine and in version topics
    */
@@ -733,6 +739,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
+
+    if (serverConfig.isTransientRecordCacheEnabled() && version.isTransientRecordCacheEnabled()
+        && (this.isActiveActiveReplicationEnabled || this.isWriteComputationEnabled)) {
+      long maxWeight = serverConfig.getTransientRecordCacheMaxWeight();
+      this.hotRecordCache = Caffeine.newBuilder()
+          .maximumWeight(maxWeight)
+          .weigher((PartitionConsumptionState.HotRecordCacheKey k, PartitionConsumptionState.TransientRecord v) -> {
+            return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+          })
+          .build();
+      this.minValueSizeForHotCache = serverConfig.getTransientRecordCacheMinValueSize();
+    } else {
+      this.hotRecordCache = null;
+      this.minValueSizeForHotCache = 0;
+    }
+
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
     this.metaStoreWriter = builder.getMetaStoreWriter();
@@ -2870,7 +2892,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hybridStoreConfig.isPresent(),
         isWriteComputationEnabled,
         isChunked,
-        serverConfig.getRegionName());
+        serverConfig.getRegionName(),
+        hotRecordCache,
+        minValueSizeForHotCache);
     if (uniqueIngestedKeyCountHllEnabled) {
       int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
       boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
@@ -2882,6 +2906,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // else: pre-deployment version (not new + no HLL bytes) — leave null, no metric emitted
     }
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
+    if (hotRecordCache != null) {
+      freshPcs.setHotRecordCacheHitRecorder(hostLevelIngestionStats::recordHotRecordCacheHitCount);
+    }
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
     if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
@@ -2924,8 +2951,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hybridStoreConfig.isPresent(),
         isWriteComputationEnabled,
         isChunked,
-        serverConfig.getRegionName());
+        serverConfig.getRegionName(),
+        hotRecordCache,
+        minValueSizeForHotCache);
     pcs.setCurrentVersionSupplier(isCurrentVersion);
+    if (hotRecordCache != null) {
+      pcs.setHotRecordCacheHitRecorder(hostLevelIngestionStats::recordHotRecordCacheHitCount);
+    }
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
     if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
@@ -3195,11 +3227,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           hybridStoreConfig.isPresent(),
           isWriteComputationEnabled,
           isChunked,
-          serverConfig.getRegionName());
+          serverConfig.getRegionName(),
+          hotRecordCache,
+          minValueSizeForHotCache);
       if (uniqueIngestedKeyCountHllEnabled) {
         consumptionState.initializeUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
+      if (hotRecordCache != null) {
+        consumptionState.setHotRecordCacheHitRecorder(hostLevelIngestionStats::recordHotRecordCacheHitCount);
+      }
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
       // Reset the error partition tracking
