@@ -150,6 +150,10 @@ services:
   venice-server:
     image: "venicedb/venice-server:latest-dev"
     hostname: venice-server
+    command: |
+      bash -c "echo server.promotion.to.leader.replica.delay.seconds=1 >> configs/single-dc/server.properties && \
+               echo server.netty.graceful.shutdown.period.seconds=0 >> configs/single-dc/server.properties && \
+               exec java -jar bin/venice-server-all.jar configs/single-dc"
     networks:
       - pulsar
     depends_on:

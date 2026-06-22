@@ -95,27 +95,23 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         }
         ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
         clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
-        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
-        // choose proper instance to hold the replica.
+        // Topology and fault-zone fields are used by the rebalancer (WAGED for the controller cluster) to spread a
+        // resource's replicas across fault zones; the controller cluster does not enable fault-zone-aware placement.
         clusterConfig.setTopologyAwareEnabled(false);
         clusterConfig.setPersistBestPossibleAssignment(true);
 
-        if (multiClusterConfigs.getHelixGlobalRebalancePreference() != null) {
-          // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
-          // of rebalancing for the controller is cheap as it is stateless.
-          clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
-        }
+        // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
+        // of rebalancing for the controller is cheap as it is stateless.
+        clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
 
         HelixCapacityConfig helixCapacityConfig = multiClusterConfigs.getHelixCapacityConfig();
-        if (multiClusterConfigs.getHelixCapacityConfig() != null) {
-          clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
+        clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
 
-          // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
-          // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
-          // the current top-state distribution into account when rebalancing.
-          clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
-          clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
-        }
+        // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
+        // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
+        // the current top-state distribution into account when rebalancing.
+        clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
+        clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
 
         if (multiClusterConfigs.getControllerHelixParticipantDeregistrationTimeoutMs() >= 0) {
           clusterConfig.getRecord()
@@ -189,8 +185,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           clusterName,
           CONTROLLER_CLUSTER_PARTITION_COUNT,
           LeaderStandbySMD.name,
-          IdealState.RebalanceMode.FULL_AUTO.toString(),
-          AutoRebalanceStrategy.class.getName());
+          IdealState.RebalanceMode.FULL_AUTO.toString());
     } catch (Exception e) {
       // Check if the cluster resource is already added to the controller cluster by another Venice controller
       // concurrently.

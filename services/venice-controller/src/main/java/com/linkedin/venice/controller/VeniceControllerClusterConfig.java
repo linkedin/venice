@@ -771,9 +771,11 @@ public class VeniceControllerClusterConfig {
     this.maxNumberOfPartitions = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
     this.partitionCountRoundUpEnabled = props.getBoolean(ENABLE_PARTITION_COUNT_ROUND_UP, false);
     this.partitionCountRoundUpSize = props.getInt(PARTITION_COUNT_ROUND_UP_SIZE, 1);
-    // If the timeout is longer than 3min, we need to update controller client's timeout as well, otherwise creating
-    // version would fail.
-    this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 120000);
+    // Controller-side ceiling for addVersion to wait for a new version's replicas to be assigned. The
+    // controller client's per-request timeout (ControllerClient.DEFAULT_REQUEST_TIMEOUT_MS) is set above
+    // this so the request_topic call does not expire client-side and retry the non-idempotent create
+    // while the controller is still waiting.
+    this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(16));
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -1281,51 +1283,32 @@ public class VeniceControllerClusterConfig {
 
     this.isDarkCluster = props.getBoolean(IS_DARK_CLUSTER, false);
 
-    Integer helixRebalancePreferenceEvenness =
-        props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS).orElse(null);
-    Integer helixRebalancePreferenceLessMovement =
-        props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT).orElse(null);
-    Integer helixRebalancePreferenceForceBaselineConverge =
-        props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE).orElse(null);
+    int helixRebalancePreferenceEvenness = props.getInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, 10);
+    int helixRebalancePreferenceLessMovement = props.getInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, 1);
+    int helixRebalancePreferenceForceBaselineConverge =
+        props.getInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE, 0);
     validateHelixRebalancePreferences(
         helixRebalancePreferenceEvenness,
         helixRebalancePreferenceLessMovement,
         helixRebalancePreferenceForceBaselineConverge);
 
-    if ((helixRebalancePreferenceEvenness != null && helixRebalancePreferenceLessMovement != null)
-        || helixRebalancePreferenceForceBaselineConverge != null) {
-      helixGlobalRebalancePreference = new HashMap<>();
-    } else {
-      helixGlobalRebalancePreference = null;
-    }
+    helixGlobalRebalancePreference = new HashMap<>();
+    helixGlobalRebalancePreference
+        .put(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS, helixRebalancePreferenceEvenness);
+    helixGlobalRebalancePreference
+        .put(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
+    helixGlobalRebalancePreference.put(
+        ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE,
+        helixRebalancePreferenceForceBaselineConverge);
 
-    if (helixRebalancePreferenceEvenness != null && helixRebalancePreferenceLessMovement != null) {
-      // EVENNESS and LESS_MOVEMENT need to be defined together
-      helixGlobalRebalancePreference
-          .put(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS, helixRebalancePreferenceEvenness);
-      helixGlobalRebalancePreference
-          .put(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
-    }
-
-    if (helixRebalancePreferenceForceBaselineConverge != null) {
-      helixGlobalRebalancePreference.put(
-          ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE,
-          helixRebalancePreferenceForceBaselineConverge);
-    }
-
-    Integer helixInstanceCapacity = props.getOptionalInt(CONTROLLER_HELIX_INSTANCE_CAPACITY).orElse(null);
-    Integer helixResourceCapacityWeight = props.getOptionalInt(CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT).orElse(null);
+    int helixInstanceCapacity = props.getInt(CONTROLLER_HELIX_INSTANCE_CAPACITY, 10000);
+    int helixResourceCapacityWeight = props.getInt(CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, 100);
     validateHelixCapacities(helixInstanceCapacity, helixResourceCapacityWeight);
 
-    if (helixInstanceCapacity != null && helixResourceCapacityWeight != null) {
-      helixCapacityConfig = new HelixCapacityConfig(
-          Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
-          Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity),
-          Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight));
-
-    } else {
-      helixCapacityConfig = null;
-    }
+    helixCapacityConfig = new HelixCapacityConfig(
+        Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+        Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity),
+        Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight));
 
     this.deferredVersionSwapSleepMs =
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
@@ -2538,21 +2521,9 @@ public class VeniceControllerClusterConfig {
   }
 
   private void validateHelixRebalancePreferences(
-      Integer helixRebalancePreferenceEvenness,
-      Integer helixRebalancePreferenceLessMovement,
-      Integer helixRebalancePreferenceForceBaselineConverge) {
-    if (helixRebalancePreferenceEvenness == null && helixRebalancePreferenceLessMovement == null
-        && helixRebalancePreferenceForceBaselineConverge == null) {
-      return;
-    }
-
-    if ((helixRebalancePreferenceEvenness == null && helixRebalancePreferenceLessMovement != null)
-        || (helixRebalancePreferenceEvenness != null && helixRebalancePreferenceLessMovement == null)) {
-      throw new ConfigurationException(
-          CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS + " and " + CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT
-              + " must be defined together.");
-    }
-
+      int helixRebalancePreferenceEvenness,
+      int helixRebalancePreferenceLessMovement,
+      int helixRebalancePreferenceForceBaselineConverge) {
     validateHelixRebalancePreferenceRange(
         helixRebalancePreferenceEvenness,
         CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS);
@@ -2564,11 +2535,7 @@ public class VeniceControllerClusterConfig {
         CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE);
   }
 
-  private void validateHelixRebalancePreferenceRange(Integer value, String rebalancePreferenceName) {
-    if (value == null) {
-      return;
-    }
-
+  private void validateHelixRebalancePreferenceRange(int value, String rebalancePreferenceName) {
     int MIN_HELIX_REBALANCE_PREFERENCE = 0;
     int MAX_HELIX_REBALANCE_PREFERENCE = 1000;
     if (value < MIN_HELIX_REBALANCE_PREFERENCE || value > MAX_HELIX_REBALANCE_PREFERENCE) {
@@ -2578,19 +2545,7 @@ public class VeniceControllerClusterConfig {
     }
   }
 
-  private void validateHelixCapacities(Integer helixInstanceCapacity, Integer helixResourceCapacityWeight) {
-    if ((helixInstanceCapacity != null && helixResourceCapacityWeight == null)
-        || (helixInstanceCapacity == null && helixResourceCapacityWeight != null)) {
-      throw new ConfigurationException(
-          CONTROLLER_HELIX_INSTANCE_CAPACITY + " and " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT
-              + " must be defined together");
-    }
-
-    // Both are null, no further validation needed
-    if (helixInstanceCapacity == null) {
-      return;
-    }
-
+  private void validateHelixCapacities(int helixInstanceCapacity, int helixResourceCapacityWeight) {
     if (helixInstanceCapacity <= 0 || helixResourceCapacityWeight <= 0) {
       throw new ConfigurationException(
           CONTROLLER_HELIX_INSTANCE_CAPACITY + " and " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT

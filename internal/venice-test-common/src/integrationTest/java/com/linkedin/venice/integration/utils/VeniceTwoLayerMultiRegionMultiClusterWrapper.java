@@ -245,6 +245,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .veniceZkBasePath(options.getParentVeniceZkBasePath())
               .replicationFactor(options.getReplicationFactor())
               .childControllers(childControllers)
+              .numberOfControllers(options.getNumberOfParentControllers())
               .extraProperties(finalParentControllerProperties)
               .clusterToD2(clusterToD2)
               .clusterToServerD2(clusterToServerD2)

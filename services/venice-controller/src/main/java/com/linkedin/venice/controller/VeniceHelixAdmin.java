@@ -54,6 +54,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
@@ -297,9 +298,7 @@ import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
-import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
-import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
-import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
+import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
@@ -6854,11 +6853,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * happen in the integration test suite, however, which retries service creation several times
        * if it gets any exception.
        *
-       * In any case, if we call this function twice and progress past this code block, another Helix
-       * function below, {@link HelixAdmin#setConfig(HelixConfigScope, Map)}, fails with the following
-       * symptoms:
+       * In any case, if we call this function twice and progress past this code block, the cluster-config
+       * write below ({@link HelixAdminClient#updateClusterConfigs}, backed by the Helix ConfigAccessor) fails
+       * with symptoms like:
        *
-       * org.apache.helix.HelixException: fail to set config. cluster: venice-controllers is NOT setup.
+       * org.apache.helix.HelixException: cluster venice-controllers is not setup yet
        *
        * Thus, if you see this, it is actually because {@link HelixAdmin#addCluster(String, boolean)}
        * returned true even though the Helix cluster is only partially setup.
@@ -6867,20 +6866,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           "admin.addCluster() for '" + controllerClusterName + "' returned false. "
               + "Look for previous errors logged by Helix for more details...");
     }
-    HelixConfigScope configScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(controllerClusterName)
-            .build();
-    Map<String, String> helixClusterProperties = new HashMap<String, String>();
-    helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
-    // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
-    // choose proper instance to hold the replica.
-    helixClusterProperties
-        .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
     /**
-     * This {@link HelixAdmin#setConfig(HelixConfigScope, Map)} function will throw a HelixException if
-     * the previous {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
+     * The controller-cluster resources are managed by WAGED (see {@link #createClusterIfRequired(String)}). This
+     * mirrors the WAGED cluster config that the HaaS path applies in
+     * {@link ZkHelixAdminClient#createVeniceControllerCluster()} so both paths assign the controller-cluster resource
+     * the same way. Keep the two in sync when changing WAGED tuning.
      */
-    admin.setConfig(configScope, helixClusterProperties);
+    ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
+    clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
+    // Topology and fault-zone fields are used by the rebalancer (WAGED for the controller cluster) to spread a
+    // resource's replicas across fault zones; the controller cluster does not enable fault-zone-aware placement.
+    clusterConfig.setTopologyAwareEnabled(false);
+    clusterConfig.setPersistBestPossibleAssignment(true);
+    // WAGED computes its baseline assignment asynchronously by default, so the first rebalance pipeline run returns an
+    // empty assignment and the real one only lands after the async baseline finishes and re-triggers the pipeline.
+    // Because the non-HaaS controller runs this pipeline in-process and blocks on the controller-cluster resource
+    // becoming visible in the external view during startup (waitUntilClusterResourceIsVisibleInEV), that async
+    // convergence can miss the startup window. Force synchronous global rebalance so the assignment is computed on the
+    // first pipeline run. The HaaS path does not need this because a dedicated always-on Helix controller runs the
+    // pipeline independently of controller startup.
+    clusterConfig.setGlobalRebalanceAsyncMode(false);
+
+    // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost of
+    // rebalancing for the controller is cheap as it is stateless.
+    clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
+
+    HelixCapacityConfig helixCapacityConfig = multiClusterConfigs.getHelixCapacityConfig();
+    clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
+    // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
+    // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes the
+    // current top-state distribution into account when rebalancing.
+    clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
+    clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
+
+    /**
+     * {@link HelixAdminClient#updateClusterConfigs(String, ClusterConfig)} persists the structured cluster config via
+     * the Helix ConfigAccessor and throws a HelixException if the previous
+     * {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
+     */
+    helixAdminClient.updateClusterConfigs(controllerClusterName, clusterConfig);
     admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
   }
 
@@ -6964,15 +6988,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         clusterName,
         CONTROLLER_CLUSTER_NUMBER_OF_PARTITION,
         LeaderStandbySMD.name,
-        IdealState.RebalanceMode.FULL_AUTO.toString(),
-        AutoRebalanceStrategy.class.getName());
+        IdealState.RebalanceMode.FULL_AUTO.toString());
     IdealState idealState = admin.getResourceIdealState(controllerClusterName, clusterName);
-    // Use crush alg to allocate controller as well.
     int controllerClusterReplica = config.getControllerClusterReplica();
     idealState.setReplicas(String.valueOf(controllerClusterReplica));
-    idealState.setMinActiveReplicas(controllerClusterReplica);
-    idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-    idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
+    idealState.setMinActiveReplicas(Math.max(controllerClusterReplica - 1, 1));
+    idealState.setRebalancerClassName(WagedRebalancer.class.getName());
     admin.setResourceIdealState(controllerClusterName, clusterName, idealState);
     admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
   }
