@@ -439,6 +439,8 @@ public class TestHAASController {
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
+      doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig)
+          .getControllerClusterZkAddress();
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
           .getControllerHAASSuperClusterName();
       doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
@@ -490,6 +492,8 @@ public class TestHAASController {
       when(commonConfig.getHelixCloudConfig()).thenReturn(cloudConfig);
 
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
+      doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig)
+          .getControllerClusterZkAddress();
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
           .getControllerHAASSuperClusterName();
       doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
