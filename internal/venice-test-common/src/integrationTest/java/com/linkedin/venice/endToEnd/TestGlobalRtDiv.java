@@ -1355,6 +1355,120 @@ public class TestGlobalRtDiv {
   }
 
   /**
+   * Verifies that the LCVP saved by the NR remote-VT leader refers to the <em>remote</em> VT
+   * (source dc-0) position, not the <em>local</em> VT (dc-1 produce) position.
+   *
+   * <p>Before the fix in {@code addVtDivToProducerCallbackIfNeeded}, the callback used
+   * {@code produceResult.getPubSubPosition()} (local VT) as LCVP. The two positions come from
+   * different Kafka clusters and have different wire formats, so
+   * {@code getLatestConsumedVtPosition()} must not equal {@code getCheckpointedLocalVtPosition()}.
+   * If they are equal the leader will re-subscribe to the wrong offset on the remote VT after
+   * restart, miss the SOS, and immediately fail with a DIV {@code MissingDataException}.
+   */
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testNRLeaderLcvpIsRemoteVTNotLocalVT() throws Exception {
+    int PARTITION = 0;
+    Properties extraServerProps = new Properties();
+    // Low sync threshold so byte-threshold LCVP syncs fire during the small batch push.
+    extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "500");
+
+    try (NRGlobalRtDivBatchEnv env =
+        setUpNRGlobalRtDivBatchPushed("venice-cluster0", "nrLcvpVsLocalVt", 100, 1, PARTITION, extraServerProps)) {
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        Instance currentLeader = env.routingDataRepo.getLeaderInstance(env.topicName, PARTITION);
+        assertNotNull(currentLeader, "Leader should be assigned in remote dc for partition " + PARTITION);
+        VeniceServerWrapper leaderWrapper = env.remoteDcCluster.getVeniceServerByPort(currentLeader.getPort());
+        assertNotNull(leaderWrapper, "Leader server wrapper not found");
+        OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(leaderWrapper, env.topicName, PARTITION);
+
+        PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
+        PubSubPosition localVtPosition = offsetRecord.getCheckpointedLocalVtPosition();
+
+        // Both positions must be real (non-EARLIEST) before we compare them.
+        assertNotEquals(lcvp, PubSubSymbolicPosition.EARLIEST, "LCVP must be synced (non-EARLIEST)");
+        assertNotEquals(
+            localVtPosition,
+            PubSubSymbolicPosition.EARLIEST,
+            "checkpointedLocalVtPosition must be set (non-EARLIEST)");
+
+        // The core assertion: LCVP tracks the remote VT consumed position, not the local VT produce
+        // position. The two positions originate from different Kafka clusters and therefore have
+        // different wire formats — they can never be equal in a correct implementation.
+        assertNotEquals(
+            lcvp,
+            localVtPosition,
+            "LCVP must be the remote VT consumed position, not the local VT produce position. "
+                + "If equal, addVtDivToProducerCallbackIfNeeded is saving the wrong offset as LCVP: " + "lcvp=" + lcvp
+                + " localVtPosition=" + localVtPosition);
+        LOGGER.info("event=globalRtDiv lcvp={} localVtPosition={} (correctly differ)", lcvp, localVtPosition);
+      });
+    }
+  }
+
+  /**
+   * Verifies that a second batch push succeeds after the NR remote-VT leader is restarted.
+   *
+   * <p>This is the end-to-end regression test for the LCVP offset-space mismatch in
+   * {@code addVtDivToProducerCallbackIfNeeded}: if the wrong (local VT) position is saved as LCVP,
+   * the NR leader re-subscribes to the remote VT at that position on the second startup, misses
+   * the SOS for the new version's segment, and immediately fails with a DIV
+   * {@code MissingDataException} — causing ERROR replicas and a stuck / failed push.
+   */
+  @Test(timeOut = 360 * Time.MS_PER_SECOND)
+  public void testNRLeaderRestartThenSecondPushSucceeds() throws Exception {
+    int PARTITION = 0;
+    Properties extraServerProps = new Properties();
+    extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "500");
+
+    try (NRGlobalRtDivBatchEnv env = setUpNRGlobalRtDivBatchPushed(
+        "venice-cluster0",
+        "nrLeaderRestartSecondPush",
+        100,
+        1,
+        PARTITION,
+        extraServerProps)) {
+
+      // Stop and restart the NR leader to load LCVP from the OffsetRecord.
+      LOGGER.info("event=globalRtDiv Stopping dc-1 leader: {}", env.leaderServer.getAddress());
+      env.remoteDcCluster.stopVeniceServer(env.leaderServer.getPort());
+      LOGGER.info("event=globalRtDiv Restarting dc-1 leader: {}", env.leaderServer.getAddress());
+      env.remoteDcCluster.restartVeniceServer(env.leaderServer.getPort());
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          true,
+          () -> assertTrue(
+              env.remoteDcCluster.getVeniceServerByPort(env.leaderServer.getPort()).isRunning(),
+              "Restarted server should be running"));
+
+      // Run a second push. If LCVP was saved as the local VT produce position, the NR leader
+      // re-subscribes to the remote VT at that wrong offset, misses the SOS for version 2's
+      // segment, and hits a DIV MissingDataException → ERROR replicas → VenicePushJob throws.
+      File inputDir2 = getTempDataDirectory();
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir2, 50);
+      String inputDirPath2 = "file://" + inputDir2.getAbsolutePath();
+      Properties vpjProps2 = IntegrationTestPushUtils.defaultVPJProps(env.multiRegion, inputDirPath2, env.storeName);
+      vpjProps2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+      vpjProps2.put(SOURCE_GRID_FABRIC, env.sourceFabric);
+      try (VenicePushJob job = new VenicePushJob("Test push v2", vpjProps2)) {
+        job.run(); // throws if any dc doesn't reach version 2 (e.g., ERROR replicas in dc-1)
+      }
+
+      // Verify v2 is current in dc-1 and a sample of its data is readable.
+      try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(env.storeName)
+              .setVeniceURL(env.remoteDcCluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          Object value = client.get("1").get();
+          assertNotNull(value, "Key '1' must be readable from dc-1 after second push");
+        });
+      }
+    }
+  }
+
+  /**
    * Spins up a 2-region NR cluster with Global RT DIV enabled, runs a batch push, and resolves
    * the dc-1 (remote) leader. dc-0 is pinned as the source fabric so dc-1 is deterministically
    * the remote consumer (consumeRemotely=true on the dc-1 leader).
@@ -1464,7 +1578,8 @@ public class TestGlobalRtDiv {
           leaderServer,
           topicName,
           storeName,
-          routingDataRepo);
+          routingDataRepo,
+          sourceFabric);
     } catch (Throwable t) {
       try {
         multiRegion.close();
@@ -1480,12 +1595,13 @@ public class TestGlobalRtDiv {
    * Owns the multi-region cluster wrapper and shuts it down on {@link #close()}.
    */
   private static final class NRGlobalRtDivBatchEnv implements AutoCloseable {
-    private final VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion;
+    final VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion;
     final VeniceClusterWrapper remoteDcCluster;
     final VeniceServerWrapper leaderServer;
     final String topicName;
     final String storeName;
     final HelixExternalViewRepository routingDataRepo;
+    final String sourceFabric;
 
     NRGlobalRtDivBatchEnv(
         VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion,
@@ -1493,13 +1609,15 @@ public class TestGlobalRtDiv {
         VeniceServerWrapper leaderServer,
         String topicName,
         String storeName,
-        HelixExternalViewRepository routingDataRepo) {
+        HelixExternalViewRepository routingDataRepo,
+        String sourceFabric) {
       this.multiRegion = multiRegion;
       this.remoteDcCluster = remoteDcCluster;
       this.leaderServer = leaderServer;
       this.topicName = topicName;
       this.storeName = storeName;
       this.routingDataRepo = routingDataRepo;
+      this.sourceFabric = sourceFabric;
     }
 
     @Override
