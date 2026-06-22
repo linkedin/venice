@@ -174,9 +174,10 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           throw new VeniceException("Unrecognized query action");
       }
     } catch (VeniceException e) {
-      String msg = "Failed to parse request URI '" + req.uri() + "' from " + ctx.channel() + ": " + e.getMessage();
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.warn(msg);
+      Object remote = ctx.channel().remoteAddress();
+      String filterKey = "URI parse failure: " + e.getMessage() + " uri=" + req.uri() + " remote=" + remote;
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
+        LOGGER.warn("Failed to parse request URI '{}' from {}: {}", req.uri(), remote, e.getMessage(), e);
       }
       ctx.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.BAD_REQUEST));
     }
