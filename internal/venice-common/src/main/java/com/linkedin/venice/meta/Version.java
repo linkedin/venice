@@ -344,6 +344,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setPreviousCurrentVersion(int previousCurrentVersion);
 
+  boolean isTransientRecordCacheEnabled();
+
+  void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled);
+
   /**
    * Per-version storage mode controlling where data is persisted relative to the configured external storage system.
    * Defaults to {@link StorageMode#INTERNAL}. Mirrors the {@code storageMode} field staged on {@code StoreVersion}

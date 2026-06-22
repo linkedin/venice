@@ -3542,4 +3542,28 @@ public class ConfigKeys {
    */
   public static final String PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS =
       "partial.update.amplification.report.interval.ms";
+
+  /**
+   * Maximum weight in bytes for the per-SIT shared hot transient record cache. This Caffeine cache retains
+   * frequently accessed large records across consumer poll boundaries to avoid expensive DB lookups for
+   * chunked values. Default is 32MB.
+   */
+  public static final String SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MAX_WEIGHT =
+      "server.ingestion.transient.record.cache.max.weight";
+
+  /**
+   * Minimum value size in bytes for a record to be admitted into the hot transient record cache.
+   * Records smaller than this threshold are cheap to fetch from DB and should not occupy cache budget.
+   * Default is 100KB.
+   */
+  public static final String SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MIN_VALUE_SIZE =
+      "server.ingestion.transient.record.cache.min.value.size";
+
+  /**
+   * Host-level kill switch for the transient record cache. When set to false, the cache is disabled
+   * on this node regardless of the version-level setting. This allows operators to quickly disable
+   * the cache without requiring a new push. Default is true (enabled, defers to version-level config).
+   */
+  public static final String SERVER_INGESTION_TRANSIENT_RECORD_CACHE_ENABLED =
+      "server.ingestion.transient.record.cache.enabled";
 }

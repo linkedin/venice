@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.utils.ByteArrayKey;
@@ -32,6 +33,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -249,6 +251,13 @@ public class PartitionConsumptionState {
    */
   private final Map<ByteArrayKey, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
+  /** Shared Caffeine cache across partitions for hot transient records. Nullable when disabled. */
+  private final Cache<HotRecordCacheKey, TransientRecord> hotRecordCache;
+  private final int minValueSizeForHotCache;
+  private final AtomicLong hotRecordCacheHitCount = new AtomicLong(0);
+  /** Records a hot-cache hit to the host-level metric; set after construction, no-op when unset. */
+  private Runnable hotRecordCacheHitRecorder;
+
   /**
    * This field is used to track whether the last queued record has been fully processed or not.
    * For Leader role, it is redundant from {@literal ProducedRecord#persistedToDBFuture} since it is tracking
@@ -416,6 +425,28 @@ public class PartitionConsumptionState {
       boolean isWriteComputationEnabled,
       boolean isChunked,
       String localRegionName) {
+    this(
+        partitionReplica,
+        offsetRecord,
+        pubSubContext,
+        hybrid,
+        isWriteComputationEnabled,
+        isChunked,
+        localRegionName,
+        null,
+        0);
+  }
+
+  public PartitionConsumptionState(
+      PubSubTopicPartition partitionReplica,
+      OffsetRecord offsetRecord,
+      PubSubContext pubSubContext,
+      boolean hybrid,
+      boolean isWriteComputationEnabled,
+      boolean isChunked,
+      String localRegionName,
+      Cache<HotRecordCacheKey, TransientRecord> hotRecordCache,
+      int minValueSizeForHotCache) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
     this.partitionReplica = Objects.requireNonNull(partitionReplica, "TopicPartition cannot be null when creating PCS");
@@ -427,6 +458,8 @@ public class PartitionConsumptionState {
     this.hybrid = hybrid;
     this.offsetRecord = offsetRecord;
     this.pubSubContext = pubSubContext;
+    this.hotRecordCache = hotRecordCache;
+    this.minValueSizeForHotCache = minValueSizeForHotCache;
     this.errorReported = false;
     this.lagCaughtUp = false;
     this.lagCaughtUpTimeInMs = 0;
@@ -1062,10 +1095,45 @@ public class PartitionConsumptionState {
     }
 
     transientRecordMap.put(ByteArrayKey.wrap(key), transientRecord);
+
+    if (hotRecordCache != null) {
+      HotRecordCacheKey hotKey = buildHotCacheKey(key);
+      if (valueLen >= minValueSizeForHotCache) {
+        hotRecordCache.put(hotKey, transientRecord);
+      } else {
+        // Invalidate any stale entry when the new record no longer qualifies
+        hotRecordCache.invalidate(hotKey);
+      }
+    }
   }
 
   public TransientRecord getTransientRecord(byte[] key) {
-    return transientRecordMap.get(ByteArrayKey.wrap(key));
+    TransientRecord record = transientRecordMap.get(ByteArrayKey.wrap(key));
+    if (record != null) {
+      return record;
+    }
+    if (hotRecordCache != null) {
+      record = hotRecordCache.getIfPresent(buildHotCacheKey(key));
+      if (record != null) {
+        hotRecordCacheHitCount.incrementAndGet();
+        if (hotRecordCacheHitRecorder != null) {
+          hotRecordCacheHitRecorder.run();
+        }
+      }
+    }
+    return record;
+  }
+
+  private HotRecordCacheKey buildHotCacheKey(byte[] key) {
+    return new HotRecordCacheKey(getPartition(), key);
+  }
+
+  public long getHotRecordCacheHitCount() {
+    return hotRecordCacheHitCount.get();
+  }
+
+  public void setHotRecordCacheHitRecorder(Runnable hotRecordCacheHitRecorder) {
+    this.hotRecordCacheHitRecorder = hotRecordCacheHitRecorder;
   }
 
   /**
@@ -1128,6 +1196,44 @@ public class PartitionConsumptionState {
    */
   public void clearPreviouslyReadyToServeInOffsetRecord() {
     offsetRecord.clearPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE);
+  }
+
+  /**
+   * Cache key for the shared (cross-partition) hot record cache. Combines the partition id with the record key
+   * so the same user key in different partitions does not collide. Wraps the key array by reference rather than
+   * copying it into a partition-prefixed array, avoiding a per-lookup allocation on the ingestion hot path.
+   */
+  public static final class HotRecordCacheKey {
+    private final int partition;
+    private final byte[] key;
+    private final int hashCode;
+
+    public HotRecordCacheKey(int partition, byte[] key) {
+      this.partition = partition;
+      this.key = key;
+      this.hashCode = 31 * partition + Arrays.hashCode(key);
+    }
+
+    public byte[] getContent() {
+      return key;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      HotRecordCacheKey that = (HotRecordCacheKey) o;
+      return partition == that.partition && Arrays.equals(key, that.key);
+    }
+
+    @Override
+    public int hashCode() {
+      return hashCode;
+    }
   }
 
   /**

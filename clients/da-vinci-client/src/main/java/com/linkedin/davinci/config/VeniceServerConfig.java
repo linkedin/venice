@@ -139,6 +139,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_INFO_LOG_LINE_LIMI
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TRANSIENT_RECORD_CACHE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MAX_WEIGHT;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MIN_VALUE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_ENABLED;
@@ -747,6 +750,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean activeKeyCountForHybridStoreEnabled;
   private final int partialUpdateLargeResultLogThresholdBytes;
   private final long partialUpdateAmplificationReportIntervalMs;
+  private final boolean transientRecordCacheEnabled;
+  private final long transientRecordCacheMaxWeight;
+  private final int transientRecordCacheMinValueSize;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1303,6 +1309,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES, 100 * 1024);
     this.partialUpdateAmplificationReportIntervalMs =
         serverProperties.getLong(PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS, -1);
+    this.transientRecordCacheEnabled =
+        serverProperties.getBoolean(SERVER_INGESTION_TRANSIENT_RECORD_CACHE_ENABLED, true);
+    this.transientRecordCacheMaxWeight =
+        serverProperties.getLong(SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MAX_WEIGHT, 32 * 1024 * 1024L);
+    this.transientRecordCacheMinValueSize =
+        serverProperties.getInt(SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MIN_VALUE_SIZE, 100 * 1024);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2360,5 +2372,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getPartialUpdateAmplificationReportIntervalMs() {
     return partialUpdateAmplificationReportIntervalMs;
+  }
+
+  public boolean isTransientRecordCacheEnabled() {
+    return transientRecordCacheEnabled;
+  }
+
+  public long getTransientRecordCacheMaxWeight() {
+    return transientRecordCacheMaxWeight;
+  }
+
+  public int getTransientRecordCacheMinValueSize() {
+    return transientRecordCacheMinValueSize;
   }
 }

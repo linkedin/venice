@@ -770,6 +770,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isTransientRecordCacheEnabled() {
+      return this.delegate.isTransientRecordCacheEnabled();
+    }
+
+    @Override
+    public void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Version cloneVersion() {
       return this.delegate.cloneVersion();
     }
