@@ -2396,7 +2396,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     PartitionTracker vtDiv =
         getConsumerDiv().cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
-    sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture);
+    // For NR leaders the consumed topic is the remote source VT, not the local VT. The local VT
+    // produce position (used by the RT-source path) belongs to a different topic and offset space,
+    // so it must not be used as the LCVP that determines the remote VT restart subscription position.
+    // Capture the remote VT offset now; sendVtDivSnapshotOnCompletion will use it instead of the
+    // local produce position.
+    sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture, consumerRecord.getPosition());
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
   }
 
@@ -2404,14 +2409,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Installs an onCompletion callback on {@code callback} that, when the produce to local VT completes,
    * updates {@code vtDiv}'s LCVP to the produced position and queues a drainer-side OffsetRecord sync.
    * Restores the thread interrupt flag if the drainer rejects with {@link InterruptedException}.
-   * Shared by {@link #createGlobalRtDivCallback} (leader-RT-source) and
-   * {@link #addVtDivToProducerCallbackIfNeeded} (leader-VT-source).
+   * Used by {@link #createGlobalRtDivCallback} (leader-RT-source) where the local VT produce position
+   * is the correct LCVP.
    */
   private CompletableFuture<Void> sendVtDivSnapshotOnCompletion(
       LeaderProducerCallback callback,
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDiv,
       CompletableFuture<Void> persistedToDBFuture) {
+    return sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture, null);
+  }
+
+  /**
+   * Installs an onCompletion callback on {@code callback} that, when the produce to local VT completes,
+   * updates {@code vtDiv}'s LCVP and queues a drainer-side OffsetRecord sync.
+   *
+   * <p>When {@code lcvp} is non-null the snapshot is stamped with that position (used by
+   * {@link #addVtDivToProducerCallbackIfNeeded} for NR remote-VT-source leaders, where the consumed
+   * remote VT position must be used rather than the local VT produce position).
+   * When {@code lcvp} is null the produce result position is used (RT-source leader path).
+   */
+  private CompletableFuture<Void> sendVtDivSnapshotOnCompletion(
+      LeaderProducerCallback callback,
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDiv,
+      CompletableFuture<Void> persistedToDBFuture,
+      PubSubPosition lcvp) {
     // Relay future the leader graceful-shutdown path awaits. It completes when the drainer-side VT DIV sync node has
     // run. The leader-produce callback only fires on produce success, so also fail the relay if the produce/persist
     // fails — otherwise the shutdown await would hang until its timeout instead of completing promptly.
@@ -2423,7 +2446,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     });
     callback.setOnCompletionCallback(produceResult -> {
       try {
-        vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition());
+        vtDiv.updateLatestConsumedVtPosition(lcvp != null ? lcvp : produceResult.getPubSubPosition());
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, persistedToDBFuture, this)
             .whenComplete((ignored, throwable) -> {
               if (throwable != null) {

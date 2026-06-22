@@ -176,6 +176,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
   private static final int GLOBAL_RT_DIV_VERSION =
       AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+  // Sentinel remote-VT consumed position used by addVtDivToProducerCallbackIfNeeded tests.
+  private static final PubSubPosition REMOTE_VT_CONSUMED_POSITION = InMemoryPubSubPosition.of(7L);
 
   private Store mockStore;
   private LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask;
@@ -1121,10 +1123,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   /**
    * Verifies that {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded} installs an
-   * onCompletionCallback on the regular {@link LeaderProducerCallback} that, when fired, asynchronously
-   * syncs the OffsetRecord with LCVP set to the produced-local-VT position. This covers the leader
-   * consuming from a VT source (e.g., remote VT), whose LCVP would otherwise never be persisted —
-   * causing restart from EARLIEST.
+   * onCompletionCallback on the {@link LeaderProducerCallback} that, when fired, asynchronously syncs
+   * the OffsetRecord with LCVP set to the <em>consumed remote-VT position</em> — NOT the local VT
+   * produce position. This is the NR remote-VT-source path: the leader subscribes to the remote VT on
+   * restart, so LCVP must be the remote VT offset; using the local VT produce position (a different
+   * topic/offset space) would cause the leader to resume at a wrong position and miss the SOS.
    *
    * Also verifies the byte counter is reset synchronously, mirroring the leader-RT path's behavior
    * in {@link LeaderFollowerStoreIngestionTask#sendGlobalRtDivMessage}.
@@ -1140,11 +1143,19 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Byte counter is reset synchronously when the callback is installed (mirrors the RT path).
     verify(mockPartitionConsumptionState, times(1)).resetConsumedBytesSinceLastGlobalRtDivSync(versionTopicName);
 
-    fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(42L));
-    // Confirm the sync was routed to the leader's replica topic-partition with the correct
-    // persisted-to-DB future from the leaderProducedRecordContext.
+    // Fire the produce-completion callback with a local VT produce position (99L). LCVP must be
+    // the consumer-record position (REMOTE_VT_CONSUMED_POSITION = 7L), not the produce position.
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+    PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
+    doReturn(InMemoryPubSubPosition.of(99L)).when(produceResult).getPubSubPosition();
+    callback.onCompletion(produceResult, null);
+    ArgumentCaptor<PartitionTracker> vtDivCaptor = ArgumentCaptor.forClass(PartitionTracker.class);
     verify(mockStoreBufferService, times(1))
-        .execSyncOffsetFromSnapshotAsync(eq(mockTp), any(), eq(persistedFuture), any());
+        .execSyncOffsetFromSnapshotAsync(eq(mockTp), vtDivCaptor.capture(), eq(persistedFuture), any());
+    assertEquals(
+        vtDivCaptor.getValue().getLatestConsumedVtPosition(),
+        REMOTE_VT_CONSUMED_POSITION,
+        "LCVP must be the remote VT consumed position, not the local VT produce position");
   }
 
   /**
@@ -1222,12 +1233,15 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Build a consumer record on a non-RT topic so the install gate accepts it. Non-control-message
     // record so isNonSegmentControlMessage short-circuits and the install decision flows through
     // shouldSendGlobalRtDiv (which we stub to true below).
+    // getPosition() returns REMOTE_VT_CONSUMED_POSITION — this is the remote VT offset that must
+    // become the LCVP saved to the OffsetRecord (not the local VT produce position).
     DefaultPubSubMessage mockConsumerRecord = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
     PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
     doReturn(mockSourceTp).when(mockConsumerRecord).getTopicPartition();
     doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
     doReturn(false).when(mockSourceTopic).isRealTime();
+    doReturn(REMOTE_VT_CONSUMED_POSITION).when(mockConsumerRecord).getPosition();
     KafkaKey mockKey = mock(KafkaKey.class);
     doReturn(false).when(mockKey).isControlMessage();
     doReturn(mockKey).when(mockConsumerRecord).getKey();
