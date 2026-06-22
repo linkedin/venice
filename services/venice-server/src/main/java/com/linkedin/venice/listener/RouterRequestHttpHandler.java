@@ -18,6 +18,7 @@ import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.request.RequestHelper;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -45,6 +46,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(RouterRequestHttpHandler.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private final StatsHandler statsHandler;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
@@ -171,6 +174,11 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           throw new VeniceException("Unrecognized query action");
       }
     } catch (VeniceException e) {
+      Object remote = ctx.channel() == null ? null : ctx.channel().remoteAddress();
+      String filterKey = "URI parse failure: " + e.getMessage() + " uri=" + req.uri() + " remote=" + remote;
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
+        LOGGER.warn("Failed to parse request URI '{}' from {}: {}", req.uri(), remote, e.getMessage(), e);
+      }
       ctx.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.BAD_REQUEST));
     }
   }
