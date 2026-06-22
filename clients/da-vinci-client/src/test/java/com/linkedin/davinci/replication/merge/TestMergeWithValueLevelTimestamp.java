@@ -244,6 +244,88 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     Assert.assertEquals(GenericData.get().compare(result1, result2, userSchemaV1), 0);
   }
 
+  /**
+   * TEST-ONLY A/A DCR bug injection: the injection reflects the DCR write timestamp via {@code Long.MAX_VALUE - ts} on
+   * a single region, so that region resolves conflicts as "older wins" while the others resolve "newer wins", causing
+   * the regions to diverge. These tests drive the real resolver with reflected timestamps to prove the winner is
+   * inverted for PUT and DELETE, and that the reflecting region stays internally deterministic (order-independent).
+   */
+  private static long reflect(long timestamp) {
+    return Long.MAX_VALUE - timestamp;
+  }
+
+  private MergeConflictResolver newBugInjectionTestResolver() {
+    StringAnnotatedStoreSchemaCache schemaCache = new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    return MergeConflictResolverFactory.getInstance()
+        .createMergeConflictResolver(schemaCache, new RmdSerDe(schemaCache, RMD_VERSION_ID), storeName);
+  }
+
+  private ByteBuffer userValue(String id, int age) {
+    GenericRecord record = new GenericData.Record(userSchemaV1);
+    record.put("id", id);
+    record.put("name", id);
+    record.put("age", age);
+    return serialize(record);
+  }
+
+  private RmdWithValueSchemaId rmdAt(long timestamp) {
+    return new RmdWithValueSchemaId(1, RMD_VERSION_ID, createRmdWithValueLevelTimestamp(userRmdSchemaV1, timestamp));
+  }
+
+  @Test
+  public void testBugInjectionInvertsPutWinnerAcrossRegions() {
+    long oldRealTs = 20L;
+    long newRealTs = 30L;
+    ByteBuffer newValue = userValue("new", 1);
+
+    // Normal region: newer write wins -> applied.
+    MergeConflictResult normal = newBugInjectionTestResolver()
+        .put(Lazy.of(() -> userValue("old", 0)), rmdAt(oldRealTs), newValue, newRealTs, 1, 0);
+    Assert.assertFalse(normal.isUpdateIgnored());
+    Assert.assertEquals(normal.getNewValue(), newValue);
+
+    // Bug region: both timestamps reflected -> the newer real write now loses (older wins) -> ignored.
+    MergeConflictResult bug = newBugInjectionTestResolver()
+        .put(Lazy.of(() -> userValue("old", 0)), rmdAt(reflect(oldRealTs)), newValue, reflect(newRealTs), 1, 0);
+    Assert.assertTrue(bug.isUpdateIgnored());
+  }
+
+  @Test
+  public void testBugInjectionInvertsDeleteWinnerAcrossRegions() {
+    long valueRealTs = 30L;
+    long deleteRealTs = 20L;
+
+    // Normal region: the older delete is stale -> ignored, value preserved.
+    MergeConflictResult normal =
+        newBugInjectionTestResolver().delete(Lazy.of(() -> userValue("v", 0)), rmdAt(valueRealTs), deleteRealTs, 0);
+    Assert.assertTrue(normal.isUpdateIgnored());
+
+    // Bug region: reflected timestamps make the older delete win -> value deleted.
+    MergeConflictResult bug = newBugInjectionTestResolver()
+        .delete(Lazy.of(() -> userValue("v", 0)), rmdAt(reflect(valueRealTs)), reflect(deleteRealTs), 0);
+    Assert.assertFalse(bug.isUpdateIgnored());
+    Assert.assertNull(bug.getNewValue());
+  }
+
+  @Test
+  public void testBugInjectionRegionIsOrderIndependent() {
+    long olderRealTs = 20L;
+    long newerRealTs = 30L;
+    ByteBuffer olderValue = userValue("older", 0);
+    ByteBuffer newerValue = userValue("newer", 1);
+
+    // Base is the newer write; the older write arrives -> older wins (applied).
+    MergeConflictResult olderArrivesSecond = newBugInjectionTestResolver()
+        .put(Lazy.of(() -> newerValue), rmdAt(reflect(newerRealTs)), olderValue, reflect(olderRealTs), 1, 0);
+    Assert.assertFalse(olderArrivesSecond.isUpdateIgnored());
+    Assert.assertEquals(olderArrivesSecond.getNewValue(), olderValue);
+
+    // Base is the older write; the newer write arrives -> newer loses (ignored), older preserved.
+    MergeConflictResult newerArrivesSecond = newBugInjectionTestResolver()
+        .put(Lazy.of(() -> olderValue), rmdAt(reflect(olderRealTs)), newerValue, reflect(newerRealTs), 1, 0);
+    Assert.assertTrue(newerArrivesSecond.isUpdateIgnored());
+  }
+
   private ByteBuffer serialize(GenericRecord record) {
     return ByteBuffer.wrap(serializer.serialize(record));
   }
