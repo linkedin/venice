@@ -28,6 +28,7 @@ import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -51,6 +52,8 @@ import org.apache.logging.log4j.Logger;
 public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest>
     implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   public static final String SERVER_OVER_CAPACITY_MSG = "Server over capacity";
   public static final String INVALID_REQUEST_RESOURCE_MSG = "Invalid request resource: ";
   private static final long WAIT_FOR_CUSTOMIZED_VIEW_TIMEOUT_SECONDS = 180;
@@ -298,6 +301,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     QuotaEnforcementResult result = enforceQuota(request);
 
     if (result == QuotaEnforcementResult.BAD_REQUEST) {
+      String msg = INVALID_REQUEST_RESOURCE_MSG + request.getResourceName();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.warn("Rejecting request from {} - {}", ctx.channel(), msg);
+      }
       ctx.writeAndFlush(
           new HttpShortcutResponse(
               INVALID_REQUEST_RESOURCE_MSG + request.getResourceName(),
