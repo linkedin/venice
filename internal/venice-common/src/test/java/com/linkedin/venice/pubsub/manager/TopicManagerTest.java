@@ -222,6 +222,55 @@ public class TopicManagerTest {
   }
 
   @Test
+  public void testCreateTopicClampsRetentionForAlternativeBackend() {
+    // Eternal (Long.MAX) retention targeting the alternative backend is clamped to the configured max.
+    PubSubTopic eternalAltBackendTopic = getTopic();
+    topicManager.createTopic(
+        eternalAltBackendTopic,
+        1,
+        1,
+        PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS,
+        false,
+        Optional.empty(),
+        false,
+        true /* useAlternativeBackend */);
+    assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(eternalAltBackendTopic));
+    assertEquals(
+        topicManager.getTopicRetention(eternalAltBackendTopic),
+        PubSubConstants.DEFAULT_ALTERNATIVE_BACKEND_MAX_RETENTION_MS);
+
+    // The same eternal retention is preserved when NOT targeting the alternative backend (e.g. Kafka).
+    PubSubTopic eternalDefaultBackendTopic = getTopic();
+    topicManager.createTopic(
+        eternalDefaultBackendTopic,
+        1,
+        1,
+        PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS,
+        false,
+        Optional.empty(),
+        false,
+        false /* useAlternativeBackend */);
+    assertEquals(
+        topicManager.getTopicRetention(eternalDefaultBackendTopic),
+        PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS);
+
+    // A retention already at/below the max is left unchanged on the alternative backend.
+    PubSubTopic shortRetentionAltBackendTopic = getTopic();
+    topicManager.createTopic(
+        shortRetentionAltBackendTopic,
+        1,
+        1,
+        PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS,
+        false,
+        Optional.empty(),
+        false,
+        true /* useAlternativeBackend */);
+    assertEquals(
+        topicManager.getTopicRetention(shortRetentionAltBackendTopic),
+        PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+  }
+
+  @Test
   public void testCreateTopicWhenTopicExists() throws Exception {
     PubSubTopic topicNameWithEternalRetentionPolicy = getTopic();
     PubSubTopic topicNameWithDefaultRetentionPolicy = getTopic();
