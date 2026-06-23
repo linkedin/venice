@@ -2217,6 +2217,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
+          // Drain the produce frontier BEFORE checkpointing DIV state. A Global RT DIV leader advances its
+          // consumer-side DIV segments at consume time, but the local-VT produce of those records completes
+          // asynchronously, so the produce frontier lags the consume frontier. A DIV snapshot taken before those
+          // produces land would persist a baseline ahead of the durable local VT; on restart the leader re-consumes
+          // that tail, finds it already in the restored DIV, filters it as a duplicate (so it is never re-produced),
+          // and leaves a permanent local-VT sequence gap that followers report as MissingDataException. Awaiting
+          // here guarantees the persisted DIV baseline never exceeds what was durably produced to the local VT.
+          waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
           // Global RT DIV is consumer-driven, so its drainer SYNC_OFFSET path is disabled to not interfere. Instead,
           // flush the accumulated RT/VT DIV deltas on-demand via forceGlobalRtDivSync. We are inside
           // shutdownPartitionConsumptionStates() (after consumerBatchUnsubscribeAllTopics, before closeVeniceWriters),
@@ -2226,7 +2234,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               ? forceGlobalRtDivSync(partitionConsumptionState)
               : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
           waitForSyncOffsetCmd(syncFuture, topicPartition);
-          waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
         } catch (InterruptedException e) {
           throw new VeniceException(e);
         }

@@ -6705,8 +6705,10 @@ public abstract class StoreIngestionTaskTest {
 
   /**
    * With Global RT DIV enabled, the graceful-shutdown path must drive {@link StoreIngestionTask#forceGlobalRtDivSync}
-   * (instead of the drainer SYNC_OFFSET command) and await it before returning, then drain messages. It must NOT call
-   * the non-global execSyncOffsetCommandAsync path. Covers AC 4 (flush completes before shutdown proceeds).
+   * (instead of the drainer SYNC_OFFSET command). Crucially, it must drain the produce frontier
+   * ({@link StoreIngestionTask#waitForAllMessageToBeProcessedFromTopicPartition}) BEFORE taking the DIV snapshot, so
+   * the persisted consumer-side DIV baseline never exceeds what was durably produced to the local VT. It must NOT
+   * call the non-global execSyncOffsetCommandAsync path. Covers AC 4 (flush completes before shutdown proceeds).
    */
   @Test
   public void testExecuteShutdownRunnableGlobalRtDivEnabled() throws InterruptedException {
@@ -6729,13 +6731,21 @@ public abstract class StoreIngestionTaskTest {
 
     verify(storeIngestionTask).forceGlobalRtDivSync(pcs);
     verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
+    // The produce frontier must be drained BEFORE the DIV snapshot is taken. Otherwise the snapshot can persist a
+    // DIV baseline ahead of the durable local VT; on restart the leader re-consumes the consumed-but-unproduced
+    // tail, filters it as a duplicate, never re-produces it, and leaves a permanent local-VT gap (followers then
+    // throw MissingDataException).
+    InOrder inOrder = inOrder(storeIngestionTask);
+    inOrder.verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
+    inOrder.verify(storeIngestionTask).forceGlobalRtDivSync(pcs);
     // The Global RT DIV path must not use the non-global drainer SYNC_OFFSET command.
     verify(storeIngestionTask, never()).getStoreBufferService();
   }
 
   /**
-   * A produce/await failure during the Global RT DIV shutdown sync must never hang shutdown: the bounded
-   * getShutdownSyncOffsetTimeoutMs() wait swallows the timeout, then message draining still proceeds. Covers AC 5.
+   * A produce/await failure during the Global RT DIV shutdown sync must never hang shutdown: after draining the
+   * produce frontier, the bounded getShutdownSyncOffsetTimeoutMs() wait swallows the stalled DIV sync's timeout so
+   * shutdown still completes. Covers AC 5.
    */
   @Test
   public void testExecuteShutdownRunnableGlobalRtDivTimeoutDoesNotHang() throws InterruptedException {
@@ -6761,7 +6771,7 @@ public abstract class StoreIngestionTaskTest {
     long elapsed = System.currentTimeMillis() - start;
 
     assertTrue(elapsed < 30_000L, "Shutdown must not hang on a stalled Global RT DIV sync; elapsed=" + elapsed + "ms");
-    // Even after timing out the sync, draining must still run so shutdown completes.
+    // The produce-frontier drain runs ahead of the DIV sync, so it completes regardless of the stalled sync.
     verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
   }
 
