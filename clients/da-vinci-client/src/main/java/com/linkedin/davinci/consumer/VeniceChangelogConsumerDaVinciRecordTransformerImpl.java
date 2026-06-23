@@ -714,6 +714,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     /**
+     * Returns whether this partition is currently designated to be served by this consumer's store version.
+     * Null-checked to prevent an NPE during shutdown races.
+     */
+    private boolean isServedByThisVersion(int partitionId) {
+      Integer versionToServe = partitionToVersionToServe.get(partitionId);
+      return versionToServe != null && versionToServe == getStoreVersion();
+    }
+
+    /**
      * Add ChangeCapturePubSubMessage to the buffer based on record metadata.
      */
     public void addMessageToBuffer(
@@ -721,7 +730,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         V value,
         int partitionId,
         DaVinciRecordTransformerRecordMetadata recordMetadata) {
-      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+      if (isServedByThisVersion(partitionId)) {
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
@@ -750,7 +759,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         ControlMessage controlMessage,
         long pubSubMessageTimestamp,
         long producerTimestamp) {
-      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+      if (isServedByThisVersion(partitionId)) {
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
                 null,
@@ -775,7 +784,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     private void internalAddMessageToBuffer(
         int partitionId,
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage) {
-      if (partitionToVersionToServe.get(partitionId) != getStoreVersion()) {
+      if (!isServedByThisVersion(partitionId)) {
         return;
       }
 
@@ -927,7 +936,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * Receive heartbeat timestamp for a partition and update latest seen time.
      */
     public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
-      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+      if (isServedByThisVersion(partitionId)) {
         currentVersionLastHeartbeat.put(partitionId, heartbeatTimestamp);
       }
     }

@@ -327,6 +327,39 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   }
 
   @Test
+  public void testProcessPutForPartitionAbsentFromVersionMapDoesNotThrow() {
+    // Regression: a record processed for a partition that was never registered in partitionToVersionToServe
+    // (onStartVersionIngestion not invoked for it, e.g. a non-current version, or a record draining after
+    // shutdown teardown) makes the version-gate's map lookup return null. The gate must skip the record,
+    // not unbox null into a NullPointerException.
+    veniceChangelogConsumer.start();
+
+    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+
+    assertEquals(
+        veniceChangelogConsumer.poll(POLL_TIMEOUT).size(),
+        0,
+        "Record for a partition absent from the version map should be skipped, not buffered");
+  }
+
+  @Test
+  public void testProcessPutAfterPartitionStateClearedDoesNotThrow() {
+    // Regression for the host-shutdown path: stop()/unsubscribe() call clearPartitionState, removing entries
+    // from partitionToVersionToServe. A record still draining afterward must be skipped, not throw on the
+    // null version-map lookup.
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+    veniceChangelogConsumer.clearPartitionState(partitionSet);
+
+    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+
+    assertEquals(
+        veniceChangelogConsumer.poll(POLL_TIMEOUT).size(),
+        0,
+        "Record arriving after partition-state teardown should be skipped, not buffered");
+  }
+
+  @Test
   public void testCompletableFutureFromStart() {
     CompletableFuture startCompletableFuture = veniceChangelogConsumer.start();
     onStartVersionIngestionHelper(true, true);
