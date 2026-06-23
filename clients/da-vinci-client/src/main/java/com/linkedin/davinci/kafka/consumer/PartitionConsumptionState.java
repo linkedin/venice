@@ -1359,7 +1359,14 @@ public class PartitionConsumptionState {
    *
    * <p>If the leader topic is a version topic:
    * <ul>
-   *   <li>If remote consumption is enabled, returns the latest processed remote VT position.</li>
+   *   <li>If remote consumption is enabled and {@code useCheckpointedDivRtPosition} is true
+   *       (i.e., Global RT DIV is active and this is a transition), uses the last consumed
+   *       VT position (LCVP) as the remote VT subscribe position. LCVP is written atomically
+   *       with the DIV snapshot, so it is always consistent with the checkpointed producer
+   *       states. Falls back to {@code latestProcessedRemoteVtPosition} when LCVP is
+   *       EARLIEST (not yet initialized).</li>
+   *   <li>If remote consumption is enabled and {@code useCheckpointedDivRtPosition} is false,
+   *       returns the latest processed remote VT position.</li>
    *   <li>Otherwise, returns the latest processed local VT position.</li>
    * </ul>
    *
@@ -1375,6 +1382,17 @@ public class PartitionConsumptionState {
           ? getDivRtCheckpointPosition(pubSubBrokerAddress)
           : getLatestProcessedRtPosition(pubSubBrokerAddress);
     } else {
+      if (consumeRemotely() && useCheckpointedDivRtPosition) {
+        // LCVP is written atomically with the DIV snapshot (same consumer-thread moment),
+        // so it is always consistent with the saved producer states. Use it as the remote
+        // VT subscribe position when Global RT DIV is active to avoid the window where
+        // latestProcessedRemoteVtPosition (drainer-side) can diverge from the DIV snapshot
+        // (consumer-side) during shutdown. Fall back when LCVP is not yet initialized.
+        PubSubPosition lcvp = getLatestConsumedVtPosition();
+        if (!PubSubSymbolicPosition.EARLIEST.equals(lcvp)) {
+          return lcvp;
+        }
+      }
       return consumeRemotely() ? getLatestProcessedRemoteVtPosition() : getLatestProcessedVtPosition();
     }
   }

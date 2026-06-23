@@ -18,6 +18,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -492,6 +493,59 @@ public class PartitionConsumptionStateTest {
     // Don't init HLL
     assertFalse(disabledPcs.hasUniqueIngestedKeyCountHll());
     assertNull(disabledPcs.serializeUniqueIngestedKeyCountHll());
+  }
+
+  /**
+   * getLeaderPosition VT branch:
+   *   - consumeRemotely=true + useCheckpointedDivRtPosition=true + LCVP non-EARLIEST → return LCVP
+   *   - consumeRemotely=true + useCheckpointedDivRtPosition=true + LCVP=EARLIEST       → fall back to latestProcessedRemoteVtPosition
+   *   - consumeRemotely=true + useCheckpointedDivRtPosition=false                      → return latestProcessedRemoteVtPosition
+   *   - consumeRemotely=false                                                           → return latestProcessedVtPosition
+   */
+  @Test
+  public void testGetLeaderPositionVtBranch() {
+    PubSubPosition lcvp = mock(PubSubPosition.class);
+    PubSubPosition remoteVtPos = mock(PubSubPosition.class);
+    PubSubPosition localVtPos = mock(PubSubPosition.class);
+
+    // Use a mock OffsetRecord to avoid InMemoryPubSubPosition wire-format serialization issues
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(TOPIC_REPOSITORY.getTopic("topic1_v1")).when(offsetRecord)
+        .getLeaderTopic(pubSubContext.getPubSubTopicRepository());
+    doReturn(lcvp).when(offsetRecord).getLatestConsumedVtPosition();
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+    pcs.setLatestProcessedRemoteVtPosition(remoteVtPos);
+    pcs.setLatestProcessedVtPosition(localVtPos);
+
+    // consumeRemotely=true + Global RT DIV on (useCheckpointedDivRtPosition=true) + LCVP non-EARLIEST → LCVP
+    pcs.setConsumeRemotely(true);
+    assertEquals(
+        pcs.getLeaderPosition("broker", true),
+        lcvp,
+        "Global RT DIV + consumeRemotely + non-EARLIEST LCVP must return LCVP");
+
+    // consumeRemotely=true + Global RT DIV on + LCVP=EARLIEST → latestProcessedRemoteVtPosition
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getLatestConsumedVtPosition();
+    assertEquals(
+        pcs.getLeaderPosition("broker", true),
+        remoteVtPos,
+        "Global RT DIV + consumeRemotely + EARLIEST LCVP must fall back to latestProcessedRemoteVtPosition");
+
+    // consumeRemotely=true + Global RT DIV off (useCheckpointedDivRtPosition=false) → latestProcessedRemoteVtPosition
+    doReturn(lcvp).when(offsetRecord).getLatestConsumedVtPosition(); // restore non-EARLIEST LCVP
+    assertEquals(
+        pcs.getLeaderPosition("broker", false),
+        remoteVtPos,
+        "Global RT DIV off must use latestProcessedRemoteVtPosition regardless of LCVP");
+
+    // consumeRemotely=false → latestProcessedVtPosition
+    pcs.setConsumeRemotely(false);
+    assertEquals(
+        pcs.getLeaderPosition("broker", true),
+        localVtPos,
+        "consumeRemotely=false must use latestProcessedVtPosition");
   }
 
   private PartitionConsumptionState createPcsWithHll() {
