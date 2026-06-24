@@ -2217,19 +2217,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-          // Drain the produce frontier BEFORE checkpointing DIV state. A Global RT DIV leader advances its
-          // consumer-side DIV segments at consume time, but the local-VT produce of those records completes
-          // asynchronously, so the produce frontier lags the consume frontier. A DIV snapshot taken before those
-          // produces land would persist a baseline ahead of the durable local VT; on restart the leader re-consumes
-          // that tail, finds it already in the restored DIV, filters it as a duplicate (so it is never re-produced),
-          // and leaves a permanent local-VT sequence gap that followers report as MissingDataException. Awaiting
-          // here guarantees the persisted DIV baseline never exceeds what was durably produced to the local VT.
+          // Drain all messages, including the messages from the LEADER which are in the process of being produced to
+          // local-VT which haven't had their callbacks executed and messages enqueued to the drainer.
           waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
-          // Global RT DIV is consumer-driven, so its drainer SYNC_OFFSET path is disabled to not interfere. Instead,
-          // flush the accumulated RT/VT DIV deltas on-demand via flushGlobalRtDivCheckpoint. We are inside
-          // shutdownPartitionConsumptionStates() (after consumerBatchUnsubscribeAllTopics, before closeVeniceWriters),
-          // so the VeniceWriter is alive and no new RT records are arriving. Both paths await with the shutdown
-          // sync-offset timeout, reusing waitForSyncOffsetCmd's timeout/cancel semantics so shutdown never hangs.
+          // Flush the checkpointed offsets to disk, so we know where to resume upon startup. Global RT DIV is
+          // consumer-driven and periodically sent, so without this additional flush on shutdown, the server would need
+          // to reingest a bit of data after resuming from the previous checkpoint, significantly delaying the restart.
           CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
               ? flushGlobalRtDivCheckpoint(partitionConsumptionState)
               : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
