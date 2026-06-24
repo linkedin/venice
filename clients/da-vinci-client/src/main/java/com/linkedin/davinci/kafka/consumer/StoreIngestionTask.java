@@ -2274,6 +2274,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Skipping updateOffsetMetadataAndSyncOffset() because Global RT DIV is enabled.");
       return;
     }
+    int partition = pcs.getPartition();
+    if (failedPartitions.contains(partition) || pcs.isErrorReported()) {
+      // Never checkpoint an errored replica: its in-memory offset may point past a record that was never persisted.
+      // Leaving the last good durable offset in place lets the failed record be re-read on restart.
+      LOGGER.warn("Skipping offset checkpoint for errored replica: {}", pcs.getReplicaId());
+      return;
+    }
     /**
      * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
      * could be ahead of the other.

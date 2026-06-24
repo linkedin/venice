@@ -4966,6 +4966,122 @@ public abstract class StoreIngestionTaskTest {
     Assert.assertEquals(mockNotifierError.size(), 0);
   }
 
+  /**
+   * Verifies that the in-memory VT position ({@link PartitionConsumptionState#getLatestProcessedVtPosition()}) is only
+   * advanced after the record has been successfully persisted. Two records are produced to PARTITION_FOO and the write
+   * (RocksDB put) of the second record is made to throw. The processed VT position must remain at the first (durably
+   * written) record's position rather than being advanced to the second (failed) record's position; otherwise a
+   * subsequent shutdown SYNC_OFFSET would checkpoint a position whose record was never persisted, causing data loss on
+   * restart.
+   */
+  @Test(dataProvider = "aaConfigProvider")
+  public void testVtOffsetNotAdvancedWhenPersistFails(AAConfig aaConfig) throws Exception {
+    // Produce 2 data records to PARTITION_FOO within a batch push; capture each record's VT position.
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    InMemoryPubSubPosition firstRecordPosition = getPosition(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
+    InMemoryPubSubPosition secondRecordPosition = getPosition(localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID));
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    // Make the persist (RocksDB put) of the SECOND record fail.
+    doThrow(new VeniceException("fake storage engine exception on second record")).when(mockAbstractStorageEngine)
+        .put(eq(PARTITION_FOO), eq(putKeyFoo2), any(ByteBuffer.class));
+
+    StoreIngestionTaskTestConfig testConfig = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      // Wait until the first record has been durably persisted (its write succeeds).
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+          .put(eq(PARTITION_FOO), eq(putKeyFoo), any(ByteBuffer.class));
+      // Wait until the second record's write has been attempted (and thrown). After this point the second record has
+      // been processed, so any (buggy) unconditional advance of the VT position to the second record will have
+      // happened.
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+          .put(eq(PARTITION_FOO), eq(putKeyFoo2), any(ByteBuffer.class));
+
+      PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
+      assertNotNull(pcs, "pcs for PARTITION_FOO is null!");
+      // The processed VT position must remain at the first (durably written) record, NOT the second (failed) one.
+      Assert.assertEquals(
+          pcs.getLatestProcessedVtPosition(),
+          firstRecordPosition,
+          "latestProcessedVtPosition must stay at the first record's position (" + firstRecordPosition
+              + ") when the second record's write fails; it must NOT be advanced to the second record's position ("
+              + secondRecordPosition + ")");
+    }, aaConfig);
+
+    testConfig.setStoreVersionConfigOverride(configOverride -> {
+      // Very high sync threshold so the OffsetRecord isn't synced during regular consumption.
+      doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
+    });
+    runTest(testConfig);
+  }
+
+  /**
+   * Defense-in-depth: an errored replica must never have its offset checkpointed, even on the graceful-shutdown
+   * SYNC_OFFSET path. PARTITION_FOO's write is made to fail (driving the replica into an error state that is retained
+   * via the current-version reset-error path), while PARTITION_BAR ingests healthily. On graceful shutdown the healthy
+   * PARTITION_BAR must get its offset checkpointed, but the errored PARTITION_FOO must NOT — otherwise the checkpoint
+   * would advance past a record that was never persisted, skipping it on restart (data loss).
+   */
+  @Test(dataProvider = "aaConfigProvider")
+  public void testErroredPartitionNotCheckpointedOnGracefulShutdown(AAConfig aaConfig) throws Exception {
+    // Make every storage-engine put for PARTITION_FOO fail; PARTITION_BAR writes succeed.
+    doThrow(new VeniceException("fake storage engine exception for errored partition")).when(mockAbstractStorageEngine)
+        .put(eq(PARTITION_FOO), any(), any(ByteBuffer.class));
+    // Current-version + reset-error-replica path marks the errored replica ERROR (Helix) instead of unsubscribing it,
+    // so its PartitionConsumptionState is retained in the map at shutdown (where the checkpoint gate is exercised).
+    isCurrentVersion = () -> true;
+    doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+    localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    StoreIngestionTaskTestConfig testConfig =
+        new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
+          // Wait until PARTITION_FOO's failing write has been attempted and the replica has been marked ERROR
+          // (retained).
+          verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+              .put(eq(PARTITION_FOO), any(), any(ByteBuffer.class));
+          verify(zkHelixAdmin, timeout(TEST_TIMEOUT_MS).atLeast(1))
+              .setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+          // Wait until the healthy PARTITION_BAR has been durably persisted.
+          verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+              .put(eq(PARTITION_BAR), eq(putKeyBar), any(ByteBuffer.class));
+
+          // The errored PARTITION_FOO must still be present at shutdown so the checkpoint gate is actually exercised.
+          assertNotNull(
+              storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO),
+              "errored PARTITION_FOO PCS must be retained (not unsubscribed) at shutdown");
+
+          // Scope the checkpoint verification to the graceful-shutdown window only. (A control-message checkpoint for
+          // PARTITION_FOO legitimately occurs earlier, before the partition errors, at a position prior to the failed
+          // record; that pre-error checkpoint is safe and is not what this test is about.)
+          clearInvocations(mockStorageMetadataService);
+
+          storeIngestionTaskUnderTest.close();
+
+          // The errored partition must NOT be checkpointed at any point during the shutdown window. Because the
+          // shutdown
+          // SYNC_OFFSET runs asynchronously on a drainer thread, assert with a timed never() that spans the whole
+          // window
+          // rather than a point-in-time check that could pass before a late checkpoint attempt lands.
+          verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).put(eq(topic), eq(PARTITION_FOO), any());
+          // The healthy partition IS checkpointed during the same shutdown.
+          verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
+              .put(eq(topic), eq(PARTITION_BAR), any());
+        }, aaConfig);
+
+    testConfig
+        .setExtraServerProperties(
+            Collections.singletonMap(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true))
+        .setStoreVersionConfigOverride(configOverride -> {
+          doReturn(true).when(configOverride).isResetErrorReplicaEnabled();
+          // Very high sync threshold so offsets aren't synced during regular consumption (only at shutdown).
+          doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
+        });
+    runTest(testConfig);
+  }
+
   @Test(dataProvider = "aaConfigProvider", timeOut = 60_000)
   public void testProduceToStoreBufferService(AAConfig aaConfig) throws Exception {
     byte[] keyBytes = new byte[1];
