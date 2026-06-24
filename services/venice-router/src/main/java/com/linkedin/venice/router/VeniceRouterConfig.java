@@ -139,6 +139,8 @@ import org.apache.logging.log4j.Logger;
 public class VeniceRouterConfig implements RouterRetryConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceRouterConfig.class);
 
+  public static final int DEFAULT_ROUTER_IO_WORKER_COUNT = 48;
+
   // IMMUTABLE CONFIGS
   private final String regionName;
   private final String clusterName;
@@ -269,8 +271,8 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1));
       heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5));
       sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false);
-      maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000);
-      longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15);
+      maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 1000000);
+      longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 6);
       longTailRetryForBatchGetThresholdMs = BatchGetConfigUtils.parseRetryThresholdForBatchGet(
           props.getString(
               ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS,
@@ -281,14 +283,14 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       // Default: -1 means this feature is not enabled.
       longTailRetryMaxRouteForMultiKeyReq = props.getInt(ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ, 2);
       maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
-      connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
+      connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 150000);
       // When connection limit is breached, fail fast to client request by default.
       connectionHandleMode = ConnectionHandleMode.valueOf(
           props
               .getString(ROUTER_CONNECTION_HANDLE_MODE, ConnectionHandleMode.FAIL_FAST_WHEN_LIMIT_EXCEEDED.toString()));
       httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
       maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
-      maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
+      maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 7200);
       clusterToD2Map = props.getMap(CLUSTER_TO_D2);
       clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
       refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9);
@@ -324,7 +326,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       statefulRouterHealthCheckEnabled = props.getBoolean(ROUTER_STATEFUL_HEALTHCHECK_ENABLED, true);
       latencyBasedRoutingEnabled = props.getBoolean(ROUTER_LATENCY_BASED_ROUTING_ENABLED, false);
       routerUnhealthyPendingConnThresholdPerRoute =
-          props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 100);
+          props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 500);
       routerPendingConnResumeThresholdPerRoute = props.getInt(ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE, 15);
 
       perNodeClientAllocationEnabled = props.getBoolean(ROUTER_PER_NODE_CLIENT_ENABLED, false);
@@ -366,7 +368,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       ioThreadCountInPoolMode =
           props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
-      maxConcurrentSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 1000);
+      maxConcurrentSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 200);
       resolveThreads = props.getInt(ROUTER_RESOLVE_THREADS, 0);
       resolveQueueCapacity = props.getInt(ROUTER_RESOLVE_QUEUE_CAPACITY, 500000);
       clientResolutionRetryAttempts = props.getInt(ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS, 3);
@@ -421,14 +423,14 @@ public class VeniceRouterConfig implements RouterRetryConfig {
        * This config is used to maintain the existing io thread count being used by Router, and we
        * should consider to use some number, which is proportional to the available cores.
        */
-      routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
+      routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, DEFAULT_ROUTER_IO_WORKER_COUNT);
       perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
       httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
       identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
       singleKeyLongTailRetryBudgetPercentDecimal =
-          props.getDouble(ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
+          props.getDouble(ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.1);
       multiKeyLongTailRetryBudgetPercentDecimal =
-          props.getDouble(ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
+          props.getDouble(ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.1);
       longTailRetryBudgetEnforcementWindowInMs =
           props.getLong(ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, Time.MS_PER_MINUTE);
       retryManagerCorePoolSize = props.getInt(ROUTER_RETRY_MANAGER_CORE_POOL_SIZE, 5);
