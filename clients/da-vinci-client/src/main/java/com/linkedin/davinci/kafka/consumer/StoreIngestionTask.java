@@ -2217,16 +2217,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-          // Global RT DIV is consumer-driven, so its drainer SYNC_OFFSET path is disabled to not interfere. Instead,
-          // flush the accumulated RT/VT DIV deltas on-demand via forceGlobalRtDivSync. We are inside
-          // shutdownPartitionConsumptionStates() (after consumerBatchUnsubscribeAllTopics, before closeVeniceWriters),
-          // so the VeniceWriter is alive and no new RT records are arriving. Both paths await with the shutdown
-          // sync-offset timeout, reusing waitForSyncOffsetCmd's timeout/cancel semantics so shutdown never hangs.
+          // Drain all messages, including the messages from the LEADER which are in the process of being produced to
+          // local-VT which haven't had their callbacks executed and messages enqueued to the drainer.
+          waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
+          // Flush the checkpointed offsets to disk, so we know where to resume upon startup. Global RT DIV is
+          // consumer-driven and periodically sent, so without this additional flush on shutdown, the server would need
+          // to reingest a bit of data after resuming from the previous checkpoint, significantly delaying the restart.
           CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
-              ? forceGlobalRtDivSync(partitionConsumptionState)
+              ? flushGlobalRtDivCheckpoint(partitionConsumptionState)
               : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
           waitForSyncOffsetCmd(syncFuture, topicPartition);
-          waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
         } catch (InterruptedException e) {
           throw new VeniceException(e);
         }
@@ -3570,7 +3570,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * completes once the flush has fully persisted. The base implementation is a no-op (returns an already-completed
    * future); only {@link LeaderFollowerStoreIngestionTask} performs real work.
    */
-  protected CompletableFuture<Void> forceGlobalRtDivSync(PartitionConsumptionState pcs) {
+  protected CompletableFuture<Void> flushGlobalRtDivCheckpoint(PartitionConsumptionState pcs) {
     return CompletableFuture.completedFuture(null);
   }
 

@@ -783,12 +783,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * AC 1: a LEADER's {@link LeaderFollowerStoreIngestionTask#forceGlobalRtDivSync} produces exactly one
+   * AC 1: a LEADER's {@link LeaderFollowerStoreIngestionTask#flushGlobalRtDivCheckpoint} produces exactly one
    * GlobalRtDivState per RT source broker (LCRP != EARLIEST), carrying that broker's getLatestConsumedRtPosition, and
    * the aggregate future completes once each produce has persisted and the chained waitable VT DIV sync has run.
    */
   @Test
-  public void testForceGlobalRtDivSyncLeaderProducesPerBroker() throws Exception {
+  public void testFlushGlobalRtDivCheckpointLeaderProducesPerBroker() throws Exception {
     setUp();
     int partition = 0;
     PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
@@ -801,7 +801,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String brokerB = "brokerB:1234";
     PubSubPosition lcrpA = InMemoryPubSubPosition.of(5L);
     PubSubPosition lcrpB = InMemoryPubSubPosition.of(9L);
-    // A/A-style topology: multiple RT sources, each with its own per-URL LCRP. forceGlobalRtDivSync reads the LCRP
+    // A/A-style topology: multiple RT sources, each with its own per-URL LCRP. flushGlobalRtDivCheckpoint reads the
+    // LCRP
     // through the per-mode accessor (the A/A override keys by broker URL), so stub that accessor per broker.
     doReturn(lcrpA).when(leaderFollowerStoreIngestionTask)
         .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, brokerA);
@@ -823,7 +824,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
 
     CompletableFuture<Void> future =
-        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+        leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState);
     future.get(30, TimeUnit.SECONDS);
     assertTrue(future.isDone());
 
@@ -854,7 +855,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
    * to a single waitable VT DIV snapshot sync (no GlobalRtDivState produce).
    */
   @Test
-  public void testForceGlobalRtDivSyncLeaderSkipsEarliestBrokers() throws Exception {
+  public void testFlushGlobalRtDivCheckpointLeaderSkipsEarliestBrokers() throws Exception {
     setUp();
     int partition = 0;
     PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
@@ -886,7 +887,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
 
     CompletableFuture<Void> future =
-        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+        leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState);
     future.get(30, TimeUnit.SECONDS);
     assertTrue(future.isDone());
 
@@ -909,12 +910,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
   /**
    * Regression for the non-A/A map-key mismatch: a non-A/A leader keys its latest-consumed-RT-position map by
    * {@link com.linkedin.venice.offsets.OffsetRecord#NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY}, not by broker URL.
-   * forceGlobalRtDivSync must read the LCRP through the per-mode accessor (here the real non-A/A override, NOT stubbed)
+   * flushGlobalRtDivCheckpoint must read the LCRP through the per-mode accessor (here the real non-A/A override, NOT stubbed)
    * so it resolves the NON_AA key; a direct getLatestConsumedRtPosition(brokerUrl) would miss, return EARLIEST, and
    * silently skip the leader RT DIV flush — falling back to a VT-only sync that never persists the RT DIV deltas.
    */
   @Test
-  public void testForceGlobalRtDivSyncNonAaLeaderResolvesNonAaKey() throws Exception {
+  public void testFlushGlobalRtDivCheckpointNonAaLeaderResolvesNonAaKey() throws Exception {
     setUp();
     int partition = 0;
     PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
@@ -940,7 +941,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
 
     CompletableFuture<Void> future =
-        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+        leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState);
     future.get(30, TimeUnit.SECONDS);
     assertTrue(future.isDone());
 
@@ -959,12 +960,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * AC 2: a FOLLOWER forces a single waitable VT DIV snapshot sync and produces no GlobalRtDivState (RT DIV is already
+   * AC 2: a FOLLOWER flushes a single waitable VT DIV snapshot sync and produces no GlobalRtDivState (RT DIV is already
    * durable from when the follower consumed it). Also covers a leader with no RT brokers (batch-only) via the same
    * VT-snapshot-only fallback.
    */
   @Test
-  public void testForceGlobalRtDivSyncFollowerSyncsVtOnly() throws Exception {
+  public void testFlushGlobalRtDivCheckpointFollowerSyncsVtOnly() throws Exception {
     setUp();
     int partition = 0;
     PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
@@ -976,7 +977,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .execSyncGlobalRtDivAsync(eq(localVtTp), eq(leaderFollowerStoreIngestionTask));
 
     CompletableFuture<Void> future =
-        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+        leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState);
     future.get(30, TimeUnit.SECONDS);
     assertTrue(future.isDone());
 

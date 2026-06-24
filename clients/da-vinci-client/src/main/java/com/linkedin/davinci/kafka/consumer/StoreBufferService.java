@@ -765,7 +765,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   /**
    * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord. Waitable: the leader
-   * graceful-shutdown path ({@link StoreIngestionTask#forceGlobalRtDivSync}) awaits {@link #getExecutedFuture()} on the
+   * graceful-shutdown path ({@link StoreIngestionTask#flushGlobalRtDivCheckpoint}) awaits {@link #getExecutedFuture()} on the
    * node enqueued by the leader-produce completion callback, so it does not need to enqueue a second redundant
    * {@link SyncGlobalRtDivNode}. Steady-state callers enqueue it fire-and-forget and ignore the future.
    */
