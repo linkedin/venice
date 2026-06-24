@@ -31,13 +31,29 @@ public final class ThreadPoolFactory {
       @Nullable LogContext logContext,
       int capacity,
       BlockingQueueType blockingQueueType) {
+    return createThreadPool(
+        threadCount,
+        threadNamePrefix,
+        logContext,
+        capacity,
+        blockingQueueType,
+        DaemonThreadFactory.UNSPECIFIED_PRIORITY);
+  }
+
+  public static ThreadPoolExecutor createThreadPool(
+      int threadCount,
+      String threadNamePrefix,
+      @Nullable LogContext logContext,
+      int capacity,
+      BlockingQueueType blockingQueueType,
+      int priority) {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(
         threadCount,
         threadCount,
         0,
         TimeUnit.MILLISECONDS,
         getExecutionQueue(capacity, blockingQueueType),
-        new DaemonThreadFactory(threadNamePrefix, logContext));
+        new DaemonThreadFactory(threadNamePrefix, priority, logContext));
     /**
      * When the capacity is fully saturated, the scheduled task will be executed in the caller thread.
      * We will leverage this policy to propagate the back pressure to the caller, so that no more tasks will be
