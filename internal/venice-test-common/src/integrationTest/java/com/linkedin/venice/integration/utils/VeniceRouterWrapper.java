@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_IO_WORKER_COUNT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LATENCY_BASED_ROUTING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
@@ -158,6 +159,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 2)
           .put(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 1)
           .put(ROUTER_MAX_OUTGOING_CONNECTION, 10)
+          .put(ROUTER_IO_WORKER_COUNT, 24)
           // To speed up test
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 1)
           .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)

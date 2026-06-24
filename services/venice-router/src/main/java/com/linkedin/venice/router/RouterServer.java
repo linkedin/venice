@@ -250,7 +250,9 @@ public class RouterServer extends AbstractVeniceService {
     LOGGER.info("Cluster: {}", props.getString(ConfigKeys.CLUSTER_NAME));
     LOGGER.info("Port: {}", props.getInt(ConfigKeys.LISTENER_PORT));
     LOGGER.info("SSL Port: {}", props.getInt(ConfigKeys.LISTENER_SSL_PORT));
-    LOGGER.info("IO worker count: {}", props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
+    LOGGER.info(
+        "IO worker count: {}",
+        props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT, VeniceRouterConfig.DEFAULT_ROUTER_IO_WORKER_COUNT));
 
     Optional<SSLFactory> sslFactory;
     if (props.getBoolean(ConfigKeys.ROUTER_ENABLE_SSL, true)) {
