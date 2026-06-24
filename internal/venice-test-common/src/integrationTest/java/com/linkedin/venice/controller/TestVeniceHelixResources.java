@@ -74,6 +74,11 @@ public class TestVeniceHelixResources {
     when(controllerConfig.isPreFetchDeadStoreStatsEnabled()).thenReturn(true);
     when(controllerConfig.getDeadStoreStatsPreFetchRefreshIntervalInMs()).thenReturn(100L); // Must be Long
 
+    // The spectator HelixManager is now constructed from config.getZkAddress() (previously zkClient.getServers()), so
+    // the injected config must expose the test ZK address. Stubbing it here covers both the no-arg overload and
+    // caller-supplied configs.
+    when(config.getZkAddress()).thenReturn(zkServer.getAddress());
+
     return new HelixVeniceClusterResources(
         cluster,
         zkClient,

@@ -166,8 +166,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
       spectatorManager = this.helixManager;
     } else {
       // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and
-      // messages.
-      spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
+      // messages. Source the Helix (System #1) ZK address from config rather than off the Venice-metadata zkClient, so
+      // this spectator session stays tied to the Helix ZK if/when the metadata zkClient is later repointed for HA.
+      spectatorManager = getSpectatorManager(clusterName, config.getZkAddress());
     }
     this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
     this.customizedViewRepo =

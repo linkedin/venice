@@ -365,6 +365,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final HelixAdminClient helixAdminClient;
   private TopicManagerRepository topicManagerRepository;
   private final ZkClient zkClient;
+  /**
+   * A dedicated Zk client for reading Helix cluster metadata (System #1 — LIVEINSTANCES, EXTERNALVIEW) directly from
+   * ZK. This is intentionally kept separate from {@link #zkClient}, which owns Venice metadata (System #2). Helix reads
+   * must not ride on {@link #zkClient}: a later HA change repoints {@link #zkClient} at a separate/backup ensemble for
+   * Venice-metadata availability, and these Helix reads must stay on the Helix ZK rather than follow it.
+   */
+  private final ZkClient helixZkClient;
   private final HelixAdapterSerializer adapterSerializer;
   private final ZkAllowlistAccessor allowlistAccessor;
   private final ExecutionIdAccessor executionIdAccessor;
@@ -539,6 +546,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
     this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
+    // System #1 (Helix cluster metadata) reads get their own Zk client on the Helix ZK address, kept off the
+    // Venice-metadata zkClient above. See {@link #helixZkClient}.
+    this.helixZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+    this.helixZkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-helix-zk-client"));
     this.adapterSerializer = new HelixAdapterSerializer();
     this.asyncStoreChangeNotifier = new AsyncStoreChangeNotifier(
         VeniceComponent.CONTROLLER,
@@ -766,7 +777,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         continue;
       }
 
-      HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+      HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.helixZkClient, clusterName);
       DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
       PushJobStatusStats pushJobStatusStats = new PushJobStatusStats(metricsRepository, clusterName);
       disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
@@ -1083,11 +1094,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private boolean isResourceStillAlive(String clusterName, String resourceName) {
     String externalViewPath = "/" + clusterName + "/EXTERNALVIEW/" + resourceName;
-    return zkClient.exists(externalViewPath);
+    return helixZkClient.exists(externalViewPath);
   }
 
   List<String> getAllLiveHelixResources(String clusterName) {
-    return zkClient.getChildren("/" + clusterName + "/EXTERNALVIEW");
+    return helixZkClient.getChildren("/" + clusterName + "/EXTERNALVIEW");
   }
 
   /**
@@ -6567,6 +6578,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       helixManager.disconnect();
       topicManagerRepository.close();
       zkClient.close();
+      helixZkClient.close();
       helixAdminClient.close();
     } catch (Exception e) {
       throw new VeniceException("Can not stop controller correctly.", e);
@@ -7941,6 +7953,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         zkClient.close();
       } catch (Exception e) {
         LOGGER.error("Failed to close zkClient. Swallowing and moving on.", e);
+      }
+      try {
+        helixZkClient.close();
+      } catch (Exception e) {
+        LOGGER.error("Failed to close helixZkClient. Swallowing and moving on.", e);
       }
       Utils.closeQuietlyWithErrorLogged(this.pushJobDetailsManager);
       Utils.closeQuietlyWithErrorLogged(this.dataRecoveryManager);

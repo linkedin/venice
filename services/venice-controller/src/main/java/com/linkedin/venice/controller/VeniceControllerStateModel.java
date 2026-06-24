@@ -252,8 +252,10 @@ public class VeniceControllerStateModel extends StateModel {
     }
     InstanceType instanceType =
         clusterConfig.isVeniceClusterLeaderHAAS() ? InstanceType.SPECTATOR : InstanceType.CONTROLLER;
+    // Source the Helix (System #1) ZK address from config rather than off the Venice-metadata zkClient, so the live
+    // Helix manager session stays tied to the Helix ZK if/when the metadata zkClient is later repointed for HA.
     helixManager = new SafeHelixManager(
-        HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
+        HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, clusterConfig.getZkAddress()));
     helixManager.connect();
     helixManager.startTimerTasks();
   }
