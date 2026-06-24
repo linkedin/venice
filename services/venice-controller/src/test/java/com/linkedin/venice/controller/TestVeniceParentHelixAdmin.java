@@ -2955,6 +2955,61 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
+  /**
+   * Regression test for VENG-12709: a target-region deferred-swap version whose push failed in the
+   * target region (ERROR/KILLED) was permanently blocking all subsequent pushes with
+   * CONCURRENT_BATCH_PUSH. After the fix, only a failed terminal version (VersionStatus#canDelete)
+   * is reclaimed and lets the next push proceed; every other status still blocks.
+   */
+  @Test
+  public void testGetTopicForCurrentPushJobTopicBasedTrackingWithFailedTargetRegionDeferredSwap() {
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    doCallRealMethod().when(mockParentAdmin)
+        .getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, false, false);
+
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl version = new VersionImpl(storeName, 1, "test_push_id");
+    version.setVersionSwapDeferred(true);
+    version.setTargetSwapRegion("prod-lor1");
+    store.addVersion(version);
+    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+
+    String latestTopicName = storeName + "_v1";
+    doReturn(Collections.singletonList(pubSubTopicRepository.getTopic(latestTopicName))).when(mockParentAdmin)
+        .getKafkaTopicsByAge(storeName);
+    // Topic is truncated so a non-blocking status short-circuits before any push-status polling.
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(latestTopicName);
+
+    // Failed terminal statuses are reclaimed: the next push is admitted.
+    for (VersionStatus failed: new VersionStatus[] { VersionStatus.ERROR, VersionStatus.KILLED }) {
+      version.setStatus(failed);
+      Assert.assertFalse(
+          mockParentAdmin.getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, false, false).isPresent(),
+          "A " + failed + " target-region deferred-swap version should not block the next push");
+    }
+
+    // Live statuses still block the concurrent push.
+    for (VersionStatus live: new VersionStatus[] { VersionStatus.STARTED, VersionStatus.PUSHED,
+        VersionStatus.ONLINE }) {
+      version.setStatus(live);
+      assertEquals(
+          mockParentAdmin.getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, false, false)
+              .orElse(null),
+          latestTopicName,
+          "A " + live + " target-region deferred-swap version should block the next push");
+    }
+  }
+
   @Test
   public void testTruncateTopicsBasedOnMaxErroredTopicNumToKeep() {
     String storeName = Utils.getUniqueString("test-store");

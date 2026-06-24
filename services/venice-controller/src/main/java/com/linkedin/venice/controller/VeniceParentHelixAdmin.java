@@ -1378,11 +1378,17 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       } else if (isTargetRegionPushWithDeferredSwap) {
-        LOGGER.error(
-            "Future version {} exists for store {}, please wait till the future version is made current.",
-            versionNumber,
-            storeName);
-        return Optional.of(latestTopic.get().getName());
+        // Only a definitively-failed push (ERROR/KILLED, i.e. VersionStatus.canDelete) may be reclaimed
+        // and let a new push proceed; every other status still represents a live future version that
+        // must block a concurrent push.
+        if (!VersionStatus.canDelete(version.getStatus())) {
+          LOGGER.error(
+              "Future version {} exists for store {}, please wait till the future version is made current.",
+              versionNumber,
+              storeName);
+          return Optional.of(latestTopic.get().getName());
+        }
+        // Failed terminal states (ERROR/KILLED) fall through to the existing topic cleanup logic below.
       }
 
       if (!isTopicTruncated(latestTopicName)) {
