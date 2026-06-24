@@ -33,6 +33,7 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Optional;
@@ -105,7 +106,8 @@ public class ListenerService extends AbstractVeniceService {
       this.sslHandshakeExecutor = createThreadPool(
           serverConfig.getSslHandshakeThreadPoolSize(),
           "SSLHandShakeThread",
-          serverConfig.getSslHandshakeQueueCapacity());
+          serverConfig.getSslHandshakeQueueCapacity(),
+          Thread.NORM_PRIORITY);
     }
 
     StorageReadRequestHandler requestHandler = createRequestHandler(
@@ -136,9 +138,10 @@ public class ListenerService extends AbstractVeniceService {
     boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();
     if (epollEnabled) {
       try {
-        bossGroup = new EpollEventLoopGroup(1);
-        workerGroup = new EpollEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); // if 0, defaults to 2*cpu
-                                                                                         // count
+        bossGroup = new EpollEventLoopGroup(1, new DefaultThreadFactory("Venice-Rest-Listener-Epoll-Boss"));
+        workerGroup = new EpollEventLoopGroup( // if 0, defaults to 2*cpu count
+            serverConfig.getNettyWorkerThreadCount(),
+            new DefaultThreadFactory("Venice-Rest-Listener-Epoll-Worker"));
         serverSocketChannelClass = EpollServerSocketChannel.class;
         LOGGER.info("Epoll is enabled in Server Rest Service");
       } catch (LinkageError error) {
@@ -147,8 +150,10 @@ public class ListenerService extends AbstractVeniceService {
       }
     }
     if (!epollEnabled) {
-      bossGroup = new NioEventLoopGroup(1);
-      workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); // if 0, defaults to 2*cpu count
+      bossGroup = new NioEventLoopGroup(1, new DefaultThreadFactory("Venice-Rest-Listener-Nio-Boss"));
+      workerGroup = new NioEventLoopGroup( // if 0, defaults to 2*cpu count
+          serverConfig.getNettyWorkerThreadCount(),
+          new DefaultThreadFactory("Venice-Rest-Listener-Nio-Worker"));
       serverSocketChannelClass = NioServerSocketChannel.class;
     }
     bootstrap = new ServerBootstrap();
@@ -236,6 +241,16 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getLogContext(),
         capacity,
         serverConfig.getBlockingQueueType());
+  }
+
+  protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity, int priority) {
+    return ThreadPoolFactory.createThreadPool(
+        threadCount,
+        threadNamePrefix,
+        serverConfig.getLogContext(),
+        capacity,
+        serverConfig.getBlockingQueueType(),
+        priority);
   }
 
   protected StorageReadRequestHandler createRequestHandler(

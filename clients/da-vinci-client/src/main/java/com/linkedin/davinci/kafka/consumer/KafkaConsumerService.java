@@ -146,7 +146,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     // different per-consumer lock; extra threads would just wait on locks).
     this.batchUnsubscribeExecutor = Executors.newFixedThreadPool(
         numOfConsumersPerKafkaCluster,
-        new DaemonThreadFactory("KafkaConsumerService-batch-unsub", serverConfig.getLogContext()));
+        new DaemonThreadFactory(
+            "KafkaConsumerService-batch-unsub-" + kafkaUrlForLogger + "-" + poolType.getStatSuffix(),
+            serverConfig.getLogContext()));
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
         ? statsOverride

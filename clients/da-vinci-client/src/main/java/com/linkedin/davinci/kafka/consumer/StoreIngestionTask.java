@@ -350,7 +350,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
-  private final ExecutorService missingSOPCheckExecutor = Executors.newSingleThreadExecutor();
+  private final ExecutorService missingSOPCheckExecutor;
   private final VeniceStoreVersionConfig storeVersionConfig;
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
@@ -548,6 +548,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
     this.topicManagerRepository = pubSubContext.getTopicManagerRepository();
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
+    this.missingSOPCheckExecutor = Executors.newSingleThreadExecutor(
+        new DaemonThreadFactory(
+            "StoreIngestionTask-missing-SOP-" + kafkaVersionTopic,
+            builder.getServerConfig().getLogContext()));
     this.storeName = versionTopic.getStoreName();
     this.storeVersionName = storeVersionConfig.getStoreVersionName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
