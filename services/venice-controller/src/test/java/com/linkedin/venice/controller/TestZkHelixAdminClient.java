@@ -30,11 +30,14 @@ import java.util.List;
 import java.util.Map;
 import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.RESTConfig;
+import org.apache.helix.model.StateModelDefinition;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -216,6 +219,62 @@ public class TestZkHelixAdminClient {
     verify(zkHelixAdminClient).updateClusterConfigs(clusterName, helixClusterConfig);
     verify(mockHelixAdmin, never()).addCloudConfig(any(), any());
     verify(zkHelixAdminClient).updateRESTConfigs(clusterName, restConfig);
+  }
+
+  @Test
+  public void testCreateVeniceStorageClusterLegacy() {
+    String clusterName = "test-storage-cluster";
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockMultiClusterConfigs.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+    when(mockClusterConfig.getDelayToRebalanceMS()).thenReturn(1000L);
+    when(mockClusterConfig.isServerHelixClusterTopologyAware()).thenReturn(false);
+    when(mockClusterConfig.getControllerClusterReplica()).thenReturn(3);
+
+    // The storage cluster does not exist yet, and addCluster succeeds.
+    doReturn(Collections.emptyList()).when(mockHelixAdmin).getClusters();
+    doReturn(true).when(mockHelixAdmin).addCluster(clusterName, false);
+
+    IdealState mockIdealState = mock(IdealState.class);
+    when(mockHelixAdmin.getResourceIdealState(VENICE_CONTROLLER_CLUSTER, clusterName)).thenReturn(mockIdealState);
+
+    doAnswer(invocation -> {
+      Map<String, String> props = invocation.getArgument(1);
+      assertEquals(props.get(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN), "true");
+      assertEquals(props.get(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name()), "1000");
+      assertEquals(props.get(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name()), "true");
+      assertEquals(props.get(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name()), "false");
+      return null;
+    }).when(mockHelixAdmin).setConfig(any(), any());
+
+    doCallRealMethod().when(zkHelixAdminClient).createVeniceStorageClusterLegacy(clusterName);
+    zkHelixAdminClient.createVeniceStorageClusterLegacy(clusterName);
+
+    // Storage cluster + LeaderStandby state model created on the storage helixAdmin.
+    verify(mockHelixAdmin)
+        .addStateModelDef(eq(clusterName), eq(LeaderStandbySMD.name), any(StateModelDefinition.class));
+    // Registered as a resource in the controller cluster with the legacy (non-HAAS) WAGED rebalancer config.
+    verify(mockHelixAdmin)
+        .addResource(eq(VENICE_CONTROLLER_CLUSTER), eq(clusterName), anyInt(), eq(LeaderStandbySMD.name), any());
+    verify(mockIdealState).setReplicas("3");
+    verify(mockIdealState).setMinActiveReplicas(2);
+    verify(mockIdealState).setRebalancerClassName(WagedRebalancer.class.getName());
+    verify(mockHelixAdmin).rebalance(VENICE_CONTROLLER_CLUSTER, clusterName, 3);
+  }
+
+  @Test
+  public void testCreateVeniceStorageClusterLegacyAlreadyExists() {
+    String clusterName = "test-storage-cluster";
+
+    // The cluster already exists, so the method should short-circuit before doing any work.
+    doReturn(Collections.singletonList(clusterName)).when(mockHelixAdmin).getClusters();
+
+    doCallRealMethod().when(zkHelixAdminClient).createVeniceStorageClusterLegacy(clusterName);
+    zkHelixAdminClient.createVeniceStorageClusterLegacy(clusterName);
+
+    verify(mockHelixAdmin, never()).addCluster(anyString(), eq(false));
+    verify(mockHelixAdmin, never()).addResource(any(), any(), anyInt(), any(), any());
+    verify(mockMultiClusterConfigs, never()).getControllerConfig(any());
   }
 
   @Test

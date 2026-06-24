@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.helix.HelixAdmin;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.IdealState;
@@ -37,6 +38,28 @@ public interface HelixAdminClient {
    * @param restConfig {@link RESTConfig} for the new cluster.
    */
   void createVeniceStorageCluster(String clusterName, ClusterConfig clusterConfig, RESTConfig restConfig);
+
+  /**
+   * Legacy (non-HAAS) creation of a Venice storage cluster: creates the storage Helix cluster and
+   * registers it as a resource in the Venice controller cluster. No-op if the cluster already exists.
+   * @param clusterName of the Venice storage cluster.
+   */
+  void createVeniceStorageClusterLegacy(String clusterName);
+
+  /**
+   * Enable the customized state config on the given storage cluster. The customized state config may get
+   * wiped or may never have been written to the ZK cluster config before, so it needs to be (re)enabled.
+   * @param clusterName of the Venice storage cluster.
+   */
+  void setupCustomizedStateConfig(String clusterName);
+
+  /**
+   * Returns the underlying {@link HelixAdmin} used for storage-cluster operations. This is a low-level
+   * escape hatch for raw Helix operations not otherwise exposed by this interface (e.g. used by tests
+   * and maintenance tooling). Prefer the dedicated methods on this interface for normal operations.
+   * @return the storage-cluster {@link HelixAdmin}.
+   */
+  HelixAdmin getHelixAdmin();
 
   /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
