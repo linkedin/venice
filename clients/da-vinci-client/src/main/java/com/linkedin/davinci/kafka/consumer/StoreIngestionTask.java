@@ -4981,7 +4981,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return true;
   }
 
-  boolean resumeConsumption(String topic, int partitionId) {
+  private boolean resumeConsumption(String topic, int partitionId) {
     // Store-level pause and future-slot pause both take precedence; no-op here so a quota resume
     // doesn't physically un-pause a partition that is intentionally held back.
     PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partitionId);
@@ -4993,6 +4993,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         getVersionTopic(),
         new PubSubTopicPartitionImpl(getPubSubTopicRepository().getTopic(topic), partitionId));
     return true;
+  }
+
+  @VisibleForTesting
+  final boolean resumeConsumptionForTest(String topic, int partitionId) {
+    return resumeConsumption(topic, partitionId);
   }
 
   private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId) {

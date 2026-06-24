@@ -7881,7 +7881,7 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
     doCallRealMethod().when(task).resumeFromFutureSlotPause();
     doCallRealMethod().when(task).isFutureSlotPaused();
-    doCallRealMethod().when(task).resumeConsumption(anyString(), anyInt());
+    doCallRealMethod().when(task).resumeConsumptionForTest(anyString(), anyInt());
     return task;
   }
 
@@ -7958,7 +7958,7 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
 
     // Fire quota resumeConsumption — must NOT physically resume the partition
-    task.resumeConsumption(vt.getName(), PARTITION_FOO);
+    task.resumeConsumptionForTest(vt.getName(), PARTITION_FOO);
 
     // futureSlotPaused flag must still be set
     assertTrue(pcs.isFutureSlotPaused(), "futureSlotPaused must remain true after quota resumeConsumption");

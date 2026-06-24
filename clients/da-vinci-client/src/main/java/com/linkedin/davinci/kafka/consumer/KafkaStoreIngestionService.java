@@ -644,12 +644,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private StoreIngestionTask createStoreIngestionTask(
       VeniceStoreVersionConfig veniceStoreVersionConfig,
-      int partitionId) {
-    return createStoreIngestionTask(veniceStoreVersionConfig, partitionId, false);
-  }
-
-  private StoreIngestionTask createStoreIngestionTask(
-      VeniceStoreVersionConfig veniceStoreVersionConfig,
       int partitionId,
       boolean pauseAfterStartOfPush) {
     String topicName = veniceStoreVersionConfig.getStoreVersionName();
