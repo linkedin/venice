@@ -6704,7 +6704,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * With Global RT DIV enabled, the graceful-shutdown path must drive {@link StoreIngestionTask#forceGlobalRtDivSync}
+   * With Global RT DIV enabled, the graceful-shutdown path must drive {@link StoreIngestionTask#flushGlobalRtDivCheckpoint}
    * (instead of the drainer SYNC_OFFSET command). Crucially, it must drain the produce frontier
    * ({@link StoreIngestionTask#waitForAllMessageToBeProcessedFromTopicPartition}) BEFORE taking the DIV snapshot, so
    * the persisted consumer-side DIV baseline never exceeds what was durably produced to the local VT. It must NOT
@@ -6724,12 +6724,12 @@ public abstract class StoreIngestionTaskTest {
 
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
     when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
-    when(storeIngestionTask.forceGlobalRtDivSync(pcs)).thenReturn(CompletableFuture.completedFuture(null));
+    when(storeIngestionTask.flushGlobalRtDivCheckpoint(pcs)).thenReturn(CompletableFuture.completedFuture(null));
 
     doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
     storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, null);
 
-    verify(storeIngestionTask).forceGlobalRtDivSync(pcs);
+    verify(storeIngestionTask).flushGlobalRtDivCheckpoint(pcs);
     verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
     // The produce frontier must be drained BEFORE the DIV snapshot is taken. Otherwise the snapshot can persist a
     // DIV baseline ahead of the durable local VT; on restart the leader re-consumes the consumed-but-unproduced
@@ -6737,7 +6737,7 @@ public abstract class StoreIngestionTaskTest {
     // throw MissingDataException).
     InOrder inOrder = inOrder(storeIngestionTask);
     inOrder.verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
-    inOrder.verify(storeIngestionTask).forceGlobalRtDivSync(pcs);
+    inOrder.verify(storeIngestionTask).flushGlobalRtDivCheckpoint(pcs);
     // The Global RT DIV path must not use the non-global drainer SYNC_OFFSET command.
     verify(storeIngestionTask, never()).getStoreBufferService();
   }
@@ -6763,7 +6763,7 @@ public abstract class StoreIngestionTaskTest {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
     when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
     // A future that never completes simulates a produce/await failure stalling the sync.
-    when(storeIngestionTask.forceGlobalRtDivSync(pcs)).thenReturn(new CompletableFuture<>());
+    when(storeIngestionTask.flushGlobalRtDivCheckpoint(pcs)).thenReturn(new CompletableFuture<>());
 
     doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
     long start = System.currentTimeMillis();

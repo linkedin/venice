@@ -2452,14 +2452,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *       covers both halves; {@code sendGlobalRtDivMessage} returns that node's future, which completes only after the RT
    *       DIV produce has persisted and the VT DIV sync has run. Brokers whose LCRP is
    *       {@link PubSubSymbolicPosition#EARLIEST} are skipped (no RT progress yet).</li>
-   *   <li><b>Follower / leader with no RT progress or no RT brokers:</b> force a single waitable VT DIV snapshot sync.
-   *       RT DIV is already durable in the StorageEngine from when the follower consumed {@link GlobalRtDivState}.</li>
+   *   <li><b>Follower, or leader with no RT brokers (e.g. a batch-only or NR remote-VT leader):</b> flush a single
+   *       waitable VT DIV snapshot sync. RT DIV is already durable in the StorageEngine from when the follower consumed
+   *       {@link GlobalRtDivState}.</li>
    * </ul>
    *
    * @return a future completing once all produces have persisted and the corresponding VT DIV syncs have run.
    */
   @Override
-  protected CompletableFuture<Void> forceGlobalRtDivSync(PartitionConsumptionState pcs) {
+  protected CompletableFuture<Void> flushGlobalRtDivCheckpoint(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
     PubSubTopicPartition localVtTopicPartition = pcs.getReplicaTopicPartition();
     List<CompletableFuture<Void>> futures = new ArrayList<>();
@@ -2496,7 +2497,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   kafkaClusterId));
         } catch (Exception e) {
           LOGGER.error(
-              "event=globalRtDiv Failed to force Global RT DIV sync for replica: {} broker: {}",
+              "event=globalRtDiv Failed to flush Global RT DIV checkpoint for replica: {} broker: {}",
               localVtTopicPartition,
               brokerUrl,
               e);
@@ -2504,7 +2505,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
 
-    // Follower, or leader with no RT progress / no RT brokers: force a waitable VT DIV snapshot sync.
+    // Follower, or leader with no RT brokers (e.g. batch-only or NR remote-VT leader): flush the VT DIV snapshot only.
     if (futures.isEmpty()) {
       futures.add(enqueueWaitableVtDivSync(localVtTopicPartition));
     }
