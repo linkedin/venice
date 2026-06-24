@@ -32,6 +32,8 @@ public class P2PBlobTransferConfig {
   private final int snapshotCleanupIntervalInMins;
   // Max concurrent replicas that is allowed to receive blob data simultaneously
   private final int maxConcurrentBlobReceiveReplicas;
+  // Number of Netty worker (event-loop) threads for the blob transfer client.
+  private final int p2pTransferClientNettyWorkerThreadCount;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -47,7 +49,8 @@ public class P2PBlobTransferConfig {
       long blobTransferClientReadLimitBytesPerSec,
       long blobTransferServiceWriteLimitBytesPerSec,
       int snapshotCleanupIntervalInMins,
-      int maxConcurrentBlobReceiveReplicas) {
+      int maxConcurrentBlobReceiveReplicas,
+      int p2pTransferClientNettyWorkerThreadCount) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -62,6 +65,7 @@ public class P2PBlobTransferConfig {
     this.blobTransferServiceWriteLimitBytesPerSec = blobTransferServiceWriteLimitBytesPerSec;
     this.snapshotCleanupIntervalInMins = snapshotCleanupIntervalInMins;
     this.maxConcurrentBlobReceiveReplicas = maxConcurrentBlobReceiveReplicas;
+    this.p2pTransferClientNettyWorkerThreadCount = p2pTransferClientNettyWorkerThreadCount;
   }
 
   public int getP2pTransferServerPort() {
@@ -118,5 +122,9 @@ public class P2PBlobTransferConfig {
 
   public int getMaxConcurrentBlobReceiveReplicas() {
     return maxConcurrentBlobReceiveReplicas;
+  }
+
+  public int getP2pTransferClientNettyWorkerThreadCount() {
+    return p2pTransferClientNettyWorkerThreadCount;
   }
 }

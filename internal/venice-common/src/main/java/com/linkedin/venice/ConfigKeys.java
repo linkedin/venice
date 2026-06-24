@@ -2289,6 +2289,10 @@ public class ConfigKeys {
   // if the connectivity is not fresh, then retry the connection.
   public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
       "blob.transfer.peers.connectivity.freshness.in.seconds";
+  // Number of Netty worker (event-loop) threads for the blob transfer client. Blob transfer is not latency sensitive,
+  // so when unset this defaults to max(4, 20% of available processors) rather than Netty's default of 2 * available
+  // processors. Any explicitly configured value of 4 or below is clamped up to 4; values above 4 are used as-is.
+  public static final String BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS = "blob.transfer.client.netty.worker.threads";
   // This is the maximum allowed read speed (in bytes per sec) for the Netty client when receiving data from the remote
   // peer.
   public static final String BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC =

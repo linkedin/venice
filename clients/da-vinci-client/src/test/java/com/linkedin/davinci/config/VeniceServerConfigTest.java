@@ -1,5 +1,6 @@
 package com.linkedin.davinci.config;
 
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
@@ -26,6 +27,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -134,6 +136,33 @@ public class VeniceServerConfigTest {
       assertEquals(consumerPoolRecordsLimitFactors.size(), 4);
       assertEquals(consumerPoolRecordsLimitFactors.toArray(), factors);
     }
+  }
+
+  @Test
+  public void testBlobTransferClientNettyWorkerThreadCount() {
+    int availableProcessors = Runtime.getRuntime().availableProcessors();
+    // When unset, the client event-loop pool defaults to max(MIN_NETTY_WORKER_THREADS, 20% of available processors).
+    int expectedDefault = Math.max(NettyFileTransferClient.MIN_NETTY_WORKER_THREADS, availableProcessors / 5);
+
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getBlobTransferClientNettyWorkerThreadCount(), expectedDefault);
+
+    // An explicitly configured value above the floor is read back verbatim.
+    int explicit = expectedDefault + 13;
+    props.setProperty(BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS, String.valueOf(explicit));
+    VeniceServerConfig overriddenConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(overriddenConfig.getBlobTransferClientNettyWorkerThreadCount(), explicit);
+
+    // An explicitly configured value below the floor (including 0, which would otherwise make Netty fall back to its
+    // 2 * cores default) is clamped up to the minimum.
+    props.setProperty(
+        BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS,
+        String.valueOf(NettyFileTransferClient.MIN_NETTY_WORKER_THREADS - 1));
+    VeniceServerConfig clampedConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(
+        clampedConfig.getBlobTransferClientNettyWorkerThreadCount(),
+        NettyFileTransferClient.MIN_NETTY_WORKER_THREADS);
   }
 
   @Test

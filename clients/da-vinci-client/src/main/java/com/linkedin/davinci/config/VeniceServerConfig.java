@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES;
@@ -256,6 +257,7 @@ import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
 import com.github.luben.zstd.Zstd;
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
@@ -683,6 +685,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int blobReceiveMaxTimeoutInMin;
   private final int blobReceiveReaderIdleTimeInSeconds;
   private final int blobTransferPeersConnectivityFreshnessInSeconds;
+  private final int blobTransferClientNettyWorkerThreadCount;
   private final long blobTransferClientReadLimitBytesPerSec;
   private final long blobTransferServiceWriteLimitBytesPerSec;
   private final long blobTransferDisabledOffsetLagThreshold;
@@ -819,6 +822,28 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     blobReceiveReaderIdleTimeInSeconds = serverProperties.getInt(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 60);
     blobTransferPeersConnectivityFreshnessInSeconds =
         serverProperties.getInt(BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS, 30);
+    // Runtime.availableProcessors() returns the processor count available to the JVM. On Java 17, this is
+    // container/cgroup-aware by default unless overridden by JVM flags such as -XX:ActiveProcessorCount or
+    // -XX:-UseContainerSupport.
+    int availableProcessorCount = Runtime.getRuntime().availableProcessors();
+    // Blob transfer is not latency sensitive, so when unset the client event-loop pool defaults to 20% of available
+    // cores (min 4) instead of Netty's default of 2 * cores. The unset default is already >= 4, so an explicitly
+    // configured value below 4 is the only case that gets clamped; warn so the operator knows their setting was
+    // overridden (a value of 0 would otherwise make Netty fall back to its 2 * cores default, and a negative value
+    // would throw).
+    int configuredBlobTransferClientNettyWorkerThreadCount = serverProperties.getInt(
+        BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS,
+        Math.max(NettyFileTransferClient.MIN_NETTY_WORKER_THREADS, availableProcessorCount / 5));
+    if (configuredBlobTransferClientNettyWorkerThreadCount < NettyFileTransferClient.MIN_NETTY_WORKER_THREADS) {
+      LOGGER.warn(
+          "Configured {}={} is below the minimum of {}; using {} instead.",
+          BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS,
+          configuredBlobTransferClientNettyWorkerThreadCount,
+          NettyFileTransferClient.MIN_NETTY_WORKER_THREADS,
+          NettyFileTransferClient.MIN_NETTY_WORKER_THREADS);
+      configuredBlobTransferClientNettyWorkerThreadCount = NettyFileTransferClient.MIN_NETTY_WORKER_THREADS;
+    }
+    blobTransferClientNettyWorkerThreadCount = configuredBlobTransferClientNettyWorkerThreadCount;
     blobTransferClientReadLimitBytesPerSec =
         serverProperties.getSizeInBytes(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 157286400L); // default 150 MB/s
     blobTransferServiceWriteLimitBytesPerSec =
@@ -880,8 +905,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30);
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
     helixJoinAsUnknown = serverProperties.getBoolean(SERVER_HELIX_JOIN_AS_UNKNOWN, false);
-    grpcWorkerThreadCount =
-        serverProperties.getInt(GRPC_SERVER_WORKER_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
+    grpcWorkerThreadCount = serverProperties.getInt(GRPC_SERVER_WORKER_THREAD_COUNT, availableProcessorCount);
 
     remoteIngestionRepairSleepInterval = serverProperties.getInt(
         SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
@@ -1269,8 +1293,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     consumerPollTrackerStaleThresholdInSeconds = serverProperties
         .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
-    daVinciRecordTransformerOnRecoveryThreadPoolSize = serverProperties
-        .getInt(DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
+    daVinciRecordTransformerOnRecoveryThreadPoolSize =
+        serverProperties.getInt(DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE, availableProcessorCount);
     storeChangeNotifierThreadPoolSize = serverProperties.getInt(STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE, 1);
     this.ingestionTaskReusableObjectsStrategy = IngestionTaskReusableObjects.Strategy.valueOf(
         serverProperties.getString(
@@ -1401,6 +1425,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getBlobTransferPeersConnectivityFreshnessInSeconds() {
     return blobTransferPeersConnectivityFreshnessInSeconds;
+  }
+
+  public int getBlobTransferClientNettyWorkerThreadCount() {
+    return blobTransferClientNettyWorkerThreadCount;
   }
 
   public long getBlobTransferClientReadLimitBytesPerSec() {
