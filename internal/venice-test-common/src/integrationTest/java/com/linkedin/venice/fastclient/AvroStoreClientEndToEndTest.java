@@ -209,7 +209,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(dualRead);
+            .setDualReadEnabled(dualRead)
+            .setLongTailRetryEnabledForSingleGet(false)
+            .setLongTailRetryEnabledForBatchGet(false);
     // Test HAR algorithm in this test.
     Set<String> harClusters = new HashSet<>();
     harClusters.add(veniceCluster.getServerD2ServiceName());
@@ -314,7 +316,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false);
+            .setDualReadEnabled(false)
+            .setLongTailRetryEnabledForSingleGet(false)
+            .setLongTailRetryEnabledForBatchGet(false);
     // single get
     Consumer<MetricsRepository> fastClientStatsValidation =
         metricsRepository -> validateSingleGetMetrics(metricsRepository, false, false);

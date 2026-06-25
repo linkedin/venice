@@ -131,7 +131,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false);
+            .setDualReadEnabled(false)
+            .setLongTailRetryEnabledForSingleGet(false)
+            .setLongTailRetryEnabledForBatchGet(false);
 
     if (retryEnabled) {
       // enable retry to test the code path: to mimic retry in integration tests
@@ -169,7 +171,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false);
+            .setDualReadEnabled(false)
+            .setLongTailRetryEnabledForSingleGet(false)
+            .setLongTailRetryEnabledForBatchGet(false);
 
     VeniceMetricsRepository metricsRepository = createVeniceMetricsRepository(true);
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
@@ -199,7 +203,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false);
+            .setDualReadEnabled(false)
+            .setLongTailRetryEnabledForSingleGet(false)
+            .setLongTailRetryEnabledForBatchGet(false);
 
     if (retryEnabled) {
       // enable retry to test the code path: to mimic retry in integration tests
@@ -257,7 +263,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false);
+            .setDualReadEnabled(false)
+            .setLongTailRetryEnabledForSingleGet(false)
+            .setLongTailRetryEnabledForBatchGet(false);
 
     VeniceMetricsRepository metricsRepository = createVeniceMetricsRepository(true);
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
@@ -301,7 +309,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false);
+            .setDualReadEnabled(false)
+            .setLongTailRetryEnabledForSingleGet(false)
+            .setLongTailRetryEnabledForBatchGet(false);
 
     if (retryEnabled) {
       // enable retry to test the code path: to mimic retry in integration tests
