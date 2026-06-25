@@ -449,10 +449,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long metadataRefreshIntervalInSeconds = -1;
     private long metadataConnWarmupTimeoutInSeconds = -1;
 
-    private boolean longTailRetryEnabledForSingleGet = false;
+    private boolean longTailRetryEnabledForSingleGet = true;
     private int longTailRetryThresholdForSingleGetInMicroSeconds = 1000; // 1ms.
 
-    private boolean longTailRetryEnabledForBatchGet = false;
+    private boolean longTailRetryEnabledForBatchGet = true;
     private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
 
     private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
