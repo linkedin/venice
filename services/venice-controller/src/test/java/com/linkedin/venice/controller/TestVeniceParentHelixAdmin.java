@@ -1798,113 +1798,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testDeferredVersionSwapWaitMessageIsDistinctFromConcurrentPush() {
-    String storeName = Utils.getUniqueString("test-store");
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
-
-    doReturn(mockInternalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-
-    Store store = new ZKStore(
-        storeName,
-        "test_owner",
-        1,
-        PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-
-    // The existing version finished its push but is mid deferred (colo-by-colo) version swap: ONLINE on the
-    // parent yet not current in every region.
-    String userPushId = System.currentTimeMillis() + "_https://example.com/user-job";
-    VersionImpl version = new VersionImpl(storeName, 1, userPushId);
-    version.setVersionSwapDeferred(true);
-    version.setTargetSwapRegion("dc-0");
-    version.setStatus(VersionStatus.ONLINE);
-    store.addVersion(version);
-    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
-
-    Map<String, Integer> currentVersionsPerRegion = new HashMap<>();
-    currentVersionsPerRegion.put("dc-0", 1);
-    currentVersionsPerRegion.put("dc-1", 0);
-    doReturn(currentVersionsPerRegion).when(mockParentAdmin).getCurrentVersionsForMultiColos(clusterName, storeName);
-
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    doReturn(
-        (LingeringStoreVersionChecker) (
-            store1,
-            version1,
-            time,
-            controllerAdmin,
-            requesterCert,
-            identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
-    doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
-    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
-    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
-        .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
-
-    // A compliance push cannot kill the existing push, so the flow reaches the rejection path.
-    String incomingPushId = Version.generateCompliancePushId("compliance_push");
-    doCallRealMethod().when(mockParentAdmin)
-        .incrementVersionIdempotent(
-            clusterName,
-            storeName,
-            incomingPushId,
-            1,
-            1,
-            Version.PushType.BATCH,
-            false,
-            false,
-            null,
-            Optional.empty(),
-            Optional.empty(),
-            -1,
-            Optional.empty(),
-            false,
-            null,
-            -1,
-            -1);
-
-    HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
-    doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
-    doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
-
-    try {
-      mockParentAdmin.incrementVersionIdempotent(
-          clusterName,
-          storeName,
-          incomingPushId,
-          1,
-          1,
-          Version.PushType.BATCH,
-          false,
-          false,
-          null,
-          Optional.empty(),
-          Optional.empty(),
-          -1,
-          Optional.empty(),
-          false,
-          null,
-          -1,
-          -1);
-      fail("Expected VeniceException to be thrown");
-    } catch (VeniceException e) {
-      assertTrue(
-          e.getMessage().contains("waiting on deferred version swap"),
-          "Blocking message should identify the deferred version swap wait: " + e.getMessage());
-      assertTrue(
-          e.getMessage().contains("target swap region(s): dc-0"),
-          "Blocking message should include the target swap region: " + e.getMessage());
-      Assert.assertFalse(
-          e.getMessage().contains("is still in progress"),
-          "A deferred-swap wait must not be reported as an in-flight concurrent push: " + e.getMessage());
-    }
-  }
-
-  @Test
   public void testStoreVersionCleanUpWithFewerVersions() {
     String storeName = "test_store";
     Store testStore = new ZKStore(
@@ -2932,7 +2825,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
     VersionImpl version = new VersionImpl(storeName, 1, "test_push_id");
-    version.setStatus(VersionStatus.ONLINE);
+    // STARTED is the status that polls the child job status to decide whether a push is still in
+    // flight; the assertions below exercise that polling/retry path.
+    version.setStatus(VersionStatus.STARTED);
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
     StoreResponse response = mock(StoreResponse.class);

@@ -1278,9 +1278,9 @@ public class VeniceParentHelixAdmin implements Admin {
     // checkRollbackOriginVersionCapacityForNewPush.
     // - PARTIALLY_ONLINE: parent-only terminal state from a region-filtered rollback (some
     // regions rolled back, some didn't); same retention window applies via the same guard.
-    // Non-terminal statuses are resolved below: CREATED/PUSHED (and a deferred-swap ONLINE awaiting
-    // roll-forward) block the next push outright, while STARTED and a plain ONLINE poll the child job
-    // status to decide.
+    // Non-terminal statuses are resolved below: a version that defers its swap, or one in CREATED/PUSHED,
+    // blocks the next push outright; a non-deferred ONLINE version has no ongoing push; STARTED polls the
+    // child job status to decide.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
@@ -1302,35 +1302,47 @@ public class VeniceParentHelixAdmin implements Admin {
         storeName,
         lastVersionNum);
     Optional<String> latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
-    boolean onlyDeferredSwap =
-        lastVersion.isVersionSwapDeferred() && StringUtils.isEmpty(lastVersion.getTargetSwapRegion());
+
+    if (lastVersion.isVersionSwapDeferred()) {
+      // A version that defers its swap occupies the store until it is rolled forward and current in
+      // every region; block the next push until then, whatever the push status. This is decided before
+      // the child-status poll below, whose side effects would otherwise advance the version to a
+      // terminal status and incorrectly unblock the next push -- for a deferred swap the push is
+      // "complete" yet the version is deliberately not made current.
+      if (validateChildCurrentVersions(clusterName, storeName, lastVersionNum)) {
+        return Optional.empty();
+      }
+      return latestTopic;
+    }
 
     if (lastVersion.getStatus() == CREATED || lastVersion.getStatus() == PUSHED) {
-      // CREATED: the version exists but its push has not begun. PUSHED: a target-region deferred-swap
-      // push has completed in its target region but is awaiting roll-forward to the remaining regions.
-      // In both cases a future version already occupies the store, so the next push must wait. (Unlike
-      // STARTED below, polling the child job status would not help: for PUSHED the children already
-      // report the push as terminal, which would incorrectly unblock the next push.)
+      // CREATED: the version exists but its push has not begun. PUSHED: a target-region push that has
+      // completed in its target region but not yet in the rest. In both cases a future version already
+      // occupies the store, so the next push must wait. (Unlike STARTED below, polling the child job
+      // status would not help: for PUSHED the children already report the push as terminal, which would
+      // incorrectly unblock the next push.)
       LOGGER.info(
           "The push for version {} of store {} is not completed (status {}); the next push must wait.",
           lastVersionNum,
           storeName,
           lastVersion.getStatus());
       return latestTopic;
-    } else if (onlyDeferredSwap && lastVersion.getStatus() == ONLINE) {
-      // for only deferred swap, users need to rollforward to mark it current for online status
-      boolean validateChildCurrentVersions = validateChildCurrentVersions(clusterName, storeName, lastVersionNum);
-      if (!validateChildCurrentVersions) {
-        return latestTopic;
-      }
+    }
+
+    if (lastVersion.getStatus() == ONLINE) {
+      // A non-deferred ONLINE version has completed its push and is serving reads, so there is no
+      // ongoing push to wait on. Child regions may legitimately diverge for an ONLINE version -- e.g. a
+      // version deleted or rolled back in one region -- which is a stale-store condition, not an
+      // in-flight push, so it must not be re-polled (doing so would misreport it as in progress).
+      return Optional.empty();
     }
 
     /**
-     * A STARTED (or non-deferred ONLINE) version can reflect either a push that is still in flight or
-     * one that already completed in the child regions but whose parent version status has not yet been
-     * advanced -- the parent version only transitions out of STARTED when a job-status poll observes a
-     * terminal child status (see {@link #getOffLineJobStatus}). Poll the child job status to tell these
-     * apart: block while it is non-terminal, otherwise let the next push proceed.
+     * A STARTED version can reflect either a push that is still in flight or one that already completed
+     * in the child regions but whose parent version status has not yet been advanced -- the parent
+     * version only transitions out of STARTED when a job-status poll observes a terminal child status
+     * (see {@link #getOffLineJobStatus}). Poll the child job status to tell these apart: block while it
+     * is non-terminal, otherwise let the next push proceed.
      */
     final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
     ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
@@ -3337,8 +3349,8 @@ public class VeniceParentHelixAdmin implements Admin {
           String streamReprocessingTopic = Version.composeStreamReprocessingTopic(store.getName(), version.getNumber());
           LOGGER.info("Truncating kafka topic: {} with job status: {}", streamReprocessingTopic, currentReturnStatus);
           truncateKafkaTopic(streamReprocessingTopic);
+          currentReturnStatusDetails.append("Stream reprocessing topic truncated");
         }
-        currentReturnStatusDetails.append("Parent Kafka topic truncated");
       }
     }
   }
