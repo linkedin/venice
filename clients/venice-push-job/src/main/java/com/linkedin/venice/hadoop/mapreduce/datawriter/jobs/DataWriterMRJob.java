@@ -52,6 +52,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PRO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_RMD_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_VALUE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
@@ -286,6 +288,12 @@ public class DataWriterMRJob extends DataWriterComputeJob {
         if (pushJobSetting.generatePartialUpdateRecordFromInput) {
           jobConf.setBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, true);
           jobConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSetting.valueSchemaString);
+        }
+        if (pushJobSetting.projectInputToWriterSchema) {
+          jobConf.set(WRITER_VALUE_SCHEMA_STRING_PROP, pushJobSetting.writerValueSchemaString);
+          if (pushJobSetting.replicationMetadataSchemaString != null) {
+            jobConf.set(WRITER_RMD_SCHEMA_STRING_PROP, pushJobSetting.replicationMetadataSchemaString);
+          }
         }
         jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
         jobConf.setInputFormat(AvroInputFormat.class);

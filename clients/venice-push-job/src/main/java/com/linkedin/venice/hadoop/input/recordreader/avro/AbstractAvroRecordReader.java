@@ -7,11 +7,13 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.schema.projection.VeniceSchemaProjector;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.LinkedList;
 import java.util.List;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 
 
@@ -31,6 +33,10 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
 
   private final boolean generatePartialUpdateRecordFromInput;
 
+  private final Schema writerValueSchema;
+  private final Schema writerRmdSchema;
+  private final VeniceSchemaProjector schemaProjector;
+
   /**
    * This constructor is used when data is read from HDFS.
    * @param dataSchema Schema of the avro file
@@ -45,6 +51,25 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       String rmdFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
       Schema updateSchema) {
+    this(dataSchema, keyFieldStr, valueFieldStr, rmdFieldStr, etlValueSchemaTransformation, updateSchema, null, null);
+  }
+
+  /**
+   * @param writerValueSchema when non-null, input value records are projected down to this registered writer (target)
+   *                          value schema via {@link VeniceSchemaProjector} and serialized against it.
+   * @param writerRmdSchema when non-null, input RMD records are projected down to this writer RMD schema (the RMD schema
+   *                        generated against {@code writerValueSchema}) in lockstep with the value, and serialized
+   *                        against it.
+   */
+  public AbstractAvroRecordReader(
+      Schema dataSchema,
+      String keyFieldStr,
+      String valueFieldStr,
+      String rmdFieldStr,
+      ETLValueSchemaTransformation etlValueSchemaTransformation,
+      Schema updateSchema,
+      Schema writerValueSchema,
+      Schema writerRmdSchema) {
     this.dataSchema = dataSchema;
     Schema.Field keyField = getField(dataSchema, keyFieldStr);
     keyFieldPos = keyField.pos();
@@ -105,14 +130,22 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
     valueFieldPos = outputValueField.pos();
 
     this.generatePartialUpdateRecordFromInput = updateSchema != null;
+    this.writerValueSchema = writerValueSchema;
+    this.writerRmdSchema = writerRmdSchema;
+    this.schemaProjector = (writerValueSchema != null || writerRmdSchema != null) ? new VeniceSchemaProjector() : null;
     if (generatePartialUpdateRecordFromInput) {
       valueSchema = updateSchema;
+    } else if (writerValueSchema != null) {
+      // Serialize projected records against the writer (target) value schema rather than the superset input schema.
+      valueSchema = writerValueSchema;
     } else {
       valueSchema = outputValueField.schema();
     }
 
     if (rmdSchema != null) {
-      configure(keySchema, valueSchema, rmdSchema);
+      // When projecting, serialize RMD against the writer (target) RMD schema rather than the superset input schema.
+      Schema serializerRmdSchema = writerRmdSchema != null ? writerRmdSchema : rmdSchema;
+      configure(keySchema, valueSchema, serializerRmdSchema);
     } else {
       configure(keySchema, valueSchema);
     }
@@ -155,23 +188,36 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       return null;
     }
 
-    return getRecordDatum(inputKey, inputValue).get(rmdFieldPos);
+    Object rmdObject = getRecordDatum(inputKey, inputValue).get(rmdFieldPos);
+    if (writerRmdSchema != null && rmdObject != null) {
+      if (!(rmdObject instanceof GenericRecord)) {
+        throw new VeniceException("Retrieved RMD is not an Avro generic record; cannot project to writer RMD schema");
+      }
+      return schemaProjector.projectRmd((GenericRecord) rmdObject, writerRmdSchema);
+    }
+    return rmdObject;
   }
 
   @Override
   public Object getAvroValue(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
     Object valueObject = getRecordDatum(inputKey, inputValue).get(valueFieldPos);
-    if (!generatePartialUpdateRecordFromInput) {
-      return valueObject;
+    if (generatePartialUpdateRecordFromInput) {
+      if (!(valueObject instanceof IndexedRecord)) {
+        throw new VeniceException("Retrieved record is not a Avro indexed record");
+      }
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(valueSchema);
+      IndexedRecord indexedRecordValue = (IndexedRecord) valueObject;
+      for (Schema.Field field: indexedRecordValue.getSchema().getFields()) {
+        updateBuilder.setNewFieldValue(field.name(), indexedRecordValue.get(field.pos()));
+      }
+      return updateBuilder.build();
     }
-    if (!(valueObject instanceof IndexedRecord)) {
-      throw new VeniceException("Retrieved record is not a Avro indexed record");
+    if (writerValueSchema != null && valueObject != null) {
+      if (!(valueObject instanceof GenericRecord)) {
+        throw new VeniceException("Retrieved record is not an Avro generic record; cannot project to writer schema");
+      }
+      return schemaProjector.projectValue((GenericRecord) valueObject, writerValueSchema);
     }
-    UpdateBuilder updateBuilder = new UpdateBuilderImpl(valueSchema);
-    IndexedRecord indexedRecordValue = (IndexedRecord) valueObject;
-    for (Schema.Field field: indexedRecordValue.getSchema().getFields()) {
-      updateBuilder.setNewFieldValue(field.name(), indexedRecordValue.get(field.pos()));
-    }
-    return updateBuilder.build();
+    return valueObject;
   }
 }

@@ -382,6 +382,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    */
   protected void validateRmdSchema(PushJobSetting pushJobSetting) {
     if (RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      if (pushJobSetting.projectInputToWriterSchema) {
+        // The input RMD schema is a superset of the writer (target) RMD schema; VeniceSchemaProjector#projectRmd
+        // converts each record's RMD down to the writer RMD schema at read time, so the exact-match check is skipped.
+        return;
+      }
       Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
       if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting) && !AvroSchemaUtils.compareSchema(
           inputRmdSchema,
