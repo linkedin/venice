@@ -10,6 +10,7 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.StoreLifecycleHookExecutor;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -106,6 +107,7 @@ public abstract class AbstractPushMonitor
   private final VeniceWriterFactory veniceWriterFactory;
   private String sequentialRollForwardFirstRegion = null;
   private final CurrentVersionChangeNotifier currentVersionChangeNotifier;
+  private final StoreLifecycleHookExecutor storeLifecycleHookExecutor;
 
   public interface CurrentVersionChangeNotifier {
     void onCurrentVersionChange(Store store, String clusterName, int currentVersion, int previousVersion);
@@ -167,6 +169,7 @@ public abstract class AbstractPushMonitor
       this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
     }
     this.currentVersionChangeNotifier = currentVersionChangeNotifier;
+    this.storeLifecycleHookExecutor = new StoreLifecycleHookExecutor(controllerConfig.getProps());
     pushStatusCollector.start();
   }
 
@@ -1248,6 +1251,7 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            storeLifecycleHookExecutor.invokePostVersionSwapHooks(clusterName, store, versionNumber, regionName, null);
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
@@ -1261,6 +1265,7 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            storeLifecycleHookExecutor.invokePostVersionSwapHooks(clusterName, store, versionNumber, regionName, null);
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "
