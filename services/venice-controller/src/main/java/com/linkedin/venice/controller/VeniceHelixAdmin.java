@@ -3115,7 +3115,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 version.getNumber(),
                 store.getStoreLifecycleHooks());
             long createBatchTopicStartTime = System.currentTimeMillis();
-            if (clusterConfig.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() || !isParent()) {
+            if (!isParent()) {
               topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
               createBatchTopics(
                   version,
@@ -4122,15 +4122,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Check if we should skip truncating topic. If it's parent fabrics and the topic write is NOT needed, return true;
-   * Otherwise, return false.
+   * Check if we should skip truncating topic. Parent controllers do not write version topics, so topic truncation is
+   * skipped for them; otherwise return false.
    * @param clusterName the cluster name to check
    * @return true if topic truncation should be skipped, false otherwise
    */
   public boolean shouldSkipTruncatingTopic(String clusterName) {
-    return isParent() && !getMultiClusterConfigs().getControllerConfig(clusterName)
-        .getConcurrentPushDetectionStrategy()
-        .isTopicWriteNeeded();
+    return isParent();
   }
 
   private void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber, boolean isForcedDelete) {

@@ -296,7 +296,8 @@ public class VeniceController {
     Admin admin = controllerService.getVeniceHelixAdmin();
 
     if (multiClusterConfigs.isParent()) {
-      // TODO: Remove the following once ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY is fully rolled out
+      // TODO: The parent controller no longer writes version topics; evaluate replacing
+      // TopicCleanupServiceForParentController with the base TopicCleanupService.
       return new TopicCleanupServiceForParentController(
           admin,
           multiClusterConfigs,

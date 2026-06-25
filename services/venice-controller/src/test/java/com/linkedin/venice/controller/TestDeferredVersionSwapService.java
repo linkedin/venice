@@ -20,7 +20,6 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -89,8 +88,6 @@ public class TestDeferredVersionSwapService {
     doReturn("").when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder();
     doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
     doReturn(1).when(clusterConfig).getDeferredVersionSwapThreadPoolSize();
-    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(clusterConfig)
-        .getConcurrentPushDetectionStrategy();
 
     childDatacenterToUrl.put(region1, "test");
     childDatacenterToUrl.put(region2, "test");
@@ -907,8 +904,6 @@ public class TestDeferredVersionSwapService {
       VeniceControllerClusterConfig sequentialConfig = mock(VeniceControllerClusterConfig.class);
       doReturn(rolloutOrder).when(sequentialConfig).getDeferredVersionSwapRegionRollforwardOrder();
       doReturn(1).when(sequentialConfig).getDeferredVersionSwapThreadPoolSize();
-      doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(sequentialConfig)
-          .getConcurrentPushDetectionStrategy();
       doReturn(sequentialConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
       doReturn(Collections.emptyMap()).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName);
     }
@@ -995,8 +990,6 @@ public class TestDeferredVersionSwapService {
     VeniceControllerClusterConfig sequentialConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(rolloutOrder).when(sequentialConfig).getDeferredVersionSwapRegionRollforwardOrder();
     doReturn(1).when(sequentialConfig).getDeferredVersionSwapThreadPoolSize();
-    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(sequentialConfig)
-        .getConcurrentPushDetectionStrategy();
     doReturn(sequentialConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
     doReturn(Collections.emptyMap()).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName);
 

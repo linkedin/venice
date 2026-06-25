@@ -10,7 +10,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
@@ -19,7 +18,6 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -419,8 +417,6 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Simulate failure on region2 rollout by making rollForwardToFutureVersion throw an exception when region2 appears
     doThrow(new VeniceException()).when(admin).rollForwardToFutureVersion(clusterName, storeName, region2);
-    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(clusterConfig)
-        .getConcurrentPushDetectionStrategy();
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
@@ -599,8 +595,6 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(clusterConfig).getConcurrentPushDetectionStrategy();
-
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
@@ -611,7 +605,6 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify that updateStore was called to mark parent version as ONLINE
       verify(store, atLeastOnce()).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
-      verify(admin, times(1)).truncateKafkaTopic(anyString());
     });
 
     // Verify error recording was not called

@@ -68,7 +68,6 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -724,13 +723,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     Store store = mock(Store.class);
     doReturn(store).when(internalAdmin).getStore(clusterName, pubSubTopic.getStoreName());
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
 
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.killOfflinePush(clusterName, pubSubTopic.getName(), false);
 
     verify(internalAdmin).checkPreConditionForKillOfflinePush(clusterName, pubSubTopic.getName());
-    verify(internalAdmin).truncateKafkaTopic(pubSubTopic.getName());
     verify(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -2801,30 +2798,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testGetKafkaTopicsByAge() {
-    String storeName = Utils.getUniqueString("test-store");
-    List<PubSubTopic> versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
-    Assert.assertTrue(versionTopics.isEmpty());
-
-    Set<PubSubTopic> topicList = new HashSet<>();
-    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v1"));
-    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v2"));
-    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v3"));
-    doReturn(topicList).when(topicManager).listTopics();
-    versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
-    Assert.assertFalse(versionTopics.isEmpty());
-    PubSubTopic latestTopic = versionTopics.get(0);
-    assertEquals(latestTopic, pubSubTopicRepository.getTopic(storeName + "_v3"));
-    Assert.assertTrue(topicList.containsAll(versionTopics));
-    Assert.assertTrue(versionTopics.containsAll(topicList));
-  }
-
-  @Test
   public void testGetTopicForCurrentPushJob() {
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
     ControllerClient client = mock(ControllerClient.class);
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", client);
@@ -2955,79 +2932,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
-  @Test
-  public void testTruncateTopicsBasedOnMaxErroredTopicNumToKeep() {
-    String storeName = Utils.getUniqueString("test-store");
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    List<String> topics = new ArrayList<>();
-    topics.add(storeName + "_v1");
-    topics.add(storeName + "_v10");
-    topics.add(storeName + "_v8");
-    topics.add(storeName + "_v5");
-    topics.add(storeName + "_v7");
-    doReturn(topics).when(mockParentAdmin).existingVersionTopicsForStore(storeName);
-    // isTopicTruncated will return false for other topics
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName + "_v8");
-    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
-    doCallRealMethod().when(mockParentAdmin).setMaxErroredTopicNumToKeep(anyInt());
-    mockParentAdmin.setMaxErroredTopicNumToKeep(2);
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics, false, null);
-    /**
-     * Since the max error version topics we would like to keep is 2 and the non-truncated version
-     * topics include v1, v5, v7 and v10 (v8 is truncated already), we will truncate v1, v5 and keep
-     * 2 error non-truncated version topics v7 and v10.
-     */
-    verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v1");
-    verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v5");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v7");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v8");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v10");
-
-    // Test with more truncated topics
-    String storeName1 = Utils.getUniqueString("test-store");
-    List<String> topics1 = new ArrayList<>();
-    topics1.add(storeName1 + "_v1");
-    topics1.add(storeName1 + "_v10");
-    topics1.add(storeName1 + "_v8");
-    topics1.add(storeName1 + "_v5");
-    topics1.add(storeName1 + "_v7");
-    doReturn(topics1).when(mockParentAdmin).existingVersionTopicsForStore(storeName1);
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v10");
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v7");
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v8");
-    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics1, false, null);
-    /**
-     * Since the max error version topics we would like to keep is 2 and we only have 2 non-truncated version
-     * topics v1 and v5 (v7, v8 and v10 are truncated already), we will not truncate anything.
-     */
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v1");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v5");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v7");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v8");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v10");
-  }
-
-  @Test
-  public void testAdminCanCleanupLeakingTopics() {
-    String storeName = "test_store";
-
-    List<PubSubTopic> pubSubTopics = Arrays.asList(
-        pubSubTopicRepository.getTopic(storeName + "_v1"),
-        pubSubTopicRepository.getTopic(storeName + "_v2"),
-        pubSubTopicRepository.getTopic(storeName + "_v3"));
-    List<String> topics = Arrays.asList(storeName + "_v1", storeName + "_v2", storeName + "_v3");
-    doReturn(new HashSet(pubSubTopics)).when(topicManager).listTopics();
-
-    parentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics, false, null);
-    verify(internalAdmin).truncateKafkaTopic(storeName + "_v1");
-    verify(internalAdmin).truncateKafkaTopic(storeName + "_v2");
-    verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
-  }
-
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAdminCanKillLingeringVersion(boolean isIncrementalPush) {
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       long startTime = System.currentTimeMillis();
@@ -3038,6 +2944,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       String existingTopicName = storeName + "_v1";
       Store store = mock(Store.class);
       Version version = new VersionImpl(storeName, 1, "test-push");
+      version.setStatus(VersionStatus.STARTED);
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.STARTED);
       String newPushJobId = "new-test-push";
       Version newVersion = new VersionImpl(storeName, 2, newPushJobId);
@@ -3045,6 +2952,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
       doReturn(-1).when(store).getRmdVersion();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+      doReturn(1).when(store).getLargestUsedVersionNumber();
       doReturn(version).when(store).getVersion(1);
       doReturn(new StoreVersionInfo(store, version)).when(internalAdmin)
           .waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
@@ -3443,8 +3351,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
-    doReturn(true).when(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
 
     Map<String, Integer> after = Collections.singletonMap("r1", 5);
     doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
@@ -3459,7 +3365,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
-    verify(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
+    verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
+    verify(store).setCurrentVersion(5);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in the following regions.*")
@@ -3475,9 +3382,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
-    doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
@@ -3500,8 +3404,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
-    doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
 
     // r1 rolled forward to version 5, but r2 is still on version 4
     Map<String, Integer> currentVersions = new HashMap<>();
