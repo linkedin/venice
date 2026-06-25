@@ -1393,16 +1393,21 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private boolean validateChildCurrentVersions(String clusterName, String storeName, int lastVersionNum) {
     Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
-    for (Map.Entry entry: currentVersionsMap.entrySet()) {
+    List<String> regionsNotYetCurrent = new ArrayList<>();
+    for (Map.Entry<String, Integer> entry: currentVersionsMap.entrySet()) {
       if (!entry.getValue().equals(lastVersionNum)) {
-        LOGGER.error(
-            "Future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
-            lastVersionNum,
-            storeName,
-            entry.getKey(),
-            entry.getValue());
-        return false;
+        regionsNotYetCurrent.add(entry.getKey());
       }
+    }
+    if (!regionsNotYetCurrent.isEmpty()) {
+      LOGGER.info(
+          "Store {} version {} is waiting on deferred version swap (colo-by-colo roll-forward); regions not yet "
+              + "current: {}; current version per region: {}",
+          storeName,
+          lastVersionNum,
+          regionsNotYetCurrent,
+          currentVersionsMap);
+      return false;
     }
     return true;
   }
@@ -1623,11 +1628,23 @@ public class VeniceParentHelixAdmin implements Admin {
             pushJobId,
             storeName);
       } else {
-        String msg = version.isVersionSwapDeferred()
-            ? ". There is already a future version " + version.getNumber() + " exists for the store " + storeName
-                + " please make that version current before starting a next push."
-            : ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
-                + " is found and it must be terminated before another push can be started.";
+        String msg;
+        if (version.isVersionSwapDeferred() && version.getStatus() == ONLINE) {
+          // The blocking version finished its push but is mid deferred (colo-by-colo) version swap: ONLINE on
+          // the parent yet not current in every region. Surface the per-region status so operators do not
+          // mistake this for an in-flight concurrent push.
+          Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
+          String targetSwapRegion = version.getTargetSwapRegion();
+          msg = ". Version " + version.getNumber() + " of store " + storeName
+              + " has completed its push and is waiting on deferred version swap (colo-by-colo roll-forward);"
+              + " current version per region: " + currentVersions
+              + (StringUtils.isNotEmpty(targetSwapRegion) ? ", target swap region(s): " + targetSwapRegion : "")
+              + ". Roll it forward to make it current in all regions (or roll it back) before starting a new push.";
+        } else {
+          msg = ". An ongoing push for version " + version.getNumber() + " (status " + version.getStatus()
+              + ", pushJobId " + existingPushJobId + ", topic " + currentPushTopic.get()
+              + ") is still in progress and must complete or be terminated before another push can be started.";
+        }
         VeniceException e = new ConcurrentBatchPushException(
             "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
         e.setStackTrace(EMPTY_STACK_TRACE);
