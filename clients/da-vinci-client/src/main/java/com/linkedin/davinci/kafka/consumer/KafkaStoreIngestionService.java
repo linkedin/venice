@@ -93,6 +93,7 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.NamedThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -150,6 +151,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
   // Extra logger dedicated for ingestion info for slow partition.
   private static final Logger INGESTION_DEBUGGER_LOGGER = LogManager.getLogger(TopicPartitionIngestionInfo.class);
+  // Ingestion is important but should yield to the read path, so run it slightly below normal priority.
+  private static final int INGESTION_TASK_THREAD_PRIORITY = Thread.NORM_PRIORITY - 1;
 
   private final StorageService storageService;
 
@@ -609,7 +612,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (heartbeatMonitoringService != null) {
       heartbeatMonitoringService.setKafkaStoreIngestionService(this);
     }
-    ingestionExecutorService = Executors.newCachedThreadPool();
+    ingestionExecutorService =
+        Executors.newCachedThreadPool(new NamedThreadFactory("StoreIngestionService", INGESTION_TASK_THREAD_PRIORITY));
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
 
     storeBufferService.start();
