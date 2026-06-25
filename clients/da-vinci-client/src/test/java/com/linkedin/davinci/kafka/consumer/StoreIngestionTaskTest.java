@@ -7784,6 +7784,62 @@ public abstract class StoreIngestionTaskTest {
     verify(storeIngestionTask, never()).updateOffsetMetadataInOffsetRecord(any());
   }
 
+  /**
+   * The Global-RT-DIV checkpoint path ({@code updateAndSyncOffsetFromSnapshot}) must not checkpoint an errored replica.
+   * Needs a real SIT because the gate reads the {@code failedPartitions} field; errored state is set via
+   * {@code setIngestionException}, as in the Fix 2 graceful-shutdown test.
+   */
+  @Test
+  public void testUpdateAndSyncOffsetFromSnapshotSkipsErroredReplica() throws Exception {
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        new HashMap<>(),
+        false,
+        null,
+        null,
+        this.mockStorageService).build();
+
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
+        PARTITION_COUNT,
+        new PartitionerConfigImpl(),
+        Optional.empty(),
+        false,
+        false,
+        AAConfig.AA_OFF);
+
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        this.mockStorageService,
+        storeAndVersionConfigs.store,
+        storeAndVersionConfigs.version,
+        kafkaProps,
+        isCurrentVersion,
+        storeAndVersionConfigs.storeVersionConfig,
+        PARTITION_FOO,
+        Optional.empty(),
+        null,
+        null);
+
+    // A PCS must be present so the method gets past its null-PCS guard and actually evaluates the error gate.
+    PartitionConsumptionState erroredPcs = mock(PartitionConsumptionState.class);
+    doReturn(PARTITION_FOO).when(erroredPcs).getPartition();
+    storeIngestionTaskUnderTest.setPartitionConsumptionState(PARTITION_FOO, erroredPcs);
+    // Record the partition as failed, mirroring how an ingestion exception drives the Fix 2 graceful-shutdown test.
+    storeIngestionTaskUnderTest.setIngestionException(PARTITION_FOO, new VeniceException("fake ingestion exception"));
+
+    PartitionTracker vtDivSnapshot = mock(PartitionTracker.class);
+
+    storeIngestionTaskUnderTest.updateAndSyncOffsetFromSnapshot(vtDivSnapshot, fooTopicPartition);
+
+    // The gate returns before any checkpoint work, so the errored partition's OffsetRecord write and put() never run.
+    verify(vtDivSnapshot, never()).updateOffsetRecord(any(), any());
+    verify(mockStorageMetadataService, never()).put(eq(topic), eq(PARTITION_FOO), any());
+  }
+
   @Test
   public void testGetHeartbeatProducerTimestamp() {
     long producerTimestamp = 1780749996366L;
