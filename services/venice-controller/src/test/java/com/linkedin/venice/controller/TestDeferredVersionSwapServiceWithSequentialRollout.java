@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -43,6 +44,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -112,6 +114,10 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     metricsRepository = mock(MetricsRepository.class);
     Sensor sensor = mock(Sensor.class);
     doReturn(sensor).when(metricsRepository).sensor(any(), any());
+
+    VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(new VeniceProperties(new Properties())).when(commonConfig).getProps();
+    doReturn(commonConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
 
     // Setup mock Venice Helix Admin
     mockVeniceHelixAdmin();

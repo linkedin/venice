@@ -100,6 +100,10 @@ public class TestDeferredVersionSwapService {
     metricsRepository = mock(MetricsRepository.class);
     Sensor sensor = mock(Sensor.class);
     doReturn(sensor).when(metricsRepository).sensor(any(), any());
+
+    VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(new VeniceProperties(new Properties())).when(commonConfig).getProps();
+    doReturn(commonConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
   }
 
   private Store mockStore(
