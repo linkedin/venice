@@ -612,8 +612,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (heartbeatMonitoringService != null) {
       heartbeatMonitoringService.setKafkaStoreIngestionService(this);
     }
-    ingestionExecutorService = Executors.newCachedThreadPool(
-        new NamedThreadFactory("KafkaStoreIngestionService-IngestionTask", INGESTION_TASK_THREAD_PRIORITY));
+    ingestionExecutorService =
+        Executors.newCachedThreadPool(new NamedThreadFactory("StoreIngestionService", INGESTION_TASK_THREAD_PRIORITY));
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
 
     storeBufferService.start();
