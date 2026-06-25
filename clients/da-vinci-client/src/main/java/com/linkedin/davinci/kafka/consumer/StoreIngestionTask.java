@@ -2305,6 +2305,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.warn("event=globalRtDiv No PCS found for {}. Skipping VT DIV OffsetRecord sync.", topicPartition);
       return;
     }
+    int partition = pcs.getPartition();
+    if (failedPartitions.contains(partition) || pcs.isErrorReported()) {
+      // Never checkpoint an errored replica: its in-memory offset may point past a record that was never persisted.
+      // Leaving the last good durable offset in place lets the failed record be re-read on restart. The Global-RT-DIV
+      // graceful-shutdown checkpoint reaches storage through this method, so the error gate is enforced here.
+      LOGGER.warn("Skipping offset checkpoint for errored replica: {}", pcs.getReplicaId());
+      return;
+    }
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(pcs);
