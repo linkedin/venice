@@ -25,6 +25,7 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_BLOB_TRANSFER_SERVER_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED;
@@ -701,6 +702,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  private final boolean daVinciPausedSitEnabled;
   private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
@@ -1220,7 +1222,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     daVinciCurrentVersionBootstrappingSpeedupEnabled =
+    daVinciCurrentVersionBootstrappingSpeedupEnabled =
         serverProperties.getBoolean(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true);
+    daVinciPausedSitEnabled = serverProperties.getBoolean(DAVINCI_PAUSED_SIT_ENABLED, false);
     daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond =
         serverProperties.getLong(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND, 500000);
     daVinciCurrentVersionBootstrappingQuotaBytesPerSecond = serverProperties
@@ -2182,6 +2186,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDaVinciCurrentVersionBootstrappingSpeedupEnabled() {
     return daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  }
+
+  public boolean isDaVinciPausedSitEnabled() {
+    return daVinciPausedSitEnabled;
   }
 
   public long getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond() {
