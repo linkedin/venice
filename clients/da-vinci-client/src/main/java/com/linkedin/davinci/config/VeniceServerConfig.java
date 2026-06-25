@@ -23,6 +23,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED;
@@ -676,6 +677,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  private final boolean daVinciPausedSitEnabled;
   private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
@@ -1168,6 +1170,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     daVinciCurrentVersionBootstrappingSpeedupEnabled =
         serverProperties.getBoolean(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, false);
+    daVinciPausedSitEnabled = serverProperties.getBoolean(DAVINCI_PAUSED_SIT_ENABLED, false);
     daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond =
         serverProperties.getLong(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND, -1);
     daVinciCurrentVersionBootstrappingQuotaBytesPerSecond =
@@ -2092,6 +2095,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDaVinciCurrentVersionBootstrappingSpeedupEnabled() {
     return daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  }
+
+  public boolean isDaVinciPausedSitEnabled() {
+    return daVinciPausedSitEnabled;
   }
 
   public long getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond() {

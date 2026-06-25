@@ -89,6 +89,7 @@ public class StoreBackendTest {
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
         .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .put(ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED, "true")
         .build();
 
     ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
@@ -656,6 +657,56 @@ public class StoreBackendTest {
     backend.handleStoreChanged(storeBackend);
 
     verify(pausedTask, times(1)).resumeFromFutureSlotPause();
+  }
+
+  /**
+   * With {@code DAVINCI_PAUSED_SIT_ENABLED=false} (legacy mode) a non-target-region DVC client must
+   * NOT subscribe to a target-region push version until that version reaches
+   * {@link VersionStatus#ONLINE} in the local region.
+   */
+  @Test
+  public void testLegacyNonTargetRegionSubscribesOnOnline() throws Exception {
+    // Re-create storeBackend with paused-SIT disabled (legacy mode).
+    VeniceProperties legacyConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
+        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
+        .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .put(ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED, "false")
+        .build();
+    when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(legacyConfig));
+    storeBackend = new StoreBackend(backend, store.getName());
+    when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
+
+    // Subscribe to version1 (current), version2 becomes future.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Add version3 in non-target region (dc-0 is NOT dc-1).
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-1");
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Legacy: non-target region must NOT subscribe while version is not ONLINE.
+    assertFalse(
+        versionMap.containsKey(version3.kafkaTopicName()),
+        "Legacy mode: non-target region must not subscribe before version is ONLINE");
+
+    // Mark version3 ONLINE — legacy gate should now allow subscription.
+    store.updateVersionStatus(version3.getNumber(), VersionStatus.ONLINE);
+    backend.handleStoreChanged(storeBackend);
+
+    assertTrue(
+        versionMap.containsKey(version3.kafkaTopicName()),
+        "Legacy mode: non-target region must subscribe once version is ONLINE");
+    // Legacy mode uses createPaused=false.
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
   }
 
   /**

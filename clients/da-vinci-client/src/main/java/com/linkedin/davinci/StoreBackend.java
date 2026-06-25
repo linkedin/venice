@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -291,7 +292,47 @@ public class StoreBackend {
       return;
     }
 
-    boolean createPaused = shouldCreatePaused(targetVersion);
+    String targetSwapRegion = targetVersion.getTargetSwapRegion();
+    boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetSwapRegion);
+
+    if (!isTargetRegionEnabled) {
+      // No target-region push — always subscribe active.
+      subscribeFutureVersion(targetVersion, false);
+      return;
+    }
+
+    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetSwapRegion);
+    String currentRegion = backend.getConfigLoader().getVeniceServerConfig().getRegionName();
+
+    if (targetRegions.contains(currentRegion)) {
+      // This DVC instance IS in the target region — always subscribe active.
+      subscribeFutureVersion(targetVersion, false);
+      return;
+    }
+
+    // Non-target region with a target-region push in flight.
+    boolean pausedSitEnabled = backend.getConfigLoader().getVeniceServerConfig().isDaVinciPausedSitEnabled();
+    if (pausedSitEnabled) {
+      // Paused-SIT mode: subscribe immediately in a paused state; resume when targetRegionPromoted fires.
+      boolean createPaused = !targetVersion.isTargetRegionPromoted();
+      subscribeFutureVersion(targetVersion, createPaused);
+    } else {
+      // Legacy mode: subscribe only once the version is ONLINE in this region.
+      if (targetVersion.getStatus() == VersionStatus.ONLINE) {
+        subscribeFutureVersion(targetVersion, false);
+      } else {
+        LOGGER.info(
+            "Skipping subscribe to future version: {} in region: {} because paused-SIT is disabled and "
+                + "version is not yet ONLINE (status={}, targetSwapRegion={})",
+            targetVersion.kafkaTopicName(),
+            currentRegion,
+            targetVersion.getStatus(),
+            targetSwapRegion);
+      }
+    }
+  }
+
+  private void subscribeFutureVersion(Version targetVersion, boolean createPaused) {
     LOGGER.info("Subscribing to future version {} (createPaused={})", targetVersion.kafkaTopicName(), createPaused);
     setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
     // For future version subscription, we don't need to pass any timestamps or position map
@@ -300,38 +341,17 @@ public class StoreBackend {
   }
 
   /**
-   * Resume the future version's ingestion if it was created paused and the target-region push has
-   * since been promoted (i.e. {@code shouldCreatePaused} now returns {@code false}).
+   * Resume the future version's ingestion if it was created paused and targetRegionPromoted has
+   * since flipped to true. Only relevant when paused-SIT mode is enabled.
    */
   synchronized void maybeResumeDaVinciFutureVersion() {
     if (daVinciFutureVersion == null || !daVinciFutureVersion.isPaused()) {
       return;
     }
-    if (!shouldCreatePaused(daVinciFutureVersion.getVersion())) {
+    if (daVinciFutureVersion.getVersion().isTargetRegionPromoted()) {
       LOGGER.info("Resuming future-slot-paused SIT for version {}", daVinciFutureVersion.getVersion().kafkaTopicName());
       daVinciFutureVersion.resume();
     }
-  }
-
-  /**
-   * Returns {@code true} when the future version should be started in a paused state.
-   *
-   * <p>A version is created paused when a target-region push is in progress and this DVC instance
-   * is NOT in the target region. Once the push completes in the target region the
-   * {@code targetRegionPromoted} flag is set, at which point this method returns {@code false} and
-   * the caller can call {@link #maybeResumeDaVinciFutureVersion()} to resume ingestion.
-   */
-  private boolean shouldCreatePaused(Version version) {
-    String targetSwapRegion = version.getTargetSwapRegion();
-    if (StringUtils.isEmpty(targetSwapRegion)) {
-      return false; // no target-region push — always active
-    }
-    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetSwapRegion);
-    String currentRegion = backend.getConfigLoader().getVeniceServerConfig().getRegionName();
-    if (targetRegions.contains(currentRegion)) {
-      return false; // this IS the target region — always active
-    }
-    return !version.isTargetRegionPromoted(); // non-target: paused until promoted
   }
 
   /**
