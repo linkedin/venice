@@ -231,7 +231,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
-  private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
@@ -267,15 +266,10 @@ public class VeniceParentHelixAdmin implements Admin {
   private ParentHelixOfflinePushAccessor offlinePushAccessor;
 
   /**
-   * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
-   * 1. For errored topics, {@link #getOffLineJobStatus} won't truncate them;
-   * 2. For errored topics, {@link #killOfflinePush(String, String, boolean)} won't truncate them;
-   * 3. {@link #getTopicForCurrentPushJob(String, String, boolean, boolean)} will truncate the errored topics based on
-   * {@link #maxErroredTopicNumToKeep};
-   *
-   * It means error topic retiring is only be triggered by next push.
-   *
-   * When {@link #maxErroredTopicNumToKeep} is 0, errored topics will be truncated right away when job is finished.
+   * The parent controller no longer writes or truncates version topics, so errored version topics are
+   * neither retained nor cleaned up here. {@link #maxErroredTopicNumToKeep} now only gates cleanup of
+   * the corresponding stream-reprocessing topic in {@link #killOfflinePush(String, String, boolean)}
+   * (when it is 0) and a diagnostic status detail in {@link #getOffLineJobStatus}.
    */
   private int maxErroredTopicNumToKeep;
 
@@ -1255,38 +1249,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-  * Check whether any topic for this store exists or not.
-  * The existing topic could be introduced by two cases:
-  * 1. The previous job push is still running;
-  * 2. The previous job push fails to delete this topic;
-  *
-  * For the 1st case, it is expected to refuse the new data push,
-  * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
-  **/
-  List<PubSubTopic> existingVersionTopicsForStore(String storeName) {
-    List<PubSubTopic> outputList = new ArrayList<>();
-    TopicManager topicManager = getTopicManager();
-    Set<PubSubTopic> topics = topicManager.listTopics();
-    String storeNameForCurrentTopic;
-    for (PubSubTopic topic: topics) {
-      if (AdminTopicUtils.isAdminTopic(topic.getName()) || AdminTopicUtils.isKafkaInternalTopic(topic.getName())
-          || topic.isRealTime() || VeniceView.isViewTopic(topic.getName())) {
-        continue;
-      }
-      try {
-        storeNameForCurrentTopic = Version.parseStoreFromKafkaTopicName(topic.getName());
-      } catch (Exception e) {
-        LOGGER.debug("Failed to parse StoreName from topic: {}, and error message: {}", topic, e.getMessage());
-        continue;
-      }
-      if (storeNameForCurrentTopic.equals(storeName)) {
-        outputList.add(topic);
-      }
-    }
-    return outputList;
-  }
-
-  /**
    * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
    * else will return the ongoing Kafka topic.
    */
@@ -1296,10 +1258,6 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       boolean isIncrementalPush,
       boolean isRepush) {
-    return getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
-  }
-
-  Optional<String> getTopicForCurrentPushJobParentVersionStatusBasedTracking(String clusterName, String storeName) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       return Optional.empty();
@@ -1320,7 +1278,9 @@ public class VeniceParentHelixAdmin implements Admin {
     // checkRollbackOriginVersionCapacityForNewPush.
     // - PARTIALLY_ONLINE: parent-only terminal state from a region-filtered rollback (some
     // regions rolled back, some didn't); same retention window applies via the same guard.
-    // Non-terminal statuses fall through to the polling branch below to wait on the in-flight push.
+    // Non-terminal statuses are resolved below: CREATED/PUSHED (and a deferred-swap ONLINE awaiting
+    // roll-forward) block the next push outright, while STARTED and a plain ONLINE poll the child job
+    // status to decide.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
@@ -1345,12 +1305,17 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean onlyDeferredSwap =
         lastVersion.isVersionSwapDeferred() && StringUtils.isEmpty(lastVersion.getTargetSwapRegion());
 
-    if ((lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
-        || lastVersion.getStatus() == CREATED)) {
-      LOGGER.error(
-          "The push for version {} of store {} is not completed, please wait till the push is completed.",
+    if (lastVersion.getStatus() == CREATED || lastVersion.getStatus() == PUSHED) {
+      // CREATED: the version exists but its push has not begun. PUSHED: a target-region deferred-swap
+      // push has completed in its target region but is awaiting roll-forward to the remaining regions.
+      // In both cases a future version already occupies the store, so the next push must wait. (Unlike
+      // STARTED below, polling the child job status would not help: for PUSHED the children already
+      // report the push as terminal, which would incorrectly unblock the next push.)
+      LOGGER.info(
+          "The push for version {} of store {} is not completed (status {}); the next push must wait.",
           lastVersionNum,
-          storeName);
+          storeName,
+          lastVersion.getStatus());
       return latestTopic;
     } else if (onlyDeferredSwap && lastVersion.getStatus() == ONLINE) {
       // for only deferred swap, users need to rollforward to mark it current for online status
@@ -1361,7 +1326,11 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     /**
-     * If the job is still running, Parent Controller will block current push.
+     * A STARTED (or non-deferred ONLINE) version can reflect either a push that is still in flight or
+     * one that already completed in the child regions but whose parent version status has not yet been
+     * advanced -- the parent version only transitions out of STARTED when a job-status poll observes a
+     * terminal child status (see {@link #getOffLineJobStatus}). Poll the child job status to tell these
+     * apart: block while it is non-terminal, otherwise let the next push proceed.
      */
     final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
     ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;

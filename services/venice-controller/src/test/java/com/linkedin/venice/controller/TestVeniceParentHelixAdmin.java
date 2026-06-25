@@ -2921,8 +2921,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
     doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    doCallRealMethod().when(mockParentAdmin)
-        .getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
 
     Store store = new ZKStore(
         storeName,
