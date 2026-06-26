@@ -958,6 +958,253 @@ public class TestAvroSupersetSchemaUtils {
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V6_SCHEMA, supersetSchemaForV5AndV4.toString()));
   }
 
+  @Test
+  public void testValidateSubsetSchemaForProjectionWithNullableSupersetFields() {
+    // Scenario from OpenHouse (OH) schema evolution: the store's initial (target writer) schema declares a
+    // non-nullable field X, but every schema evolution afterwards wraps fields as a nullable union [null, X]. The
+    // input (superset) value schema therefore carries [null, X] while the chosen writer schema keeps X. The
+    // projection check must accept input [null, X] against writer X (and ignore the input's extra fields), while the
+    // strict check must continue to reject the nullability drift.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"f1\",\"type\":\"string\"},"
+            + "{\"name\":\"f2\",\"type\":\"int\"}]}");
+    Schema inputNullable = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"f1\",\"type\":[\"null\",\"string\"],\"default\":null},"
+            + "{\"name\":\"f2\",\"type\":\"int\"},"
+            + "{\"name\":\"extra\",\"type\":[\"null\",\"string\"],\"default\":null}]}");
+
+    // Strict check rejects the [null,X] (input) vs X (writer) drift.
+    Assert.assertFalse(AvroSupersetSchemaUtils.validateSubsetValueSchema(writer, inputNullable.toString()));
+    // Projection check accepts input [null,X] against writer X and tolerates the input's extra top-level field.
+    Assert.assertTrue(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputNullable.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksReverseNullableDrift() {
+    // The reverse direction (input X, writer [null, X]) is NOT a side effect of OH evolution; it indicates the user
+    // may have messed something up, so it must stay blocked even under the projection check.
+    Schema writerNullable = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"f1\",\"type\":[\"null\",\"string\"],\"default\":null}]}");
+    Schema inputNonNull = AvroCompatibilityHelper
+        .parse("{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"f1\",\"type\":\"string\"}]}");
+    Assert.assertFalse(AvroSupersetSchemaUtils.validateSubsetValueSchema(writerNullable, inputNonNull.toString()));
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writerNullable, inputNonNull.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionStillBlocksOtherDrift() {
+    // Relaxing nullable wrapping must not open the door to unrelated type drift.
+    Schema writer = AvroCompatibilityHelper
+        .parse("{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"f1\",\"type\":\"string\"}]}");
+
+    // Different non-null branch type (int vs string) must not match.
+    Schema inputWrongType = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"f1\",\"type\":[\"null\",\"int\"],\"default\":null}]}");
+    Assert
+        .assertFalse(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputWrongType.toString()));
+
+    // A non-nullable complex union (not a [null, X] pair) must not be treated as a nullable wrap.
+    Schema inputComplexUnion = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"f1\",\"type\":[\"null\",\"string\",\"int\"],\"default\":null}]}");
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputComplexUnion.toString()));
+
+    // A missing writer field in the input still fails (writer not a subset of input).
+    Schema inputMissingField = AvroCompatibilityHelper
+        .parse("{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"other\",\"type\":\"string\"}]}");
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputMissingField.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksNullLastUnion() {
+    // OH wraps optional fields as [null, X] (null FIRST) so the field can default to null. A null-LAST union
+    // ([X, null]) cannot carry a null default and is therefore never produced by OH; it indicates a hand-authored
+    // schema, not the pattern we relax for. The nullable-unwrap must only fire for null-first unions, so [X, null]
+    // (input) vs writer X must stay blocked.
+    Schema writer = AvroCompatibilityHelper
+        .parse("{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"f1\",\"type\":\"int\"}]}");
+    Schema inputNullLast = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"f1\",\"type\":[\"int\",\"null\"],\"default\":0}]}");
+    Assert
+        .assertFalse(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputNullLast.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksNestedMultiUnion() {
+    // The complex-union guardrail also applies recursively: a 3-branch union ([null, string, int]) inside a
+    // nested record is not a [null, X] wrap and must stay blocked, mirroring the top-level guardrail.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}]}");
+    Schema inputNestedMultiUnion = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":[\"null\",\"string\",\"int\"],\"default\":null}]}}]}");
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputNestedMultiUnion.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionKeepsExactMatch() {
+    // Exact matches (X == X and [null, X] == [null, X]) must still pass under the projection check.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"f1\",\"type\":\"string\"},"
+            + "{\"name\":\"f2\",\"type\":[\"null\",\"int\"],\"default\":null}]}");
+    Schema input = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"f1\",\"type\":\"string\"},"
+            + "{\"name\":\"f2\",\"type\":[\"null\",\"int\"],\"default\":null},"
+            + "{\"name\":\"extra\",\"type\":[\"null\",\"string\"],\"default\":null}]}");
+    Assert.assertTrue(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, input.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionRelaxesNestedNullableAdd() {
+    // OH schema evolution applies recursively: when a field is added to a NESTED record, the input (superset) value
+    // schema carries it as [null, X] while the chosen writer keeps the nested record's fields non-nullable. The
+    // relaxation is NOT top-level only -- the projection check must unwrap [null, X] vs X at every nesting level.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}]}");
+    Schema inputNestedNullable = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":[\"null\",\"string\"],\"default\":null}]}}]}");
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputNestedNullable.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionToleratesNestedExtraField() {
+    // OH never removes columns (no deletion allowlist), so the superset accumulates fields at every level. A nested
+    // record in the input may therefore carry extra fields (a field deleted from the writer but retained in the ASL
+    // superset). The projection check must tolerate these extra nested fields, just as it does at the top level.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"b\",\"type\":\"int\"}]}}]}");
+    Schema inputNestedExtra = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"b\",\"type\":\"int\"},"
+            + "{\"name\":\"c\",\"type\":\"int\",\"default\":5}]}}]}");
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputNestedExtra.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksNestedReverseDrift() {
+    // The guardrails also apply recursively: reverse nullability drift inside a nested record (writer nested field
+    // [null, X], input nested field X) is NOT an OH evolution artifact and must stay blocked at every level.
+    Schema writerNestedNullable = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":[\"null\",\"string\"],\"default\":null}]}}]}");
+    Schema inputNestedNonNull = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}]}");
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchemaForProjection(writerNestedNullable, inputNestedNonNull.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksReverseDriftInArrayElement() {
+    // Reverse nullability drift must stay blocked inside array element records too (writer element field [null, X],
+    // input element field X).
+    Schema writerNullableElement = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addresses\",\"type\":"
+            + "{\"type\":\"array\",\"items\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":[\"null\",\"string\"],\"default\":null}]}}}]}");
+    Schema inputNonNullElement = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addresses\",\"type\":"
+            + "{\"type\":\"array\",\"items\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}}]}");
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchemaForProjection(writerNullableElement, inputNonNullElement.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksReverseDriftInMapValue() {
+    // Reverse nullability drift must stay blocked inside map value records too.
+    Schema writerNullableValue = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"byId\",\"type\":" + "{\"type\":\"map\",\"values\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":[\"null\",\"string\"],\"default\":null}]}}}]}");
+    Schema inputNonNullValue = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"byId\",\"type\":" + "{\"type\":\"map\",\"values\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}}]}");
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchemaForProjection(writerNullableValue, inputNonNullValue.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksReverseDriftDeeplyNested() {
+    // Reverse nullability drift must stay blocked no matter how deep the offending field is (here two record levels
+    // down: R -> outer -> inner.leaf), proving the guardrail holds at all nesting levels.
+    Schema writerDeepNullable = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"outer\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Outer\",\"fields\":[{\"name\":\"inner\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Inner\",\"fields\":[{\"name\":\"leaf\",\"type\":[\"null\",\"string\"],\"default\":null}]}}]}}]}");
+    Schema inputDeepNonNull = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"outer\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Outer\",\"fields\":[{\"name\":\"inner\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Inner\",\"fields\":[{\"name\":\"leaf\",\"type\":\"string\"}]}}]}}]}");
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchemaForProjection(writerDeepNullable, inputDeepNonNull.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionRecursesIntoArrayElements() {
+    // Recursion must descend through array element records too: the element record evolved via OH (a field added as
+    // [null, X] and an extra retained field), while the writer keeps the original non-nullable element record.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addresses\",\"type\":"
+            + "{\"type\":\"array\",\"items\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}}]}");
+    Schema inputEvolvedElement = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addresses\",\"type\":"
+            + "{\"type\":\"array\",\"items\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"},"
+            + "{\"name\":\"zip\",\"type\":[\"null\",\"int\"],\"default\":null}]}}}]}");
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputEvolvedElement.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionRecursesIntoMapValues() {
+    // Recursion must descend through map value records too, mirroring the array case.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"byId\",\"type\":" + "{\"type\":\"map\",\"values\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}}]}");
+    Schema inputEvolvedValue = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"byId\",\"type\":" + "{\"type\":\"map\",\"values\":"
+            + "{\"type\":\"record\",\"name\":\"Address\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"},"
+            + "{\"name\":\"zip\",\"type\":[\"null\",\"int\"],\"default\":null}]}}}]}");
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputEvolvedValue.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionRelaxesDeeplyNestedNullableAdd() {
+    // Mirror of the deeply-nested reverse-drift block on the ACCEPT side: a nullable-add two record levels down
+    // (R -> outer -> inner.leaf, input [null, X] vs writer X) must be accepted, proving the relaxation also holds at
+    // arbitrary depth.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"outer\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Outer\",\"fields\":[{\"name\":\"inner\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Inner\",\"fields\":[{\"name\":\"leaf\",\"type\":\"string\"}]}}]}}]}");
+    Schema inputDeepNullable = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"outer\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Outer\",\"fields\":[{\"name\":\"inner\",\"type\":"
+            + "{\"type\":\"record\",\"name\":\"Inner\",\"fields\":[{\"name\":\"leaf\",\"type\":[\"null\",\"string\"],\"default\":null}]}}]}}]}");
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputDeepNullable.toString()));
+  }
+
   private static Map<String, String> toStringMap(Map<?, ?> map) {
     Map<String, String> result = new HashMap<>();
     map.forEach((k, v) -> result.put(k.toString(), v.toString()));

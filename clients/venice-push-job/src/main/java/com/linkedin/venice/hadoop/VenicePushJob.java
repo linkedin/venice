@@ -11,6 +11,7 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER;
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
+import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
@@ -2390,7 +2391,7 @@ public class VenicePushJob implements AutoCloseable {
               + "\nError from the server: " + writerSchemaResponse.getError());
     }
     Schema writerSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(writerSchemaResponse.getSchemaStr());
-    if (!validateSubsetValueSchema(writerSchema, setting.valueSchemaString)) {
+    if (!validateSubsetValueSchemaForProjection(writerSchema, setting.valueSchemaString)) {
       throw new VeniceSchemaMismatchException(
           "Input value schema is not a superset of the target writer value schema (id: " + writerSchemaId
               + "). Input value schema: " + setting.valueSchemaString + " , writer schema: "

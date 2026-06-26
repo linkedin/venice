@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_OH_SUPERSET_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
@@ -379,6 +380,73 @@ public class VenicePushJobTest {
     Assert.assertEquals(setting.valueSchemaId, 7);
     Assert.assertEquals(setting.writerValueSchemaString, NAME_RECORD_V1_SCHEMA.toString());
     Assert.assertEquals(setting.writerValueSchema, NAME_RECORD_V1_SCHEMA);
+  }
+
+  @Test
+  public void testValidateValueSchemaEnablesProjectionForNullableDriftSupersetInput() {
+    // OH schema evolution wraps the writer's non-nullable fields as [null, X] and appends extra nullable fields, so
+    // the input value schema is a projection-superset (but NOT a strict subset) of the V1 writer schema. The
+    // projection eligibility check must accept this nullability drift and enable projection.
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    Schema ohSupersetInput = NAME_RECORD_V1_OH_SUPERSET_SCHEMA;
+
+    // Input value schema does not match any registered value schema.
+    SchemaResponse valueSchemaIdResponse = new SchemaResponse();
+    valueSchemaIdResponse.setError("Could not find any registered value schema for the input value schema.");
+    doReturn(valueSchemaIdResponse).when(mockClient).getValueSchemaID(eq(TEST_STORE), eq(ohSupersetInput.toString()));
+
+    // The supplied target writer value schema id resolves to the non-nullable V1 writer schema.
+    SchemaResponse writerSchemaResponse = new SchemaResponse();
+    writerSchemaResponse.setId(7);
+    writerSchemaResponse.setSchemaStr(NAME_RECORD_V1_SCHEMA.toString());
+    doReturn(writerSchemaResponse).when(mockClient).getValueSchema(eq(TEST_STORE), eq(7));
+
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), mockClient);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.enableWriteCompute = false;
+    setting.targetWriterValueSchemaId = 7;
+    setting.valueSchema = ohSupersetInput;
+    setting.valueSchemaString = ohSupersetInput.toString();
+
+    vpj.validateAndRetrieveValueSchemas(mockClient, setting, false);
+
+    Assert.assertTrue(setting.projectInputToWriterSchema);
+    Assert.assertEquals(setting.valueSchemaId, 7);
+    Assert.assertEquals(setting.writerValueSchemaString, NAME_RECORD_V1_SCHEMA.toString());
+    Assert.assertEquals(setting.writerValueSchema, NAME_RECORD_V1_SCHEMA);
+  }
+
+  @Test(expectedExceptions = VeniceSchemaMismatchException.class, expectedExceptionsMessageRegExp = ".*not a superset of the target writer value schema.*")
+  public void testValidateValueSchemaRejectsReverseNullableDriftProjectionInput() {
+    // The relaxed projection check must not become a blanket "accept everything". Here the input is the non-nullable V1
+    // schema while the target writer is the OH-superset (its fields are [null, X] and it has an extra "age"). That is
+    // reverse nullability drift plus a missing writer field -- the input is NOT a projection-superset of the writer --
+    // so projection eligibility must be rejected.
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    SchemaResponse valueSchemaIdResponse = new SchemaResponse();
+    valueSchemaIdResponse.setError("Could not find any registered value schema for the input value schema.");
+    doReturn(valueSchemaIdResponse).when(mockClient)
+        .getValueSchemaID(eq(TEST_STORE), eq(NAME_RECORD_V1_SCHEMA.toString()));
+
+    SchemaResponse writerSchemaResponse = new SchemaResponse();
+    writerSchemaResponse.setId(7);
+    writerSchemaResponse.setSchemaStr(NAME_RECORD_V1_OH_SUPERSET_SCHEMA.toString());
+    doReturn(writerSchemaResponse).when(mockClient).getValueSchema(eq(TEST_STORE), eq(7));
+
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), mockClient);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.enableWriteCompute = false;
+    setting.targetWriterValueSchemaId = 7;
+    setting.valueSchema = NAME_RECORD_V1_SCHEMA;
+    setting.valueSchemaString = NAME_RECORD_V1_SCHEMA.toString();
+
+    vpj.validateAndRetrieveValueSchemas(mockClient, setting, false);
   }
 
   @Test

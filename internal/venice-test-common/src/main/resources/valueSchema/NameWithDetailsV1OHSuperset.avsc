@@ -1,0 +1,55 @@
+{
+  "type" : "record",
+  "name" : "nameRecord",
+  "namespace" : "example.avro",
+  "fields" : [ {
+    "name" : "firstName",
+    "type" : [ "null", "string" ],
+    "default" : null
+  }, {
+    "name" : "lastName",
+    "type" : [ "null", "string" ],
+    "default" : null
+  }, {
+    "name" : "age",
+    "type" : [ "null", "int" ],
+    "default" : null
+  }, {
+    "name" : "address",
+    "type" : {
+      "type" : "record",
+      "name" : "Address",
+      "fields" : [ {
+        "name" : "city",
+        "type" : "string",
+        "default" : ""
+      }, {
+        "name" : "zip",
+        "type" : [ "null", "string" ],
+        "default" : null
+      } ]
+    },
+    "default" : {
+      "city" : ""
+    }
+  }, {
+    "name" : "contacts",
+    "type" : {
+      "type" : "array",
+      "items" : {
+        "type" : "record",
+        "name" : "Contact",
+        "fields" : [ {
+          "name" : "kind",
+          "type" : "string",
+          "default" : ""
+        }, {
+          "name" : "primary",
+          "type" : [ "null", "boolean" ],
+          "default" : null
+        } ]
+      }
+    },
+    "default" : [ ]
+  } ]
+}
