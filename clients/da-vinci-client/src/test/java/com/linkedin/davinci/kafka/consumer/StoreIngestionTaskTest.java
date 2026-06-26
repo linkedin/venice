@@ -5058,8 +5058,10 @@ public abstract class StoreIngestionTaskTest {
 
           storeIngestionTaskUnderTest.close();
 
-          // The errored partition must NOT be checkpointed at any point during the shutdown window. Because the shutdown
-          // SYNC_OFFSET runs asynchronously on a drainer thread, assert with a timed never() that spans the whole window
+          // The errored partition must NOT be checkpointed at any point during the shutdown window. Because the
+          // shutdown
+          // SYNC_OFFSET runs asynchronously on a drainer thread, assert with a timed never() that spans the whole
+          // window
           // rather than a point-in-time check that could pass before a late checkpoint attempt lands.
           verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).put(eq(topic), eq(PARTITION_FOO), any());
           // The healthy partition IS checkpointed during the same shutdown.
