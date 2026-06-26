@@ -2,6 +2,7 @@ package com.linkedin.venice.hooks;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -349,15 +350,16 @@ public abstract class StoreLifecycleHooks {
   /**
    * Invoked after swapping read traffic for servers.<br>
    * <br>
+   * Cardinality: once per store-version per region which has successfully swapped.
+   *
    * @param clusterName the name of the cluster in which the swap occurred
    * @param storeName the name of the store whose version was swapped
    * @param versionNumber the version number that is now current (the new serving version)
-   * @param previousVersion the version number that was current before the swap (now becoming backup)
+   * @param previousVersion the version number that was current before the swap (now becoming backup),
+   *                        or {@link Store#NON_EXISTING_VERSION} if there was no prior current version.
    * @param regionName the region in which the swap occurred
    * @param jobStatus a lazy reference to the push job status, may be null for rollbacks/rollforwards
    * @param storeHooksConfigs per-store hook configuration bag
-   * <br>
-   * Cardinality: once per store-version per region which has successfully swapped.
    */
   public StoreVersionLifecycleEventOutcome postStoreVersionSwap(
       String clusterName,
@@ -368,6 +370,28 @@ public abstract class StoreLifecycleHooks {
       Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
+   * @deprecated Override {@link #postStoreVersionSwap(String, String, int, int, String, Lazy, VeniceProperties)}
+   *             instead to receive the previous version number.
+   */
+  @Deprecated
+  public StoreVersionLifecycleEventOutcome postStoreVersionSwap(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      String regionName,
+      Lazy<JobStatusQueryResponse> jobStatus,
+      VeniceProperties storeHooksConfigs) {
+    return postStoreVersionSwap(
+        clusterName,
+        storeName,
+        versionNumber,
+        Store.NON_EXISTING_VERSION,
+        regionName,
+        jobStatus,
+        storeHooksConfigs);
   }
 
   /**
