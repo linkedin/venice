@@ -4967,12 +4967,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Verifies that the in-memory VT position ({@link PartitionConsumptionState#getLatestProcessedVtPosition()}) is only
-   * advanced after the record has been successfully persisted. Two records are produced to PARTITION_FOO and the write
-   * (RocksDB put) of the second record is made to throw. The processed VT position must remain at the first (durably
-   * written) record's position rather than being advanced to the second (failed) record's position; otherwise a
-   * subsequent shutdown SYNC_OFFSET would checkpoint a position whose record was never persisted, causing data loss on
-   * restart.
+   * The processed VT position must advance only after a record is persisted: when the second record's write throws, the
+   * position must stay at the first (persisted) record, not the failed one, or a shutdown checkpoint would skip it.
    */
   @Test(dataProvider = "aaConfigProvider")
   public void testVtOffsetNotAdvancedWhenPersistFails(AAConfig aaConfig) throws Exception {
@@ -5015,11 +5011,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Defense-in-depth: an errored replica must never have its offset checkpointed, even on the graceful-shutdown
-   * SYNC_OFFSET path. PARTITION_FOO's write is made to fail (driving the replica into an error state that is retained
-   * via the current-version reset-error path), while PARTITION_BAR ingests healthily. On graceful shutdown the healthy
-   * PARTITION_BAR must get its offset checkpointed, but the errored PARTITION_FOO must NOT — otherwise the checkpoint
-   * would advance past a record that was never persisted, skipping it on restart (data loss).
+   * An errored replica must not be checkpointed on graceful shutdown: the failed PARTITION_FOO must be skipped while the
+   * healthy PARTITION_BAR is checkpointed, so the checkpoint never advances past an un-persisted record.
    */
   @Test(dataProvider = "aaConfigProvider")
   public void testErroredPartitionNotCheckpointedOnGracefulShutdown(AAConfig aaConfig) throws Exception {
@@ -7786,8 +7779,7 @@ public abstract class StoreIngestionTaskTest {
 
   /**
    * The Global-RT-DIV checkpoint path ({@code updateAndSyncOffsetFromSnapshot}) must not checkpoint an errored replica.
-   * Needs a real SIT because the gate reads the {@code failedPartitions} field; errored state is set via
-   * {@code setIngestionException}, as in the Fix 2 graceful-shutdown test.
+   * Uses a real SIT because the gate reads the {@code failedPartitions} field (set via {@code setIngestionException}).
    */
   @Test
   public void testUpdateAndSyncOffsetFromSnapshotSkipsErroredReplica() throws Exception {
