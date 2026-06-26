@@ -2310,7 +2310,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Never checkpoint an errored replica: its in-memory offset may point past a record that was never persisted.
       // Leaving the last good durable offset in place lets the failed record be re-read on restart. The Global-RT-DIV
       // graceful-shutdown checkpoint reaches storage through this method, so the error gate is enforced here.
-      LOGGER.warn("Skipping offset checkpoint for errored replica: {}", pcs.getReplicaId());
+      LOGGER.warn("event=globalRtDiv Skipping offset checkpoint for errored replica: {}", pcs.getReplicaId());
       return;
     }
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
