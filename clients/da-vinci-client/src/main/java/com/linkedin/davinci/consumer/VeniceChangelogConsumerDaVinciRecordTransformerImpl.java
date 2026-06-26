@@ -8,6 +8,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
@@ -17,8 +18,10 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
@@ -56,6 +59,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -91,7 +95,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private volatile BackgroundReporterThread backgroundReporterThread;
-  private final BasicConsumerStats changeCaptureStats;
+  private BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
   private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
@@ -103,6 +107,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final String viewName;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
+  private RecordTransformerVersionSwapCoordinator versionSwapCoordinator;
+  private final AtomicReference<Exception> versionSwapThreadException = new AtomicReference<>();
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -194,6 +200,36 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
+
+    if (changelogClientConfig.isVersionSwapByControlMessageEnabled() && !isVersionSpecificClient) {
+      String clientRegionName = changelogClientConfig.getClientRegionName();
+      int totalRegionCount = changelogClientConfig.getTotalRegionCount();
+      if (clientRegionName == null || clientRegionName.isEmpty()) {
+        throw new VeniceException(
+            "Failed to enable version swap by control message because client region name is missing");
+      }
+      if (totalRegionCount <= 0) {
+        throw new VeniceException(
+            "Failed to enable version swap by control message because total region count is not set");
+      }
+      this.versionSwapCoordinator = new RecordTransformerVersionSwapCoordinator(
+          storeName,
+          clientRegionName,
+          totalRegionCount,
+          changelogClientConfig.getVersionSwapTimeoutInMs(),
+          changeCaptureStats,
+          partitionToVersionToServe,
+          subscribedPartitions,
+          this::stashVersionSwapException,
+          LogContext.newBuilder().setComponentName(cdcComponentName).build());
+      LOGGER.info(
+          "DaVinciRecordTransformer changelog consumer version swap by control message is enabled. "
+              + "Client region: {}, total region count: {}",
+          clientRegionName,
+          totalRegionCount);
+    } else {
+      this.versionSwapCoordinator = null;
+    }
   }
 
   private synchronized void startDaVinciClient() {
@@ -331,6 +367,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     } finally {
       isStarted.set(false);
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+      if (versionSwapCoordinator != null) {
+        versionSwapCoordinator.shutdown();
+      }
       clearPartitionState(Collections.emptySet());
       LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     }
@@ -353,11 +392,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   public void unsubscribe(Set<Integer> partitions) {
     this.daVinciClient.unsubscribe(partitions);
+    if (versionSwapCoordinator != null) {
+      versionSwapCoordinator.handleUnsubscribe(partitions);
+    }
     clearPartitionState(partitions);
   }
 
   public void unsubscribeAll() {
     this.daVinciClient.unsubscribeAll();
+    if (versionSwapCoordinator != null) {
+      versionSwapCoordinator.handleUnsubscribe(new HashSet<>(subscribedPartitions));
+    }
     clearPartitionState(Collections.emptySet());
   }
 
@@ -453,6 +498,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
+      // Clear the surface as we read it so the caller can recover by catching this exception and
+      // continuing to poll — the coordinator itself has already returned to IDLE and is ready to
+      // arm the next swap. Leaving the field set would brick every subsequent poll() for the life
+      // of the consumer.
+      Exception versionSwapException = versionSwapThreadException.getAndSet(null);
+      if (versionSwapException != null) {
+        throw new VeniceException("Version Swap failed for store: " + storeName, versionSwapException);
+      }
       try {
         bufferLock.lock();
 
@@ -555,6 +608,57 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return daVinciConfig;
   }
 
+  @VisibleForTesting
+  RecordTransformerVersionSwapCoordinator getVersionSwapCoordinator() {
+    return versionSwapCoordinator;
+  }
+
+  @VisibleForTesting
+  void setVersionSwapCoordinator(RecordTransformerVersionSwapCoordinator versionSwapCoordinator) {
+    this.versionSwapCoordinator = versionSwapCoordinator;
+  }
+
+  @VisibleForTesting
+  BasicConsumerStats getChangeCaptureStats() {
+    return changeCaptureStats;
+  }
+
+  @VisibleForTesting
+  void setChangeCaptureStats(BasicConsumerStats changeCaptureStats) {
+    this.changeCaptureStats = changeCaptureStats;
+  }
+
+  @VisibleForTesting
+  Map<Integer, Integer> getPartitionToVersionToServe() {
+    return partitionToVersionToServe;
+  }
+
+  @VisibleForTesting
+  AtomicReference<Exception> getVersionSwapThreadException() {
+    return versionSwapThreadException;
+  }
+
+  /**
+   * Stashes a version-swap exception so the next {@link #poll(long)} throws it. Concurrent
+   * failures are chained via {@link Throwable#addSuppressed} so none are silently dropped if
+   * multiple arise between polls.
+   */
+  @VisibleForTesting
+  final void stashVersionSwapException(Exception incoming) {
+    if (incoming == null) {
+      return;
+    }
+    versionSwapThreadException.accumulateAndGet(incoming, (existing, next) -> {
+      if (existing == null) {
+        return next;
+      }
+      if (existing != next) {
+        existing.addSuppressed(next);
+      }
+      return existing;
+    });
+  }
+
   class BackgroundReporterThread extends Thread {
     private BackgroundReporterThread() {
       super("Change-Data-CaptureBackground-Reporter-Thread");
@@ -652,6 +756,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
     private final String topicName;
     private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new VeniceConcurrentHashMap<>();
+    /**
+     * Back-reference to the {@link InternalDaVinciRecordTransformer} that wraps this instance, set
+     * by {@link InternalDaVinciRecordTransformer}'s constructor. Used by the AA version-swap
+     * coordinator to drive Kafka prefetch pause/resume on this version's partitions.
+     */
+    private InternalDaVinciRecordTransformer<K, V, V> internalRecordTransformer;
 
     public DaVinciRecordTransformerChangelogConsumer(
         String storeName,
@@ -878,7 +988,62 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       addControlMessageToBuffer(partitionId, offset, controlMessage, pubSubMessageTimestamp, producerTimestamp);
     }
 
-    public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
+    public void setInternalRecordTransformer(InternalDaVinciRecordTransformer<K, V, V> internalRecordTransformer) {
+      this.internalRecordTransformer = internalRecordTransformer;
+    }
+
+    public void onVersionSwap(VersionSwap versionSwap, int currentVersion, int futureVersion, int partitionId) {
+      if (isVersionSpecificClient) {
+        LOGGER.info(
+            "Ignoring version swap for store: {} since it's subscribed using a version specific client",
+            storeName);
+        return;
+      }
+
+      if (!changelogClientConfig.isVersionSwapByControlMessageEnabled()) {
+        legacyOnVersionSwap(currentVersion, futureVersion, partitionId);
+        return;
+      }
+
+      // AA-aware branch: VSMs are gated on region + topic identity + generation, accumulated until
+      // every partition has observed VSMs from every region on both the current and future sides,
+      // then a single coordinator-driven cutover flips all partitions atomically.
+      try {
+        boolean isCurrentSide = currentVersion == getStoreVersion();
+        boolean isFutureSide = futureVersion == getStoreVersion();
+        if (!versionSwapCoordinator.isRelevant(versionSwap, isCurrentSide, getStoreVersion())) {
+          return;
+        }
+
+        if (isCurrentSide) {
+          if (versionSwapCoordinator.recordCurrentVsm(versionSwap, partitionId, internalRecordTransformer)) {
+            internalRecordTransformer.pausePartitionConsumption(partitionId);
+          }
+        } else if (isFutureSide) {
+          if (versionSwapCoordinator.recordFutureVsm(versionSwap, partitionId, internalRecordTransformer)) {
+            internalRecordTransformer.pausePartitionConsumption(partitionId);
+          }
+        }
+
+        if (versionSwapCoordinator.allPartitionsBothSidesComplete()) {
+          versionSwapCoordinator.commitSwap();
+        }
+      } catch (Exception exception) {
+        // Surface via the coordinator's failure surface only — do NOT rethrow. This method is
+        // invoked from {@link StoreIngestionTask#processControlMessage}, which would propagate
+        // the exception out of control-message processing and terminate ingestion for the
+        // partition. The consumer's {@code poll()} will see the surfaced exception on its next
+        // call and report it to the caller.
+        versionSwapCoordinator.failSwap(exception);
+      }
+    }
+
+    /**
+     * Legacy per-partition immediate flip preserved byte-for-byte for callers running with
+     * {@code versionSwapByControlMessageEnabled=false}. Each partition's first observed VSM on the
+     * future-version branch flips that partition independently and emits per-partition metrics.
+     */
+    private void legacyOnVersionSwap(int currentVersion, int futureVersion, int partitionId) {
       /*
        * ToDo: In the event of a version rollback, VSMs will be added to the VT again to the backup version.
        *  This means that when we first encounter a VSM we will swap to the next version too early as we read
@@ -893,13 +1058,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
        *  we will consume the VSM in the future version before the current version could consume it. Therefore, we
        *  would perform a version swap too early.
        */
-
-      if (isVersionSpecificClient) {
-        LOGGER.info(
-            "Ignoring version swap for store: {} since it's subscribed using a version specific client",
-            storeName);
-        return;
-      }
 
       /*
        * Only the futureVersion should act on the version swap message (VSM).
