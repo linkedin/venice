@@ -17,6 +17,7 @@ public class MockStoreLifecycleHooks extends StoreLifecycleHooks {
       String clusterName,
       String storeName,
       int versionNumber,
+      int previousVersion,
       String regionName,
       Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {

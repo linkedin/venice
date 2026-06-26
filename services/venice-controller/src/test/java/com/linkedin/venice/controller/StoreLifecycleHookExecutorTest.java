@@ -33,7 +33,7 @@ public class StoreLifecycleHookExecutorTest {
     // Store with no lifecycle hooks — should be a no-op
     when(store.getStoreLifecycleHooks()).thenReturn(Collections.emptyList());
     // Should not throw
-    executor.invokePostVersionSwapHooks("cluster1", store, 2, "prod-lor1", null);
+    executor.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
   }
 
   @Test
@@ -45,7 +45,7 @@ public class StoreLifecycleHookExecutorTest {
     when(store.getStoreLifecycleHooks()).thenReturn(Collections.singletonList(record));
 
     // Should not throw even though the hook returns ABORT
-    executor.invokePostVersionSwapHooks("cluster1", store, 2, "prod-lor1", null);
+    executor.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
     // Verify the hook was called (indirectly — we can check via static counter if needed)
   }
 
@@ -80,6 +80,7 @@ public class StoreLifecycleHookExecutorTest {
         String clusterName,
         String storeName,
         int versionNumber,
+        int previousVersion,
         String regionName,
         com.linkedin.venice.utils.lazy.Lazy<com.linkedin.venice.controllerapi.JobStatusQueryResponse> jobStatus,
         VeniceProperties storeHooksConfigs) {

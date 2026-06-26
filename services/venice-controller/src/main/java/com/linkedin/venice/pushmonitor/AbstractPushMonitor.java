@@ -1251,7 +1251,8 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            storeLifecycleHookExecutor.invokePostVersionSwapHooks(clusterName, store, versionNumber, regionName, null);
+            storeLifecycleHookExecutor
+                .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
@@ -1265,7 +1266,8 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            storeLifecycleHookExecutor.invokePostVersionSwapHooks(clusterName, store, versionNumber, regionName, null);
+            storeLifecycleHookExecutor
+                .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "

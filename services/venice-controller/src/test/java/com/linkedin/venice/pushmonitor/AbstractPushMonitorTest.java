@@ -1488,6 +1488,7 @@ public abstract class AbstractPushMonitorTest {
         String clusterName,
         String storeName,
         int versionNumber,
+        int previousVersion,
         String regionName,
         com.linkedin.venice.utils.lazy.Lazy<com.linkedin.venice.controllerapi.JobStatusQueryResponse> jobStatus,
         com.linkedin.venice.utils.VeniceProperties storeHooksConfigs) {

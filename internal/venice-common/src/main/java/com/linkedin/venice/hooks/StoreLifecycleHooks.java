@@ -349,12 +349,21 @@ public abstract class StoreLifecycleHooks {
   /**
    * Invoked after swapping read traffic for servers.<br>
    * <br>
+   * @param clusterName the name of the cluster in which the swap occurred
+   * @param storeName the name of the store whose version was swapped
+   * @param versionNumber the version number that is now current (the new serving version)
+   * @param previousVersion the version number that was current before the swap (now becoming backup)
+   * @param regionName the region in which the swap occurred
+   * @param jobStatus a lazy reference to the push job status, may be null for rollbacks/rollforwards
+   * @param storeHooksConfigs per-store hook configuration bag
+   * <br>
    * Cardinality: once per store-version per region which has successfully swapped.
    */
   public StoreVersionLifecycleEventOutcome postStoreVersionSwap(
       String clusterName,
       String storeName,
       int versionNumber,
+      int previousVersion,
       String regionName,
       Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {

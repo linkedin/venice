@@ -5000,7 +5000,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           futureVersion,
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
-      storeLifecycleHookExecutor.invokePostVersionSwapHooks(clusterName, store, futureVersion, getRegionName(), null);
+      storeLifecycleHookExecutor
+          .invokePostVersionSwapHooks(clusterName, store, futureVersion, previousVersion, getRegionName(), null);
       return store;
     });
   }
@@ -5052,7 +5053,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ROLLED_BACK);
-      storeLifecycleHookExecutor.invokePostVersionSwapHooks(clusterName, store, backupVersion, getRegionName(), null);
+      storeLifecycleHookExecutor
+          .invokePostVersionSwapHooks(clusterName, store, backupVersion, previousVersion, getRegionName(), null);
       return store;
     });
   }

@@ -77,6 +77,7 @@ public class StoreLifecycleHookExecutor {
       String clusterName,
       Store store,
       int versionNumber,
+      int previousVersion,
       String regionName,
       @Nullable Lazy<JobStatusQueryResponse> jobStatus) {
     for (LifecycleHooksRecord record: store.getStoreLifecycleHooks()) {
@@ -92,6 +93,7 @@ public class StoreLifecycleHookExecutor {
             clusterName,
             store.getName(),
             versionNumber,
+            previousVersion,
             regionName,
             jobStatus,
             new VeniceProperties(props));
