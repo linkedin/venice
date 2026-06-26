@@ -519,7 +519,7 @@ public class CreateVersion extends AbstractRoute {
   private void buildStoreAclErrorAndThrowException(
       Request request,
       boolean missingWriteAccess,
-      boolean missingReadAccess) throws JsonProcessingException {
+      boolean missingReadAccess) {
     // Status is set authoritatively by AdminSparkServer.handleError() from
     // VeniceStoreAclException.getHttpStatusCode() (403) when the exception below is caught.
     String userId = getPrincipalId(request);
