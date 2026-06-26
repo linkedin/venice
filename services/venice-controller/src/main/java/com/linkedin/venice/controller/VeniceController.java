@@ -294,7 +294,9 @@ public class VeniceController {
             LOGGER.info("Created controller plugin from factory: {}", plugin.getName());
           }
         } catch (Exception e) {
-          LOGGER.error("Failed to create controller plugin from factory", e);
+          // Fail fast: a registered factory that throws is a wiring bug. Surface it at startup rather
+          // than letting the controller come up with the plugin silently absent.
+          throw new VeniceException("Failed to create controller plugin from factory.", e);
         }
       }
     }
@@ -318,7 +320,12 @@ public class VeniceController {
           plugins.add(plugin);
           LOGGER.info("Created controller plugin from config: {} ({})", plugin.getName(), className);
         } catch (Exception e) {
-          LOGGER.error("Failed to create controller plugin from class: {}", className, e);
+          // Fail fast: this class name was set explicitly by an operator. A typo, missing class, or
+          // missing constructor must abort startup rather than silently no-op the configured plugin.
+          throw new VeniceException(
+              "Failed to create controller plugin from configured class: " + className + ". Check the "
+                  + CONTROLLER_PLUGIN_CLASS_NAMES + " config.",
+              e);
         }
       }
     }
@@ -524,7 +531,14 @@ public class VeniceController {
     deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
     for (ControllerPlugin plugin: controllerPlugins) {
       LOGGER.info("Starting controller plugin: {}", plugin.getName());
-      plugin.start();
+      try {
+        plugin.start();
+      } catch (Exception e) {
+        // Fail fast: a configured plugin that cannot start is a deployment problem and must surface
+        // immediately. Abort controller startup (before service discovery registration below) rather
+        // than letting the controller come up healthy while the plugin is silently not running.
+        throw new VeniceException("Failed to start controller plugin: " + plugin.getName(), e);
+      }
     }
     // register with service discovery at the end
     asyncRetryingServiceDiscoveryAnnouncer.register();
