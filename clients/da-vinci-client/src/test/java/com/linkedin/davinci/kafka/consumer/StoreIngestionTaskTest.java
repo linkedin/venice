@@ -4981,6 +4981,10 @@ public abstract class StoreIngestionTaskTest {
     // Make the persist (RocksDB put) of the SECOND record fail.
     doThrow(new VeniceException("fake storage engine exception on second record")).when(mockAbstractStorageEngine)
         .put(eq(PARTITION_FOO), eq(putKeyFoo2), any(ByteBuffer.class));
+    // Retain the errored replica (current-version + reset-error-replica marks it ERROR instead of unsubscribing) so its
+    // PCS stays in the map for a deterministic position read.
+    isCurrentVersion = () -> true;
+    doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
 
     StoreIngestionTaskTestConfig testConfig = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       // Wait until the first record has been durably persisted (its write succeeds).
@@ -5004,6 +5008,7 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
 
     testConfig.setStoreVersionConfigOverride(configOverride -> {
+      doReturn(true).when(configOverride).isResetErrorReplicaEnabled();
       // Very high sync threshold so the OffsetRecord isn't synced during regular consumption.
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
     });
