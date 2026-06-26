@@ -61,7 +61,6 @@ import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Request;
-import spark.Response;
 import spark.Route;
 
 
@@ -481,11 +480,11 @@ public class CreateVersion extends AbstractRoute {
         // Also allow allowList users to run this command
         if (!isAllowListUser(request)) {
           if (!hasWriteAccessToTopic(request)) {
-            buildStoreAclErrorAndThrowException(request, response, true, false);
+            buildStoreAclErrorAndThrowException(request, true, false);
           }
 
           if (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)) {
-            buildStoreAclErrorAndThrowException(request, response, false, true);
+            buildStoreAclErrorAndThrowException(request, false, true);
           }
         }
 
@@ -519,10 +518,10 @@ public class CreateVersion extends AbstractRoute {
    */
   private void buildStoreAclErrorAndThrowException(
       Request request,
-      Response response,
       boolean missingWriteAccess,
       boolean missingReadAccess) throws JsonProcessingException {
-    response.status(HttpStatus.SC_FORBIDDEN);
+    // Status is set authoritatively by AdminSparkServer.handleError() from
+    // VeniceStoreAclException.getHttpStatusCode() (403) when the exception below is caught.
     String userId = getPrincipalId(request);
     String errorMessage = "Missing [%s] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
     if (missingWriteAccess) {
