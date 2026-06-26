@@ -80,6 +80,16 @@ public class AuditInfoTest {
   }
 
   @Test
+  public void testFailureWithStatusCodeStringReturnsExpectedFormat() {
+    long latency = 10000;
+    int httpStatusCode = 400;
+    String result = auditInfo.failureString(httpStatusCode, ERROR_MESSAGE, latency);
+    String expected =
+        "[AUDIT] FAILURE: Some error GET http://localhost/test {param1=value1, param2=value2} ClientIP: 127.0.0.1:8080 Principal: N/A HttpStatus: 400 Latency: 10000 ms";
+    assertEquals(result, expected);
+  }
+
+  @Test
   public void testExtractServicePrincipalWithValidCertificate() {
     // Case 1: Valid X509 certificate with principal
     Request requestWithCert = mock(Request.class);
