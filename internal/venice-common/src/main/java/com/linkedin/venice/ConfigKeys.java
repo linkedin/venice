@@ -2568,7 +2568,8 @@ public class ConfigKeys {
    * Comma-separated list of {@link com.linkedin.venice.controller.ControllerPlugin} implementation class names.
    * Each class must have a public constructor taking
    * ({@code VeniceParentHelixAdmin}, {@code AuthorizerService}, {@code VeniceControllerMultiClusterConfig}).
-   * Plugins are instantiated via reflection during parent controller startup.
+   * Plugins are instantiated via reflection during {@code VeniceController} construction and started later
+   * when the controller's {@code start()} method is invoked. Only applies to parent controllers.
    */
   public static final String CONTROLLER_PLUGIN_CLASS_NAMES = "controller.plugin.class.names";
 

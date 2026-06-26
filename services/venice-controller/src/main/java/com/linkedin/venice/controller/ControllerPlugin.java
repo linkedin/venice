@@ -5,8 +5,13 @@ import java.io.Closeable;
 
 /**
  * A pluggable service that runs on the parent Venice controller.
- * Implementations are provided externally (e.g., by downstream projects) and registered
- * via {@link VeniceControllerContext.Builder#setControllerPluginFactories}.
+ * Implementations are provided externally (e.g., by downstream projects) and registered one of two ways:
+ * <ul>
+ *   <li>programmatically, via {@link VeniceControllerContext.Builder#setControllerPluginFactories}; or</li>
+ *   <li>by class name, via the {@code controller.plugin.class.names} config, instantiated by reflection
+ *       (the class must expose a public constructor taking {@code VeniceParentHelixAdmin},
+ *       {@code AuthorizerService}, {@code VeniceControllerMultiClusterConfig}).</li>
+ * </ul>
  *
  * <p>The lifecycle is:
  * <ol>

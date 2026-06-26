@@ -311,7 +311,13 @@ public class VeniceController {
           continue;
         }
         try {
-          Class<? extends ControllerPlugin> pluginClass = ReflectUtils.loadClass(className);
+          Class<?> loadedClass = ReflectUtils.loadClass(className);
+          if (!ControllerPlugin.class.isAssignableFrom(loadedClass)) {
+            throw new VeniceException(
+                "Configured controller plugin class does not implement " + ControllerPlugin.class.getName() + ": "
+                    + className);
+          }
+          Class<? extends ControllerPlugin> pluginClass = loadedClass.asSubclass(ControllerPlugin.class);
           ControllerPlugin plugin = ReflectUtils.callConstructor(
               pluginClass,
               new Class[] { VeniceParentHelixAdmin.class, AuthorizerService.class,
@@ -319,6 +325,9 @@ public class VeniceController {
               new Object[] { parentAdmin, authService, multiClusterConfigs });
           plugins.add(plugin);
           LOGGER.info("Created controller plugin from config: {} ({})", plugin.getName(), className);
+        } catch (VeniceException e) {
+          // Already specific (e.g. wrong type); surface as-is without re-wrapping.
+          throw e;
         } catch (Exception e) {
           // Fail fast: this class name was set explicitly by an operator. A typo, missing class, or
           // missing constructor must abort startup rather than silently no-op the configured plugin.

@@ -14,6 +14,14 @@ import com.linkedin.venice.authorization.AuthorizerService;
  */
 @FunctionalInterface
 public interface ControllerPluginFactory {
+  /**
+   * @param admin the parent controller admin
+   * @param authorizerService the controller's authorizer, or {@code null} when controller authorization is
+   *                           disabled. Implementations that require it must null-check and return {@code null}
+   *                           (skip the plugin) rather than dereferencing it.
+   * @param config the multi-cluster config, for reading plugin-specific properties
+   * @return the plugin to run, or {@code null} to skip creation
+   */
   ControllerPlugin create(
       VeniceParentHelixAdmin admin,
       AuthorizerService authorizerService,
