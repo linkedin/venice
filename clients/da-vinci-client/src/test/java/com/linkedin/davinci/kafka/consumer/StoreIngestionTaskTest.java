@@ -4990,9 +4990,7 @@ public abstract class StoreIngestionTaskTest {
       // Wait until the first record has been durably persisted (its write succeeds).
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(eq(PARTITION_FOO), eq(putKeyFoo), any(ByteBuffer.class));
-      // Wait until the second record's write has been attempted (and thrown). After this point the second record has
-      // been processed, so any (buggy) unconditional advance of the VT position to the second record will have
-      // happened.
+      // Wait until the second record's write is attempted and throws; any buggy VT advance has now happened.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(eq(PARTITION_FOO), eq(putKeyFoo2), any(ByteBuffer.class));
 
@@ -5036,8 +5034,7 @@ public abstract class StoreIngestionTaskTest {
 
     StoreIngestionTaskTestConfig testConfig =
         new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-          // Wait until PARTITION_FOO's failing write has been attempted and the replica has been marked ERROR
-          // (retained).
+          // Wait until PARTITION_FOO's failing write is attempted and the replica is marked ERROR (retained).
           verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
               .put(eq(PARTITION_FOO), any(), any(ByteBuffer.class));
           verify(zkHelixAdmin, timeout(TEST_TIMEOUT_MS).atLeast(1))
@@ -5058,11 +5055,7 @@ public abstract class StoreIngestionTaskTest {
 
           storeIngestionTaskUnderTest.close();
 
-          // The errored partition must NOT be checkpointed at any point during the shutdown window. Because the
-          // shutdown
-          // SYNC_OFFSET runs asynchronously on a drainer thread, assert with a timed never() that spans the whole
-          // window
-          // rather than a point-in-time check that could pass before a late checkpoint attempt lands.
+          // Use a timed never() spanning the shutdown window; the async SYNC_OFFSET could checkpoint late.
           verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).put(eq(topic), eq(PARTITION_FOO), any());
           // The healthy partition IS checkpointed during the same shutdown.
           verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
