@@ -343,4 +343,57 @@ public class AvroSupersetSchemaUtils {
     }
     return true;
   }
+
+  /**
+   * Relaxed variant of {@link #validateSubsetValueSchema} used to decide whether the input (superset) value schema can
+   * be projected down to {@param writerValueSchema}. On top of the strict subset rule, and recursively at every nesting
+   * level (records, array elements, map values), this tolerates the two artifacts of OpenHouse (OH) schema evolution:
+   * <ul>
+   *   <li>nullable wrapping on the input side -- an input field typed {@code [null, X]} (a null-first 2-branch union,
+   *   the shape OH produces so a field can default to null) matches a non-union writer field typed {@code X}; and</li>
+   *   <li>extra fields present in an input record but absent from the corresponding writer record (OH never removes
+   *   columns, so the superset accumulates them at every level).</li>
+   * </ul>
+   * The guardrails of the strict check still hold recursively: a writer field missing from the input, a type mismatch,
+   * reverse nullability drift ({@code [null, X]} writer vs {@code X} input), and null-last/complex unions all fail.
+   */
+  public static boolean validateSubsetValueSchemaForProjection(Schema writerValueSchema, String inputSchemaStr) {
+    Schema inputSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(inputSchemaStr);
+    return isProjectionSubset(writerValueSchema, inputSchema);
+  }
+
+  private static boolean isProjectionSubset(Schema writerSchema, Schema inputSchema) {
+    // Unwrap nullable wrapping on the input side only: an input null-first [null, X] against a non-union writer matches
+    // writer vs X. Null-last ([X, null]) is not OH-produced, so it is left to fail the type check below.
+    if (writerSchema.getType() != Schema.Type.UNION && AvroSchemaUtils.isNullableUnionPair(inputSchema)
+        && inputSchema.getTypes().get(0).getType() == Schema.Type.NULL) {
+      return isProjectionSubset(writerSchema, inputSchema.getTypes().get(1));
+    }
+    if (writerSchema.getType() != inputSchema.getType()) {
+      return false;
+    }
+    switch (writerSchema.getType()) {
+      case RECORD:
+        for (Schema.Field writerField: writerSchema.getFields()) {
+          Schema.Field inputField = inputSchema.getField(writerField.name());
+          // A writer field absent from the input means the writer is not a (projection) subset of the input. Extra
+          // input fields (absent from the writer) are tolerated -- they are simply never iterated here.
+          if (inputField == null) {
+            return false;
+          }
+          if (!isProjectionSubset(writerField.schema(), inputField.schema())) {
+            return false;
+          }
+        }
+        return true;
+      case ARRAY:
+        return isProjectionSubset(writerSchema.getElementType(), inputSchema.getElementType());
+      case MAP:
+        return isProjectionSubset(writerSchema.getValueType(), inputSchema.getValueType());
+      default:
+        // Primitives, enums, fixed, and unions (nullable on both sides or otherwise) must match exactly. Reverse
+        // nullability drift (writer union vs non-union input) is already rejected above by the type check.
+        return writerSchema.equals(inputSchema);
+    }
+  }
 }
