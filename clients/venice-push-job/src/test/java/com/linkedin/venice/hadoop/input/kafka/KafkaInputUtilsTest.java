@@ -3,11 +3,16 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NEWER_KME_SCHEMAS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
@@ -69,6 +74,84 @@ public class KafkaInputUtilsTest {
         consumerProps.getString("some.kafka.prop"),
         "value123",
         "Prefixed Kafka property should be merged correctly");
+  }
+
+  @Test
+  public void testBuildSchemaAwareDeserializerFallsBackWhenSystemSchemaReaderDisabled() {
+    /*
+     * Default conf has SYSTEM_SCHEMA_READER_ENABLED unset (false). The helper should log a
+     * warning and return the jar-only default deserializer instead of throwing - the on-wire
+     * vtp header bootstrap still applies for forward-compat reads.
+     */
+    PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareDeserializer(VeniceProperties.empty());
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testBuildSchemaAwareDeserializerBuildsSchemaAwareWhenEnabled() {
+    /*
+     * When SYSTEM_SCHEMA_READER_ENABLED is true and the VPJ driver has broadcast the
+     * newer.kme.schemas.* entries, the helper builds a KmeSchemaReader-backed deserializer.
+     */
+    Properties props = new Properties();
+    props.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
+    int currentVersion = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion();
+    props.setProperty(
+        NEWER_KME_SCHEMAS_PREFIX + currentVersion,
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+
+    PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareDeserializer(new VeniceProperties(props));
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testBuildSchemaAwareOptimizedDeserializerFallsBackWhenSystemSchemaReaderDisabled() {
+    /*
+     * Same fallback semantics as the non-optimized variant: when SYSTEM_SCHEMA_READER_ENABLED
+     * is unset, the optimized helper logs once per JVM and returns a jar-only OPTIMIZED
+     * deserializer (reused decoders) for Spark-style hot read paths.
+     */
+    PubSubMessageDeserializer deserializer =
+        KafkaInputUtils.buildSchemaAwareOptimizedDeserializer(VeniceProperties.empty());
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testBuildSchemaAwareOptimizedDeserializerBuildsSchemaAwareWhenEnabled() {
+    /*
+     * When the system flag is on and newer.kme.schemas.* entries are present, the optimized
+     * variant builds a KmeSchemaReader-backed OptimizedKafkaValueSerializer for the Spark hot path.
+     */
+    Properties props = new Properties();
+    props.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
+    int currentVersion = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion();
+    props.setProperty(
+        NEWER_KME_SCHEMAS_PREFIX + currentVersion,
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+
+    PubSubMessageDeserializer deserializer =
+        KafkaInputUtils.buildSchemaAwareOptimizedDeserializer(new VeniceProperties(props));
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testBuildSchemaAwareDeserializerFallsBackWhenSystemSchemaReaderEnabledButBroadcastIsEmpty() {
+    /*
+     * Misconfig case: SYSTEM_SCHEMA_READER_ENABLED is true but the VPJ driver failed to
+     * populate the newer.kme.schemas.* broadcast. The helper logs once per JVM and falls
+     * back to the jar-only deserializer (previously this case silently built a useless
+     * SchemaReader with an empty map).
+     */
+    Properties props = new Properties();
+    props.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
+
+    PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareDeserializer(new VeniceProperties(props));
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
   }
 
   /**

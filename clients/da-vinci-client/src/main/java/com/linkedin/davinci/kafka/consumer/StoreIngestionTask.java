@@ -120,6 +120,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -279,6 +280,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
   protected final ReadOnlyStoreRepository storeRepository;
+  protected final SchemaReader kafkaMessageEnvelopeSchemaReader;
   protected final String ingestionTaskName;
   protected final Properties kafkaProps;
   protected final AtomicBoolean isRunning;
@@ -543,6 +545,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storageMetadataService = builder.getStorageMetadataService();
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
+    this.kafkaMessageEnvelopeSchemaReader = builder.getKafkaMessageEnvelopeSchemaReader();
     this.kafkaVersionTopic = storeVersionConfig.getStoreVersionName();
     this.pubSubContext = builder.getPubSubContext();
     this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
@@ -3974,6 +3977,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * No SoP-available dictionary fetch from the VT reuses the same KME SchemaReader the host's
+   * main KafkaValueSerializer was wired with so this fallback consumer can decode a control
+   * message even if it lacks the vtp protocol-schema header. If the SchemaReader wasn't plumbed,
+   * log and fall back to the jar-only deserializer - the on-wire vtp header bootstrap still
+   * applies on the fallback path.
+   */
+  @VisibleForTesting
+  PubSubMessageDeserializer buildDictionaryFetchDeserializer() {
+    if (kafkaMessageEnvelopeSchemaReader != null) {
+      return PubSubMessageDeserializer.createWithSchemaReader(kafkaMessageEnvelopeSchemaReader);
+    }
+    LOGGER.warn(
+        "kafkaMessageEnvelopeSchemaReader is null on StoreIngestionTask for {}; using the jar-only "
+            + "KME deserializer for the SoP-null dictionary fallback. The on-wire vtp header bootstrap "
+            + "still applies.",
+        kafkaVersionTopic);
+    return PubSubMessageDeserializer.createDefaultDeserializer();
+  }
+
   @VisibleForTesting
   StoreVersionState getNewStoreVersionState(long timestamp, boolean sorted, StartOfPush startOfPush) {
     StoreVersionState newStoreVersionState = new StoreVersionState();
@@ -3987,11 +4010,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceException(
             "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
       } else if (startOfPush == null) {
-        // No SOP available; retrieve the dictionary directly from the VT
         newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
             kafkaVersionTopic,
             new VeniceProperties(kafkaProps),
-            PubSubMessageDeserializer.createDefaultDeserializer());
+            buildDictionaryFetchDeserializer());
       }
     }
     newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;

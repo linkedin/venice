@@ -8,6 +8,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURC
 
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
@@ -62,12 +63,22 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
     final String regionName = configWithSsl.getString(KAFKA_INPUT_FABRIC, inputRegionBroker);
     final String consumerName = String.format("raw_kif_%s_%s", inputRegionBroker, topicPartition);
 
+    /*
+     * Reuse the controller-broadcast KME schemas (newer.kme.schemas.*) that the VPJ driver
+     * carries on the Spark conf. Uses the optimized value-serializer variant (reused decoders)
+     * since this is the per-partition Spark record-read hot path. When the broadcast or the
+     * SYSTEM_SCHEMA_READER_ENABLED flag is missing, the helper logs once per JVM and falls
+     * back to a jar-only optimized deserializer; the on-wire vtp header bootstrap still
+     * applies on the fallback path.
+     */
+    final PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareOptimizedDeserializer(configWithSsl);
+
     // Create consumer adapter with proper context
     final PubSubConsumerAdapterContext consumerContext =
         new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(inputRegionBroker)
             .setVeniceProperties(configWithSsl)
             .setPubSubTopicRepository(topicRepository)
-            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
+            .setPubSubMessageDeserializer(deserializer)
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(configWithSsl))
             .setConsumerName(consumerName)
             .build();

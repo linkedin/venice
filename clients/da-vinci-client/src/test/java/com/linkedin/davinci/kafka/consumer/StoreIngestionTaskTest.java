@@ -202,6 +202,7 @@ import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryTransformingProducerAdapter;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -7611,6 +7612,52 @@ public abstract class StoreIngestionTaskTest {
 
     assertThrows(VeniceException.class, () -> sit.getNewStoreVersionState(12345L, true, sopNullDict));
 
+  }
+
+  @Test
+  public void testBuildDictionaryFetchDeserializerWithSchemaReader() {
+    /*
+     * Covers the SoP-null dictionary fallback branch where the host already wired a KME
+     * SchemaReader through StoreIngestionTaskFactory.Builder. Should return a
+     * SchemaReader-backed deserializer (no jar-only fallback).
+     */
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    SchemaReader schemaReader = mock(SchemaReader.class);
+    Field readerField;
+    try {
+      readerField = StoreIngestionTask.class.getDeclaredField("kafkaMessageEnvelopeSchemaReader");
+      readerField.setAccessible(true);
+      readerField.set(sit, schemaReader);
+    } catch (ReflectiveOperationException e) {
+      throw new RuntimeException(e);
+    }
+    doCallRealMethod().when(sit).buildDictionaryFetchDeserializer();
+    PubSubMessageDeserializer deserializer = sit.buildDictionaryFetchDeserializer();
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testBuildDictionaryFetchDeserializerWithoutSchemaReaderFallsBack() {
+    /*
+     * Covers the SoP-null dictionary fallback branch where the host did NOT wire a KME
+     * SchemaReader (e.g., StoreIngestionTaskFactory.Builder caller hasn't migrated yet).
+     * Should log a warning and return a jar-only default deserializer.
+     */
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    Field topicField;
+    try {
+      topicField = StoreIngestionTask.class.getDeclaredField("kafkaVersionTopic");
+      topicField.setAccessible(true);
+      topicField.set(sit, "test_store_v1");
+    } catch (ReflectiveOperationException e) {
+      throw new RuntimeException(e);
+    }
+    // kafkaMessageEnvelopeSchemaReader is null (never set), so the fallback path fires.
+    doCallRealMethod().when(sit).buildDictionaryFetchDeserializer();
+    PubSubMessageDeserializer deserializer = sit.buildDictionaryFetchDeserializer();
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
   }
 
   @Test

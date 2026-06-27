@@ -15,6 +15,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.schema.KmeSchemaReader;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -27,12 +29,18 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class KafkaInputUtils {
+  private static final Logger LOGGER = LogManager.getLogger(KafkaInputUtils.class);
+  private static final AtomicBoolean SCHEMA_READER_DISABLED_WARNED = new AtomicBoolean(false);
+  private static final AtomicBoolean SCHEMA_READER_EMPTY_BROADCAST_WARNED = new AtomicBoolean(false);
   private static Properties sslProps = null;
 
   /**
@@ -105,7 +113,7 @@ public class KafkaInputUtils {
           .stream()
           .collect(Collectors.toMap(e -> Integer.parseInt(e.getKey()), Map.Entry::getValue));
 
-      SchemaReader schemaReader = new KMESchemaReaderForKafkaInputFormat(newerIdToSchemas);
+      SchemaReader schemaReader = new KmeSchemaReader(newerIdToSchemas);
       kafkaValueSerializer.setSchemaReader(schemaReader);
     }
     return kafkaValueSerializer;
@@ -120,11 +128,93 @@ public class KafkaInputUtils {
     if (strategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       Properties props = properties.toProperties();
       props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
+      /*
+       * Forward-compat: feed the dictionary fetch a deserializer wired with the same
+       * KmeSchemaReader that getKafkaValueSerializer builds for the actual
+       * record-read path. If the SoP control-message record on the source VT lands without a
+       * vtp header (e.g. a writer regression like the empty-headers DoL stamp), the reader
+       * still resolves an unknown KME protocol version via the controller-broadcast schemas
+       * instead of throwing 'Received Protocol Version N which is not supported'.
+       */
+      PubSubMessageDeserializer deserializer = buildSchemaAwareDeserializer(properties);
+      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props), deserializer);
       return compressorFactory
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
     }
     return compressorFactory.getCompressor(strategy);
+  }
+
+  /**
+   * Build a {@link PubSubMessageDeserializer} (non-optimized variant) for paths that fetch a
+   * single record (e.g., dictionary fetch). See {@link #doBuildSchemaAwareDeserializer} for
+   * fallback semantics.
+   */
+  public static PubSubMessageDeserializer buildSchemaAwareDeserializer(VeniceProperties properties) {
+    return doBuildSchemaAwareDeserializer(properties, /* optimized */ false);
+  }
+
+  /**
+   * Build a {@link PubSubMessageDeserializer} backed by {@link OptimizedKafkaValueSerializer}
+   * (reused decoders) for hot read paths like Spark VPJ record readers. See
+   * {@link #doBuildSchemaAwareDeserializer} for fallback semantics.
+   */
+  public static PubSubMessageDeserializer buildSchemaAwareOptimizedDeserializer(VeniceProperties properties) {
+    return doBuildSchemaAwareDeserializer(properties, /* optimized */ true);
+  }
+
+  /**
+   * Builds a {@link PubSubMessageDeserializer} whose value serializer is wired with a
+   * {@link KmeSchemaReader} populated from the {@code NEWER_KME_SCHEMAS_PREFIX} entries in
+   * {@code properties} (the VPJ driver broadcasts these to executors via Spark/MR conf).
+   *
+   * <p>Graceful fallback path: returns a jar-only deserializer (default or optimized) when
+   * either {@code SYSTEM_SCHEMA_READER_ENABLED} is false or the broadcast schemas are absent.
+   * The on-wire {@code vtp} header bootstrap inside {@link PubSubMessageDeserializer#deserialize}
+   * still applies on the fallback path. Each fallback condition logs at most once per JVM (via
+   * {@link AtomicBoolean} gates) to avoid spamming Spark executor logs on older configs that
+   * construct a new deserializer per partition.
+   */
+  private static PubSubMessageDeserializer doBuildSchemaAwareDeserializer(
+      VeniceProperties properties,
+      boolean optimized) {
+    boolean isSchemaReaderEnabled = properties.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
+    if (!isSchemaReaderEnabled) {
+      if (SCHEMA_READER_DISABLED_WARNED.compareAndSet(false, true)) {
+        LOGGER.warn(
+            "{} is false; falling back to the jar-only KME deserializer. The on-wire vtp header bootstrap "
+                + "still applies. Set {}=true on the job conf so the VPJ driver broadcasts newer.kme.schemas.* "
+                + "to executors and consumers can resolve unknown KME protocol versions without depending on vtp. "
+                + "(This warning is logged once per JVM.)",
+            SYSTEM_SCHEMA_READER_ENABLED,
+            SYSTEM_SCHEMA_READER_ENABLED);
+      }
+      return optimized
+          ? PubSubMessageDeserializer.createOptimizedDeserializer()
+          : PubSubMessageDeserializer.createDefaultDeserializer();
+    }
+    Properties clipped = properties.clipAndFilterNamespace(NEWER_KME_SCHEMAS_PREFIX).toProperties();
+    if (clipped.isEmpty()) {
+      if (SCHEMA_READER_EMPTY_BROADCAST_WARNED.compareAndSet(false, true)) {
+        LOGGER.warn(
+            "{} is true but no {}* entries are present on the job conf; falling back to the jar-only KME "
+                + "deserializer. The VPJ driver likely failed to populate the broadcast - confirm "
+                + "validateAndFetchNewKafkaMessageEnvelopeSchemas ran successfully against the controller. "
+                + "(This warning is logged once per JVM.)",
+            SYSTEM_SCHEMA_READER_ENABLED,
+            NEWER_KME_SCHEMAS_PREFIX);
+      }
+      return optimized
+          ? PubSubMessageDeserializer.createOptimizedDeserializer()
+          : PubSubMessageDeserializer.createDefaultDeserializer();
+    }
+    Map<Integer, String> newerIdToSchemas = new HashMap<>();
+    for (Map.Entry<Object, Object> entry: clipped.entrySet()) {
+      newerIdToSchemas.put(Integer.parseInt((String) entry.getKey()), (String) entry.getValue());
+    }
+    SchemaReader schemaReader = new KmeSchemaReader(newerIdToSchemas);
+    return optimized
+        ? PubSubMessageDeserializer.createOptimizedWithSchemaReader(schemaReader)
+        : PubSubMessageDeserializer.createWithSchemaReader(schemaReader);
   }
 
   /**

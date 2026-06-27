@@ -113,6 +113,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.KmeSchemaReader;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -4061,11 +4062,40 @@ public class AdminTool {
   private static PubSubConsumerAdapter getConsumer(PubSubClientsFactory pubSubClientsFactory, ConsumerContext context) {
     return pubSubClientsFactory.getConsumerAdapterFactory()
         .create(
-            new PubSubConsumerAdapterContext.Builder()
-                .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
+            new PubSubConsumerAdapterContext.Builder().setPubSubMessageDeserializer(buildAdminToolDeserializer())
                 .setPubSubPositionTypeRegistry(context.getPositionTypeRegistry())
                 .setVeniceProperties(context.getVeniceProperties())
                 .setConsumerName("admin-tool-topic-dumper")
                 .build());
+  }
+
+  /**
+   * Build a deserializer whose underlying KME value serializer is backed by a
+   * {@link KmeSchemaReader} populated from the {@code venice_system_store_kafka_message_envelope}
+   * system store via the static {@code controllerClient}.
+   *
+   * <p>Falls back to {@link PubSubMessageDeserializer#createOptimizedDeserializer} when
+   * {@code controllerClient} hasn't been wired yet (e.g., admin-message dump that runs before
+   * cluster discovery) or when the schema fetch fails. The on-wire {@code vtp} header bootstrap
+   * still applies on the fallback path.
+   */
+  private static PubSubMessageDeserializer buildAdminToolDeserializer() {
+    if (controllerClient == null) {
+      LOGGER.info(
+          "AdminTool.controllerClient is null; using the jar-only KME deserializer. The on-wire vtp "
+              + "header bootstrap still applies. Most callsites without controllerClient (e.g., admin-topic "
+              + "dumps) don't carry KafkaMessageEnvelope and don't need KME schemas.");
+      return PubSubMessageDeserializer.createOptimizedDeserializer();
+    }
+    try {
+      KmeSchemaReader kmeSchemaReader = KmeSchemaReader.fromControllerClient(controllerClient);
+      return PubSubMessageDeserializer.createOptimizedWithSchemaReader(kmeSchemaReader);
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to fetch KME schemas from controller for admin-tool consumer; falling back to the jar-only "
+              + "KME deserializer. The on-wire vtp header bootstrap still applies.",
+          e);
+      return PubSubMessageDeserializer.createOptimizedDeserializer();
+    }
   }
 }

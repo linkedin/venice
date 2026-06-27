@@ -7,11 +7,13 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.utils.pools.ObjectPool;
+import java.util.Objects;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -178,6 +180,39 @@ public class PubSubMessageDeserializer {
   public static PubSubMessageDeserializer createOptimizedDeserializer() {
     return new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+  }
+
+  /**
+   * Production-safe factory: builds a deserializer whose {@link KafkaValueSerializer} is wired with
+   * the supplied {@link SchemaReader}, so it can fetch an unknown KME protocol-version schema on
+   * the fly (in addition to the {@code vtp} header fast path). Use this whenever the caller can
+   * reach a controller or a system-store-backed schema source — never assume the {@code vtp}
+   * header will be present on every record. The header-less fallback exists for forward-compat
+   * regressions like a writer that drops the header on a control-message record.
+   */
+  public static PubSubMessageDeserializer createWithSchemaReader(SchemaReader schemaReader) {
+    Objects.requireNonNull(schemaReader, "schemaReader is required — caller must wire a SchemaReader");
+    KafkaValueSerializer valueSerializer = new KafkaValueSerializer();
+    valueSerializer.setSchemaReader(schemaReader);
+    return new PubSubMessageDeserializer(
+        valueSerializer,
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+  }
+
+  /**
+   * Production-safe optimized variant of {@link #createWithSchemaReader(SchemaReader)} —
+   * uses {@link OptimizedKafkaValueSerializer} (reused decoders) for hot paths like VPJ Spark
+   * record readers and CDC consumers.
+   */
+  public static PubSubMessageDeserializer createOptimizedWithSchemaReader(SchemaReader schemaReader) {
+    Objects.requireNonNull(schemaReader, "schemaReader is required — caller must wire a SchemaReader");
+    OptimizedKafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
+    valueSerializer.setSchemaReader(schemaReader);
+    return new PubSubMessageDeserializer(
+        valueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
   }

@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -453,12 +454,13 @@ public class VTConsistencyCheckerJob {
       VeniceProperties props,
       PubSubTopicRepository topicRepository,
       String consumerName) {
+    PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareDeserializer(props);
     return PubSubClientsFactory.createConsumerFactory(props)
         .create(
             new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(props.getString(KAFKA_BOOTSTRAP_SERVERS))
                 .setVeniceProperties(props)
                 .setPubSubTopicRepository(topicRepository)
-                .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                .setPubSubMessageDeserializer(deserializer)
                 .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(props))
                 .setConsumerName(consumerName)
                 .build());

@@ -21,6 +21,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DiskUsage;
@@ -116,6 +117,7 @@ public class StoreIngestionTaskFactory {
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+    private SchemaReader kafkaMessageEnvelopeSchemaReader;
     private boolean isDaVinciClient;
     private RemoteIngestionRepairService remoteIngestionRepairService;
     private MetaStoreWriter metaStoreWriter;
@@ -288,6 +290,23 @@ public class StoreIngestionTaskFactory {
     public Builder setPartitionStateSerializer(
         InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
       return set(() -> this.partitionStateSerializer = partitionStateSerializer);
+    }
+
+    public SchemaReader getKafkaMessageEnvelopeSchemaReader() {
+      return kafkaMessageEnvelopeSchemaReader;
+    }
+
+    /**
+     * Hand the KME ({@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE})
+     * {@link SchemaReader} that {@link KafkaStoreIngestionService} already uses to wire its main
+     * {@code KafkaValueSerializer}. Re-used by store-ingestion paths that open their own
+     * deserializer outside the main consumer (e.g., the {@code DictionaryUtils} fallback in
+     * {@link StoreIngestionTask#getNewStoreVersionState} when SoP isn't available) so they can
+     * resolve unknown KME protocol versions without depending on a {@code vtp} header surviving
+     * every writer regression.
+     */
+    public Builder setKafkaMessageEnvelopeSchemaReader(SchemaReader kafkaMessageEnvelopeSchemaReader) {
+      return set(() -> this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader);
     }
 
     public boolean isDaVinciClient() {
