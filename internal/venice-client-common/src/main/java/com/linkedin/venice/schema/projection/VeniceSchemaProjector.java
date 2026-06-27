@@ -115,11 +115,15 @@ public class VeniceSchemaProjector {
   /**
    * Project a Replication Metadata (RMD) record down to the writer's RMD schema, in lockstep with the value.
    *
-   * <p>Projection only runs when write compute is <em>not</em> enabled. In that mode the RMD timestamp is always a
-   * whole-record (value-level) {@code long}, so projection reduces to copying the {@code long} timestamp and the
-   * value-independent replication_checkpoint_vector onto a record under the target RMD schema. A per-field timestamp
-   * only arises with write compute (partial updates), where the corresponding superset schema is used and no
-   * projection is needed; encountering one here therefore indicates a misuse and is rejected.</p>
+   * <p>The {@code replication_checkpoint_vector} is value-independent and is copied as-is. The {@code timestamp} is a
+   * union of a value-level {@code long} and (for record values) a per-field timestamp record:
+   * <ul>
+   *   <li>a value-level {@code long} is structure-independent and copied as-is; while</li>
+   *   <li>a per-field timestamp record (active-active stores) is projected to the writer's per-field timestamp schema.
+   *   The per-field RMD record is flat (one entry per top-level value field) and a value field's timestamp metadata is
+   *   unchanged by nullable wrapping, so projection is a field-by-field copy that drops the timestamp entries for value
+   *   fields the writer schema does not declare.</li>
+   * </ul>
    *
    * @param srcRmd the source RMD record (generated against the superset value schema), or {@code null} if the record
    *               carries no RMD (e.g. a batch record in a hybrid store)
@@ -143,15 +147,39 @@ public class VeniceSchemaProjector {
 
     Schema.Field targetTimestampField = targetRmdSchema.getField(TIMESTAMP_FIELD_NAME);
     Object srcTimestamp = srcRmd.get(TIMESTAMP_FIELD_NAME);
-    if (RmdUtils.getRmdTimestampType(srcTimestamp) == RmdTimestampType.PER_FIELD_TIMESTAMP) {
-      // Per-field timestamps only occur with write compute, where projection should never run (the superset schema is
-      // used instead). Reject rather than attempt to project a per-field RMD.
-      throw new VeniceException(
-          "Per-field timestamp RMD is not supported for schema projection; projection only applies to value-level "
-              + "(whole-record) timestamps. This indicates projection was attempted on a write-compute enabled store.");
+    if (RmdUtils.getRmdTimestampType(srcTimestamp) == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
+      // Whole-record (value-level) long timestamp: structure-independent, set the long branch of the union as-is.
+      projected.put(targetTimestampField.pos(), srcTimestamp);
+    } else {
+      // Per-field timestamp record (active-active store): project it to the writer's per-field timestamp schema.
+      projected.put(
+          targetTimestampField.pos(),
+          projectPerFieldTimestamp((GenericRecord) srcTimestamp, targetTimestampField.schema()));
     }
-    // Whole-record (value-level) long timestamp: set the long branch of the union as-is.
-    projected.put(targetTimestampField.pos(), srcTimestamp);
+    return projected;
+  }
+
+  /**
+   * Project a per-field timestamp record down to the writer's per-field timestamp schema. The per-field RMD record is
+   * flat (one timestamp entry per top-level value field), so this copies each writer field's timestamp from the input
+   * by name and drops entries for value fields the writer schema does not declare.
+   */
+  private static GenericRecord projectPerFieldTimestamp(
+      GenericRecord srcPerFieldTimestamp,
+      Schema targetTimestampUnionSchema) {
+    Schema targetPerFieldSchema = targetTimestampUnionSchema.getTypes().get(1);
+    Schema srcPerFieldSchema = srcPerFieldTimestamp.getSchema();
+    GenericRecord projected = new GenericData.Record(targetPerFieldSchema);
+    for (Schema.Field targetField: targetPerFieldSchema.getFields()) {
+      if (srcPerFieldSchema.getField(targetField.name()) == null) {
+        // Invariant: the writer value schema is a subset of the input, so every writer field's timestamp must exist in
+        // the input RMD. The preflight subset check should already have rejected this; backstop it here.
+        throw new VeniceException(
+            "Writer value field '" + targetField.name() + "' has no per-field timestamp in the input RMD; writer "
+                + "schema is not a subset of the input schema.");
+      }
+      projected.put(targetField.pos(), srcPerFieldTimestamp.get(targetField.name()));
+    }
     return projected;
   }
 }

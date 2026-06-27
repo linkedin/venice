@@ -6,6 +6,8 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -534,9 +536,44 @@ public class TestVeniceSchemaProjector {
   }
 
   @Test
-  public void testRmdPerFieldTimestampThrows() {
-    // Per-field timestamps only arise with write compute (partial updates), where the superset schema is used and no
-    // projection runs. Encountering one in the projection path indicates misuse and must be rejected.
+  public void testRmdPerFieldTimestampProjectedForNullableDrift() {
+    // OH nullable drift: the input value wraps f2 as [null, string] while the writer keeps it non-nullable. The
+    // per-field RMD is identical on both sides (the RMD generator unwraps nullable unions), so projecting the per-field
+    // timestamp preserves both entries.
+    Schema inputValue = parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
+            + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"},\n"
+            + "    {\"name\": \"f2\", \"type\": [\"null\", \"string\"], \"default\": null}\n" + "  ]\n" + "}");
+    Schema writerValue = parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
+            + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"},\n"
+            + "    {\"name\": \"f2\", \"type\": \"string\"}\n" + "  ]\n" + "}");
+    Schema inputRmd = RMD_GEN.generateMetadataSchema(inputValue);
+    Schema writerRmd = RMD_GEN.generateMetadataSchema(writerValue);
+
+    Schema inputPerFieldSchema = inputRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
+    GenericRecord perField = new GenericData.Record(inputPerFieldSchema);
+    perField.put("f1", 100L);
+    perField.put("f2", 200L);
+    GenericRecord srcRmd = new GenericData.Record(inputRmd);
+    srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
+    srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>(Arrays.asList(3L)));
+
+    GenericRecord out = projector.projectRmd(srcRmd, writerRmd);
+
+    Assert.assertEquals(out.getSchema(), writerRmd);
+    GenericRecord outPerField = (GenericRecord) out.get(TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(outPerField.get("f1"), 100L);
+    Assert.assertEquals(outPerField.get("f2"), 200L);
+    @SuppressWarnings("unchecked")
+    List<Long> rcv = (List<Long>) out.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME);
+    Assert.assertEquals(rcv, Arrays.asList(3L));
+  }
+
+  @Test
+  public void testRmdPerFieldTimestampProjectedDropsRemovedField() {
+    // The writer value schema has fewer fields than the input (no f2). Projecting the per-field RMD keeps f1's
+    // timestamp and drops f2's, in lockstep with the value projection dropping the f2 field.
     Schema inputValue = parse(
         "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
             + "  \"fields\": [\n" + "    {\"name\": \"f1\", \"type\": \"string\"},\n"
@@ -547,15 +584,68 @@ public class TestVeniceSchemaProjector {
     Schema inputRmd = RMD_GEN.generateMetadataSchema(inputValue);
     Schema writerRmd = RMD_GEN.generateMetadataSchema(writerValue);
 
-    Schema perFieldSchema = inputRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
-    GenericRecord perField = new GenericData.Record(perFieldSchema);
+    Schema inputPerFieldSchema = inputRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
+    GenericRecord perField = new GenericData.Record(inputPerFieldSchema);
     perField.put("f1", 100L);
     perField.put("f2", 200L);
     GenericRecord srcRmd = new GenericData.Record(inputRmd);
     srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
     srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
 
-    Assert.expectThrows(VeniceException.class, () -> projector.projectRmd(srcRmd, writerRmd));
+    GenericRecord out = projector.projectRmd(srcRmd, writerRmd);
+
+    Assert.assertEquals(out.getSchema(), writerRmd);
+    GenericRecord outPerField = (GenericRecord) out.get(TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(outPerField.get("f1"), 100L);
+    Assert.assertNull(outPerField.getSchema().getField("f2"), "dropped value field's per-field timestamp must be gone");
+  }
+
+  @Test
+  public void testRmdPerFieldTimestampWithCollectionFieldSerializesRoundTrip() {
+    // The in-memory assertions above never serialize the projected RMD. Here we serialize it against the writer RMD
+    // schema (as the real push does) and read it back. A per-field timestamp for a COLLECTION field is itself a record
+    // (CollectionMetadata), and the input has an extra collection field (droppedList) before the shared one (tags), so
+    // the input and writer collection-metadata records carry different generated names -- this proves projection +
+    // serialization tolerate that divergence.
+    Schema inputValue = parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
+            + "  \"fields\": [\n" + "    {\"name\": \"name\", \"type\": \"string\"},\n"
+            + "    {\"name\": \"droppedList\", \"type\": {\"type\": \"array\", \"items\": \"int\"}},\n"
+            + "    {\"name\": \"tags\", \"type\": {\"type\": \"array\", \"items\": \"string\"}}\n" + "  ]\n" + "}");
+    Schema writerValue = parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"R\",\n" + "  \"namespace\": \"ns\",\n"
+            + "  \"fields\": [\n" + "    {\"name\": \"name\", \"type\": \"string\"},\n"
+            + "    {\"name\": \"tags\", \"type\": {\"type\": \"array\", \"items\": \"string\"}}\n" + "  ]\n" + "}");
+    Schema inputRmd = RMD_GEN.generateMetadataSchema(inputValue);
+    Schema writerRmd = RMD_GEN.generateMetadataSchema(writerValue);
+
+    Schema inputPerFieldSchema = inputRmd.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
+    GenericRecord perField = new GenericData.Record(inputPerFieldSchema);
+    perField.put("name", 100L);
+    perField
+        .put("droppedList", AvroSchemaUtils.createGenericRecord(inputPerFieldSchema.getField("droppedList").schema()));
+    GenericRecord tagsMd = AvroSchemaUtils.createGenericRecord(inputPerFieldSchema.getField("tags").schema());
+    tagsMd.put("topLevelFieldTimestamp", 200L);
+    perField.put("tags", tagsMd);
+
+    GenericRecord srcRmd = new GenericData.Record(inputRmd);
+    srcRmd.put(TIMESTAMP_FIELD_NAME, perField);
+    srcRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>(Arrays.asList(9L)));
+
+    GenericRecord projected = projector.projectRmd(srcRmd, writerRmd);
+
+    // Round-trip through the same serializer the push pipeline uses.
+    byte[] bytes = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(writerRmd).serialize(projected);
+    GenericRecord roundTripped =
+        FastSerializerDeserializerFactory.<GenericRecord>getFastAvroGenericDeserializer(writerRmd, writerRmd)
+            .deserialize(bytes);
+
+    Assert.assertEquals(roundTripped.getSchema(), writerRmd);
+    GenericRecord rtPerField = (GenericRecord) roundTripped.get(TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(rtPerField.get("name"), 100L);
+    Assert.assertNull(rtPerField.getSchema().getField("droppedList"), "dropped collection field's RMD must be gone");
+    GenericRecord rtTagsMd = (GenericRecord) rtPerField.get("tags");
+    Assert.assertEquals(rtTagsMd.get("topLevelFieldTimestamp"), 200L);
   }
 
   @Test
