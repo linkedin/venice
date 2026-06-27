@@ -24,6 +24,7 @@ public class VeniceControllerContextTest {
     assertNotNull(veniceControllerContext.getMetricsRepository());
     assertNotNull(veniceControllerContext.getServiceDiscoveryAnnouncers());
     assertEquals(veniceControllerContext.getServiceDiscoveryAnnouncers(), Collections.emptyList());
+    assertEquals(veniceControllerContext.getControllerPluginFactories(), Collections.emptyList());
   }
 
   @Test
@@ -36,6 +37,8 @@ public class VeniceControllerContextTest {
     ClientConfig routerClientConfig = mock(ClientConfig.class);
     ICProvider icProvider = mock(ICProvider.class);
     SupersetSchemaGenerator externalSupersetSchemaGenerator = mock(SupersetSchemaGenerator.class);
+    List<ControllerPluginFactory> controllerPluginFactories =
+        Collections.singletonList(mock(ControllerPluginFactory.class));
 
     VeniceControllerContext veniceControllerContext =
         new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
@@ -47,6 +50,7 @@ public class VeniceControllerContextTest {
             .setExternalSupersetSchemaGenerator(externalSupersetSchemaGenerator)
             .setMetricsRepository(null)
             .setServiceDiscoveryAnnouncers(null)
+            .setControllerPluginFactories(controllerPluginFactories)
             .build();
 
     assertEquals(veniceControllerContext.getPropertiesList(), propertiesList);
@@ -57,5 +61,6 @@ public class VeniceControllerContextTest {
     assertEquals(veniceControllerContext.getD2Client(), d2Client);
     assertEquals(veniceControllerContext.getRouterClientConfig(), routerClientConfig);
     assertEquals(veniceControllerContext.getIcProvider(), icProvider);
+    assertEquals(veniceControllerContext.getControllerPluginFactories(), controllerPluginFactories);
   }
 }
