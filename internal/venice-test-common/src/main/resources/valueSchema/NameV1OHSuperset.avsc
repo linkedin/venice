@@ -1,0 +1,18 @@
+{
+  "type" : "record",
+  "name" : "nameRecord",
+  "namespace" : "example.avro",
+  "fields" : [ {
+    "name" : "firstName",
+    "type" : [ "null", "string" ],
+    "default" : null
+  }, {
+    "name" : "lastName",
+    "type" : [ "null", "string" ],
+    "default" : null
+  }, {
+    "name" : "age",
+    "type" : [ "null", "int" ],
+    "default" : null
+  } ]
+}

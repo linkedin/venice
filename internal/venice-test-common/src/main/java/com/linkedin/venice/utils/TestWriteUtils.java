@@ -42,6 +42,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -122,6 +123,12 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV10.avsc"));
   public static final Schema NAME_RECORD_V11_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV11.avsc"));
+  public static final Schema NAME_RECORD_V1_OH_SUPERSET_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV1OHSuperset.avsc"));
+  public static final Schema NAME_WITH_DETAILS_V1_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameWithDetailsV1.avsc"));
+  public static final Schema NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameWithDetailsV1OHSuperset.avsc"));
 
   public static final Schema UNION_RECORD_V1_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UnionV1.avsc"));
@@ -187,6 +194,14 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V10_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V11_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V11_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V1_OH_SUPERSET_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+          .setValueSchema(NAME_RECORD_V1_OH_SUPERSET_SCHEMA)
+          .build();
+  public static final Schema STRING_TO_NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+          .setValueSchema(NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA)
+          .build();
   private static final Schema[] STRING_TO_NAME_RECORD_SCHEMAS = new Schema[] { STRING_TO_NAME_RECORD_V1_SCHEMA,
       STRING_TO_NAME_RECORD_V2_SCHEMA, STRING_TO_NAME_RECORD_V3_SCHEMA, STRING_TO_NAME_RECORD_V5_SCHEMA,
       STRING_TO_NAME_RECORD_V6_SCHEMA, STRING_TO_NAME_RECORD_V7_SCHEMA, STRING_TO_NAME_RECORD_V8_SCHEMA,
@@ -523,6 +538,54 @@ public class TestWriteUtils {
       valueRecord.put("firstName", firstName + i);
       valueRecord.put("lastName", lastName + i);
       valueRecord.put("age", -1);
+      keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+      return keyValueRecord;
+    });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToNameWithDetailsV1OHSupersetSchema(File parentDir)
+      throws IOException {
+    String firstName = "first_name_";
+    String lastName = "last_name_";
+    Schema addressSchema = NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA.getField("address").schema();
+    Schema contactSchema = NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA.getField("contacts").schema().getElementType();
+
+    return writeSimpleAvroFile(parentDir, STRING_TO_NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA, i -> {
+      GenericRecord keyValueRecord = new GenericData.Record(STRING_TO_NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA);
+      keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+
+      GenericRecord address = new GenericData.Record(addressSchema);
+      address.put("city", "city_" + i);
+      address.put("zip", "zip_" + i);
+
+      GenericRecord contact = new GenericData.Record(contactSchema);
+      contact.put("kind", "kind_" + i);
+      contact.put("primary", true);
+
+      GenericRecord valueRecord = new GenericData.Record(NAME_WITH_DETAILS_V1_OH_SUPERSET_SCHEMA);
+      valueRecord.put("firstName", firstName + i);
+      valueRecord.put("lastName", lastName + i);
+      valueRecord.put("age", i);
+      valueRecord.put("address", address);
+      valueRecord.put("contacts", new ArrayList<>(Collections.singletonList(contact)));
+      keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+      return keyValueRecord;
+    });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToNameRecordV1OHSupersetSchemaWithNullFirstName(File parentDir)
+      throws IOException {
+    String lastName = "last_name_";
+
+    return writeSimpleAvroFile(parentDir, STRING_TO_NAME_RECORD_V1_OH_SUPERSET_SCHEMA, i -> {
+      GenericRecord keyValueRecord = new GenericData.Record(STRING_TO_NAME_RECORD_V1_OH_SUPERSET_SCHEMA);
+      keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+      GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_OH_SUPERSET_SCHEMA);
+      // firstName is nullable in the input ([null, string]) and left null; the writer keeps it non-nullable, so
+      // projection copies the null through and serialization against the writer schema must fail.
+      valueRecord.put("firstName", null);
+      valueRecord.put("lastName", lastName + i);
+      valueRecord.put("age", i);
       keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
       return keyValueRecord;
     });
