@@ -188,6 +188,11 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
+  public byte[][] getValueAndReplicationMetadata(int partitionId, ByteBuffer key) {
+    return this.delegate.getValueAndReplicationMetadata(partitionId, key);
+  }
+
+  @Override
   public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
     this.delegate.putPartitionOffset(partitionId, offsetRecord);
   }
