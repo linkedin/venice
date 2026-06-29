@@ -825,7 +825,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           clusterName,
           parentStore.getName(),
           targetVersionNum,
-          Store.NON_EXISTING_VERSION,
           targetRegion,
           null,
           veniceProperties);
