@@ -38,6 +38,7 @@ import static org.testng.Assert.fail;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
@@ -85,9 +86,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -195,6 +198,110 @@ public class VeniceWriterUnitTest {
     assertEquals(
         ((Delete) actualValue2.payloadUnion).replicationMetadataPayload,
         WriterChunkingHelper.EMPTY_BYTE_BUFFER);
+  }
+
+  /**
+   * Snapshot-at-T needs the Start-Of-Push to carry a controlled producer timestamp so the server's
+   * REWIND_FROM_SOP rewind lands at a deterministic point regardless of how long the offline merge took. The
+   * timestamped overload must stamp exactly that value on the SOP control message, while the normal overload
+   * keeps using the writer's clock.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testBroadcastStartOfPushStampsCallerSuppliedTimestamp() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer("\"string\"");
+    VeniceWriterOptions options =
+        new VeniceWriterOptions.Builder("test_sop_timestamp").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+
+    // The custom timestamp is a small, obviously-not-a-clock value so it is unambiguously the one we passed in.
+    long sopTimestamp = 12345L;
+    VeniceWriter<Object, Object, Object> timestampedWriter =
+        new VeniceWriter(options, VeniceProperties.empty(), mockedProducer);
+    timestampedWriter.broadcastStartOfPush(
+        false,
+        false,
+        CompressionStrategy.NO_OP,
+        Optional.empty(),
+        Collections.emptyMap(),
+        sopTimestamp);
+    assertEquals(
+        startOfPushMessageTimestamp(mockedProducer),
+        sopTimestamp,
+        "SOP must carry the caller-supplied producer messageTimestamp");
+
+    // The normal overload keeps using the writer's real clock (a current epoch-ms value, not the custom value).
+    clearInvocations(mockedProducer);
+    VeniceWriter<Object, Object, Object> defaultWriter =
+        new VeniceWriter(options, VeniceProperties.empty(), mockedProducer);
+    defaultWriter.broadcastStartOfPush(Collections.emptyMap());
+    long defaultSopTimestamp = startOfPushMessageTimestamp(mockedProducer);
+    assertTrue(defaultSopTimestamp > 1_000_000_000_000L, "Default SOP must use the writer's real clock");
+  }
+
+  /**
+   * A VeniceWriter subclass that overrides the public 6-arg getKafkaMessageEnvelope — as the forward-compatibility
+   * test writer (VeniceWriterWithNewerProtocol) does — must have its override invoked on the put() data path. The
+   * snapshot-at-T SOP-timestamp change threads an extra messageTimestamp argument; it must build through the
+   * overridable 6-arg method, not route the data path around it (which silently degraded the newer-protocol writer
+   * to a normal one and broke ConsumerIntegrationTest forward-compatibility).
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testSubclassGetKafkaMessageEnvelopeOverrideIsUsedOnDataPath() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer("\"string\"");
+    VeniceWriterOptions options =
+        new VeniceWriterOptions.Builder("test_override_used").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    AtomicInteger overrideInvocations = new AtomicInteger();
+    VeniceWriter<String, String, byte[]> writer =
+        new VeniceWriter<String, String, byte[]>(options, VeniceProperties.empty(), mockedProducer) {
+          @Override
+          public KafkaMessageEnvelope getKafkaMessageEnvelope(
+              MessageType messageType,
+              boolean isEndOfSegment,
+              int partition,
+              boolean incrementSequenceNumber,
+              LeaderMetadataWrapper leaderMetadataWrapper,
+              long logicalTs) {
+            overrideInvocations.incrementAndGet();
+            return super.getKafkaMessageEnvelope(
+                messageType,
+                isEndOfSegment,
+                partition,
+                incrementSequenceNumber,
+                leaderMetadataWrapper,
+                logicalTs);
+          }
+        };
+    writer.put("k", "v", 1);
+    assertTrue(
+        overrideInvocations.get() > 0,
+        "The 6-arg getKafkaMessageEnvelope override must be invoked on the put() path");
+  }
+
+  private static long startOfPushMessageTimestamp(PubSubProducerAdapter mockedProducer) {
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), any(), kmeCaptor.capture(), any(), any());
+    for (KafkaMessageEnvelope kme: kmeCaptor.getAllValues()) {
+      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()
+          && ((ControlMessage) kme.payloadUnion).controlMessageType == ControlMessageType.START_OF_PUSH.getValue()) {
+        return kme.producerMetadata.messageTimestamp;
+      }
+    }
+    throw new AssertionError("No Start-Of-Push control message was produced");
   }
 
   @Test(timeOut = TIMEOUT)

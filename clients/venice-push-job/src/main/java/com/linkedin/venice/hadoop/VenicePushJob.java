@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
@@ -30,6 +31,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
@@ -74,6 +77,12 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_I
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_DISTRIBUTED_MERGE_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_RT_REGION_BROKERS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
@@ -90,12 +99,16 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
@@ -120,9 +133,18 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTDataWriterSparkJob;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTPushExecutor;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRecordMerger;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRtReader;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRtRecord;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTSchemaBundle;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTSchemaRepository;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
@@ -149,6 +171,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -588,6 +611,19 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    // Snapshot-at-T rewind-shortening knobs (per-VPJ). The store's hybrid config is not known yet at
+    // config-parse time, so the threshold gate is applied later in maybeApplySnapshotAtTRewindOverride().
+    pushJobSettingToReturn.snapshotAtTRewindEnabled = props.getBoolean(SNAPSHOT_AT_T_REWIND_ENABLED, false);
+    pushJobSettingToReturn.snapshotAtTMinRewindThresholdSeconds =
+        props.getLong(SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS, DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS);
+    pushJobSettingToReturn.snapshotAtTCutoffEpochSeconds = props.getLong(SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS, NOT_SET);
+    pushJobSettingToReturn.snapshotAtTRewindBufferSeconds =
+        props.getLong(SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS, DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS);
+    pushJobSettingToReturn.snapshotAtTRtRegionBrokers =
+        parseSnapshotAtTRegionBrokers(props.getString(SNAPSHOT_AT_T_RT_REGION_BROKERS, ""));
+    pushJobSettingToReturn.snapshotAtTDistributedMergeEnabled =
+        props.getBoolean(SNAPSHOT_AT_T_DISTRIBUTED_MERGE_ENABLED, false);
+
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
 
@@ -874,6 +910,8 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
       }
+      maybeApplySnapshotAtTRewindOverride(pushJobSetting);
+      maybeSetupSnapshotAtTDistributedMerge(pushJobSetting, controllerClient);
       checkRegularPushWithTTLRepush(controllerClient, pushJobSetting);
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
@@ -923,33 +961,40 @@ public class VenicePushJob implements AutoCloseable {
         if (pushJobSetting.repushTTLEnabled || pushJobSetting.materializedViewConfigFlatMap != null) {
           buildHDFSSchemaDir();
         }
-        if (pushJobSetting.sendControlMessagesDirectly) {
-          getVeniceWriter(pushJobSetting).broadcastStartOfPush(
-              pushJobSetting.isSortedIngestionEnabled,
-              pushJobSetting.isChunkingEnabled,
-              pushJobSetting.topicCompressionStrategy,
-              optionalCompressionDictionary,
-              Collections.emptyMap());
+        if (pushJobSetting.snapshotAtTRewindApplied && !pushJobSetting.snapshotAtTDistributedMergeEnabled) {
+          // Single-process snapshot-at-T: one writer owns Start/End-Of-Push and the data (one producer, so DIV
+          // stays consistent), and the controller does not send SOP for this mode (see createNewStoreVersion). The
+          // distributed-merge variant instead runs as a normal data-writer job below (controller sends SOP).
+          runSnapshotAtTMergePush(controllerClient);
         } else {
-          /**
-           * No-op, as it was already sent as part of the call to
-           * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
-           */
-        }
-        runJobWithKillDetection();
-
-        if (!pushJobSetting.suppressEndOfPushMessage) {
-          Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
+            getVeniceWriter(pushJobSetting).broadcastStartOfPush(
+                pushJobSetting.isSortedIngestionEnabled,
+                pushJobSetting.isChunkingEnabled,
+                pushJobSetting.topicCompressionStrategy,
+                optionalCompressionDictionary,
+                Collections.emptyMap());
           } else {
-            ControllerResponse eopResponse = controllerClient
-                .writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version, partitionRecordCounts);
-            if (eopResponse.isError()) {
-              throw new VeniceException(
-                  "Failed to write End-of-Push for topic: "
-                      + Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version) + ": "
-                      + eopResponse.getError());
+            /**
+             * No-op, as it was already sent as part of the call to
+             * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
+             */
+          }
+          runJobWithKillDetection();
+
+          if (!pushJobSetting.suppressEndOfPushMessage) {
+            Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
+            if (pushJobSetting.sendControlMessagesDirectly) {
+              getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
+            } else {
+              ControllerResponse eopResponse = controllerClient
+                  .writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version, partitionRecordCounts);
+              if (eopResponse.isError()) {
+                throw new VeniceException(
+                    "Failed to write End-of-Push for topic: "
+                        + Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version) + ": "
+                        + eopResponse.getError());
+              }
             }
           }
         }
@@ -2647,6 +2692,314 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
+   * Applies the snapshot-at-T rewind override when its per-VPJ knobs opt in and the store's effective
+   * rewind warrants it. See {@link VenicePushJobConstants#SNAPSHOT_AT_T_REWIND_ENABLED}.
+   *
+   * <p>The optimization is skipped (returns {@code false}, leaving the rewind unchanged) when:
+   * <ul>
+   *   <li>the master switch is off (default),</li>
+   *   <li>the push is incremental or a KIF repush (repush sets its own rewind override),</li>
+   *   <li>the store is not hybrid,</li>
+   *   <li>an explicit rewind override is already set (we never clobber it), or</li>
+   *   <li>the store's effective rewind is below the configured threshold (not worth the merge cost).</li>
+   * </ul>
+   *
+   * <p><b>Correctness:</b> shortening the rewind is correct ONLY when the batch dataset already incorporates
+   * real-time data up to {@code T} (the offline merge data plane in {@link #runSnapshotAtTMergePush}). To keep the
+   * server's REWIND_FROM_SOP rewind starting at or before the snapshot's coverage regardless of how long the merge
+   * takes, that path stamps the Start-Of-Push with the job start time (see
+   * {@link #snapshotAtTStartOfPushTimestampMs}) rather than the real (late) broadcast time. The master flag
+   * defaults to off and must remain off in production until the full data plane is wired end to end.
+   *
+   * @return {@code true} iff the rewind override was applied.
+   */
+  static boolean maybeApplySnapshotAtTRewindOverride(PushJobSetting setting) {
+    if (!setting.snapshotAtTRewindEnabled) {
+      return false;
+    }
+    // Snapshot-at-T is a full-push (BATCH) optimization. Incremental pushes and KIF repush are out of scope;
+    // repush already manages its own rewind override (DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE).
+    if (setting.isIncrementalPush || setting.isSourceKafka) {
+      LOGGER.info(
+          "Snapshot-at-T: not applicable to incremental/repush jobs for store {}; skipping rewind override.",
+          setting.storeName);
+      return false;
+    }
+    if (setting.hybridStoreConfig == null) {
+      LOGGER.info("Snapshot-at-T: store {} is not hybrid; skipping rewind override.", setting.storeName);
+      return false;
+    }
+    // Never clobber an explicitly-provided rewind override.
+    if (setting.rewindTimeInSecondsOverride != NOT_SET) {
+      LOGGER.info(
+          "Snapshot-at-T: an explicit rewind override ({}s) is already set for store {}; skipping.",
+          setting.rewindTimeInSecondsOverride,
+          setting.storeName);
+      return false;
+    }
+    // Threshold gate: only worthwhile when the rewind that would otherwise be the final rewind for this push
+    // is large enough to justify the offline-merge cost.
+    long effectiveRewindSeconds = setting.hybridStoreConfig.getRewindTimeInSeconds();
+    if (effectiveRewindSeconds < setting.snapshotAtTMinRewindThresholdSeconds) {
+      LOGGER.info(
+          "Snapshot-at-T: store {} effective rewind {}s is below threshold {}s; "
+              + "proceeding with a normal full push (no rewind override).",
+          setting.storeName,
+          effectiveRewindSeconds,
+          setting.snapshotAtTMinRewindThresholdSeconds);
+      return false;
+    }
+    long nowSeconds = setting.jobStartTimeMs / 1000;
+    long cutoffEpochSeconds =
+        setting.snapshotAtTCutoffEpochSeconds == NOT_SET ? nowSeconds : setting.snapshotAtTCutoffEpochSeconds;
+    if (cutoffEpochSeconds > nowSeconds) {
+      throw new VeniceException(
+          String.format(
+              "Provided '%d' for %s; the snapshot-at-T cutoff cannot be a timestamp in the future (now=%ds).",
+              cutoffEpochSeconds,
+              SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS,
+              nowSeconds));
+    }
+    long finalRewindSeconds = (nowSeconds - cutoffEpochSeconds) + setting.snapshotAtTRewindBufferSeconds;
+    setting.rewindTimeInSecondsOverride = finalRewindSeconds;
+    // Snapshot-at-T relies on REWIND_FROM_SOP semantics, same as the epoch-based rewind override.
+    setting.validateRemoteReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
+    setting.snapshotAtTRewindApplied = true;
+    LOGGER.info(
+        "Snapshot-at-T: store {} effective rewind {}s >= threshold {}s; overriding rewind to {}s "
+            + "(cutoff epoch {}s, buffer {}s). NOTE: requires the batch dataset to already incorporate "
+            + "real-time data up to the cutoff.",
+        setting.storeName,
+        effectiveRewindSeconds,
+        setting.snapshotAtTMinRewindThresholdSeconds,
+        finalRewindSeconds,
+        cutoffEpochSeconds,
+        setting.snapshotAtTRewindBufferSeconds);
+    return true;
+  }
+
+  /**
+   * The Start-Of-Push producer timestamp to stamp for the snapshot-at-T merge push. The server computes an A/A
+   * hybrid store's REWIND_FROM_SOP rewind start as {@code SOP messageTimestamp - rewindTimeInSecondsOverride}, and
+   * the override is {@code (jobStart - cutoff) + buffer}. Stamping the SOP with the job start time therefore pins
+   * the server's rewind start to {@code cutoff - buffer} (or {@code jobStart - buffer} when no cutoff is set) — at
+   * or before the snapshot's coverage, with the buffer as safety overlap — deterministically and independent of
+   * how long the offline merge took to produce the SOP. Using the real (late) broadcast time instead would let the
+   * rewind start drift past the snapshot's coverage on a long merge and silently drop the real-time writes in the
+   * gap.
+   */
+  static long snapshotAtTStartOfPushTimestampMs(PushJobSetting setting) {
+    return setting.jobStartTimeMs;
+  }
+
+  /**
+   * When the distributed-merge flag is on for an active snapshot-at-T push, fetch the store's schemas on the driver
+   * (to broadcast to executors) and route the merge through {@link SnapshotAtTDataWriterSparkJob} -- a normal
+   * data-writer job whose input is the distributed batch+RT cogroup -- instead of the single-process merge. A no-op
+   * when the flag is off or the rewind override was not applied, so the default path is unchanged.
+   */
+  void maybeSetupSnapshotAtTDistributedMerge(PushJobSetting setting, ControllerClient controllerClient) {
+    if (!setting.snapshotAtTRewindApplied || !setting.snapshotAtTDistributedMergeEnabled) {
+      return;
+    }
+    setting.snapshotAtTSchemaBundle = SnapshotAtTSchemaBundle.fromController(controllerClient, setting.storeName);
+    setting.dataWriterComputeJobClass = SnapshotAtTDataWriterSparkJob.class;
+    LOGGER.info("Snapshot-at-T: routing the merge through the distributed Spark job for store {}.", setting.storeName);
+  }
+
+  static Map<Integer, String> parseSnapshotAtTRegionBrokers(String config) {
+    Map<Integer, String> regionBrokers = new HashMap<>();
+    if (config == null || config.trim().isEmpty()) {
+      return regionBrokers;
+    }
+    for (String entry: config.split(";")) {
+      String trimmed = entry.trim();
+      if (trimmed.isEmpty()) {
+        continue;
+      }
+      int separator = trimmed.indexOf('=');
+      if (separator <= 0) {
+        throw new VeniceException(
+            "Invalid " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " entry '" + trimmed + "'; expected 'coloId=broker'.");
+      }
+      int coloId = Integer.parseInt(trimmed.substring(0, separator).trim());
+      String brokerAddress = trimmed.substring(separator + 1).trim();
+      if (brokerAddress.isEmpty()) {
+        throw new VeniceException(
+            "Invalid " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " entry '" + trimmed + "'; the broker address is empty.");
+      }
+      if (regionBrokers.containsKey(coloId)) {
+        throw new VeniceException(
+            "Duplicate coloId " + coloId + " in " + SNAPSHOT_AT_T_RT_REGION_BROKERS
+                + "; each region must be listed exactly once.");
+      }
+      regionBrokers.put(coloId, brokerAddress);
+    }
+    return regionBrokers;
+  }
+
+  /**
+   * The real-time topic names the snapshot-at-T merge reads for {@code storeInfo}: the regular RT, plus the
+   * separate RT topic when the store has separate-real-time-topic enabled. This mirrors the server, which during a
+   * hybrid rewind subscribes to both topics per region; reading only the regular RT would drop every write that
+   * landed on the separate RT (incremental-push data). Both topics live on the same per-region broker, so each is
+   * read from every configured region.
+   */
+  public static List<String> snapshotAtTRtTopicNames(StoreInfo storeInfo) {
+    String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+    if (storeInfo.isSeparateRealTimeTopicEnabled()) {
+      return Arrays.asList(realTimeTopicName, Utils.getSeparateRealTimeTopicName(storeInfo));
+    }
+    return Collections.singletonList(realTimeTopicName);
+  }
+
+  /**
+   * Runs the snapshot-at-T data plane in place of the normal data-writer job: read the offline batch input and
+   * each region's real-time topic up to the cutoff, merge per key (value + RMD) via {@link SnapshotAtTRecordMerger},
+   * and produce the merged records to the new version topic. Start-Of-Push / End-Of-Push are sent by the caller.
+   */
+  void runSnapshotAtTMergePush(ControllerClient controllerClient) {
+    PushJobSetting setting = pushJobSetting;
+    if (setting.snapshotAtTRtRegionBrokers == null || setting.snapshotAtTRtRegionBrokers.isEmpty()) {
+      throw new VeniceException(
+          "Snapshot-at-T mode requires " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " to list the per-region RT brokers.");
+    }
+    StoreInfo storeInfo = setting.storeResponse.getStore();
+    if (storeInfo.getHybridStoreConfig() == null) {
+      throw new VeniceException(
+          "Snapshot-at-T mode requires a hybrid store, but " + setting.storeName + " is not hybrid.");
+    }
+    if (!storeInfo.isActiveActiveReplicationEnabled()) {
+      throw new VeniceException(
+          "Snapshot-at-T mode requires Active-Active replication, which is not enabled on " + setting.storeName + ".");
+    }
+
+    Map<ByteBuffer, ByteBuffer> batchValues = readBatchInputForSnapshot();
+    List<String> realTimeTopicNames = snapshotAtTRtTopicNames(storeInfo);
+    long cutoffMs = setting.snapshotAtTCutoffEpochSeconds > 0 ? setting.snapshotAtTCutoffEpochSeconds * 1000 : 0L;
+    SnapshotAtTRtReader rtReader = new SnapshotAtTRtReader();
+    List<SnapshotAtTRtRecord> rtRecords = new ArrayList<>();
+    for (Map.Entry<Integer, String> region: setting.snapshotAtTRtRegionBrokers.entrySet()) {
+      VeniceProperties consumerProps = snapshotConsumerProps(region.getValue());
+      for (String realTimeTopicName: realTimeTopicNames) {
+        rtRecords.addAll(
+            rtReader.readRegion(
+                consumerProps,
+                region.getValue(),
+                realTimeTopicName,
+                setting.partitionCount,
+                cutoffMs,
+                region.getKey()));
+      }
+    }
+
+    SnapshotAtTSchemaRepository schemaRepository =
+        SnapshotAtTSchemaRepository.fromController(controllerClient, setting.storeName);
+    int rmdVersionId = schemaRepository.getRmdVersionId() > 0
+        ? schemaRepository.getRmdVersionId()
+        : RmdSchemaGenerator.getLatestVersion();
+    SnapshotAtTRecordMerger merger = new SnapshotAtTRecordMerger(
+        schemaRepository,
+        setting.storeName,
+        rmdVersionId,
+        setting.isStoreWriteComputeEnabled);
+
+    CompressorFactory compressorFactory = new CompressorFactory();
+    Optional<ByteBuffer> compressionDictionary = Optional.empty();
+    VeniceCompressor compressor;
+    if (setting.topicCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+      if (setting.topicDictionary == null) {
+        throw new VeniceException(
+            "Snapshot-at-T mode for a ZSTD_WITH_DICT store requires a compression dictionary, but none was built.");
+      }
+      compressor = compressorFactory.createCompressorWithDictionary(
+          setting.topicDictionary,
+          props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel()));
+      compressionDictionary = Optional.of(ByteBuffer.wrap(setting.topicDictionary));
+    } else {
+      compressor = compressorFactory.getCompressor(setting.topicCompressionStrategy);
+    }
+
+    VeniceWriter<byte[], byte[], byte[]> dataWriter = createSnapshotAtTDataWriter();
+    try {
+      dataWriter.broadcastStartOfPush(
+          false,
+          setting.isChunkingEnabled,
+          setting.topicCompressionStrategy,
+          compressionDictionary,
+          Collections.emptyMap(),
+          snapshotAtTStartOfPushTimestampMs(setting));
+      SnapshotAtTPushExecutor.Stats stats = new SnapshotAtTPushExecutor()
+          .execute(dataWriter, batchValues, setting.valueSchemaId, rtRecords, merger, compressor);
+      dataWriter.broadcastEndOfPush(Collections.emptyMap());
+      LOGGER.info(
+          "Snapshot-at-T merge push produced {} records ({} batch keys, {} RT records across {} regions).",
+          stats.getTotalProduced(),
+          batchValues.size(),
+          rtRecords.size(),
+          setting.snapshotAtTRtRegionBrokers.size());
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(dataWriter);
+      Utils.closeQuietlyWithErrorLogged(compressorFactory);
+    }
+  }
+
+  private Map<ByteBuffer, ByteBuffer> readBatchInputForSnapshot() {
+    Map<ByteBuffer, ByteBuffer> batchValues = new HashMap<>();
+    Path inputPath = new Path(pushJobSetting.inputURI);
+    VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(
+        pushJobSetting.inputDataSchema,
+        pushJobSetting.keyField,
+        pushJobSetting.valueField,
+        pushJobSetting.rmdField == null ? "" : pushJobSetting.rmdField,
+        pushJobSetting.etlValueSchemaTransformation,
+        null);
+    try {
+      FileSystem fs = inputPath.getFileSystem(new Configuration());
+      for (FileStatus status: fs.listStatus(inputPath, PATH_FILTER)) {
+        try (VeniceAvroFileIterator iterator = new VeniceAvroFileIterator(fs, status.getPath(), recordReader)) {
+          while (iterator.next()) {
+            byte[] value = iterator.getCurrentValue();
+            if (value == null) {
+              // ETL/Avro inputs encode a delete as a null value. In a fresh version an absent key already means
+              // deleted, and any real RT write for the key wins over batch data regardless, so there is nothing
+              // to seed for it.
+              continue;
+            }
+            batchValues.put(ByteBuffer.wrap(iterator.getCurrentKey()), ByteBuffer.wrap(value));
+          }
+        }
+      }
+    } catch (IOException e) {
+      throw new VeniceException("Failed to read batch input for snapshot-at-T merge from " + inputPath, e);
+    }
+    return batchValues;
+  }
+
+  private VeniceWriter<byte[], byte[], byte[]> createSnapshotAtTDataWriter() {
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
+    Properties partitionerProperties = new Properties();
+    partitionerProperties.putAll(pushJobSetting.partitionerParams);
+    VenicePartitioner partitioner = PartitionUtils
+        .getVenicePartitioner(pushJobSetting.partitionerClass, new VeniceProperties(partitionerProperties));
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder(pushJobSetting.topic).setPartitioner(partitioner)
+        .setPartitionCount(pushJobSetting.partitionCount)
+        .setChunkingEnabled(pushJobSetting.chunkingEnabled)
+        .setRmdChunkingEnabled(pushJobSetting.rmdChunkingEnabled)
+        .setMaxRecordSizeBytes(pushJobSetting.maxRecordSizeBytes)
+        .build();
+    return veniceWriterFactory.createVeniceWriter(options);
+  }
+
+  /** Consumer config for reading one region's RT topic: the job's pubsub config with the region's broker. */
+  private VeniceProperties snapshotConsumerProps(String brokerAddress) {
+    Properties consumerProps = props.toProperties();
+    consumerProps.setProperty(PUBSUB_BROKER_ADDRESS, brokerAddress);
+    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
+    return new VeniceProperties(consumerProps);
+  }
+
+  /**
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
   void createNewStoreVersion(
@@ -2657,7 +3010,10 @@ public class VenicePushJob implements AutoCloseable {
       VeniceProperties props,
       Optional<ByteBuffer> optionalCompressionDictionary) {
     Version.PushType pushType = getPushType(setting);
-    boolean askControllerToSendControlMessage = !setting.sendControlMessagesDirectly;
+    // Single-process snapshot-at-T sends its own Start-Of-Push from the same writer as the data, so the controller
+    // must not. The distributed-merge variant is a normal multi-writer data-writer job, so the controller sends SOP.
+    boolean askControllerToSendControlMessage = !setting.sendControlMessagesDirectly
+        && !(setting.snapshotAtTRewindApplied && !setting.snapshotAtTDistributedMergeEnabled);
     final String partitioners = props.getString(VENICE_PARTITIONERS, DefaultVenicePartitioner.class.getName());
 
     Optional<String> dictionary;

@@ -229,6 +229,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final long VENICE_DEFAULT_LOGICAL_TS = -1;
 
   /**
+   * Sentinel for the optional control-message {@code messageTimestamp} argument: when passed, the
+   * {@link ProducerMetadata#messageTimestamp} is stamped from the writer's own clock ({@link #time}) as usual.
+   * A real (non-sentinel) value lets a caller pin the timestamp — e.g. snapshot-at-T stamps the Start-Of-Push so
+   * the server's REWIND_FROM_SOP rewind is computed from a deterministic point, independent of how long the
+   * offline merge took.
+   */
+  private static final long USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP = -1;
+
+  /**
    * This sentinel value indicates that the venice samza apps have not provided the logical timestamp.
    */
   public static final long APP_DEFAULT_LOGICAL_TS = -2;
@@ -1496,6 +1505,29 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       CompressionStrategy compressionStrategy,
       Optional<ByteBuffer> optionalCompressionDictionary,
       Map<String, String> debugInfo) {
+    broadcastStartOfPush(
+        sorted,
+        chunked,
+        compressionStrategy,
+        optionalCompressionDictionary,
+        debugInfo,
+        USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP);
+  }
+
+  /**
+   * Same as {@link #broadcastStartOfPush(boolean, boolean, CompressionStrategy, Optional, Map)} but stamps the
+   * Start-Of-Push control message with the caller-supplied {@code startOfPushMessageTimestamp} instead of the
+   * writer's clock. The server computes a hybrid store's REWIND_FROM_SOP rewind start as
+   * {@code SOP messageTimestamp - rewindTimeInSeconds}, so pinning this timestamp lets a caller (snapshot-at-T)
+   * control the rewind start deterministically, independent of how long the push took to produce the SOP.
+   */
+  public void broadcastStartOfPush(
+      boolean sorted,
+      boolean chunked,
+      CompressionStrategy compressionStrategy,
+      Optional<ByteBuffer> optionalCompressionDictionary,
+      Map<String, String> debugInfo,
+      long startOfPushMessageTimestamp) {
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.sorted = sorted;
@@ -1503,7 +1535,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     startOfPush.compressionStrategy = compressionStrategy.getValue();
     startOfPush.compressionDictionary = optionalCompressionDictionary.orElse(null);
     controlMessage.controlMessageUnion = startOfPush;
-    broadcastControlMessage(controlMessage, debugInfo);
+    broadcastControlMessage(controlMessage, debugInfo, startOfPushMessageTimestamp);
     // Flush start of push message to avoid data message arrives before it.
     producerAdapter.flush();
   }
@@ -1801,6 +1833,32 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderMetadataWrapper leaderMetadataWrapper,
       long logicalTs,
       PubSubMessageHeaders pubSubMessageHeaders) {
+    return sendMessage(
+        keyProvider,
+        messageType,
+        payload,
+        isEndOfSegment,
+        partition,
+        callback,
+        updateDIV,
+        leaderMetadataWrapper,
+        logicalTs,
+        pubSubMessageHeaders,
+        USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP);
+  }
+
+  private CompletableFuture<PubSubProduceResult> sendMessage(
+      KeyProvider keyProvider,
+      MessageType messageType,
+      Object payload,
+      boolean isEndOfSegment,
+      int partition,
+      PubSubProducerCallback callback,
+      boolean updateDIV,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PubSubMessageHeaders pubSubMessageHeaders,
+      long messageTimestamp) {
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
         KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(
@@ -1809,7 +1867,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             partition,
             updateDIV,
             leaderMetadataWrapper,
-            logicalTs);
+            logicalTs,
+            messageTimestamp);
         kafkaValue.payloadUnion = payload;
         return kafkaValue;
       };
@@ -2261,10 +2320,24 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private List<CompletableFuture<PubSubProduceResult>> broadcastControlMessage(
       ControlMessage controlMessage,
       Map<String, String> debugInfo) {
+    return broadcastControlMessage(controlMessage, debugInfo, USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP);
+  }
+
+  private List<CompletableFuture<PubSubProduceResult>> broadcastControlMessage(
+      ControlMessage controlMessage,
+      Map<String, String> debugInfo,
+      long messageTimestamp) {
     List<CompletableFuture<PubSubProduceResult>> partitionWriteFuture = new ArrayList<>();
     for (int partition = 0; partition < numberOfPartitions; partition++) {
-      partitionWriteFuture
-          .add(sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER));
+      partitionWriteFuture.add(
+          sendControlMessage(
+              controlMessage,
+              partition,
+              debugInfo,
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER,
+              EmptyPubSubMessageHeaders.SINGLETON,
+              messageTimestamp));
     }
     logger.info(
         "Successfully broadcast {} Control Message for topic: {}",
@@ -2414,6 +2487,24 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
       PubSubMessageHeaders pubSubMessageHeaders) {
+    return sendControlMessage(
+        controlMessage,
+        partition,
+        debugInfo,
+        callback,
+        leaderMetadataWrapper,
+        pubSubMessageHeaders,
+        USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP);
+  }
+
+  public CompletableFuture<PubSubProduceResult> sendControlMessage(
+      ControlMessage controlMessage,
+      int partition,
+      Map<String, String> debugInfo,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      PubSubMessageHeaders pubSubMessageHeaders,
+      long messageTimestamp) {
     // Work around until we upgrade to a more modern Avro version which supports overriding the
     // String implementation.
     controlMessage.debugInfo = getDebugInfo(debugInfo);
@@ -2429,7 +2520,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           true,
           leaderMetadataWrapper,
           VENICE_DEFAULT_LOGICAL_TS,
-          pubSubMessageHeaders);
+          pubSubMessageHeaders,
+          messageTimestamp);
     }
   }
 
@@ -2696,6 +2788,33 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       kafkaValue.leaderMetadataFooter.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
     }
 
+    return kafkaValue;
+  }
+
+  /**
+   * Builds the envelope via the overridable 6-arg {@link #getKafkaMessageEnvelope(MessageType, boolean, int,
+   * boolean, LeaderMetadataWrapper, long)} — so {@link VeniceWriter} subclasses that override it still participate
+   * on every send path — then pins the producer {@code messageTimestamp} when the caller supplied a non-sentinel
+   * value (snapshot-at-T's Start-Of-Push). Otherwise the writer-clock timestamp set by the 6-arg method stands.
+   */
+  KafkaMessageEnvelope getKafkaMessageEnvelope(
+      MessageType messageType,
+      boolean isEndOfSegment,
+      int partition,
+      boolean incrementSequenceNumber,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      long messageTimestamp) {
+    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(
+        messageType,
+        isEndOfSegment,
+        partition,
+        incrementSequenceNumber,
+        leaderMetadataWrapper,
+        logicalTs);
+    if (messageTimestamp != USE_WRITER_CLOCK_FOR_MESSAGE_TIMESTAMP) {
+      kafkaValue.producerMetadata.messageTimestamp = messageTimestamp;
+    }
     return kafkaValue;
   }
 

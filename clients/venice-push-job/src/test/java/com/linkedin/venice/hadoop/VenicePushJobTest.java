@@ -15,6 +15,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
@@ -25,12 +27,16 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NOT_SET;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -89,6 +95,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.StoreInfo;
@@ -108,6 +115,7 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
@@ -116,6 +124,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -124,6 +133,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -612,6 +622,232 @@ public class VenicePushJobTest {
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
       Assert.assertTrue(Version.isPushIdRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Snapshot-at-T rewind-shortening knobs (per-VPJ). See VenicePushJobConstants#SNAPSHOT_AT_T_REWIND_ENABLED.
+  // -------------------------------------------------------------------------------------------
+
+  /** Base setting: feature on, 3-day hybrid rewind, default 1-day threshold, default (now) cutoff, 60s buffer. */
+  private PushJobSetting newSnapshotAtTSetting() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.storeName = TEST_STORE;
+    // Fixed job start so "now" is deterministic: 10_000_000_000 ms => 10_000_000 s.
+    setting.jobStartTimeMs = 10_000_000_000L;
+    setting.rewindTimeInSecondsOverride = NOT_SET;
+    setting.snapshotAtTRewindEnabled = true;
+    setting.snapshotAtTMinRewindThresholdSeconds = DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
+    setting.snapshotAtTCutoffEpochSeconds = NOT_SET;
+    setting.snapshotAtTRewindBufferSeconds = DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
+    setting.hybridStoreConfig =
+        new HybridStoreConfigImpl(3 * Time.SECONDS_PER_DAY, 1000, -1, BufferReplayPolicy.REWIND_FROM_SOP);
+    return setting;
+  }
+
+  @Test
+  public void testSnapshotAtTRewindOverrideAppliedWithDefaultCutoff() {
+    PushJobSetting setting = newSnapshotAtTSetting();
+    assertTrue(VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+    // Default cutoff == now, so the resulting (final) rewind is just the buffer.
+    assertEquals(setting.rewindTimeInSecondsOverride, DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS);
+    assertEquals(setting.validateRemoteReplayPolicy, BufferReplayPolicy.REWIND_FROM_SOP);
+    assertTrue(setting.snapshotAtTRewindApplied);
+  }
+
+  @Test
+  public void testSnapshotAtTRewindOverrideWithExplicitPastCutoff() {
+    PushJobSetting setting = newSnapshotAtTSetting();
+    long nowSeconds = setting.jobStartTimeMs / 1000;
+    long twoHours = 2 * 60 * 60;
+    setting.snapshotAtTCutoffEpochSeconds = nowSeconds - twoHours;
+    setting.snapshotAtTRewindBufferSeconds = 120;
+    assertTrue(VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+    // Final rewind = (now - cutoff) + buffer.
+    assertEquals(setting.rewindTimeInSecondsOverride, twoHours + 120);
+  }
+
+  @Test
+  public void testSnapshotAtTRewindOverrideThresholdBoundaryApplied() {
+    PushJobSetting setting = newSnapshotAtTSetting();
+    // Effective rewind exactly equals the threshold -> still applied (the gate is >=).
+    setting.snapshotAtTMinRewindThresholdSeconds = 3 * Time.SECONDS_PER_DAY;
+    assertTrue(VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+    assertTrue(setting.snapshotAtTRewindApplied);
+  }
+
+  @Test
+  public void testSnapshotAtTRewindOverrideSkippedBelowThreshold() {
+    PushJobSetting setting = newSnapshotAtTSetting();
+    // Store rewind (1h) below the default 1-day threshold -> skipped, rewind untouched.
+    setting.hybridStoreConfig = new HybridStoreConfigImpl(60 * 60, 1000, -1, BufferReplayPolicy.REWIND_FROM_SOP);
+    assertFalse(VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+    assertEquals(setting.rewindTimeInSecondsOverride, NOT_SET);
+    assertFalse(setting.snapshotAtTRewindApplied);
+  }
+
+  @Test
+  public void testSnapshotAtTRewindOverrideSkippedForIneligibleJobs() {
+    // Disabled (master switch off).
+    PushJobSetting disabled = newSnapshotAtTSetting();
+    disabled.snapshotAtTRewindEnabled = false;
+    assertFalse(VenicePushJob.maybeApplySnapshotAtTRewindOverride(disabled));
+    assertEquals(disabled.rewindTimeInSecondsOverride, NOT_SET);
+
+    // Non-hybrid store.
+    PushJobSetting nonHybrid = newSnapshotAtTSetting();
+    nonHybrid.hybridStoreConfig = null;
+    assertFalse(VenicePushJob.maybeApplySnapshotAtTRewindOverride(nonHybrid));
+    assertEquals(nonHybrid.rewindTimeInSecondsOverride, NOT_SET);
+
+    // Incremental push.
+    PushJobSetting incremental = newSnapshotAtTSetting();
+    incremental.isIncrementalPush = true;
+    assertFalse(VenicePushJob.maybeApplySnapshotAtTRewindOverride(incremental));
+    assertEquals(incremental.rewindTimeInSecondsOverride, NOT_SET);
+
+    // KIF repush (manages its own rewind override).
+    PushJobSetting repush = newSnapshotAtTSetting();
+    repush.isSourceKafka = true;
+    assertFalse(VenicePushJob.maybeApplySnapshotAtTRewindOverride(repush));
+    assertEquals(repush.rewindTimeInSecondsOverride, NOT_SET);
+
+    // Explicit rewind override already set -> not clobbered.
+    PushJobSetting explicit = newSnapshotAtTSetting();
+    explicit.rewindTimeInSecondsOverride = 4242;
+    assertFalse(VenicePushJob.maybeApplySnapshotAtTRewindOverride(explicit));
+    assertEquals(explicit.rewindTimeInSecondsOverride, 4242);
+  }
+
+  @Test
+  public void testSnapshotAtTRewindOverrideRejectsFutureCutoff() {
+    PushJobSetting setting = newSnapshotAtTSetting();
+    long nowSeconds = setting.jobStartTimeMs / 1000;
+    setting.snapshotAtTCutoffEpochSeconds = nowSeconds + 100;
+    assertThrows(VeniceException.class, () -> VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+  }
+
+  /**
+   * Snapshot-at-T stamps the SOP with the job start time, so the server's REWIND_FROM_SOP rewind start
+   * (SOP messageTimestamp - rewindTimeInSecondsOverride) is pinned to (cutoff - buffer) regardless of how long the
+   * merge takes. It must never drift past the snapshot's cutoff, which would silently drop real-time writes.
+   */
+  @Test
+  public void testSnapshotAtTStartOfPushTimestampPinsServerRewindToCutoff() {
+    PushJobSetting setting = newSnapshotAtTSetting();
+    long nowSeconds = setting.jobStartTimeMs / 1000;
+    long twoHours = 2 * 60 * 60;
+    long cutoffSeconds = nowSeconds - twoHours;
+    setting.snapshotAtTCutoffEpochSeconds = cutoffSeconds;
+    assertTrue(VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+
+    // The server computes rewindStart = SOP messageTimestamp - rewindTimeInSecondsOverride.
+    long sopTimestampMs = VenicePushJob.snapshotAtTStartOfPushTimestampMs(setting);
+    long serverRewindStartMs = sopTimestampMs - setting.rewindTimeInSecondsOverride * 1000;
+    // Pinned to (cutoff - buffer): at or before the snapshot's coverage, with the buffer as safety overlap.
+    assertEquals(serverRewindStartMs, cutoffSeconds * 1000 - setting.snapshotAtTRewindBufferSeconds * 1000);
+    assertTrue(serverRewindStartMs <= cutoffSeconds * 1000, "rewind start must not drift past the snapshot cutoff");
+  }
+
+  /**
+   * Integration: the per-VPJ knobs, parsed by getPushJobSetting and gated by
+   * maybeApplySnapshotAtTRewindOverride, must carry the shortened rewind into the controller's
+   * version-creation request (requestTopicForWrites).
+   */
+  @Test
+  public void testSnapshotAtTRewindOverrideReachesControllerRequest() {
+    HybridStoreConfigImpl hybridConfig =
+        new HybridStoreConfigImpl(3 * Time.SECONDS_PER_DAY, 1000, -1, BufferReplayPolicy.REWIND_FROM_SOP);
+    ControllerClient client = getClient(storeInfo -> storeInfo.setHybridStoreConfig(hybridConfig));
+    long buffer = 120;
+    Properties props = new Properties();
+    props.setProperty(SNAPSHOT_AT_T_REWIND_ENABLED, "true");
+    props.setProperty(SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS, String.valueOf(Time.SECONDS_PER_DAY));
+    props.setProperty(SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS, String.valueOf(buffer));
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobSetting setting = pushJob.getPushJobSetting();
+      // Knobs are parsed from the VPJ props.
+      assertTrue(setting.snapshotAtTRewindEnabled);
+      assertEquals(setting.snapshotAtTRewindBufferSeconds, buffer);
+      // Simulate the store-info fetch that run() performs before the override is applied.
+      setting.hybridStoreConfig = hybridConfig;
+
+      // Gate triggers (3-day rewind >= 1-day threshold); default cutoff == now => final rewind == buffer.
+      assertTrue(VenicePushJob.maybeApplySnapshotAtTRewindOverride(setting));
+      assertEquals(setting.rewindTimeInSecondsOverride, buffer);
+
+      // The shortened rewind must reach the controller's version-creation request.
+      pushJob.createNewStoreVersion(
+          setting,
+          100L,
+          client,
+          "snapshot-at-t-push",
+          new VeniceProperties(props),
+          Optional.empty());
+      ArgumentCaptor<Long> rewindCaptor = ArgumentCaptor.forClass(Long.class);
+      verify(client).requestTopicForWrites(
+          anyString(),
+          anyLong(),
+          any(),
+          anyString(),
+          anyBoolean(),
+          anyBoolean(),
+          anyBoolean(),
+          any(),
+          any(),
+          any(),
+          anyBoolean(),
+          rewindCaptor.capture(),
+          anyBoolean(),
+          any(),
+          anyInt(),
+          anyBoolean(),
+          anyInt());
+      assertEquals(rewindCaptor.getValue().longValue(), buffer);
+    }
+  }
+
+  @Test
+  public void testParseSnapshotAtTRegionBrokers() {
+    Map<Integer, String> parsed = VenicePushJob.parseSnapshotAtTRegionBrokers("0=broker0:9092;1=broker1:9092");
+    assertEquals(parsed.size(), 2);
+    assertEquals(parsed.get(0), "broker0:9092");
+    assertEquals(parsed.get(1), "broker1:9092");
+    assertTrue(VenicePushJob.parseSnapshotAtTRegionBrokers("").isEmpty());
+    assertTrue(VenicePushJob.parseSnapshotAtTRegionBrokers("   ").isEmpty());
+    // A trailing/empty entry is skipped.
+    assertEquals(VenicePushJob.parseSnapshotAtTRegionBrokers("0=brokerA; ").size(), 1);
+    // A malformed entry (missing '=') is rejected.
+    assertThrows(VeniceException.class, () -> VenicePushJob.parseSnapshotAtTRegionBrokers("no-equals"));
+    // An empty broker address is rejected: it would later fail to connect, or be mistaken for a valid region.
+    assertThrows(VeniceException.class, () -> VenicePushJob.parseSnapshotAtTRegionBrokers("0="));
+    // A duplicate coloId is rejected: silently overwriting it would drop one region's real-time data.
+    assertThrows(VeniceException.class, () -> VenicePushJob.parseSnapshotAtTRegionBrokers("0=brokerA;0=brokerB"));
+  }
+
+  /**
+   * For a store with separate-real-time-topic enabled, the snapshot-at-T merge must read BOTH the regular RT and
+   * the separate RT topic (mirroring the server, which subscribes to both), otherwise every write that landed on
+   * the separate RT (incremental-push data) would be lost from the offline merge.
+   */
+  @Test
+  public void testSnapshotAtTRtTopicNamesIncludesSeparateRtWhenEnabled() {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setName(TEST_STORE);
+    storeInfo.setVersions(Collections.emptyList());
+    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(3600, 1000, -1, BufferReplayPolicy.REWIND_FROM_SOP));
+    String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+
+    storeInfo.setSeparateRealTimeTopicEnabled(false);
+    assertEquals(
+        VenicePushJob.snapshotAtTRtTopicNames(storeInfo),
+        Collections.singletonList(realTimeTopicName),
+        "Only the regular RT should be read when separate-RT is disabled");
+
+    storeInfo.setSeparateRealTimeTopicEnabled(true);
+    List<String> withSeparate = VenicePushJob.snapshotAtTRtTopicNames(storeInfo);
+    assertEquals(withSeparate.size(), 2, "Both the regular RT and the separate RT should be read");
+    assertEquals(withSeparate.get(0), realTimeTopicName);
+    assertEquals(withSeparate.get(1), realTimeTopicName + Utils.SEPARATE_TOPIC_SUFFIX);
   }
 
   /**

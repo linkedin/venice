@@ -73,6 +73,19 @@ public class PushJobSetting implements Serializable {
   public String kafkaInputTopic;
   public int repushSourceVersion;
   public long rewindTimeInSecondsOverride;
+  // Snapshot-at-T rewind-shortening knobs (per-VPJ). See VenicePushJobConstants#SNAPSHOT_AT_T_REWIND_ENABLED.
+  public boolean snapshotAtTRewindEnabled;
+  public long snapshotAtTMinRewindThresholdSeconds;
+  public long snapshotAtTCutoffEpochSeconds;
+  public long snapshotAtTRewindBufferSeconds;
+  // Set to true when the snapshot-at-T rewind override is actually applied (after the threshold gate passes).
+  public boolean snapshotAtTRewindApplied;
+  // Per-region RT source brokers (colo id -> broker address) for the snapshot-at-T merge.
+  public Map<Integer, String> snapshotAtTRtRegionBrokers;
+  // When true, the snapshot-at-T batch+RT merge runs as a distributed Spark job instead of single-process.
+  public boolean snapshotAtTDistributedMergeEnabled;
+  // The store's schemas, fetched on the driver and broadcast to executors by the distributed merge job.
+  public transient com.linkedin.venice.hadoop.snapshot.SnapshotAtTSchemaBundle snapshotAtTSchemaBundle;
   public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean versionSeparateRealTimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;
