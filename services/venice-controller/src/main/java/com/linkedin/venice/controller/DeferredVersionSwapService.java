@@ -93,7 +93,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final Set<String> storesBeingProcessed = ConcurrentHashMap.newKeySet();
   private final Map<String, ThreadPoolStats> clusterToThreadPoolStatsMap = new ConcurrentHashMap<>();
   private final MetricsRepository metricsRepository;
-  private final StoreLifecycleHookExecutor storeLifecycleHookExecutor;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -106,7 +105,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         new DaemonThreadFactory(getClass().getSimpleName(), multiClusterConfig.getLogContext()));
     this.deferredVersionSwapStats = deferredVersionSwapStats;
     this.metricsRepository = metricsRepository;
-    this.storeLifecycleHookExecutor = new StoreLifecycleHookExecutor(multiClusterConfig.getCommonConfig().getProps());
   }
 
   @Override
@@ -814,8 +812,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
       StoreVersionLifecycleEventOutcome outcome;
 
-      StoreLifecycleHooks storeLifecycleHook =
-          storeLifecycleHookExecutor.getOrInstantiateHook(lifecycleHooksRecord.getStoreLifecycleHooksClassName());
+      StoreLifecycleHooks storeLifecycleHook = veniceParentHelixAdmin.getVeniceHelixAdmin()
+          .getStoreLifecycleHookExecutor()
+          .getOrInstantiateHook(lifecycleHooksRecord.getStoreLifecycleHooksClassName());
       if (storeLifecycleHook == null) {
         logMessageIfNotRedundant(
             "Failed to instantiate lifecycle hook " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()

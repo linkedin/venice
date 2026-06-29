@@ -9135,6 +9135,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return multiClusterConfigs;
   }
 
+  public StoreLifecycleHookExecutor getStoreLifecycleHookExecutor() {
+    return storeLifecycleHookExecutor;
+  }
+
   public Optional<ExternalETLService> getExternalETLService() {
     return externalETLService;
   }

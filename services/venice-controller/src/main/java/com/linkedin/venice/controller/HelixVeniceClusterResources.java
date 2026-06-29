@@ -212,7 +212,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
               true,
               updatedStore.isMigrating(),
               this::isSourceCluster);
-        });
+        },
+        admin.getStoreLifecycleHookExecutor());
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
         clusterName,

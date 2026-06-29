@@ -129,7 +129,8 @@ public abstract class AbstractPushMonitor
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats,
       VeniceWriterFactory veniceWriterFactory,
-      CurrentVersionChangeNotifier currentVersionChangeNotifier) {
+      CurrentVersionChangeNotifier currentVersionChangeNotifier,
+      StoreLifecycleHookExecutor storeLifecycleHookExecutor) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -169,7 +170,7 @@ public abstract class AbstractPushMonitor
       this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
     }
     this.currentVersionChangeNotifier = currentVersionChangeNotifier;
-    this.storeLifecycleHookExecutor = new StoreLifecycleHookExecutor(controllerConfig.getProps());
+    this.storeLifecycleHookExecutor = storeLifecycleHookExecutor;
     pushStatusCollector.start();
   }
 
