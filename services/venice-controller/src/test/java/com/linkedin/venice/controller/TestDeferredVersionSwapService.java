@@ -205,6 +205,8 @@ public class TestDeferredVersionSwapService {
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
 
     doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
+    doReturn(new StoreLifecycleHooksCache(new VeniceProperties(new Properties()))).when(veniceHelixAdmin)
+        .getStoreLifecycleHooksCache();
   }
 
   @Test

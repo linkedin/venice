@@ -40,23 +40,27 @@ public class StoreLifecycleHooksCache {
    */
   @Nullable
   public StoreLifecycleHooks getOrInstantiateHook(String className) {
-    if (failedClasses.contains(className)) {
+    if (className == null || className.trim().isEmpty()) {
       return null;
     }
-    StoreLifecycleHooks cached = hooksCache.get(className);
+    String normalizedName = className.trim();
+    if (failedClasses.contains(normalizedName)) {
+      return null;
+    }
+    StoreLifecycleHooks cached = hooksCache.get(normalizedName);
     if (cached != null) {
       return cached;
     }
     try {
       StoreLifecycleHooks hook = ReflectUtils.callConstructor(
-          ReflectUtils.loadClass(className),
+          ReflectUtils.loadClass(normalizedName),
           new Class<?>[] { VeniceProperties.class },
           new Object[] { globalProps });
-      hooksCache.put(className, hook);
+      hooksCache.put(normalizedName, hook);
       return hook;
     } catch (Exception e) {
-      LOGGER.warn("Failed to instantiate StoreLifecycleHooks class {}: {}", className, e.getMessage(), e);
-      failedClasses.add(className);
+      LOGGER.warn("Failed to instantiate StoreLifecycleHooks class {}: {}", normalizedName, e.getMessage(), e);
+      failedClasses.add(normalizedName);
       return null;
     }
   }
