@@ -10,16 +10,18 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
-import com.linkedin.venice.controller.StoreLifecycleHookExecutor;
+import com.linkedin.venice.controller.StoreLifecycleHooksCache;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -38,6 +40,7 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -108,7 +111,7 @@ public abstract class AbstractPushMonitor
   private final VeniceWriterFactory veniceWriterFactory;
   private String sequentialRollForwardFirstRegion = null;
   private final CurrentVersionChangeNotifier currentVersionChangeNotifier;
-  private final StoreLifecycleHookExecutor storeLifecycleHookExecutor;
+  private final StoreLifecycleHooksCache storeLifecycleHooksCache;
 
   public interface CurrentVersionChangeNotifier {
     void onCurrentVersionChange(Store store, String clusterName, int currentVersion, int previousVersion);
@@ -131,7 +134,7 @@ public abstract class AbstractPushMonitor
       DisabledPartitionStats disabledPartitionStats,
       VeniceWriterFactory veniceWriterFactory,
       CurrentVersionChangeNotifier currentVersionChangeNotifier,
-      StoreLifecycleHookExecutor storeLifecycleHookExecutor) {
+      StoreLifecycleHooksCache storeLifecycleHooksCache) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -171,7 +174,7 @@ public abstract class AbstractPushMonitor
       this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
     }
     this.currentVersionChangeNotifier = currentVersionChangeNotifier;
-    this.storeLifecycleHookExecutor = storeLifecycleHookExecutor;
+    this.storeLifecycleHooksCache = storeLifecycleHooksCache;
     pushStatusCollector.start();
   }
 
@@ -1253,16 +1256,7 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            StoreVersionLifecycleEventOutcome seqOutcome = storeLifecycleHookExecutor
-                .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
-            if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(seqOutcome)) {
-              LOGGER.warn(
-                  "postStoreVersionSwap hook returned {} for store {} v{} in region {} — swap already committed",
-                  seqOutcome,
-                  storeName,
-                  versionNumber,
-                  regionName);
-            }
+            invokePostVersionSwapHooks(store, versionNumber, previousVersion);
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
@@ -1276,16 +1270,7 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            StoreVersionLifecycleEventOutcome normalOutcome = storeLifecycleHookExecutor
-                .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
-            if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(normalOutcome)) {
-              LOGGER.warn(
-                  "postStoreVersionSwap hook returned {} for store {} v{} in region {} — swap already committed",
-                  normalOutcome,
-                  storeName,
-                  versionNumber,
-                  regionName);
-            }
+            invokePostVersionSwapHooks(store, versionNumber, previousVersion);
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "
@@ -1351,5 +1336,44 @@ public abstract class AbstractPushMonitor
   @Override
   public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
     return isOfflinePushMonitorDaVinciPushStatusEnabled;
+  }
+
+  private void invokePostVersionSwapHooks(Store store, int versionNumber, int previousVersion) {
+    List<LifecycleHooksRecord> hooks = store.getStoreLifecycleHooks();
+    if (hooks == null || hooks.isEmpty()) {
+      return;
+    }
+    for (LifecycleHooksRecord record: hooks) {
+      if (record == null || record.getStoreLifecycleHooksClassName() == null) {
+        continue;
+      }
+      StoreLifecycleHooks hook =
+          storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
+      if (hook == null) {
+        continue;
+      }
+      Properties props = new Properties();
+      Map<String, String> params = record.getStoreLifecycleHooksParams();
+      if (params != null) {
+        props.putAll(params);
+      }
+      StoreVersionLifecycleEventOutcome outcome = hook.postStoreVersionSwap(
+          clusterName,
+          store.getName(),
+          versionNumber,
+          previousVersion,
+          regionName,
+          null,
+          new VeniceProperties(props));
+      if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
+        LOGGER.warn(
+            "postStoreVersionSwap hook {} returned {} for store {} v{} in region {} — swap already committed",
+            record.getStoreLifecycleHooksClassName(),
+            outcome,
+            store.getName(),
+            versionNumber,
+            regionName);
+      }
+    }
   }
 }

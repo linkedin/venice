@@ -1,7 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
-import com.linkedin.venice.controller.StoreLifecycleHookExecutor;
+import com.linkedin.venice.controller.StoreLifecycleHooksCache;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
@@ -43,7 +43,7 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       DisabledPartitionStats disabledPartitionStats,
       VeniceWriterFactory veniceWriterFactory,
       CurrentVersionChangeNotifier currentVersionChangeNotifier,
-      StoreLifecycleHookExecutor storeLifecycleHookExecutor) {
+      StoreLifecycleHooksCache storeLifecycleHooksCache) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -61,7 +61,7 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         disabledPartitionStats,
         veniceWriterFactory,
         currentVersionChangeNotifier,
-        storeLifecycleHookExecutor);
+        storeLifecycleHooksCache);
   }
 
   @Override

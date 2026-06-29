@@ -445,7 +445,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
   private final Optional<ExternalETLService> externalETLService;
-  private final StoreLifecycleHookExecutor storeLifecycleHookExecutor;
+  private final StoreLifecycleHooksCache storeLifecycleHooksCache;
 
   // Test only.
   public VeniceHelixAdmin(
@@ -497,7 +497,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<ExternalETLService> externalETLService) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
-    this.storeLifecycleHookExecutor = new StoreLifecycleHookExecutor(multiClusterConfigs.getCommonConfig().getProps());
+    this.storeLifecycleHooksCache = new StoreLifecycleHooksCache(multiClusterConfigs.getCommonConfig().getProps());
     this.logContext = multiClusterConfigs.getLogContext();
     VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
     this.controllerName =
@@ -4998,8 +4998,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           futureVersion,
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
-      storeLifecycleHookExecutor
-          .invokePostVersionSwapHooks(clusterName, store, futureVersion, previousVersion, getRegionName(), null);
+      for (LifecycleHooksRecord record: store.getStoreLifecycleHooks()) {
+        if (record == null || record.getStoreLifecycleHooksClassName() == null) {
+          continue;
+        }
+        StoreLifecycleHooks hook =
+            storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
+        if (hook == null) {
+          continue;
+        }
+        StoreVersionLifecycleEventOutcome outcome = hook.postStoreVersionSwap(
+            clusterName,
+            store.getName(),
+            futureVersion,
+            previousVersion,
+            getRegionName(),
+            null,
+            buildHookProps(record));
+        if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
+          LOGGER.warn(
+              "postStoreVersionSwap hook {} returned {} for store {} v{} in region {} — swap already committed",
+              record.getStoreLifecycleHooksClassName(),
+              outcome,
+              store.getName(),
+              futureVersion,
+              getRegionName());
+        }
+      }
       return store;
     });
   }
@@ -5051,8 +5076,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ROLLED_BACK);
-      storeLifecycleHookExecutor
-          .invokePostVersionSwapHooks(clusterName, store, backupVersion, previousVersion, getRegionName(), null);
+      for (LifecycleHooksRecord record: store.getStoreLifecycleHooks()) {
+        if (record == null || record.getStoreLifecycleHooksClassName() == null) {
+          continue;
+        }
+        StoreLifecycleHooks hook =
+            storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
+        if (hook == null) {
+          continue;
+        }
+        StoreVersionLifecycleEventOutcome outcome = hook.postStoreVersionSwap(
+            clusterName,
+            store.getName(),
+            backupVersion,
+            previousVersion,
+            getRegionName(),
+            null,
+            buildHookProps(record));
+        if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
+          LOGGER.warn(
+              "postStoreVersionSwap hook {} returned {} for store {} v{} in region {} — swap already committed",
+              record.getStoreLifecycleHooksClassName(),
+              outcome,
+              store.getName(),
+              backupVersion,
+              getRegionName());
+        }
+      }
       return store;
     });
   }
@@ -6004,7 +6054,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       BiConsumer<StoreLifecycleHooks, VeniceProperties> action) {
     for (LifecycleHooksRecord record: lifecycleHooks) {
       StoreLifecycleHooks hook =
-          storeLifecycleHookExecutor.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
+          storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
       if (hook == null) {
         continue;
       }
@@ -6023,7 +6073,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       BiConsumer<T, String> outcomeHandler) {
     for (LifecycleHooksRecord record: lifecycleHooks) {
       StoreLifecycleHooks hook =
-          storeLifecycleHookExecutor.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
+          storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
       if (hook == null) {
         continue;
       }
@@ -9112,8 +9162,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return multiClusterConfigs;
   }
 
-  public StoreLifecycleHookExecutor getStoreLifecycleHookExecutor() {
-    return storeLifecycleHookExecutor;
+  public StoreLifecycleHooksCache getStoreLifecycleHooksCache() {
+    return storeLifecycleHooksCache;
   }
 
   public Optional<ExternalETLService> getExternalETLService() {

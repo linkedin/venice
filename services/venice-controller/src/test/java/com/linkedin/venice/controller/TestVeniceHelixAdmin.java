@@ -1299,8 +1299,8 @@ public class TestVeniceHelixAdmin {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) throws Exception {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    StoreLifecycleHookExecutor mockHookExecutor = mock(StoreLifecycleHookExecutor.class);
-    java.lang.reflect.Field hookExecutorField = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHookExecutor");
+    StoreLifecycleHooksCache mockHookExecutor = mock(StoreLifecycleHooksCache.class);
+    java.lang.reflect.Field hookExecutorField = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHooksCache");
     hookExecutorField.setAccessible(true);
     hookExecutorField.set(mockVeniceHelixAdmin, mockHookExecutor);
     doReturn(2).when(mockVeniceHelixAdmin).getFutureVersionWithStatus(clusterName, storeName, VersionStatus.ONLINE);

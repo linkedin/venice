@@ -21,7 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.HelixAdminClient;
-import com.linkedin.venice.controller.StoreLifecycleHookExecutor;
+import com.linkedin.venice.controller.StoreLifecycleHooksCache;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
@@ -75,7 +75,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         mock(DisabledPartitionStats.class),
         getMockVeniceWriterFactory(),
         getCurrentVersionChangeNotifier(),
-        new StoreLifecycleHookExecutor(new VeniceProperties()));
+        new StoreLifecycleHooksCache(new VeniceProperties()));
   }
 
   @Override
@@ -97,7 +97,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         mock(DisabledPartitionStats.class),
         getMockVeniceWriterFactory(),
         getCurrentVersionChangeNotifier(),
-        new StoreLifecycleHookExecutor(new VeniceProperties()));
+        new StoreLifecycleHooksCache(new VeniceProperties()));
   }
 
   @Test

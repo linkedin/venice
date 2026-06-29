@@ -813,12 +813,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       StoreVersionLifecycleEventOutcome outcome;
 
       StoreLifecycleHooks storeLifecycleHook = veniceParentHelixAdmin.getVeniceHelixAdmin()
-          .getStoreLifecycleHookExecutor()
+          .getStoreLifecycleHooksCache()
           .getOrInstantiateHook(lifecycleHooksRecord.getStoreLifecycleHooksClassName());
       if (storeLifecycleHook == null) {
-        logMessageIfNotRedundant(
-            "Failed to instantiate lifecycle hook " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()
-                + " for store: " + parentStore.getName());
         continue;
       }
       Properties properties = new Properties();

@@ -1,7 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
-import com.linkedin.venice.controller.StoreLifecycleHookExecutor;
+import com.linkedin.venice.controller.StoreLifecycleHooksCache;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -62,7 +62,7 @@ public class PushMonitorDelegator implements PushMonitor {
       DisabledPartitionStats disabledPartitionStats,
       VeniceWriterFactory veniceWriterFactory,
       AbstractPushMonitor.CurrentVersionChangeNotifier currentVersionChangeNotifier,
-      StoreLifecycleHookExecutor storeLifecycleHookExecutor) {
+      StoreLifecycleHooksCache storeLifecycleHooksCache) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
 
@@ -83,7 +83,7 @@ public class PushMonitorDelegator implements PushMonitor {
         disabledPartitionStats,
         veniceWriterFactory,
         currentVersionChangeNotifier,
-        storeLifecycleHookExecutor);
+        storeLifecycleHooksCache);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();

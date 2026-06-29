@@ -43,7 +43,7 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
   private static final int VERSION = 1;
 
   private VeniceHelixAdmin admin;
-  private StoreLifecycleHookExecutor hookExecutor;
+  private StoreLifecycleHooksCache hookExecutor;
   private Map<String, StoreLifecycleHooks> hookCache;
 
   @BeforeMethod
@@ -97,7 +97,7 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
             ArgumentMatchers.any());
 
     hookCache = new ConcurrentHashMap<>();
-    hookExecutor = new StoreLifecycleHookExecutor(new VeniceProperties(new Properties()));
+    hookExecutor = new StoreLifecycleHooksCache(new VeniceProperties(new Properties()));
     injectHookCache(hookExecutor, hookCache);
     injectExecutor(admin, hookExecutor);
   }
@@ -283,10 +283,10 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     return hook;
   }
 
-  private static void injectHookCache(StoreLifecycleHookExecutor executor, Map<String, StoreLifecycleHooks> cache) {
+  private static void injectHookCache(StoreLifecycleHooksCache executor, Map<String, StoreLifecycleHooks> cache) {
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
       try {
-        Field field = StoreLifecycleHookExecutor.class.getDeclaredField("hooksCache");
+        Field field = StoreLifecycleHooksCache.class.getDeclaredField("hooksCache");
         field.setAccessible(true);
         field.set(executor, cache);
       } catch (NoSuchFieldException | IllegalAccessException e) {
@@ -296,10 +296,10 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     });
   }
 
-  private static void injectExecutor(VeniceHelixAdmin admin, StoreLifecycleHookExecutor executor) {
+  private static void injectExecutor(VeniceHelixAdmin admin, StoreLifecycleHooksCache executor) {
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
       try {
-        Field field = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHookExecutor");
+        Field field = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHooksCache");
         field.setAccessible(true);
         field.set(admin, executor);
       } catch (NoSuchFieldException | IllegalAccessException e) {
