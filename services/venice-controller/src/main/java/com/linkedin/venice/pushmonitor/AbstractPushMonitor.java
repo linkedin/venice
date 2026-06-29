@@ -17,6 +17,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -1252,8 +1253,16 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            storeLifecycleHookExecutor
+            StoreVersionLifecycleEventOutcome seqOutcome = storeLifecycleHookExecutor
                 .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
+            if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(seqOutcome)) {
+              LOGGER.warn(
+                  "postStoreVersionSwap hook returned {} for store {} v{} in region {} — swap already committed",
+                  seqOutcome,
+                  storeName,
+                  versionNumber,
+                  regionName);
+            }
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
@@ -1267,8 +1276,16 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            storeLifecycleHookExecutor
+            StoreVersionLifecycleEventOutcome normalOutcome = storeLifecycleHookExecutor
                 .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
+            if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(normalOutcome)) {
+              LOGGER.warn(
+                  "postStoreVersionSwap hook returned {} for store {} v{} in region {} — swap already committed",
+                  normalOutcome,
+                  storeName,
+                  versionNumber,
+                  regionName);
+            }
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "

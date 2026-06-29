@@ -18,7 +18,6 @@ import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -27,7 +26,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -45,6 +43,7 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
   private static final int VERSION = 1;
 
   private VeniceHelixAdmin admin;
+  private StoreLifecycleHookExecutor hookExecutor;
   private Map<String, StoreLifecycleHooks> hookCache;
 
   @BeforeMethod
@@ -52,7 +51,6 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     admin = mock(VeniceHelixAdmin.class);
     doReturn(REGION).when(admin).getRegionName();
 
-    doCallRealMethod().when(admin).getOrCreateHookInstance(ArgumentMatchers.any());
     doCallRealMethod().when(admin)
         .invokePreStoreVersionCreationHooks(
             ArgumentMatchers.anyString(),
@@ -98,21 +96,10 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
             ArgumentMatchers.anyString(),
             ArgumentMatchers.any());
 
-    hookCache = new VeniceConcurrentHashMap<>();
-    Set<String> failedHookClasses = ConcurrentHashMap.newKeySet();
-    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-      try {
-        Field cacheField = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHooksInstanceCache");
-        cacheField.setAccessible(true);
-        cacheField.set(admin, hookCache);
-        Field failedField = VeniceHelixAdmin.class.getDeclaredField("failedHookClasses");
-        failedField.setAccessible(true);
-        failedField.set(admin, failedHookClasses);
-      } catch (NoSuchFieldException | IllegalAccessException e) {
-        throw new RuntimeException(e);
-      }
-      return null;
-    });
+    hookCache = new ConcurrentHashMap<>();
+    hookExecutor = new StoreLifecycleHookExecutor(new VeniceProperties(new Properties()));
+    injectHookCache(hookExecutor, hookCache);
+    injectExecutor(admin, hookExecutor);
   }
 
   @DataProvider(name = "hookMethods")
@@ -214,7 +201,6 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
       HookInvoker invoke,
       Predicate<TrackingHooks> ignored,
       Consumer<TrackingHooks> ignored2) {
-    injectMultiClusterConfigs(); // ensure the only reason for null is the missing class, not NPE on reflection
     LifecycleHooksRecord badRecord = new LifecycleHooksRecordImpl("com.nonexistent.HookClass", Collections.emptyMap());
     invoke.accept(admin, Collections.singletonList(badRecord));
   }
@@ -231,8 +217,8 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     TrackingHooks hook = registerHook(new TrackingHooks());
     LifecycleHooksRecord record = new LifecycleHooksRecordImpl(TrackingHooks.class.getName(), Collections.emptyMap());
 
-    StoreLifecycleHooks first = admin.getOrCreateHookInstance(record);
-    StoreLifecycleHooks second = admin.getOrCreateHookInstance(record);
+    StoreLifecycleHooks first = hookExecutor.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
+    StoreLifecycleHooks second = hookExecutor.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
 
     assertNotNull(first);
     assertSame(first, second, "same instance should be returned for the same class name");
@@ -241,20 +227,16 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
 
   @Test
   public void testHookInstanceCreatedViaReflectionIfNotCached() {
-    LifecycleHooksRecord record = new LifecycleHooksRecordImpl(TrackingHooks.class.getName(), Collections.emptyMap());
-    injectMultiClusterConfigs();
-
-    StoreLifecycleHooks created = admin.getOrCreateHookInstance(record);
+    StoreLifecycleHooks created = hookExecutor.getOrInstantiateHook(TrackingHooks.class.getName());
     assertNotNull(created);
     assertTrue(created instanceof TrackingHooks);
   }
 
   @Test
   public void testHookInstanceReturnsNullForUnknownClass() {
-    LifecycleHooksRecord record = new LifecycleHooksRecordImpl("com.nonexistent.HookClass", Collections.emptyMap());
-    injectMultiClusterConfigs();
-
-    assertNull(admin.getOrCreateHookInstance(record), "should return null for unknown hook class");
+    assertNull(
+        hookExecutor.getOrInstantiateHook("com.nonexistent.HookClass"),
+        "should return null for unknown hook class");
   }
 
   @Test
@@ -301,16 +283,25 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     return hook;
   }
 
-  private void injectMultiClusterConfigs() {
-    VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(clusterConfig).when(multiClusterConfigs).getCommonConfig();
-    doReturn(new VeniceProperties(new Properties())).when(clusterConfig).getProps();
+  private static void injectHookCache(StoreLifecycleHookExecutor executor, Map<String, StoreLifecycleHooks> cache) {
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
       try {
-        Field field = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
+        Field field = StoreLifecycleHookExecutor.class.getDeclaredField("hooksCache");
         field.setAccessible(true);
-        field.set(admin, multiClusterConfigs);
+        field.set(executor, cache);
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        throw new RuntimeException(e);
+      }
+      return null;
+    });
+  }
+
+  private static void injectExecutor(VeniceHelixAdmin admin, StoreLifecycleHookExecutor executor) {
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      try {
+        Field field = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHookExecutor");
+        field.setAccessible(true);
+        field.set(admin, executor);
       } catch (NoSuchFieldException | IllegalAccessException e) {
         throw new RuntimeException(e);
       }

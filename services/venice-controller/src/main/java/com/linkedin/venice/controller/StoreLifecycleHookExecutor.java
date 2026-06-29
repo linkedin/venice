@@ -39,15 +39,12 @@ public class StoreLifecycleHookExecutor {
    * given fully-qualified class name. Returns {@code null} and logs a warning if the class
    * cannot be loaded or instantiated.
    *
-   * <p>Package-private so {@link DeferredVersionSwapService} can reuse the cache while keeping
-   * its own per-hook outcome control flow.
-   *
    * <p>Note: {@link ConcurrentHashMap} does not permit null values, so failed instantiations are
    * not cached. This means a bad class name will be retried on every call, but that is acceptable
    * since failures are expected to be rare and the log warning is still emitted.
    */
   @Nullable
-  StoreLifecycleHooks getOrInstantiateHook(String className) {
+  public StoreLifecycleHooks getOrInstantiateHook(String className) {
     StoreLifecycleHooks cached = hooksCache.get(className);
     if (cached != null) {
       return cached;
@@ -67,19 +64,21 @@ public class StoreLifecycleHookExecutor {
 
   /**
    * Invokes {@link StoreLifecycleHooks#postStoreVersionSwap} for every hook registered on
-   * {@code store}. Outcomes of WAIT / ABORT / ROLLBACK are logged and a warning is emitted,
-   * but do NOT cause a rollback — the version swap has already been committed by the caller.
+   * {@code store} and returns the worst outcome across all hooks
+   * (ABORT = ROLLBACK &gt; WAIT &gt; PROCEED).
    *
-   * <p>Any exception thrown by a hook is caught, logged, and skipped (consistent with the
-   * {@link StoreLifecycleHooks} contract that all hook exceptions are swallowed).
+   * <p>Any exception thrown by a hook is caught and logged; the hook is skipped and the
+   * accumulated outcome is unchanged (consistent with the {@link StoreLifecycleHooks} contract
+   * that all hook exceptions are swallowed).
    */
-  public void invokePostVersionSwapHooks(
+  public StoreVersionLifecycleEventOutcome invokePostVersionSwapHooks(
       String clusterName,
       Store store,
       int versionNumber,
       int previousVersion,
       String regionName,
       @Nullable Lazy<JobStatusQueryResponse> jobStatus) {
+    StoreVersionLifecycleEventOutcome worstOutcome = StoreVersionLifecycleEventOutcome.PROCEED;
     for (LifecycleHooksRecord record: store.getStoreLifecycleHooks()) {
       String className = record.getStoreLifecycleHooksClassName();
       StoreLifecycleHooks hook = getOrInstantiateHook(className);
@@ -97,22 +96,15 @@ public class StoreLifecycleHookExecutor {
             regionName,
             jobStatus,
             new VeniceProperties(props));
-        if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-          LOGGER.warn(
-              "postStoreVersionSwap hook {} returned {} for store {} v{} in region {} — "
-                  + "swap already committed, ignoring non-PROCEED outcome",
-              className,
-              outcome,
-              store.getName(),
-              versionNumber,
-              regionName);
-        } else {
+        if (StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
           LOGGER.debug(
               "postStoreVersionSwap hook {} returned PROCEED for store {} v{} in region {}",
               className,
               store.getName(),
               versionNumber,
               regionName);
+        } else if (isWorse(outcome, worstOutcome)) {
+          worstOutcome = outcome;
         }
       } catch (Exception e) {
         LOGGER.error(
@@ -123,6 +115,26 @@ public class StoreLifecycleHookExecutor {
             e.getMessage(),
             e);
       }
+    }
+    return worstOutcome;
+  }
+
+  private static boolean isWorse(
+      StoreVersionLifecycleEventOutcome candidate,
+      StoreVersionLifecycleEventOutcome current) {
+    // Priority: ABORT = ROLLBACK > WAIT > PROCEED
+    return severity(candidate) > severity(current);
+  }
+
+  private static int severity(StoreVersionLifecycleEventOutcome outcome) {
+    switch (outcome) {
+      case ABORT:
+      case ROLLBACK:
+        return 2;
+      case WAIT:
+        return 1;
+      default:
+        return 0;
     }
   }
 }

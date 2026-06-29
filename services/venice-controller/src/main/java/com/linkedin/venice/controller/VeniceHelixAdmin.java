@@ -444,8 +444,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
-  private final Map<String, StoreLifecycleHooks> storeLifecycleHooksInstanceCache = new VeniceConcurrentHashMap<>();
-  private final Set<String> failedHookClasses = ConcurrentHashMap.newKeySet();
   private final Optional<ExternalETLService> externalETLService;
   private final StoreLifecycleHookExecutor storeLifecycleHookExecutor;
 
@@ -5889,29 +5887,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  StoreLifecycleHooks getOrCreateHookInstance(LifecycleHooksRecord record) {
-    String className = record.getStoreLifecycleHooksClassName();
-    if (className == null || className.trim().isEmpty()) {
-      LOGGER.warn("Skipping lifecycle hook record with null or empty class name");
-      return null;
-    }
-    if (failedHookClasses.contains(className)) {
-      return null;
-    }
-    return storeLifecycleHooksInstanceCache.computeIfAbsent(className, cn -> {
-      try {
-        return ReflectUtils.callConstructor(
-            ReflectUtils.loadClass(cn),
-            new Class<?>[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getCommonConfig().getProps() });
-      } catch (Exception e) {
-        LOGGER.error("Failed to instantiate lifecycle hook class: {}", cn, e);
-        failedHookClasses.add(cn);
-        return null;
-      }
-    });
-  }
-
   void invokePreStoreDeletionHooks(String clusterName, String storeName, List<LifecycleHooksRecord> lifecycleHooks) {
     invokePreHooks(
         lifecycleHooks,
@@ -6028,7 +6003,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String hookName,
       BiConsumer<StoreLifecycleHooks, VeniceProperties> action) {
     for (LifecycleHooksRecord record: lifecycleHooks) {
-      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      StoreLifecycleHooks hook =
+          storeLifecycleHookExecutor.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
       if (hook == null) {
         continue;
       }
@@ -6046,7 +6022,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       BiFunction<StoreLifecycleHooks, VeniceProperties, T> action,
       BiConsumer<T, String> outcomeHandler) {
     for (LifecycleHooksRecord record: lifecycleHooks) {
-      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      StoreLifecycleHooks hook =
+          storeLifecycleHookExecutor.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
       if (hook == null) {
         continue;
       }

@@ -30,23 +30,24 @@ public class StoreLifecycleHookExecutorTest {
 
   @Test
   public void testInvokePostVersionSwapHooksNoHooks() {
-    // Store with no lifecycle hooks — should be a no-op
+    // Store with no lifecycle hooks — should return PROCEED
     when(store.getStoreLifecycleHooks()).thenReturn(Collections.emptyList());
-    // Should not throw
-    executor.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
+    StoreVersionLifecycleEventOutcome outcome =
+        executor.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
+    Assert.assertEquals(outcome, StoreVersionLifecycleEventOutcome.PROCEED);
   }
 
   @Test
   public void testInvokePostVersionSwapHooksLogsAndProceedsOnAbort() {
-    // Create a fake LifecycleHooksRecord pointing to a no-op hook
+    // Create a fake LifecycleHooksRecord pointing to a hook that returns ABORT
     LifecycleHooksRecord record = mock(LifecycleHooksRecord.class);
     when(record.getStoreLifecycleHooksClassName()).thenReturn(NoOpAbortHook.class.getName());
     when(record.getStoreLifecycleHooksParams()).thenReturn(new java.util.HashMap<>());
     when(store.getStoreLifecycleHooks()).thenReturn(Collections.singletonList(record));
 
-    // Should not throw even though the hook returns ABORT
-    executor.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
-    // Verify the hook was called (indirectly — we can check via static counter if needed)
+    StoreVersionLifecycleEventOutcome outcome =
+        executor.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
+    Assert.assertEquals(outcome, StoreVersionLifecycleEventOutcome.ABORT);
   }
 
   @Test
