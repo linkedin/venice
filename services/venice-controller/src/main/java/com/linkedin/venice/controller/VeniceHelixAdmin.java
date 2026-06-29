@@ -4998,33 +4998,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           futureVersion,
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
-      for (LifecycleHooksRecord record: store.getStoreLifecycleHooks()) {
-        if (record == null || record.getStoreLifecycleHooksClassName() == null) {
-          continue;
-        }
-        StoreLifecycleHooks hook =
-            storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
-        if (hook == null) {
-          continue;
-        }
-        StoreVersionLifecycleEventOutcome outcome = hook.postStoreVersionSwap(
-            clusterName,
-            store.getName(),
-            futureVersion,
-            previousVersion,
-            getRegionName(),
-            null,
-            buildHookProps(record));
-        if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-          LOGGER.warn(
-              "postStoreVersionSwap hook {} returned {} for store {} v{} in region {} — swap already committed",
-              record.getStoreLifecycleHooksClassName(),
-              outcome,
-              store.getName(),
-              futureVersion,
-              getRegionName());
-        }
-      }
+      storeLifecycleHooksCache
+          .invokePostVersionSwapHooks(clusterName, store, futureVersion, previousVersion, getRegionName(), null);
       return store;
     });
   }
@@ -5076,33 +5051,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ROLLED_BACK);
-      for (LifecycleHooksRecord record: store.getStoreLifecycleHooks()) {
-        if (record == null || record.getStoreLifecycleHooksClassName() == null) {
-          continue;
-        }
-        StoreLifecycleHooks hook =
-            storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
-        if (hook == null) {
-          continue;
-        }
-        StoreVersionLifecycleEventOutcome outcome = hook.postStoreVersionSwap(
-            clusterName,
-            store.getName(),
-            backupVersion,
-            previousVersion,
-            getRegionName(),
-            null,
-            buildHookProps(record));
-        if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-          LOGGER.warn(
-              "postStoreVersionSwap hook {} returned {} for store {} v{} in region {} — swap already committed",
-              record.getStoreLifecycleHooksClassName(),
-              outcome,
-              store.getName(),
-              backupVersion,
-              getRegionName());
-        }
-      }
+      storeLifecycleHooksCache
+          .invokePostVersionSwapHooks(clusterName, store, backupVersion, previousVersion, getRegionName(), null);
       return store;
     });
   }

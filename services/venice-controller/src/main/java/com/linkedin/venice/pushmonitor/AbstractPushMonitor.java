@@ -17,11 +17,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
-import com.linkedin.venice.hooks.StoreLifecycleHooks;
-import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -40,7 +37,6 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -1256,7 +1252,8 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            invokePostVersionSwapHooks(store, versionNumber, previousVersion);
+            storeLifecycleHooksCache
+                .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
@@ -1270,7 +1267,8 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-            invokePostVersionSwapHooks(store, versionNumber, previousVersion);
+            storeLifecycleHooksCache
+                .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "
@@ -1338,42 +1336,4 @@ public abstract class AbstractPushMonitor
     return isOfflinePushMonitorDaVinciPushStatusEnabled;
   }
 
-  private void invokePostVersionSwapHooks(Store store, int versionNumber, int previousVersion) {
-    List<LifecycleHooksRecord> hooks = store.getStoreLifecycleHooks();
-    if (hooks == null || hooks.isEmpty()) {
-      return;
-    }
-    for (LifecycleHooksRecord record: hooks) {
-      if (record == null || record.getStoreLifecycleHooksClassName() == null) {
-        continue;
-      }
-      StoreLifecycleHooks hook =
-          storeLifecycleHooksCache.getOrInstantiateHook(record.getStoreLifecycleHooksClassName());
-      if (hook == null) {
-        continue;
-      }
-      Properties props = new Properties();
-      Map<String, String> params = record.getStoreLifecycleHooksParams();
-      if (params != null) {
-        props.putAll(params);
-      }
-      StoreVersionLifecycleEventOutcome outcome = hook.postStoreVersionSwap(
-          clusterName,
-          store.getName(),
-          versionNumber,
-          previousVersion,
-          regionName,
-          null,
-          new VeniceProperties(props));
-      if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-        LOGGER.warn(
-            "postStoreVersionSwap hook {} returned {} for store {} v{} in region {} — swap already committed",
-            record.getStoreLifecycleHooksClassName(),
-            outcome,
-            store.getName(),
-            versionNumber,
-            regionName);
-      }
-    }
-  }
 }

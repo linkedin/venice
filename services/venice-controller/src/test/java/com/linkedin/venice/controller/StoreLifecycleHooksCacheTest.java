@@ -1,8 +1,17 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -43,6 +52,51 @@ public class StoreLifecycleHooksCacheTest {
     // Second call: should return null from failedClasses cache without retrying
     StoreLifecycleHooks result2 = storeLifecycleHooksCache.getOrInstantiateHook(badClassName);
     Assert.assertNull(result2, "Should return null from failure cache without retry");
+  }
+
+  @Test
+  public void testInvokePostVersionSwapHooksEmptyListReturnsProceed() {
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getStoreLifecycleHooks()).thenReturn(Collections.emptyList());
+
+    StoreVersionLifecycleEventOutcome outcome =
+        storeLifecycleHooksCache.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
+
+    Assert.assertEquals(outcome, StoreVersionLifecycleEventOutcome.PROCEED);
+  }
+
+  @Test
+  public void testInvokePostVersionSwapHooksReturnsWorstOutcome() {
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getStoreLifecycleHooks()).thenReturn(buildRecords(NoOpProceedHook.class, NoOpAbortHook.class));
+
+    StoreVersionLifecycleEventOutcome outcome =
+        storeLifecycleHooksCache.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
+
+    Assert.assertEquals(outcome, StoreVersionLifecycleEventOutcome.ABORT, "ABORT should dominate PROCEED");
+  }
+
+  @Test
+  public void testInvokePostVersionSwapHooksActuallyInvokesHook() {
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getStoreLifecycleHooks()).thenReturn(buildRecords(NoOpAbortHook.class));
+
+    // If the hook is invoked we get ABORT; if no-op we get PROCEED.
+    StoreVersionLifecycleEventOutcome outcome =
+        storeLifecycleHooksCache.invokePostVersionSwapHooks("cluster1", store, 2, 1, "prod-lor1", null);
+
+    Assert.assertEquals(outcome, StoreVersionLifecycleEventOutcome.ABORT, "Hook must be invoked");
+  }
+
+  private static List<LifecycleHooksRecord> buildRecords(Class<?>... hookClasses) {
+    List<LifecycleHooksRecord> records = new ArrayList<>();
+    for (Class<?> hookClass: hookClasses) {
+      records.add(new LifecycleHooksRecordImpl(hookClass.getName(), Collections.emptyMap()));
+    }
+    return records;
   }
 
   /** Minimal hook that always returns PROCEED. Must have a VeniceProperties constructor. */

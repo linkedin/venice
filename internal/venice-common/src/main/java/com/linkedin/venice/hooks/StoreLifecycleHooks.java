@@ -369,7 +369,9 @@ public abstract class StoreLifecycleHooks {
       String regionName,
       Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
-    return StoreVersionLifecycleEventOutcome.PROCEED;
+    // Delegate to the deprecated 6-arg override for backward compatibility: subclasses that only
+    // override the 6-arg method will still be invoked when callers use the 7-arg signature.
+    return postStoreVersionSwap(clusterName, storeName, versionNumber, regionName, jobStatus, storeHooksConfigs);
   }
 
   /**
@@ -384,14 +386,7 @@ public abstract class StoreLifecycleHooks {
       String regionName,
       Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
-    return postStoreVersionSwap(
-        clusterName,
-        storeName,
-        versionNumber,
-        Store.NON_EXISTING_VERSION,
-        regionName,
-        jobStatus,
-        storeHooksConfigs);
+    return StoreVersionLifecycleEventOutcome.PROCEED;
   }
 
   /**
