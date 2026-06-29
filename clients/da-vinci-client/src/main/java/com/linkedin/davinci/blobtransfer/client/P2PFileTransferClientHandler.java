@@ -9,6 +9,7 @@ import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
@@ -105,6 +106,17 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           throw new VeniceBlobTransferFileNotFoundException(
               "Requested files from remote peer are not found. Response: " + response.status());
         } else if (response.status().equals(HttpResponseStatus.PRECONDITION_FAILED)) {
+          // The peer rejected the request on a schema-version mismatch. The peer logs its own
+          // versions; log this host's compiled-in versions too so an operator can read both
+          // sides from the two host logs and tell which side / which protocol is ahead.
+          LOGGER.warn(
+              "Peer {} rejected blob transfer for replica {} due to schema-version mismatch. "
+                  + "This host's local schema versions: PartitionState={}, StoreVersionState={}. "
+                  + "See the peer host's log for its versions.",
+              ctx.channel().remoteAddress(),
+              replicaId,
+              AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion(),
+              AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
           throw new VeniceBlobTransferIncompatibleSchemaException(
               String.valueOf(ctx.channel().remoteAddress()),
               "Peer " + ctx.channel().remoteAddress() + " rejected blob transfer due to schema-version mismatch.");
