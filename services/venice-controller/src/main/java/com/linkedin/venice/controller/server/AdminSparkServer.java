@@ -297,7 +297,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         LOGGER.info(audit.successString(latency));
         stats.recordSuccessfulRequest(request, response, latency);
       } else {
-        LOGGER.info(audit.failureString(response.body(), latency));
+        LOGGER.info(audit.failureString(response.status(), response.body(), latency));
         stats.recordFailedRequest(request, response, latency);
       }
       LogContext.clearLogContext();

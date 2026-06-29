@@ -47,18 +47,22 @@ public class AuditInfo {
 
   @Override
   public String toString() {
-    return formatAuditMessage("[AUDIT]", null, null);
+    return formatAuditMessage("[AUDIT]", null, null, null);
   }
 
   public String successString(long latency) {
-    return formatAuditMessage("[AUDIT]", "SUCCESS", latency);
+    return formatAuditMessage("[AUDIT]", "SUCCESS", null, latency);
   }
 
   public String failureString(String errMsg, long latency) {
-    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""), latency);
+    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""), null, latency);
   }
 
-  private String formatAuditMessage(String prefix, String status, Long latency) {
+  public String failureString(int httpStatusCode, String errMsg, long latency) {
+    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""), httpStatusCode, latency);
+  }
+
+  private String formatAuditMessage(String prefix, String status, Integer httpStatusCode, Long latency) {
     StringJoiner joiner = new StringJoiner(" ").add(prefix);
 
     if (status != null) {
@@ -70,6 +74,10 @@ public class AuditInfo {
         .add(params.toString())
         .add("ClientIP: " + clientIp)
         .add("Principal: " + servicePrincipal);
+
+    if (httpStatusCode != null) {
+      joiner.add("HttpStatus: " + httpStatusCode);
+    }
 
     if (latency != null) {
       joiner.add("Latency: " + latency + " ms");

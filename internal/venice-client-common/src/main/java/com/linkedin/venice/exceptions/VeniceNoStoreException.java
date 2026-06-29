@@ -1,8 +1,5 @@
 package com.linkedin.venice.exceptions;
 
-import org.apache.http.HttpStatus;
-
-
 /**
  * Thrown when an operation should return information about a store, but the store does not exist
  */
@@ -47,11 +44,6 @@ public class VeniceNoStoreException extends VeniceException {
 
   public String getClusterName() {
     return clusterName;
-  }
-
-  @Override
-  public int getHttpStatusCode() {
-    return HttpStatus.SC_NOT_FOUND;
   }
 
   private static String getErrorMessage(String storeName, String clusterName, String additionalMessage) {
