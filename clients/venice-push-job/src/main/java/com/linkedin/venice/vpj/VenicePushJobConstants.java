@@ -516,6 +516,8 @@ public final class VenicePushJobConstants {
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE} — buffer threshold for the dual-write wrapper</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES} — bounded retry count for {@code batchPut}</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS} — sleep between retry attempts</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND} — per-region global record-rate cap</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND} — per-region global byte-rate cap</li>
    * </ul>
    * Any other key under this prefix is opaque pass-through and is the responsibility of the impl to
    * interpret. Operators should not assume new OSS-owned keys will appear here without a release note.
@@ -557,6 +559,29 @@ public final class VenicePushJobConstants {
   public static final String PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS =
       "push.job.external.storage.batchput.retry.backoff.ms";
   public static final long DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS = 1000L;
+
+  /**
+   * Global write quota in records per second for the external-storage dual-write path, applied <em>per target
+   * region</em>. Any value {@code <= 0} disables record-rate throttling ({@code -1} is the recommended
+   * "unlimited" sentinel). Because partition-writer tasks run in separate executors with no shared throttler,
+   * the budget is enforced by static even split: each task limits its external writes to
+   * {@code value / partition.count} records/sec, so the aggregate across all tasks writing to one region stays
+   * at or below {@code value}. The split requires {@code value >= partition.count} (else a task would get
+   * 0/sec); a smaller value fails the task fast. Independent of
+   * {@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND} — either dimension may be set alone.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND =
+      "push.job.external.storage.write.quota.records.per.region.per.second";
+
+  /**
+   * Global write quota in bytes per second for the external-storage dual-write path, applied <em>per target
+   * region</em>. Bytes counted per record are the external key bytes plus the RocksDB-formatted value bytes
+   * (4-byte schema-id prefix + value payload). Any value {@code <= 0} disables byte-rate throttling
+   * ({@code -1} = unlimited). Split evenly across {@code partition.count} tasks exactly like
+   * {@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND}.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND =
+      "push.job.external.storage.write.quota.bytes.per.region.per.second";
 
   /**
    * Comma-separated list of region names whose store-level {@link com.linkedin.venice.meta.StorageMode} is

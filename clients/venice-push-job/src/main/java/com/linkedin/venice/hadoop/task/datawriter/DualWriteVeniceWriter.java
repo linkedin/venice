@@ -55,6 +55,13 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
 
   private final AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter;
   private final List<ExternalStorageWriter> externalWriters;
+  /**
+   * Per-region rate limiters, index-aligned with {@link #externalWriters}. {@code null} when throttling is off
+   * for the whole task; individual entries may be {@code null} to leave a single region unthrottled.
+   */
+  private final List<ExternalStorageWriteThrottler> throttlers;
+  /** True iff at least one region enforces the byte dimension; gates the per-batch byte sum in {@link #drainBuffer}. */
+  private final boolean anyByteThrottling;
   private final int batchSize;
   private final int batchPutRetries;
   private final long batchPutRetryBackoffMs;
@@ -97,9 +104,29 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
       int batchSize,
       int batchPutRetries,
       long batchPutRetryBackoffMs) {
+    this(topicName, kafkaWriter, externalWriters, null, batchSize, batchPutRetries, batchPutRetryBackoffMs);
+  }
+
+  /**
+   * @param throttlers per-region rate limiters, index-aligned with {@code externalWriters}. {@code null}
+   *        disables throttling for every region; otherwise it must have the same size as
+   *        {@code externalWriters} and individual {@code null} entries leave that region unthrottled.
+   */
+  public DualWriteVeniceWriter(
+      String topicName,
+      AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter,
+      List<ExternalStorageWriter> externalWriters,
+      List<ExternalStorageWriteThrottler> throttlers,
+      int batchSize,
+      int batchPutRetries,
+      long batchPutRetryBackoffMs) {
     super(topicName);
     if (externalWriters == null || externalWriters.isEmpty()) {
       throw new IllegalArgumentException("externalWriters must be non-empty");
+    }
+    if (throttlers != null && throttlers.size() != externalWriters.size()) {
+      throw new IllegalArgumentException(
+          "throttlers size " + throttlers.size() + " must match externalWriters size " + externalWriters.size());
     }
     if (batchSize < 1) {
       throw new IllegalArgumentException("batchSize must be >= 1, got " + batchSize);
@@ -112,6 +139,8 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
     }
     this.kafkaWriter = kafkaWriter;
     this.externalWriters = new ArrayList<>(externalWriters);
+    this.throttlers = throttlers == null ? null : new ArrayList<>(throttlers);
+    this.anyByteThrottling = anyByteThrottling(this.throttlers);
     this.batchSize = batchSize;
     this.batchPutRetries = batchPutRetries;
     this.batchPutRetryBackoffMs = batchPutRetryBackoffMs;
@@ -297,14 +326,28 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
     for (BufferedPut buffered: putBuffer) {
       externalRecords.add(new ExternalStorageRecord(buffered.key, toRocksDbFormattedValue(buffered)));
     }
+    int recordCount = externalRecords.size();
+    // Only pay the O(batch) byte sum when at least one region actually enforces the byte dimension.
+    long byteCount = anyByteThrottling ? totalBytes(externalRecords) : 0L;
     CompletableFuture<PubSubProduceResult> last = null;
     try {
       // Fan out the same batch to every regional external sink before any Kafka produce. A failure on any
       // region (after its bounded retry) propagates before any produce and fails the push. Earlier regions in
       // the fan-out may already hold the batch when a later one fails; that partial state is reconciled by the
       // idempotent whole-partition retry (see the class-level contract), not prevented here.
-      for (ExternalStorageWriter externalWriter: externalWriters) {
-        batchPutWithRetry(externalWriter, externalRecords);
+      //
+      // Each region is rate limited (when a throttler is configured) immediately before its own write: the
+      // blocking limiter waits until the per-region budget admits the batch, enforcing independent per-region
+      // budgets without reordering the external-first writes. (If a limiter threw instead of blocking it would
+      // propagate before the write; the GuavaRateLimiter used here blocks rather than rejecting.)
+      for (int i = 0; i < externalWriters.size(); i++) {
+        if (throttlers != null) {
+          ExternalStorageWriteThrottler throttler = throttlers.get(i);
+          if (throttler != null) {
+            throttler.throttle(recordCount, byteCount);
+          }
+        }
+        batchPutWithRetry(externalWriters.get(i), externalRecords);
       }
       for (BufferedPut buffered: putBuffer) {
         CompletableFuture<PubSubProduceResult> kafkaFuture = invokeKafkaPut(buffered);
@@ -390,6 +433,27 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
     ByteUtils.writeInt(formatted, bp.valueSchemaId, 0);
     System.arraycopy(bp.value, 0, formatted, ExternalStorageRecord.SCHEMA_ID_PREFIX_LENGTH, bp.value.length);
     return formatted;
+  }
+
+  /** Total on-the-wire bytes of a batch: key bytes plus the RocksDB-formatted value bytes for every record. */
+  private static long totalBytes(List<ExternalStorageRecord> records) {
+    long total = 0;
+    for (ExternalStorageRecord record: records) {
+      total += record.getKey().length + record.getValue().length;
+    }
+    return total;
+  }
+
+  private static boolean anyByteThrottling(List<ExternalStorageWriteThrottler> throttlers) {
+    if (throttlers == null) {
+      return false;
+    }
+    for (ExternalStorageWriteThrottler throttler: throttlers) {
+      if (throttler != null && throttler.enforcesByteRate()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private CompletableFuture<PubSubProduceResult> invokeKafkaPut(BufferedPut bp) {

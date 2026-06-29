@@ -642,19 +642,32 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         externalWriters
             .add(ExternalStorageWriteUtils.loadAndConfigure(writerClassName, props, topicName, partitionId, region));
       }
+      // Optional per-region rate limiting. The configured global record/byte rate is the budget for one
+      // region; it is split evenly across this region's partitionCount partition-writer tasks, so each task
+      // (including this one) gets its own throttler sized to globalRate/partitionCount. Separate instances per
+      // region keep each region at its full per-region budget rather than sharing one bucket. The quota source
+      // sits behind ExternalStorageWriteQuotaProvider so it can later derive from something other than config.
+      ExternalStorageWriteQuotaProvider quota = new ConfigBackedExternalStorageWriteQuotaProvider(props);
+      long externalRecordRate = quota.getRecordRatePerSecond();
+      long externalByteRate = quota.getByteRatePerSecond();
+      List<ExternalStorageWriteThrottler> throttlers =
+          buildExternalStorageThrottlers(externalRecordRate, externalByteRate, dualWriteRegions.size());
       LOGGER.info(
           "Dual-write to external storage enabled for replica {} via impl {} for regions {} "
-              + "(batchSize={}, batchPutRetries={}, batchPutRetryBackoffMs={})",
+              + "(batchSize={}, batchPutRetries={}, batchPutRetryBackoffMs={}, recordThrottle={}, byteThrottle={})",
           Utils.getReplicaId(topicName, partitionId),
           writerClassName,
           dualWriteRegions,
           batchSize,
           batchPutRetries,
-          batchPutRetryBackoffMs);
+          batchPutRetryBackoffMs,
+          describeThrottle(externalRecordRate, "records/sec"),
+          describeThrottle(externalByteRate, "bytes/sec"));
       return new DualWriteVeniceWriter(
           topicName,
           baseWriter,
           externalWriters,
+          throttlers,
           batchSize,
           batchPutRetries,
           batchPutRetryBackoffMs);
@@ -673,6 +686,33 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       }
       throw t;
     }
+  }
+
+  /**
+   * Build the per-region throttler list for the dual-write fan-out, or {@code null} when neither a record nor
+   * a byte quota is configured (throttling off). Each region gets an independent throttler instance so the
+   * per-region budgets are enforced separately; the configured global rate is split evenly across the
+   * {@link #getPartitionCount()} partition-writer tasks.
+   */
+  @VisibleForTesting
+  List<ExternalStorageWriteThrottler> buildExternalStorageThrottlers(
+      long globalRecordRate,
+      long globalByteRate,
+      int regionCount) {
+    List<ExternalStorageWriteThrottler> throttlers = new ArrayList<>(regionCount);
+    boolean anyEnabled = false;
+    for (int i = 0; i < regionCount; i++) {
+      ExternalStorageWriteThrottler throttler =
+          ExternalStorageWriteThrottler.create(globalRecordRate, globalByteRate, getPartitionCount());
+      throttlers.add(throttler);
+      anyEnabled |= throttler != null;
+    }
+    return anyEnabled ? throttlers : null;
+  }
+
+  /** Render one throttle dimension for logs: {@code "off"} when disabled ({@code <= 0}), else its per-region rate. */
+  private static String describeThrottle(long globalRatePerSecond, String unit) {
+    return globalRatePerSecond <= 0 ? "off" : globalRatePerSecond + " " + unit + " per region";
   }
 
   /**
