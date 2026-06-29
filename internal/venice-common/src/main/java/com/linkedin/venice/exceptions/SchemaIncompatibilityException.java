@@ -1,7 +1,6 @@
 package com.linkedin.venice.exceptions;
 
 import com.linkedin.venice.schema.SchemaEntry;
-import org.apache.http.HttpStatus;
 
 
 /**
@@ -14,10 +13,5 @@ public class SchemaIncompatibilityException extends VeniceException {
         "New schema is not fully compatible with the previous schema.\nOld schema: " + sourceSchema.toString(true)
             + "\nNew schema: " + targetSchema.toString(true));
     super.errorType = ErrorType.INVALID_SCHEMA;
-  }
-
-  @Override
-  public int getHttpStatusCode() {
-    return HttpStatus.SC_BAD_REQUEST;
   }
 }
