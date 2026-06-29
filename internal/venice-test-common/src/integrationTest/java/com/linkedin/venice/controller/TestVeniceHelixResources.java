@@ -47,6 +47,10 @@ public class TestVeniceHelixResources {
   }
 
   private HelixVeniceClusterResources getVeniceHelixResources(String cluster) {
+    return getVeniceHelixResources(cluster, mock(VeniceControllerClusterConfig.class));
+  }
+
+  private HelixVeniceClusterResources getVeniceHelixResources(String cluster, VeniceControllerClusterConfig config) {
     ZkClient zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
     ZKHelixManager controller =
         new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zkServer.getAddress());
@@ -75,7 +79,7 @@ public class TestVeniceHelixResources {
         zkClient,
         new HelixAdapterSerializer(),
         new SafeHelixManager(controller),
-        mock(VeniceControllerClusterConfig.class),
+        config,
         veniceHelixAdmin,
         new MetricsRepository(),
         mock(RealTimeTopicSwitcher.class),
@@ -120,6 +124,42 @@ public class TestVeniceHelixResources {
     Thread.sleep(300); // Let it run a few times
     resources.stopDeadStoreStatsPreFetchTask();
     Assert.assertTrue(true, "Dead store stats task started and stopped cleanly");
+  }
+
+  @Test
+  public void testErrorPartitionResetTaskNotInitializedInParentController() {
+    // Even when the auto reset limit is positive, the error partition reset task must not be initialized in the
+    // parent controller.
+    VeniceControllerClusterConfig parentConfig = mock(VeniceControllerClusterConfig.class);
+    when(parentConfig.isParent()).thenReturn(true);
+    when(parentConfig.getErrorPartitionAutoResetLimit()).thenReturn(1);
+    HelixVeniceClusterResources parentResources = getVeniceHelixResources("test-parent-error-partition", parentConfig);
+    Assert.assertNull(
+        parentResources.getErrorPartitionResetTask(),
+        "Error partition reset task should not be initialized in the parent controller.");
+  }
+
+  @Test
+  public void testErrorPartitionResetTaskInitializedInChildControllerWhenLimitIsPositive() {
+    VeniceControllerClusterConfig childConfig = mock(VeniceControllerClusterConfig.class);
+    when(childConfig.isParent()).thenReturn(false);
+    when(childConfig.getErrorPartitionAutoResetLimit()).thenReturn(1);
+    HelixVeniceClusterResources childResources = getVeniceHelixResources("test-child-error-partition", childConfig);
+    Assert.assertNotNull(
+        childResources.getErrorPartitionResetTask(),
+        "Error partition reset task should be initialized in the child controller when the limit is positive.");
+  }
+
+  @Test
+  public void testErrorPartitionResetTaskNotInitializedInChildControllerWhenLimitIsZero() {
+    VeniceControllerClusterConfig childConfig = mock(VeniceControllerClusterConfig.class);
+    when(childConfig.isParent()).thenReturn(false);
+    when(childConfig.getErrorPartitionAutoResetLimit()).thenReturn(0);
+    HelixVeniceClusterResources childResources =
+        getVeniceHelixResources("test-child-error-partition-disabled", childConfig);
+    Assert.assertNull(
+        childResources.getErrorPartitionResetTask(),
+        "Error partition reset task should not be initialized when the limit is zero.");
   }
 
   @Test

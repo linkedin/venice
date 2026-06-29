@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
@@ -238,7 +239,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
         pushMonitor);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
     this.accessController = accessController;
-    if (config.getErrorPartitionAutoResetLimit() > 0) {
+    // Error partition reset is a child-controller-only feature; do not initialize it in the parent controller
+    // regardless of the configured limit.
+    if (!config.isParent() && config.getErrorPartitionAutoResetLimit() > 0) {
       errorPartitionResetTask = new ErrorPartitionResetTask(
           clusterName,
           helixAdminClient,
@@ -382,6 +385,11 @@ public class HelixVeniceClusterResources implements VeniceResource {
         Thread.currentThread().interrupt();
       }
     }
+  }
+
+  @VisibleForTesting
+  ErrorPartitionResetTask getErrorPartitionResetTask() {
+    return errorPartitionResetTask;
   }
 
   /**
