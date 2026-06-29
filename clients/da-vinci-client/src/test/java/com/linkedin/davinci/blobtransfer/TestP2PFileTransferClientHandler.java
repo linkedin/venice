@@ -14,6 +14,7 @@ import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -538,6 +539,34 @@ public class TestP2PFileTransferClientHandler {
               .contains("Channel idle before completing transfer, might due to server unexpected abrupt termination."));
       Assert.assertTrue(e.getCause().getMessage().contains("test_store_v1-0"));
       Assert.assertTrue(e.getCause().getMessage().contains("channel active:"));
+    }
+  }
+
+  /**
+   * Server pre-empted the file transfer with a 412 PRECONDITION_FAILED (the
+   * request-side schema-version check fired before any file work). Client must
+   * fail the transfer future with the typed exception.
+   */
+  @Test
+  public void testServerSchemaMismatchRejectionThrowsTypedException() {
+    String body = "Blob transfer schema version mismatch (synthetic for test)";
+    FullHttpResponse rejection = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.PRECONDITION_FAILED,
+        Unpooled.copiedBuffer(body, CharsetUtil.UTF_8));
+    rejection.headers().set(HttpHeaderNames.CONTENT_LENGTH, body.getBytes(CharsetUtil.UTF_8).length);
+
+    ch.writeInbound(rejection);
+
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(
+          e.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException,
+          "Expected VeniceBlobTransferIncompatibleSchemaException, got: " + e.getCause());
+      VeniceBlobTransferIncompatibleSchemaException ex = (VeniceBlobTransferIncompatibleSchemaException) e.getCause();
+      Assert.assertNotNull(ex.getPeerHost());
     }
   }
 

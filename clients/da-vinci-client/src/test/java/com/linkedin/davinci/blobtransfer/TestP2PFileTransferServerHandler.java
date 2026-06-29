@@ -1,7 +1,9 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.response.VeniceReadResponseStatus.TOO_MANY_REQUESTS;
@@ -396,6 +398,126 @@ public class TestP2PFileTransferServerHandler {
     // make the ch inactive
     ch.pipeline().fireUserEventTriggered(IdleStateEvent.ALL_IDLE_STATE_EVENT);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
+  }
+
+  /**
+   * Server rejects a request whose advertised PartitionState/StoreVersionState
+   * schema versions don't match the local binary's, with a 412 PRECONDITION_FAILED,
+   * BEFORE any file work begins. Without this, the client would receive every
+   * file byte and only discover the mismatch at the metadata stage.
+   */
+  @Test
+  public void testRejectRequestWithMismatchedSchemaVersion() throws IOException {
+    // The snapshot dir is set up so that if the schema check were bypassed, file
+    // responses would be produced; assert they are NOT produced here.
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Files.write(snapshotDir.resolve("file1").toAbsolutePath(), "hello".getBytes());
+
+    int incompatibleVersion = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion() + 100;
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    request.headers().set(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION, incompatibleVersion);
+    request.headers()
+        .set(
+            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+
+    ch.writeInbound(request);
+
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof FullHttpResponse);
+    FullHttpResponse rejection = (FullHttpResponse) response;
+    Assert.assertEquals(rejection.status(), HttpResponseStatus.PRECONDITION_FAILED);
+    // No further outbound messages — no file response was produced.
+    Assert.assertNull(ch.readOutbound());
+  }
+
+  /**
+   * Rolling-deploy contract (NEW requester → NEW sender, matching versions):
+   * a request that advertises schema-version headers equal to the server's
+   * local versions must drive a full transfer (file → metadata → STATUS),
+   * with the schema-mismatch marker absent on every response.
+   */
+  @Test
+  public void testRequestWithMatchingSchemaVersionHeadersCompletesTransfer() throws IOException {
+    StorageEngine localStorageEngine = Mockito.mock(StorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Files.write(snapshotDir.resolve("file1").toAbsolutePath(), "hello".getBytes());
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
+
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    request.headers()
+        .set(
+            BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+    request.headers()
+        .set(
+            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+
+    ch.writeInbound(request);
+
+    // File response
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    DefaultHttpResponse fileResponse = (DefaultHttpResponse) response;
+    Assert.assertEquals(fileResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
+    Assert.assertNotEquals(fileResponse.status(), HttpResponseStatus.PRECONDITION_FAILED);
+    // File chunk
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof HttpChunkedInput);
+
+    // Metadata response — request matched, so status is OK (not the mismatch status).
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof FullHttpResponse);
+    FullHttpResponse metadataResponse = (FullHttpResponse) response;
+    Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
+    Assert.assertEquals(metadataResponse.status(), HttpResponseStatus.OK);
+
+    // STATUS response
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    Assert.assertEquals(((DefaultHttpResponse) response).headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
+
+    ch.pipeline().fireUserEventTriggered(IdleStateEvent.ALL_IDLE_STATE_EVENT);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
+  }
+
+  /**
+   * Backward compatibility: a request that does NOT carry the schema-version
+   * headers (peer is on an older binary) must not be rejected — the server should
+   * fall through to the existing flow.
+   */
+  @Test
+  public void testRequestWithoutSchemaVersionHeadersIsNotRejected() throws IOException {
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    // Intentionally NOT setting BLOB_TRANSFER_*_SCHEMA_VERSION headers.
+
+    ch.writeInbound(request);
+
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof FullHttpResponse);
+    // Falls through to the existing not-found path because no real metadata service is wired.
+    // The key assertion is that the response is NOT a schema-mismatch rejection.
+    Assert.assertNotEquals(((FullHttpResponse) response).status(), HttpResponseStatus.PRECONDITION_FAILED);
   }
 
   /**

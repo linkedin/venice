@@ -13,7 +13,9 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.SslUtils;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.ssl.SslHandler;
 import java.io.File;
@@ -32,6 +34,18 @@ public class BlobTransferUtils {
   public static final String BLOB_TRANSFER_STATUS = "X-Blob-Transfer-Status";
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
+  /**
+   * Protocol version of the {@code PartitionState} schema the requester is compiled
+   * against. Set by the client on the blob-transfer request so the server can fail
+   * fast with a 412 PRECONDITION_FAILED before any file work begins.
+   */
+  public static final String BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION =
+      "X-Blob-Transfer-Partition-State-Schema-Version";
+  /** Same purpose as {@link #BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION} but for {@code StoreVersionState}. */
+  public static final String BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION =
+      "X-Blob-Transfer-Store-Version-State-Schema-Version";
+  /** Sentinel returned by {@link #parseProtocolVersionHeader} when the header is missing or unparseable. */
+  private static final int VERSION_UNKNOWN = -1;
 
   public enum BlobTransferType {
     FILE, METADATA
@@ -87,6 +101,83 @@ public class BlobTransferUtils {
       return false;
     }
     return metadataHeader.equals(BlobTransferUtils.BlobTransferType.METADATA.name());
+  }
+
+  /**
+   * Compare the schema-version headers on a P2P blob-transfer GET request against the
+   * local binary's compiled-in {@code currentProtocolVersion}. Used by the server right
+   * next to the table-format check so a schema mismatch is rejected with a 412
+   * PRECONDITION_FAILED before any file work begins — otherwise the client would pay
+   * for the entire file transfer and only discover the mismatch at the metadata stage.
+   *
+   * <p>An exact-match policy is used (rather than e.g. "peer &lt;= local"). Blob transfer
+   * is the fast path; if the binaries on the two ends are not in lock-step we want to
+   * step aside and let Kafka bootstrap take over rather than rely on cross-version Avro
+   * promotion of the partition metadata. Skew between peers is limited to rolling-deploy
+   * windows, so the cost of being strict is bounded.
+   *
+   * <p>Behaviour for the absent / malformed cases is intentionally permissive so a
+   * server-side rollout of the new headers cannot break peers that haven't been upgraded
+   * yet, and so a header parsing bug cannot reject a request:
+   * <ul>
+   *   <li>Both headers absent — pass through (peer is on an older binary).</li>
+   *   <li>Header value non-numeric or out of byte range — pass through; the existing
+   *       deserialization-time exception remains as the safety net for the truly
+   *       incompatible case (no regression vs. today).</li>
+   * </ul>
+   *
+   * <p>Returns a diagnostic string suitable for the response body when the request is
+   * incompatible, or {@code null} when it is compatible.
+   */
+  public static String compareRequestedSchemaVersionsAgainstLocal(HttpRequest request) {
+    String psHeader = request.headers().get(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);
+    String svsHeader = request.headers().get(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION);
+    if (psHeader == null && svsHeader == null) {
+      return null;
+    }
+
+    int peerPs = parseProtocolVersionHeader(psHeader, BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);
+    int peerSvs = parseProtocolVersionHeader(svsHeader, BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION);
+
+    int localPs = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion();
+    int localSvs = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion();
+
+    boolean psMismatch = peerPs != VERSION_UNKNOWN && peerPs != localPs;
+    boolean svsMismatch = peerSvs != VERSION_UNKNOWN && peerSvs != localSvs;
+
+    if (psMismatch || svsMismatch) {
+      return "Blob transfer schema version mismatch: requester PartitionState=" + renderVersion(peerPs)
+          + ", StoreVersionState=" + renderVersion(peerSvs) + "; local PartitionState=" + localPs
+          + ", StoreVersionState=" + localSvs;
+    }
+    return null;
+  }
+
+  // The header value is peer-controlled, so this can be hit on every request/response if a
+  // misbehaving peer keeps sending bad headers. Log at DEBUG to avoid log spam — when this
+  // returns VERSION_UNKNOWN the caller treats it as pass-through, and a real version mismatch
+  // gets logged at WARN by the caller with full peer-host context. Malformed values that slip
+  // through are caught by the existing deserialization-time exception.
+  private static int parseProtocolVersionHeader(String value, String headerName) {
+    if (value == null) {
+      return VERSION_UNKNOWN;
+    }
+    try {
+      int parsed = Integer.parseInt(value.trim());
+      // Protocol versions are encoded into a single byte on the wire (see InternalAvroSpecificSerializer).
+      if (parsed < 0 || parsed > Byte.MAX_VALUE) {
+        LOGGER.debug("Out-of-range value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
+        return VERSION_UNKNOWN;
+      }
+      return parsed;
+    } catch (NumberFormatException e) {
+      LOGGER.debug("Malformed value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
+      return VERSION_UNKNOWN;
+    }
+  }
+
+  private static String renderVersion(int v) {
+    return v == VERSION_UNKNOWN ? "<unknown>" : Integer.toString(v);
   }
 
   /**

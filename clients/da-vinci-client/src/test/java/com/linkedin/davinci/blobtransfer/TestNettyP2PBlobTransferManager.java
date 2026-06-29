@@ -25,12 +25,14 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
@@ -57,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -691,5 +694,47 @@ public class TestNettyP2PBlobTransferManager {
         .put(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, expectOffsetRecord);
     Mockito.verify(storageMetadataService, Mockito.never())
         .computeStoreVersionState(Mockito.anyString(), Mockito.any());
+  }
+
+  /**
+   * On schema-version mismatch, the server rejects with 412 before any file work, so the partition
+   * directory must NOT be wiped — that would clobber whatever the caller already had on disk for no
+   * reason. Contrast with a generic peer failure, which still triggers the cleanup.
+   */
+  @Test
+  public void testSchemaMismatchFromPeerSkipsPartitionDirCleanup() throws IOException {
+    String kafkaTopic = Version.composeKafkaTopic(TEST_STORE, TEST_VERSION);
+    Path partitionDir =
+        Paths.get(RocksDBUtils.composePartitionDbDir(tmpPartitionDir.toString(), kafkaTopic, TEST_PARTITION));
+    Files.createDirectories(partitionDir);
+    Path canary = partitionDir.resolve("canary");
+    Files.write(canary, "untouched".getBytes());
+
+    BlobPeersDiscoveryResponse discovery = new BlobPeersDiscoveryResponse();
+    discovery.setDiscoveryResult(Collections.singletonList("peer-mismatch:1234"));
+    doReturn(discovery).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    CompletableFuture<InputStream> mismatchFuture = new CompletableFuture<>();
+    mismatchFuture.completeExceptionally(
+        new VeniceBlobTransferIncompatibleSchemaException("peer-mismatch:1234", "synthetic schema mismatch"));
+    Mockito.doReturn(mismatchFuture)
+        .when(client)
+        .get(eq("peer-mismatch:1234"), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION), any());
+
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    try {
+      future.toCompletableFuture().get(10, TimeUnit.SECONDS);
+      Assert.fail(
+          "Expected fall-through to VenicePeersAllFailedException after the only peer rejected with schema mismatch");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(
+          e.getCause() instanceof VenicePeersAllFailedException,
+          "Expected VenicePeersAllFailedException after all peers failed, got: " + e.getCause());
+    } catch (InterruptedException | TimeoutException e) {
+      Assert.fail("Future did not complete within timeout: " + e);
+    }
+
+    Assert.assertTrue(Files.exists(canary), "partition dir must be left intact on schema-mismatch rejection");
   }
 }

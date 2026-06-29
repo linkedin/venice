@@ -43,6 +43,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -124,6 +125,21 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
             + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
             + blobTransferRequest.getRequestTableFormat().name()).getBytes();
         setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+        return;
+      }
+
+      // Check the requester's metadata schema versions before doing any file work.
+      // If the local binary cannot serialize PartitionState/StoreVersionState in a
+      // version the requester can read, fail fast with 412 PRECONDITION_FAILED so the
+      // client doesn't pay for file bytes only to reject the metadata at the end.
+      String schemaMismatch = BlobTransferUtils.compareRequestedSchemaVersionsAgainstLocal(httpRequest);
+      if (schemaMismatch != null) {
+        LOGGER.warn("Rejecting blob-transfer request from {}: {}", ctx.channel().remoteAddress(), schemaMismatch);
+        setupResponseAndFlush(
+            HttpResponseStatus.PRECONDITION_FAILED,
+            schemaMismatch.getBytes(StandardCharsets.UTF_8),
+            false,
+            ctx);
         return;
       }
 
