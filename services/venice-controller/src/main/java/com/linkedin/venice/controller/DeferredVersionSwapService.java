@@ -821,7 +821,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Properties properties = new Properties();
       properties.putAll(lifecycleHooksRecord.getStoreLifecycleHooksParams());
       VeniceProperties veniceProperties = new VeniceProperties(properties);
-      outcome = storeLifecycleHook.postStoreVersionSwap(
+      outcome = storeLifecycleHook.preStoreVersionSwap(
           clusterName,
           parentStore.getName(),
           targetVersionNum,
