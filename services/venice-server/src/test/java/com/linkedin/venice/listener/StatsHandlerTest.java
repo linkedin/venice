@@ -12,6 +12,7 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -51,14 +52,15 @@ public class StatsHandlerTest {
     AggServerHttpRequestStats singleGetStats = mock(AggServerHttpRequestStats.class);
     ServerHttpRequestStats unknownStoreStats = mock(ServerHttpRequestStats.class);
     when(singleGetStats.getStoreStats(any())).thenReturn(unknownStoreStats);
+    // A fresh (non-singleton) filter so this test is deterministic and isolated from other tests' filter state.
     StatsHandler statsHandler = new StatsHandler(
         singleGetStats,
         mock(AggServerHttpRequestStats.class),
         mock(AggServerHttpRequestStats.class),
-        null);
+        null,
+        new RedundantExceptionFilter());
 
-    // A unique remote host so the process-wide RedundantExceptionFilter state cannot leak across tests/runs, and so the
-    // appender can match this test's WARN by substring.
+    // A unique remote host so the appender can match this test's WARN by substring.
     String remoteHost = "unattributed-error-test-" + System.nanoTime() + ".invalid";
 
     AtomicInteger warnCount = new AtomicInteger();
@@ -69,10 +71,10 @@ public class StatsHandlerTest {
     Configuration config = loggerContext.getConfiguration();
     config.addLoggerAppender((org.apache.logging.log4j.core.Logger) LogManager.getLogger(StatsHandler.class), appender);
 
-    // First unattributed BAD_REQUEST: error recorded against total + one WARN identifying the source.
-    driveErrorResponse(statsHandler, remoteHost);
+    // First unattributed BAD_REQUEST (no URI captured upstream): error recorded + one WARN identifying the source.
+    driveErrorResponse(statsHandler, remoteHost, null);
     // Second identical request: error still recorded, but the WARN is suppressed by the redundant filter.
-    driveErrorResponse(statsHandler, remoteHost);
+    driveErrorResponse(statsHandler, remoteHost, null);
 
     // The error is recorded (against the "unknown" store stats) for BOTH requests...
     verify(unknownStoreStats, atLeast(2)).recordErrorRequestAndLatency(any(), any(), anyDouble(), anyInt());
@@ -81,14 +83,47 @@ public class StatsHandlerTest {
   }
 
   /**
-   * Drives a single error response (with no store name, hence "unattributed") through {@link StatsHandler#write} and
-   * invokes the write-completion listener that records the metrics and logs the source.
+   * When a URI was captured upstream (best-effort), it should be carried into the WARN identifying the unattributed
+   * error's source, and should also distinguish otherwise-identical requests in the redundant-exception filter.
    */
-  private void driveErrorResponse(StatsHandler statsHandler, String remoteHost) throws Exception {
+  @Test
+  public void includesRequestUriWhenAvailable() throws Exception {
+    AggServerHttpRequestStats singleGetStats = mock(AggServerHttpRequestStats.class);
+    when(singleGetStats.getStoreStats(any())).thenReturn(mock(ServerHttpRequestStats.class));
+    StatsHandler statsHandler = new StatsHandler(
+        singleGetStats,
+        mock(AggServerHttpRequestStats.class),
+        mock(AggServerHttpRequestStats.class),
+        null,
+        new RedundantExceptionFilter());
+
+    String uri = "/storage/some_store_v1/0/" + System.nanoTime();
+
+    AtomicInteger warnCount = new AtomicInteger();
+    WarnMessageCountAppender appender =
+        new WarnMessageCountAppender.Builder().setCounter(warnCount).setMarker(uri).build();
+    appender.start();
+    LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
+    Configuration config = loggerContext.getConfiguration();
+    config.addLoggerAppender((org.apache.logging.log4j.core.Logger) LogManager.getLogger(StatsHandler.class), appender);
+
+    driveErrorResponse(statsHandler, "10.0.0.1", uri);
+
+    assertEquals(warnCount.get(), 1, "The captured URI should appear in the unattributed-error WARN");
+  }
+
+  /**
+   * Drives a single error response (with no store name, hence "unattributed") through {@link StatsHandler#write} and
+   * invokes the write-completion listener that records the metrics and logs the source. A non-null {@code uri}
+   * simulates a URI having been captured upstream (best-effort); {@code null} simulates the common case where it was
+   * not.
+   */
+  private void driveErrorResponse(StatsHandler statsHandler, String remoteHost, String uri) throws Exception {
     // Re-arm for a fresh request.
     ServerStatsContext statsContext = statsHandler.getServerStatsContext();
     statsContext.setStatCallBackExecuted(false);
     statsHandler.setResponseStatus(BAD_REQUEST);
+    statsContext.setRequestUri(uri);
     // storeName intentionally left null -> error attributed only to the aggregate "total" stats.
 
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -147,8 +182,10 @@ public class StatsHandlerTest {
 
       @Override
       public WarnMessageCountAppender build() {
+        // Unique name per instance: log4j keys appenders by name within a LoggerConfig, so a shared name would let one
+        // test method's appender (and counter) silently replace another's, depending on execution order.
         return new WarnMessageCountAppender(
-            "WarnMessageCountAppender",
+            "WarnMessageCountAppender-" + marker,
             getFilter(),
             null,
             false,

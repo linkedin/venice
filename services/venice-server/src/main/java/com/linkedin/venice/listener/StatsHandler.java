@@ -22,27 +22,43 @@ import org.apache.logging.log4j.Logger;
 
 public class StatsHandler extends ChannelDuplexHandler {
   private static final Logger LOGGER = LogManager.getLogger(StatsHandler.class);
-  /**
-   * Used to rate-limit the {@link #logUnattributedError} warnings so a noisy probe/scanner cannot flood the logs.
-   * Keyed on (status, remote, principal, uri), so each distinct source/cause is still logged within the filter window.
-   */
-  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
   private final ServerStatsContext serverStatsContext;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
   private final ServerLoadControllerHandler loadControllerHandler;
+  /**
+   * Used to rate-limit the {@link #logUnattributedError} warnings so a noisy probe/scanner cannot flood the logs.
+   * Keyed on (status, remote, principal, uri), so each distinct source/cause is still logged within the filter window.
+   * Defaults to the process-wide shared filter so rate-limiting spans all channels; an alternate instance can be
+   * injected for deterministic testing.
+   */
+  private final RedundantExceptionFilter redundantExceptionFilter;
 
   public StatsHandler(
       AggServerHttpRequestStats singleGetStats,
       AggServerHttpRequestStats multiGetStats,
       AggServerHttpRequestStats computeStats,
       ServerLoadControllerHandler loadControllerHandler) {
+    this(
+        singleGetStats,
+        multiGetStats,
+        computeStats,
+        loadControllerHandler,
+        RedundantExceptionFilter.getRedundantExceptionFilter());
+  }
+
+  StatsHandler(
+      AggServerHttpRequestStats singleGetStats,
+      AggServerHttpRequestStats multiGetStats,
+      AggServerHttpRequestStats computeStats,
+      ServerLoadControllerHandler loadControllerHandler,
+      RedundantExceptionFilter redundantExceptionFilter) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
     this.computeStats = computeStats;
     this.loadControllerHandler = loadControllerHandler;
+    this.redundantExceptionFilter = redundantExceptionFilter;
 
     this.serverStatsContext = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
   }
@@ -167,7 +183,8 @@ public class StatsHandler extends ChannelDuplexHandler {
    * not log or log only at DEBUG.
    *
    * <p>Everything here is best-effort and fully guarded: this is observability only and must never disrupt request
-   * handling. The {@code remote} and client {@code principal} are both best-effort and may be absent.
+   * handling. The {@code remote}, client {@code principal} and {@code uri} are all best-effort and may be absent; the
+   * URI in particular is usually {@code null} for these upstream rejections (see {@link ServerStatsContext#getRequestUri()}).
    */
   private void logUnattributedError(ChannelHandlerContext ctx, ServerStatsContext statsContext) {
     try {
@@ -178,16 +195,22 @@ public class StatsHandler extends ChannelDuplexHandler {
       if (principal == null || principal.isEmpty()) {
         principal = "none";
       }
-      String filterKey =
-          "UNATTRIBUTED_ERROR_REQUEST:" + (status == null ? "?" : status.code()) + ':' + remote + ':' + principal;
-      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(filterKey)) {
+      // Best-effort: include the URI only when something upstream managed to capture it, otherwise "unknown".
+      String uri = statsContext.getRequestUri();
+      if (uri == null || uri.isEmpty()) {
+        uri = "unknown";
+      }
+      String filterKey = "UNATTRIBUTED_ERROR_REQUEST:" + (status == null ? "?" : status.code()) + ':' + remote + ':'
+          + principal + ':' + uri;
+      if (!redundantExceptionFilter.isRedundantException(filterKey)) {
         LOGGER.warn(
             "Recorded an error_request with no store attribution (only the aggregate total--error_request metric "
                 + "moved); the request was rejected before a store name was resolved. status={}, remote={}, "
-                + "clientPrincipal={}",
+                + "clientPrincipal={}, uri={}",
             status,
             remote,
-            principal);
+            principal,
+            uri);
       }
     } catch (Throwable t) {
       // Observability must never disrupt request handling.
