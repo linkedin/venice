@@ -5022,12 +5022,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             capturedPreviousVersion[0],
             getRegionName(),
             null);
-        if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
+        if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
+            || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
           LOGGER.warn(
-              "postStoreVersionSwap hook returned {} for store {} v{} in rollForwardToFutureVersion",
+              "postStoreVersionSwap hook returned {} for store {} v{}, triggering rollback",
               outcome,
               storeName,
               futureVersion);
+          rollbackToBackupVersion(clusterName, storeName, getRegionName());
+        } else if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
+          LOGGER.warn("postStoreVersionSwap hook returned {} for store {} v{}", outcome, storeName, futureVersion);
         }
       } catch (Exception e) {
         LOGGER.error(
