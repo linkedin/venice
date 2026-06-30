@@ -7,7 +7,9 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.utils.Utils;
 import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -24,8 +26,10 @@ public abstract class HeapSizeEstimatorTest {
    * for now, though we could come back to it later...
    */
   private static final int SKIP_EXPECTED_FIELD_OVERHEAD = -1;
-  private static final com.sun.management.ThreadMXBean THREAD_MX_BEAN =
-      (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+  // com.sun.management.ThreadMXBean is a HotSpot extension not in the --release 8 API snapshot,
+  // so we use the standard interface and invoke getCurrentThreadAllocatedBytes() via reflection.
+  private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
+  private static final Method GET_THREAD_ALLOCATED_BYTES = resolveGetThreadAllocatedBytes();
   private static final int NUMBER_OF_ALLOCATIONS_WHEN_MEASURING = 200_000;
   protected static final int JAVA_MAJOR_VERSION = Utils.getJavaMajorVersion();
   protected static final int BOOLEAN_SIZE = 1;
@@ -225,8 +229,24 @@ public abstract class HeapSizeEstimatorTest {
     return finalSize;
   }
 
+  private static Method resolveGetThreadAllocatedBytes() {
+    try {
+      // Load the com.sun.management.ThreadMXBean interface (exported by jdk.management) via
+      // Class.forName rather than casting the impl instance — this avoids an IllegalAccessException
+      // when the implementation class is in a non-exported package (Java 17+ module system).
+      Class<?> iface = Class.forName("com.sun.management.ThreadMXBean");
+      return iface.getMethod("getCurrentThreadAllocatedBytes");
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException("getCurrentThreadAllocatedBytes() is not available on this JVM", e);
+    }
+  }
+
   private static long getCurrentlyAllocatedMemory() {
-    return THREAD_MX_BEAN.getCurrentThreadAllocatedBytes();
+    try {
+      return (long) GET_THREAD_ALLOCATED_BYTES.invoke(THREAD_MX_BEAN);
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException("Failed to invoke getCurrentThreadAllocatedBytes()", e);
+    }
   }
 
   @BeforeClass
