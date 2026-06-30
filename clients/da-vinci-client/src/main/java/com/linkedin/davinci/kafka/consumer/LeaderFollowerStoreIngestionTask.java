@@ -3266,6 +3266,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
         }
         validateMessage(topicType, consumerDiv, record, pcs, false);
+        // Advance the remote LCVP in lockstep with the remote VT segments registered just above, so an F->L resume
+        // (PartitionConsumptionState#getCheckpointedVtLeaderPosition) starts the remote VT consistently with the
+        // snapshotted VT DIV producer state instead of an in-memory processed position that can outrun it.
+        if (pcs.consumeRemotely() && TopicType.isVersionTopic(topicType)) {
+          getConsumerDiv().updateLatestConsumedRemoteVtPosition(pcs.getPartition(), record.getPosition());
+        }
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!pcs.isEndOfPushReceived()) {

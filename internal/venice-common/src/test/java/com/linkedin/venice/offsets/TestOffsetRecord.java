@@ -65,6 +65,23 @@ public class TestOffsetRecord {
   }
 
   @Test
+  public void testLatestConsumedRemoteVtPositionRoundTrip() {
+    OffsetRecord fresh = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    // Unset -> EARLIEST (empty-state default), never null.
+    assertEquals(fresh.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
+
+    PubSubPosition remoteLcvp = ApacheKafkaOffsetPosition.of(9677);
+    fresh.setLatestConsumedRemoteVtPosition(remoteLcvp);
+    OffsetRecord restored = new OffsetRecord(
+        fresh.toBytes(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(restored.getLatestConsumedRemoteVtPosition(), remoteLcvp);
+  }
+
+  @Test
   public void testResetUpstreamOffsetMap() {
     OffsetRecord offsetRecord = TestUtils
         .getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);

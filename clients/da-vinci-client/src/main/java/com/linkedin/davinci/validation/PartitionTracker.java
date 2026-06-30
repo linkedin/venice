@@ -92,6 +92,15 @@ public class PartitionTracker {
       new AtomicReference(PubSubSymbolicPosition.EARLIEST);
 
   /**
+   * The remote/upstream counterpart of {@link #latestConsumedVtPosition}: the last position consumed from the remote
+   * version topic by a remote-consume leader. Tracked separately because {@link #latestConsumedVtPosition} follows the
+   * local VT (produce/consume), which is a different position domain from the remote source VT this leader subscribes
+   * to.
+   */
+  private final AtomicReference<PubSubPosition> latestConsumedRemoteVtPosition =
+      new AtomicReference(PubSubSymbolicPosition.EARLIEST);
+
+  /**
    * rtSegments is a map of source broker URL to a map of GUID to Segment.
    * There should only be one {@code ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
    *
@@ -120,6 +129,14 @@ public class PartitionTracker {
 
   public void updateLatestConsumedVtPosition(PubSubPosition vtPosition) {
     latestConsumedVtPosition.updateAndGet(current -> vtPosition);
+  }
+
+  public PubSubPosition getLatestConsumedRemoteVtPosition() {
+    return latestConsumedRemoteVtPosition.get();
+  }
+
+  public void updateLatestConsumedRemoteVtPosition(PubSubPosition vtPosition) {
+    latestConsumedRemoteVtPosition.updateAndGet(current -> vtPosition);
   }
 
   public final String toString() {
@@ -249,6 +266,7 @@ public class PartitionTracker {
       logger.info("event=globalRtDiv Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
+    destProducerTracker.updateLatestConsumedRemoteVtPosition(latestConsumedRemoteVtPosition.get());
   }
 
   /**
@@ -344,6 +362,7 @@ public class PartitionTracker {
     if (TopicType.isVersionTopic(type)) {
       // Without this, the OffsetRecord keeps latestConsumedVtPosition=EARLIEST
       offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
+      offsetRecord.setLatestConsumedRemoteVtPosition(getLatestConsumedRemoteVtPosition());
     }
     for (Map.Entry<GUID, Segment> entry: getSegments(type).entrySet()) {
       updateOffsetRecord(type, entry.getKey(), entry.getValue(), offsetRecord);
