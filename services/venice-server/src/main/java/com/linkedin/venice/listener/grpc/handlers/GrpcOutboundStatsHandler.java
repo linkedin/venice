@@ -38,10 +38,15 @@ public class GrpcOutboundStatsHandler extends VeniceServerGrpcHandler {
 
     double elapsedTime = LatencyUtils.getElapsedTimeFromNSToMS(statsContext.getRequestStartTimeInNS());
 
-    if (!ctx.hasError() && !responseStatus.equals(HttpResponseStatus.OK)
-        || responseStatus.equals(HttpResponseStatus.NOT_FOUND)) {
+    /*
+     * Record a success only when no handler flagged an error and the response is OK (value found) or NOT_FOUND
+     * (key absent); otherwise record an error. TOO_MANY_REQUESTS is recorded as neither, since a throttled
+     * request is not a server-side failure. Mirrors the Netty StatsHandler categorization.
+     */
+    if (!ctx.hasError()
+        && (responseStatus.equals(HttpResponseStatus.OK) || responseStatus.equals(HttpResponseStatus.NOT_FOUND))) {
       statsContext.successRequest(serverHttpRequestStats, elapsedTime);
-    } else {
+    } else if (!responseStatus.equals(HttpResponseStatus.TOO_MANY_REQUESTS)) {
       statsContext.errorRequest(serverHttpRequestStats, elapsedTime);
     }
   }
