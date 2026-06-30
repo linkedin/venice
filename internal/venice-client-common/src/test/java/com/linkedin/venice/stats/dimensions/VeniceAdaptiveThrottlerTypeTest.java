@@ -24,6 +24,8 @@ public class VeniceAdaptiveThrottlerTypeTest {
             .put(
                 VeniceAdaptiveThrottlerType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT,
                 "non_current_version_non_aa_wc_leader_records_count")
+            .put(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_WRITE_BANDWIDTH, "blob_transfer_write_bandwidth")
+            .put(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_READ_BANDWIDTH, "blob_transfer_read_bandwidth")
             .build();
     new VeniceDimensionTestFixture<>(
         VeniceAdaptiveThrottlerType.class,

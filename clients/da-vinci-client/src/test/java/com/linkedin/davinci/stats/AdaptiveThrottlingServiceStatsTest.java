@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ADAPTIVE_THROTTLER_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -26,6 +27,8 @@ public class AdaptiveThrottlingServiceStatsTest {
       AdaptiveThrottlingOtelMetricEntity.RECORD_COUNT.getMetricEntity().getMetricName();
   private static final String OTEL_BYTE_COUNT =
       AdaptiveThrottlingOtelMetricEntity.BYTE_COUNT.getMetricEntity().getMetricName();
+  private static final String OTEL_CURRENT_LIMIT =
+      AdaptiveThrottlingOtelMetricEntity.CURRENT_LIMIT.getMetricEntity().getMetricName();
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
@@ -58,8 +61,13 @@ public class AdaptiveThrottlingServiceStatsTest {
     for (VeniceAdaptiveThrottlerType type: VeniceAdaptiveThrottlerType.values()) {
       stats.recordRateForAdaptiveThrottler(type, 10);
 
-      String metricName = type.getMetricUnit() == MetricUnit.BYTES ? OTEL_BYTE_COUNT : OTEL_RECORD_COUNT;
-      validateCounter(metricName, 10, buildAttributes(type));
+      if (AdaptiveThrottlingServiceStats.GAUGE_TYPES.contains(type)) {
+        // Gauge types report the value as-is (no interval scaling).
+        validateGauge(OTEL_CURRENT_LIMIT, 10, buildAttributes(type));
+      } else {
+        String metricName = type.getMetricUnit() == MetricUnit.BYTES ? OTEL_BYTE_COUNT : OTEL_RECORD_COUNT;
+        validateCounter(metricName, 10, buildAttributes(type));
+      }
     }
   }
 
@@ -86,6 +94,28 @@ public class AdaptiveThrottlingServiceStatsTest {
     double tehutiRate = metricsRepository.getMetric(tehutiMetricName).value();
     // Rate is calculated over a time window so the exact value depends on timing; verify it's non-negative
     assertTrue(tehutiRate >= 0, "Tehuti Rate sensor should have a non-negative value");
+  }
+
+  @Test
+  public void testBlobTransferReportsCurrentLimitAsGauge() {
+    stats.recordRateForAdaptiveThrottler(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_WRITE_BANDWIDTH, 1000);
+
+    // OTel async gauge reports the exact current limit, not a value scaled by the refresh interval.
+    validateGauge(OTEL_CURRENT_LIMIT, 1000, buildAttributes(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_WRITE_BANDWIDTH));
+
+    // Tehuti AsyncGauge sensor is wired (binding regression guard). Suffix is .Gauge, not .Rate.
+    assertNotNull(
+        metricsRepository.getMetric(".AdaptiveThrottlingService--blob_transfer_write_bandwidth.Gauge"),
+        "Blob transfer write throttler should register a Tehuti gauge sensor");
+  }
+
+  @Test
+  public void testBlobTransferGaugeReflectsLatestValue() {
+    stats.recordRateForAdaptiveThrottler(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_READ_BANDWIDTH, 500);
+    stats.recordRateForAdaptiveThrottler(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_READ_BANDWIDTH, 800);
+
+    // Gauge reports the last value (800), not the sum/accumulation that a counter would show.
+    validateGauge(OTEL_CURRENT_LIMIT, 800, buildAttributes(VeniceAdaptiveThrottlerType.BLOB_TRANSFER_READ_BANDWIDTH));
   }
 
   // --- NPE prevention tests ---
@@ -126,6 +156,15 @@ public class AdaptiveThrottlingServiceStatsTest {
 
   private void validateCounter(String metricName, long expectedValue, Attributes expectedAttributes) {
     OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        expectedValue,
+        expectedAttributes,
+        metricName,
+        TEST_METRIC_PREFIX);
+  }
+
+  private void validateGauge(String metricName, long expectedValue, Attributes expectedAttributes) {
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
         inMemoryMetricReader,
         expectedValue,
         expectedAttributes,

@@ -47,6 +47,12 @@ public class AdaptiveThrottlingTehutiMetricNameTest {
     map.put(
         AdaptiveThrottlingServiceStats.TehutiMetricName.NON_CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT,
         "non_current_version_non_aa_wc_leader_records_count");
+    map.put(
+        AdaptiveThrottlingServiceStats.TehutiMetricName.BLOB_TRANSFER_WRITE_BANDWIDTH,
+        "blob_transfer_write_bandwidth");
+    map.put(
+        AdaptiveThrottlingServiceStats.TehutiMetricName.BLOB_TRANSFER_READ_BANDWIDTH,
+        "blob_transfer_read_bandwidth");
     return map;
   }
 }
