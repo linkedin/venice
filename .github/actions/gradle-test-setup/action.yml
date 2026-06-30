@@ -32,6 +32,24 @@ runs:
       uses: gradle/actions/setup-gradle@v5
       with:
         add-job-summary: never
+    - name: Bootstrap Gradle wrapper with retry
+      # On a wrapper cache miss the distribution is fetched from services.gradle.org,
+      # which intermittently times out and kills the shard before any test runs
+      # (e.g. run 27256713265). Warm it up with retries so a transient timeout
+      # costs seconds instead of the whole job.
+      shell: bash
+      run: |
+        for attempt in 1 2 3; do
+          if ./gradlew --version; then
+            exit 0
+          fi
+          if [ "$attempt" -lt 3 ]; then
+            echo "Gradle wrapper bootstrap failed (attempt ${attempt}/3); retrying in $((attempt * 20))s..."
+            sleep $((attempt * 20))
+          fi
+        done
+        echo "Gradle wrapper bootstrap failed after 3 attempts"
+        exit 1
     - name: Free up disk space in the background
       shell: bash
       run: |
