@@ -75,12 +75,20 @@ public class AdminMetadata {
     return executionId == null ? UNDEFINED_VALUE : executionId;
   }
 
+  public boolean hasExecutionId() {
+    return executionId != null;
+  }
+
   public void setExecutionId(Long executionId) {
     this.executionId = executionId;
   }
 
   public Long getAdminOperationProtocolVersion() {
     return adminOperationProtocolVersion == null ? UNDEFINED_VALUE : adminOperationProtocolVersion;
+  }
+
+  public boolean hasAdminOperationProtocolVersion() {
+    return adminOperationProtocolVersion != null;
   }
 
   public void setAdminOperationProtocolVersion(Long adminOperationProtocolVersion) {

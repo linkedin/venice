@@ -211,6 +211,36 @@ public class TestAdminMetadata {
   }
 
   @Test
+  public void testHasExecutionIdAndHasAdminOperationProtocolVersion() {
+    AdminMetadata metadata = new AdminMetadata();
+
+    // Neither field set — both has* methods must return false
+    assertFalse(metadata.hasExecutionId());
+    assertFalse(metadata.hasAdminOperationProtocolVersion());
+
+    // Getters return UNDEFINED_VALUE (-1) when unset
+    assertEquals(metadata.getExecutionId(), UNDEFINED_VALUE);
+    assertEquals(metadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
+
+    // Set executionId to a positive value — hasExecutionId becomes true
+    metadata.setExecutionId(42L);
+    assertTrue(metadata.hasExecutionId());
+    assertFalse(metadata.hasAdminOperationProtocolVersion());
+
+    // hasAdminOperationProtocolVersion() returns true even when set to -1:
+    // -1 is a valid target for adminOperationProtocolVersion (means "unpinned / use latest").
+    // The merge guard uses hasAdminOperationProtocolVersion() so -1 is written to ZK.
+    metadata.setAdminOperationProtocolVersion(UNDEFINED_VALUE);
+    assertTrue(metadata.hasAdminOperationProtocolVersion());
+
+    // hasExecutionId() also returns true when set to -1, but the merge guard for executionId
+    // uses !getExecutionId().equals(UNDEFINED_VALUE) — so -1 is never written to ZK for executionId.
+    metadata.setExecutionId(UNDEFINED_VALUE);
+    assertTrue(metadata.hasExecutionId());
+    assertEquals(metadata.getExecutionId(), UNDEFINED_VALUE); // getter confirms -1
+  }
+
+  @Test
   public void testToString() {
     AdminMetadata metadata = new AdminMetadata();
     metadata.setExecutionId(123L);

@@ -116,6 +116,92 @@ public class TestZkAdminTopicMetadataAccessor {
   }
 
   @Test
+  public void testUpdateAdminOperationProtocolVersionToNegativeOne() {
+    String clusterName = "test-cluster";
+    InMemoryPubSubPosition originalPosition = InMemoryPubSubPosition.of(1L);
+
+    // Existing metadata with a pinned protocol version
+    AdminMetadata currentMetadata = new AdminMetadata();
+    currentMetadata.setPubSubPosition(originalPosition);
+    currentMetadata.setExecutionId(1L);
+    currentMetadata.setAdminOperationProtocolVersion(97L);
+
+    // Delta that resets the protocol version to -1 (unpinned / use latest)
+    AdminMetadata metadataDelta = new AdminMetadata();
+    metadataDelta.setAdminOperationProtocolVersion(-1L);
+
+    String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
+
+    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
+      dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
+      Stat readStat = new Stat();
+      when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
+
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, metadataDelta);
+
+      // The written metadata must have -1 (not 97 — the old value must not be retained)
+      AdminMetadata expectedMetadata = new AdminMetadata();
+      expectedMetadata.setPubSubPosition(originalPosition);
+      expectedMetadata.setExecutionId(1L);
+      expectedMetadata.setAdminOperationProtocolVersion(-1L);
+
+      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(expectedMetadata), eq(0));
+    }
+  }
+
+  @Test
+  public void testExecutionIdIsNeverOverwrittenWithUndefinedValue() {
+    String clusterName = "test-cluster";
+    InMemoryPubSubPosition originalPosition = InMemoryPubSubPosition.of(1L);
+
+    AdminMetadata currentMetadata = new AdminMetadata();
+    currentMetadata.setPubSubPosition(originalPosition);
+    currentMetadata.setExecutionId(42L);
+    currentMetadata.setAdminOperationProtocolVersion(97L);
+
+    String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
+
+    // Case 1: delta with executionId absent (null field) must not overwrite existing value
+    AdminMetadata deltaWithoutExecutionId = new AdminMetadata();
+    deltaWithoutExecutionId.setAdminOperationProtocolVersion(98L);
+
+    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
+      dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
+      Stat readStat = new Stat();
+      when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
+
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, deltaWithoutExecutionId);
+
+      AdminMetadata expected = new AdminMetadata();
+      expected.setPubSubPosition(originalPosition);
+      expected.setExecutionId(42L);
+      expected.setAdminOperationProtocolVersion(98L);
+      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(expected), eq(0));
+    }
+
+    // Case 2: delta with executionId explicitly set to -1 must also not overwrite existing value
+    Mockito.clearInvocations(zkClient);
+
+    AdminMetadata deltaWithNegativeOneExecutionId = new AdminMetadata();
+    deltaWithNegativeOneExecutionId.setExecutionId(AdminTopicMetadataAccessor.UNDEFINED_VALUE);
+    deltaWithNegativeOneExecutionId.setAdminOperationProtocolVersion(99L);
+
+    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
+      dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
+      Stat readStat = new Stat();
+      when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
+
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, deltaWithNegativeOneExecutionId);
+
+      AdminMetadata expected = new AdminMetadata();
+      expected.setPubSubPosition(originalPosition);
+      expected.setExecutionId(42L); // must remain 42, not -1
+      expected.setAdminOperationProtocolVersion(99L);
+      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(expected), eq(0));
+    }
+  }
+
+  @Test
   public void testGetMetadata() {
     String clusterName = "test-cluster";
     AdminMetadata currentV2Metadata = new AdminMetadata();
