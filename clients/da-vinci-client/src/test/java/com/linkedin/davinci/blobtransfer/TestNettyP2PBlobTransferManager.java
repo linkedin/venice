@@ -487,8 +487,14 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.verify(blobSnapshotManager, Mockito.times(1)).createSnapshot(TEST_STORE + "_v" + TEST_VERSION, 0);
 
     // Verify the concurrent user of this partition is 0 as it should firstly be 1 and after the file is sent,
-    // it should decrease to 0
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0), 0);
+    // it should decrease to 0.
+    // The decrement happens server-side in P2PFileTransferServerHandler#channelInactive, which fires
+    // asynchronously after the client's future completes. Poll instead of asserting synchronously.
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> Assert
+            .assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0), 0));
   }
 
   @Test

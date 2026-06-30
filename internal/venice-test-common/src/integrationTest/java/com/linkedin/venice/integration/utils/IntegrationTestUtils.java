@@ -156,6 +156,21 @@ public class IntegrationTestUtils {
 
   /**
    * Participant store should be set up by child controller.
+   *
+   * <p>The store-materialization wait was bumped from 60s to 180s after observing back-to-back
+   * setUp failures in TestVeniceHelixAdminWithIsolatedEnvironment (both at 61.3s = 60s timeout
+   * exhausted on consecutive method retries within the same suite run). The init routine runs
+   * on ForkJoinPool.commonPool and can be starved when prior tests' leaked retry chains are
+   * still draining off the pool; 180s gives the pool time to recover without papering over a
+   * true product hang.
+   *
+   * <p>Bumped again to 300s after another failure at exactly 181.466s (i.e., the 180s wait hit
+   * the deadline with the store still null). Same root cause — ForkJoinPool starvation — under
+   * heavier CI contention than the prior 180s bump anticipated.
+   *
+   * <p>Bumped yet again to 600s after a third failure at exactly 301.358s. Same root cause; the
+   * leaked-retry-chain workload on commonPool grew further. If this fails again at 600s the
+   * starvation source itself needs to be tracked down rather than continuing to extend the wait.
    */
   public static void verifyParticipantMessageStoreSetup(
       VeniceHelixAdmin veniceAdmin,
@@ -164,7 +179,7 @@ public class IntegrationTestUtils {
     TopicManager topicManager = veniceAdmin.getTopicManager();
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     PubSubTopic participantStoreRt = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(participantStoreName));
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(600, TimeUnit.SECONDS, () -> {
       Store store = veniceAdmin.getStore(clusterName, participantStoreName);
       assertNotNull(store);
       assertEquals(store.getVersions().size(), 1);

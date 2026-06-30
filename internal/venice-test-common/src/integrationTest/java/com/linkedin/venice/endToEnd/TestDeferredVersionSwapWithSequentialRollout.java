@@ -242,7 +242,14 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = "\"string\"";
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(60);
+    /*
+     * Set targetRegionSwapWaitTime=0 at store-create time so DeferredVersionSwapService never
+     * defers on the still-default wait time. The 100ms service tick can fire before a
+     * post-emptyPush updateStore lands in ZK, observing the default value and deferring; the
+     * subsequent sequential dc-0 -> dc-1 -> dc-2 roll-forward gating then makes the test's
+     * 60s wait insufficient.
+     */
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
@@ -250,13 +257,9 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
 
       parentControllerClient.emptyPush(storeName, "test", 100000);
 
-      // Release the swap wait time so DeferredVersionSwapService fires as soon as ingestion completes
-      ControllerResponse updateResp =
-          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
-      Assert.assertFalse(updateResp.isError(), "Failed to update targetRegionSwapWaitTime: " + updateResp.getError());
-
-      // Wait for all regions to converge to version 1
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // Wait for all regions to converge to version 1 — sequential roll-forward (dc-0 -> dc-1
+      // -> dc-2) with a 100ms service tick can need >60s on a loaded CI host.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 

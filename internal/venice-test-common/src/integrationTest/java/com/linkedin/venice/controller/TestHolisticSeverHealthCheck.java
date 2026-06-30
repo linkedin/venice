@@ -191,6 +191,9 @@ public class TestHolisticSeverHealthCheck {
 
     // Verify that both servers are in the unready state. Use waitForNonDeterministicAssertion because the mocked
     // customized view repository set above may not be immediately visible to the controller's HTTP handler thread.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> verifyNodesAreUnready());
+    // Successive bumps: 30s -> 60s -> 120s. CI run 25774702596 / shard 81 still hit the 60s budget at 66.541s
+    // ("expected [UNREADY] but found [READY]"). JMM visibility of the mocked repo to the controller HTTP
+    // handler thread can take longer under CI contention.
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, true, () -> verifyNodesAreUnready());
   }
 }

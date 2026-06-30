@@ -7,6 +7,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
 
@@ -113,38 +115,41 @@ public class DiskHealthCheckServiceTest {
         LogContext.forTests(VeniceComponent.SERVER.name()))) {
       diskHealthCheckService.start();
 
-      // Wait for the health check to run at least once
-      Utils.sleep(500);
-
-      assertTrue(diskHealthCheckService.isDiskHealthy());
-      assertNull(diskHealthCheckService.getErrorMessage());
-      assertTrue(diskHealthCheckService.getDiskHealthy());
-
+      // The DiskHealthCheckService runs on a background scheduler at the configured interval.
+      // The prior `Utils.sleep(500)` + assertion pattern was racy under CI load -- 500ms was
+      // observed insufficient on shard 8 (CI run 25771729737). The first wait also has to
+      // include the file-existence check: DiskHealthCheckService.diskHealthy is initialized
+      // to `true`, so isDiskHealthy() returns true synchronously BEFORE any background check
+      // has actually written the health-check file. Driving the wait off file existence
+      // anchors it to "first check has run" rather than "initial flag is set".
       Path healthCheckFilePath = Paths.get(directory + "/" + DiskHealthCheckService.TMP_FILE_NAME);
-      assertTrue(Files.exists(healthCheckFilePath));
-      assertTrue(Files.isRegularFile(healthCheckFilePath));
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertTrue(diskHealthCheckService.isDiskHealthy());
+        assertNull(diskHealthCheckService.getErrorMessage());
+        assertTrue(diskHealthCheckService.getDiskHealthy());
+        assertTrue(Files.exists(healthCheckFilePath));
+        assertTrue(Files.isRegularFile(healthCheckFilePath));
+      });
 
       // Mimic text old
       String incorrectMessage = "I Want My Hat Back";
       diskHealthCheckService.getHealthCheckTask()
           .setHealthCheckDiskAccessor(new CorruptFileHealthCheckDiskAccessor(incorrectMessage));
 
-      // Wait for the health check to run at least once
-      Utils.sleep(500);
-
-      assertFalse(diskHealthCheckService.isDiskHealthy());
-      assertTrue(diskHealthCheckService.getErrorMessage().endsWith(incorrectMessage));
-      assertFalse(diskHealthCheckService.getDiskHealthy());
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertFalse(diskHealthCheckService.isDiskHealthy());
+        assertTrue(diskHealthCheckService.getErrorMessage().endsWith(incorrectMessage));
+        assertFalse(diskHealthCheckService.getDiskHealthy());
+      });
 
       // Disk is healthy again
       diskHealthCheckService.getHealthCheckTask().resetHealthCheckDiskAccessor();
 
-      // Wait for the health check to run at least once
-      Utils.sleep(500);
-
-      assertTrue(diskHealthCheckService.isDiskHealthy());
-      assertNull(diskHealthCheckService.getErrorMessage());
-      assertTrue(diskHealthCheckService.getDiskHealthy());
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertTrue(diskHealthCheckService.isDiskHealthy());
+        assertNull(diskHealthCheckService.getErrorMessage());
+        assertTrue(diskHealthCheckService.getDiskHealthy());
+      });
     }
   }
 

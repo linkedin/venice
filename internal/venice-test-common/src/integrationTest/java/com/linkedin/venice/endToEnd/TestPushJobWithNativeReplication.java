@@ -540,7 +540,11 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
   }
 
   private void makeSureSystemStoreIsPushed(String clusterName, String storeName) {
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+    // System-store push must reach currentVersion>0 in every child DC for three system stores
+    // (META_STORE, DAVINCI_PUSH_STATUS_STORE, BATCH_JOB_HEARTBEAT_STORE). Under CI contention with
+    // multi-region AA clusters, 1 minute is not enough headroom; bumped to 3 minutes after
+    // observing 1-minute timeouts in testActiveActiveForHeartbeatSystemStores.
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, true, () -> {
       for (int i = 0; i < childDatacenters.size(); i++) {
         VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(i);
         final int iCopy = i;

@@ -79,7 +79,12 @@ import org.testng.Assert;
 
 class AbstractTestVeniceHelixAdmin {
   static final long LEADER_CHANGE_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
-  static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 60 * Time.MS_PER_SECOND;
+  // Bumped 60s -> 180s after CI run 25771142606 / shard 62 saw testDeleteOldVersions hit
+  // ThreadTimeoutException at exactly 60s while ApacheKafkaAdminAdapter.createTopic was
+  // still waiting for the Kafka admin client to return. The createTopic call itself has a
+  // ~60s retry budget inside TopicManager, so the outer test cap needs more headroom on
+  // contended runners.
+  static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 180 * Time.MS_PER_SECOND;
   static final long TOTAL_TIMEOUT_FOR_SHORT_TEST_MS = 10 * Time.MS_PER_SECOND;
   static final int DEFAULT_REPLICA_COUNT = 1;
 

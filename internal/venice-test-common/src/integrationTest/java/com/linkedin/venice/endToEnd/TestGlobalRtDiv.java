@@ -932,15 +932,20 @@ public class TestGlobalRtDiv {
 
       // Verify on every server that the GlobalRtDivState is correctly accessible — either via the non-chunked
       // metadata path or by assembling it from the chunks stored in the metadata partition at read time.
+      // Wrap per-server validation in waitForNonDeterministicAssertion: client.get() returning successfully
+      // only proves user-key ingestion finished; the GlobalRtDiv chunks are written to the metadata
+      // partition asynchronously and may still be landing when the read path returns.
       chunkingVenice.getVeniceServers().forEach(server -> {
         TestVeniceServer testVeniceServer = server.getVeniceServer();
         StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(topicName);
         if (storageEngine == null) {
           return;
         }
-        GlobalRtDivState globalRtDiv = getGlobalRtDivState(testVeniceServer, topicName, PARTITION, globalRtDivKey);
-        LOGGER.info("Chunked Global RT DIV State (assembled from chunks): {}", globalRtDiv);
-        validateGlobalDivState(globalRtDiv);
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          GlobalRtDivState globalRtDiv = getGlobalRtDivState(testVeniceServer, topicName, PARTITION, globalRtDivKey);
+          LOGGER.info("Chunked Global RT DIV State (assembled from chunks): {}", globalRtDiv);
+          validateGlobalDivState(globalRtDiv);
+        });
       });
     }
   }

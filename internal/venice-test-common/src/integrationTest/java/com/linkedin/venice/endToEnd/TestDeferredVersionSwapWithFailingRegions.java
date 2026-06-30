@@ -287,7 +287,11 @@ public class TestDeferredVersionSwapWithFailingRegions {
       String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
       try (ControllerClient childControllerClient =
           new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString())) {
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // Bumped 30s -> 120s after the 30s budget exhausted again at 86.442s overall test
+        // runtime in CI run 25778027993 / shard 49 ("davinci_push_status_store... is not
+        // ready"). The push-status system store is hybrid; first-version COMPLETED on a
+        // cold multi-region cluster can lag well past 30s.
+        TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(pushStatusStoreName);
           Assert.assertFalse(storeResponse.isError());
           Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, pushStatusStoreName + " is not ready");

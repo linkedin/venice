@@ -294,7 +294,19 @@ public class DaVinciP2PBlobTransferRecoveryTest {
       Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
     });
 
-    DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, 0);
+    /*
+     * Wait for blob-peer discovery on EVERY partition before starting the second DaVinci
+     * client. The store has 3 partitions and the second client's subscribeAll() will issue
+     * per-partition discovery to the router. If any partition's push-status hasn't propagated
+     * from DVC1 to the push-status system store yet, the router returns no peers for that
+     * partition, NettyP2PBlobTransferManager.get throws VenicePeersNotFoundException, and
+     * that partition permanently falls back to Kafka — meaning DVC1 never serves a P2P GET
+     * for it and never lazily creates a snapshot. The downstream snapshotPath1 assertion
+     * then fails.
+     */
+    for (int partition = 0; partition < 3; partition++) {
+      DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, partition);
+    }
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();

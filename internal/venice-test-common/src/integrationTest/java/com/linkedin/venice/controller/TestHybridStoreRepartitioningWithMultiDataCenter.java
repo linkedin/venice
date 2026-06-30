@@ -335,7 +335,18 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dependsOnMethods = "testPartitionCountUpdate")
+  /*
+   * 3 * TEST_TIMEOUT (180s). The body contains:
+   *   - 30s waitForNonDeterministicAssertion for STORE_NOT_FOUND across 2 child DCs
+   *   - 30s waitForNonDeterministicAssertion for hybrid-config propagation
+   *   - 60s sendEmptyPushAndWait (the controller-side cap is itself 60s)
+   *   - 30s waitForNonDeterministicAssertion for post-push verification
+   * Worst-case in-method budget ~150s, all on a 2-region/2-controller/1-server multi-DC
+   * wrapper. The flat 60s applied when this test was split from a monolith (PR #1761) is
+   * undersized — sibling testPartitionCountUpdate was already at 32.5s/60s in observed
+   * failing runs. 180s matches TestParentControllerWithMultiDataCenter's class-wide cap.
+   */
+  @Test(timeOut = 3 * TEST_TIMEOUT, dependsOnMethods = "testPartitionCountUpdate")
   public void testDeleteAndRecreateStore() {
     // now delete and recreate the store with the same name
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
@@ -384,9 +395,14 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       }
     });
 
-    // create a version by doing an empty push
+    /*
+     * The 60s controller-side cap was firing on hybrid EOP->COMPLETED. For the just-made-hybrid
+     * store servers must report lag<threshold (no RT producer in test, so heartbeat-driven);
+     * under contention it can exceed 60s. Match TestParentControllerWithMultiDataCenter:173
+     * which uses 120s for the same call shape.
+     */
     parentControllerClient
-        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 120L * Time.MS_PER_SECOND);
 
     for (ControllerClient controllerClient: childControllerClients) {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4);

@@ -64,7 +64,11 @@ import org.testng.annotations.Test;
  */
 
 public class RetriableAvroGenericStoreClientTest {
-  private static final int TEST_TIMEOUT = 15 * Time.MS_PER_SECOND;
+  // Outer @Test cap must exceed the 60s validateMetrics waitForNonDeterministicAssertion that
+  // absorbs the Tehuti OccurrenceRate sliding-window decay between sibling parameter runs.
+  // Was 15s, observed ThreadTimeoutException on testGetWithoutTriggeringLongTailRetry[6] in
+  // CI run 25769085997 / shard 8. Bumped to 90s.
+  private static final int TEST_TIMEOUT = 90 * Time.MS_PER_SECOND;
   private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
   private static final long LONG_TAIL_RETRY_THRESHOLD_IN_MS = 100L;// 100ms for single get
   // Batch get uses dynamic thresholds: "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"
@@ -528,10 +532,12 @@ public class RetriableAvroGenericStoreClientTest {
     // All metric assertions must be inside waitForNonDeterministicAssertion because metrics are
     // recorded asynchronously in completion callbacks. The request future resolves before all
     // metrics are fully recorded, causing race conditions with synchronous assertions.
-    // Metrics are recorded in completion callbacks that execute after the request future resolves.
-    // With the test's faster TimeoutProcessor (10ms tick vs 1000ms default), retries fire promptly
-    // and metrics should be recorded within a few seconds.
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    //
+    // The negative assertFalse(...OccurrenceRate.value > 0) checks below are sensitive to Tehuti's
+    // sliding-window OccurrenceRate decay: if a sibling parameter run incremented these metrics,
+    // the value only drops back to zero after the window expires. Bumped 10s -> 60s so the
+    // OccurrenceRate window can decay between runs under CI contention.
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       assertTrue(metrics.get(finalMetricsPrefix + "request.OccurrenceRate").value() > 0);
       assertEquals(metrics.get(finalMetricsPrefix + "request_key_count.Max").value(), expectedKeyCount);
 

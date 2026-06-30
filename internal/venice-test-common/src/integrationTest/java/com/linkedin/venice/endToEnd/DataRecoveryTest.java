@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_T
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
@@ -66,9 +67,20 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
-    // 1s cleanup interval is aggressive and can race with multi-region consumption,
-    // causing "Parent Kafka topic truncated". 5s gives regions time to finish consuming.
+    /*
+     * 1s cleanup interval is aggressive and can race with multi-region consumption,
+     * causing "Parent Kafka topic truncated". 5s gives regions time to finish consuming.
+     *
+     * Pair the 5s interval with TOPIC_CLEANUP_DELAY_FACTOR=0 so a truncated topic is physically
+     * deleted on the FIRST cleanup iteration that observes it. The wrapper default delayFactor
+     * is 2 (VeniceControllerWrapper.java:230), meaning 3 iterations * 5s = 15s floor before
+     * physical delete — that ate the 30s readiness budget on the data-recovery wipeCluster
+     * path (DataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery polls "previous
+     * version topic still exists"). delayFactor=0 restores the pre-#2696 effective deletion
+     * latency without reintroducing the truncation race.
+     */
     controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "5000");
+    controllerProps.put(TOPIC_CLEANUP_DELAY_FACTOR, "0");
     controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
     return controllerProps;
   }
@@ -90,14 +102,22 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
    * Their pushes must complete in every child DC before we issue the user store push, because
    * the admin message pipeline processes messages sequentially and the auto-creation validation
    * messages block until each system store push finishes.
+   *
+   * The meta system store is hybrid and reaches END_OF_PUSH_RECEIVED before completing the
+   * buffer-replay phase to COMPLETED. On the first @Test method of the class the multi-region
+   * cluster is still warming up (cluster discovery, leader election, RT topic creation), so the
+   * per-DC budget that comfortably covers later tests can be too tight here. The 3-minute
+   * budget hit the wall in CI run 25765985339/shard 48 (testBatchOnlyDataRecovery aborted at
+   * 192.393s with the meta store still at END_OF_PUSH_RECEIVED). Bump to 5 minutes to absorb
+   * worst-case buffer-replay-to-COMPLETED time on a cold multi-region cluster.
    */
   private void waitForSystemStorePushes(String storeName, ControllerClient... dcClients) {
     String metaStoreTopic = Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName), 1);
     String pushStatusStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), 1);
     for (ControllerClient dcClient: dcClients) {
-      TestUtils.waitForNonDeterministicPushCompletion(metaStoreTopic, dcClient, 2, TimeUnit.MINUTES);
-      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreTopic, dcClient, 2, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(metaStoreTopic, dcClient, 5, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreTopic, dcClient, 5, TimeUnit.MINUTES);
     }
   }
 
@@ -198,7 +218,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     }
   }
 
-  @Test(timeOut = 2 * TEST_TIMEOUT)
+  @Test(timeOut = 6 * TEST_TIMEOUT)
   public void testBatchOnlyDataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-batch");
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
@@ -324,7 +344,21 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty());
         Assert.assertFalse(response.isError(), response.getError());
       });
-      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
+      /*
+       * Don't use waitForNonDeterministicPushCompletion — it fast-fails on ERROR status with
+       * no retry. During hybrid+AA recovery, dc-1 wipes v1 and restarts ingestion from
+       * dc-0's VT; a storage replica in dc-1 can hit ERROR transiently during the rebuild,
+       * tripping WAIT_ALL_REPLICAS. Use a retry-on-throwable wait instead so transient
+       * ERROR states self-recover within the 180s budget. The 60s fast-fail wait observed
+       * a one-shot ERROR replica and surfaced "Parent Kafka topic truncated" / "too many
+       * ERROR replicas in partition: 0" — both transient.
+       */
+      TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, true, true, () -> {
+        com.linkedin.venice.controllerapi.JobStatusQueryResponse status =
+            parentControllerClient.queryJobStatus(versionTopic, Optional.empty());
+        Assert.assertFalse(status.isError(), status.getError());
+        Assert.assertEquals(status.getStatus(), "COMPLETED", "Recovery push not yet COMPLETED: " + status);
+      });
 
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)

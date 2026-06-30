@@ -487,12 +487,25 @@ public class TestResourceRegistry {
 
     Mockito.when(factory1.factory()).thenReturn(mockResource);
 
-    final CountDownLatch shutdown = new CountDownLatch(1);
+    // Two latches form an explicit barrier so the test thread can observe the registry mid-
+    // shutdown without racing the shutdown thread:
+    // * shutdownReached: fired once the mock's shutdown() is entered. The test thread waits
+    // on this to know the registry started shutting the resource down.
+    // * releaseShutdown: held by the test until after the mid-shutdown assertion, so the
+    // shutdown thread cannot complete and flip the _shutdownLatch before we observe
+    // isTerminated()==false.
+    // Without this barrier, the prior code raced: shutdownReached.await() returned, but the
+    // shutdown thread could finish drain() and the registry-level _shutdownLatch.countDown()
+    // before the test got to the isTerminated() check. Observed false-positive failure in CI
+    // run 25769648910 / Router UT shard 8 ("expected [false] but found [true]" at line 519).
+    final CountDownLatch shutdownReached = new CountDownLatch(1);
+    final CountDownLatch releaseShutdown = new CountDownLatch(1);
 
     Mockito.doAnswer(new Answer() {
       @Override
       public Object answer(InvocationOnMock invocation) throws Throwable {
-        shutdown.countDown();
+        shutdownReached.countDown();
+        releaseShutdown.await();
         return null;
       }
     }).when(mockResource).shutdown();
@@ -509,18 +522,22 @@ public class TestResourceRegistry {
 
       Assert.assertSame(res, mockResource);
 
-      Assert.assertEquals(shutdown.getCount(), 1);
+      Assert.assertEquals(shutdownReached.getCount(), 1);
 
       reg.shutdown();
       Assert.assertTrue(reg.isShutdown());
 
-      shutdown.await();
+      shutdownReached.await();
 
+      // Shutdown thread is blocked inside mockResource.shutdown() waiting on releaseShutdown,
+      // so the registry's _shutdownLatch cannot have fired yet.
       Assert.assertFalse(reg.isTerminated());
 
+      releaseShutdown.countDown();
       reg.waitForShutdown();
       Assert.assertTrue(reg.isTerminated());
     } finally {
+      releaseShutdown.countDown();
       reg.shutdown();
     }
   }
@@ -769,8 +786,17 @@ public class TestResourceRegistry {
       Mockito.doAnswer(new Answer() {
         @Override
         public Object answer(InvocationOnMock invocation) throws Throwable {
-          shutdownOrder.add(index);
+          /*
+           * Increment the counter BEFORE publishing to the order queue. The test thread blocks
+           * on shutdownOrder.take() (line 841) and then asserts shutdown[index].get() == 1; if
+           * we published first, the test thread could wake from take(), do its bounded sleep,
+           * and read the counter before this thread runs the incrementAndGet — a race that
+           * fires on a loaded CI worker. The add -> take pair on LinkedBlockingQueue
+           * establishes happens-before, so the incremented value is guaranteed visible once
+           * the waiter is released.
+           */
           shutdown[index].incrementAndGet();
+          shutdownOrder.add(index);
           return null;
         }
       }).when(mockResources[index]).shutdown();

@@ -349,14 +349,16 @@ public class PushStatusStoreTest {
           TimeUnit.MILLISECONDS,
           () -> assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
 
-      // Now let's test the async API
-      CompletableFuture<Map<CharSequence, Integer>> future1 =
-          reader.getPartitionOrVersionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty(), false);
-      future1.whenComplete((result, throwable) -> {
-        {
-          Assert.assertEquals(result.size(), 1);
-        }
-      }).join();
+      // Now let's test the async API. Retry until the async path sees the same partition
+      // status the synchronous path already verified above. Observed CI run 25774211176 /
+      // shard 15: the async call returned an empty map while the synchronous path saw size=1.
+      // The async API may go through a separate cache layer that lags the sync read.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
+        CompletableFuture<Map<CharSequence, Integer>> future =
+            reader.getPartitionOrVersionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty(), false);
+        Map<CharSequence, Integer> result = future.get();
+        Assert.assertEquals(result.size(), 1);
+      });
 
       // case 2: throw exception for non-existing store
       try {

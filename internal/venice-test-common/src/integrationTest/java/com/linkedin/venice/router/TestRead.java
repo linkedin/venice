@@ -311,11 +311,27 @@ public abstract class TestRead {
         veniceCluster
             .updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(readComputeEnabled));
 
-        // After updateStore, wait for the store to be queryable to handle transient 502 errors
-        // while the router refreshes metadata
+        /*
+         * After updateStore, wait for the router to see the new isReadComputationEnabled config
+         * before issuing the inner loop. The router resolves compute eligibility per-request via
+         * storeRepository.isReadComputationEnabled(storeName) (VenicePathParser); when the local
+         * HelixReadOnlyStoreRepository hasn't seen the config flip yet, a compute request hits
+         * an HTTP 502 and the test fails fast with VeniceClientHttpException.
+         *
+         * Warm up BOTH paths the inner loop exercises (get + compute) so the next iteration
+         * starts only after the router's view matches the new config. Bare-get warm-up alone is
+         * insufficient because compute is the path that fails on stale config.
+         */
+        Set<String> warmupKeys = new HashSet<>();
+        warmupKeys.add(KEY_PREFIX + 0);
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           GenericRecord readyCheckValue = storeClient.get(KEY_PREFIX + 0).get();
           Assert.assertNotNull(readyCheckValue, "Store should be queryable after updateStore");
+          if (readComputeEnabled) {
+            Map<String, ComputeGenericRecord> warmupCompute =
+                storeClient.compute().project(VALUE_FIELD_NAME, UNKNOWN_FIELD_NAME).execute(warmupKeys).get();
+            Assert.assertEquals(warmupCompute.size(), 1, "Compute path should be queryable after updateStore");
+          }
         });
 
         // Capture metric baselines after warm-up to account for any retried attempts

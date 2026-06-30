@@ -443,27 +443,34 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
         parentControllerClient.emptyPush(storeName, Utils.getUniqueString(storeName), 1024);
     Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
     try {
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
+      /*
+       * The emptyPush call above is asynchronous; the child controller learns about the new
+       * version via the admin Kafka channel with no ordering guarantee against the parent
+       * returning. Retry until the version is visible on the child.
+       */
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
 
-      StoreInfo store = storeResponse.getStore();
-      Assert.assertEquals(
-          parentController.getVeniceAdmin().getBackupVersionDefaultRetentionMs(),
-          store.getBackupVersionRetentionMs(),
-          "Store Info should have correct default retention time in ms.");
-      Assert.assertEquals(
-          parentController.getVeniceAdmin().getDefaultMaxRecordSizeBytes(venice.getClusterNames()[0]),
-          TEST_MAX_RECORD_SIZE_BYTES,
-          "Default max record size bytes setting should've been correctly set by the test.");
-      Assert.assertEquals(
-          store.getMaxRecordSizeBytes(),
-          TEST_MAX_RECORD_SIZE_BYTES,
-          "Store Info should have the same default max record size in bytes.");
-      Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
-      Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
-      Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
-      List<Version> versions = store.getVersions();
-      Assert.assertEquals(versions.size(), 1, " Store from new store-version should only have one version");
+        StoreInfo store = storeResponse.getStore();
+        Assert.assertEquals(
+            parentController.getVeniceAdmin().getBackupVersionDefaultRetentionMs(),
+            store.getBackupVersionRetentionMs(),
+            "Store Info should have correct default retention time in ms.");
+        Assert.assertEquals(
+            parentController.getVeniceAdmin().getDefaultMaxRecordSizeBytes(venice.getClusterNames()[0]),
+            TEST_MAX_RECORD_SIZE_BYTES,
+            "Default max record size bytes setting should've been correctly set by the test.");
+        Assert.assertEquals(
+            store.getMaxRecordSizeBytes(),
+            TEST_MAX_RECORD_SIZE_BYTES,
+            "Store Info should have the same default max record size in bytes.");
+        Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
+        Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
+        Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
+        List<Version> versions = store.getVersions();
+        Assert.assertEquals(versions.size(), 1, " Store from new store-version should only have one version");
+      });
     } finally {
       deleteStore(storeName);
     }
@@ -1083,22 +1090,42 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
           parentControllerClient.sendEmptyPushAndWait(storeName, "push-2", 1024000L, 10 * Time.MS_PER_SECOND));
 
       assertCommand(parentControllerClient.deleteOldVersion(storeName, 1));
-      // Wait for resource of v1 to be cleaned up since for child fabric we only consider a topic is deletable if its
-      // resource is deleted.
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        StoreInfo storeInChildRegion = assertCommand(controllerClient.getStore(storeName)).getStore();
-        Assert.assertFalse(storeInChildRegion.getVersion(1).isPresent());
-      });
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        MultiStoreTopicsResponse childMultiStoreTopicResponse =
-            assertCommand(controllerClient.getDeletableStoreTopics());
-        Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
-        Assert.assertFalse(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+
+      /*
+       * v1 is filtered out of getDeletableStoreTopics by
+       * TopicCleanupService.extractVersionTopicsToCleanup if either:
+       *   (a) isResourceStillAlive(<store>_v1) returns true — reads ZK ExternalView path
+       *       /<cluster>/EXTERNALVIEW/<resource>, async-purged by Helix after dropResource on
+       *       the IdealState; OR
+       *   (b) isTopicTruncatedBasedOnRetention(<store>_v1) returns false — synchronous.
+       *
+       * The prior collapsed-30s API-level wait kept blocking on (a) and surfacing as
+       * "v1 missing from list" with no signal which precondition was slow. Switch to a
+       * deterministic gate on the actual Helix state via the child admin, then do the HTTP
+       * assertion as a one-shot. Same child-admin pattern used by testDeleteKafkaTopic
+       * below.
+       */
+      String clusterName = venice.getClusterNames()[0];
+      VeniceHelixAdmin childAdmin =
+          venice.getChildRegions().get(0).getLeaderController(clusterName).getVeniceHelixAdmin();
+      String v1Resource = Version.composeKafkaTopic(storeName, 1);
+      // Bumped 60s -> 120s. The Helix controller's EV-purge cadence under loaded CI can
+      // exceed 60s on a freshly-dropped resource. Observed at 77s in IntegrationTests_19.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
         Assert.assertFalse(
-            childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
-        Assert.assertFalse(
-            childMultiStoreTopicResponse.getTopics().contains(Utils.composeRealTimeTopic(metaSystemStoreName)));
+            childAdmin.isResourceStillAlive(v1Resource),
+            "Helix ExternalView for " + v1Resource + " not yet purged on child");
       });
+
+      StoreInfo storeInChildRegion = assertCommand(controllerClient.getStore(storeName)).getStore();
+      Assert.assertFalse(storeInChildRegion.getVersion(1).isPresent());
+      MultiStoreTopicsResponse childMultiStoreTopicResponse = assertCommand(controllerClient.getDeletableStoreTopics());
+      Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(v1Resource));
+      Assert.assertFalse(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+      Assert.assertFalse(
+          childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
+      Assert.assertFalse(
+          childMultiStoreTopicResponse.getTopics().contains(Utils.composeRealTimeTopic(metaSystemStoreName)));
     } finally {
       deleteStore(storeName);
     }

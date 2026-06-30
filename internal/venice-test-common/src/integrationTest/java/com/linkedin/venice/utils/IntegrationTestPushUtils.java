@@ -432,11 +432,30 @@ public class IntegrationTestPushUtils {
       Properties props,
       UpdateStoreQueryParams storeParams) {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
-    NewStoreResponse newStoreResponse = controllerClient
-        .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
+    String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
+    /*
+     * Retry up to 5x, AND treat "already exists" as success. The first @Test method of a
+     * multi-region class often races parent-controller leader-election / D2 / push-status
+     * system-store provisioning — a single createNewStore can return HTTP 404 ("system
+     * store does not exist") on the unlucky first call. With a plain retry, however, if the
+     * first attempt succeeds server-side but the response is lost (transport drop, leader
+     * roll), the second attempt sees the store already created and returns HTTP 409
+     * ("already exists"). Both 404 (transient) and 409 (idempotent success) must be handled.
+     *
+     * Strategy: retry on errors so 404 gets a chance; after the loop, if we ended with
+     * "already exists", treat it as success because the store IS present.
+     */
+    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(
+        5,
+        c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr),
+        r -> r.getError() != null && r.getError().contains("already exists"));
 
     if (newStoreResponse.isError()) {
-      throw new VeniceException("Could not create store " + props.getProperty(VENICE_STORE_NAME_PROP));
+      String err = newStoreResponse.getError();
+      if (err == null || !err.contains("already exists")) {
+        throw new VeniceException("Could not create store " + storeName + ": " + err);
+      }
+      // "already exists" -> a prior retry attempt succeeded server-side; treat as success.
     }
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));

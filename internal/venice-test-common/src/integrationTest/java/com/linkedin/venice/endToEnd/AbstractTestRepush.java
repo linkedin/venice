@@ -6,6 +6,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_REC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -19,6 +20,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -77,6 +79,49 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
   // ==================================================================================
   // Shared helpers
   // ==================================================================================
+
+  /**
+   * Wait until every child region's controller observes Active/Active replication enabled on
+   * the given store. createStoreForJob issues updateStore against the parent controller; the
+   * admin-channel propagation to each child controller is async. The first @Test method in
+   * each shard hits this race because the parent's setActiveActiveReplicationEnabled(true)
+   * has not yet reached dc-1 when the immediately-following push fires — controller throws
+   * HTTP 500 "Store doesn't have Active/Active enabled in region dc-1, but A/A is enabled in
+   * parent which indicates A/A is fully ramped." Other tests in the class race past it
+   * because by the time they run, the admin channel has flushed.
+   *
+   * <p>Subclasses that build A/A-enabled stores should call this immediately after
+   * {@code createStoreForJob}.
+   */
+  protected void waitForAAReplicationPropagation(String storeName) {
+    for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
+      try (
+          ControllerClient childClient = new ControllerClient(CLUSTER_NAME, childRegion.getControllerConnectString())) {
+        // Use the 5-arg overload with retryOnThrowable=true so transient NPE/IOException from
+        // getStore() returning a partially-propagated store are retried instead of failing the
+        // wait. The 4th-arg form takes exponentialBackOff (not retryOnThrowable) -- explicit
+        // about which boolean does what here.
+        TestUtils.waitForNonDeterministicAssertion(
+            60,
+            TimeUnit.SECONDS,
+            false /* exponentialBackOff */,
+            true /* retryOnThrowable */,
+            () -> {
+              StoreResponse storeResponse = childClient.getStore(storeName);
+              assertNotNull(storeResponse, "null storeResponse from region " + childRegion.getRegionName());
+              assertFalse(
+                  storeResponse.isError(),
+                  "getStore returned error in region " + childRegion.getRegionName() + ": " + storeResponse.getError());
+              assertNotNull(
+                  storeResponse.getStore(),
+                  "store not yet propagated to region " + childRegion.getRegionName());
+              assertTrue(
+                  storeResponse.getStore().isActiveActiveReplicationEnabled(),
+                  "A/A not propagated to region " + childRegion.getRegionName());
+            });
+      }
+    }
+  }
 
   /**
    * Build standard repush properties targeting dc-0 with Spark engine.

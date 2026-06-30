@@ -158,7 +158,12 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         // Verify router has discovered the version BEFORE producing partial updates.
         // waitVersion calls refreshAllRouterMetaData() but that's async — the router may not
         // have processed it yet. Reading a key forces the router to resolve the store version.
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        // retryOnThrowable=true so a transient VeniceClientHttpException ("There is no version
+        // for store ...") gets retried instead of failing the test on the first attempt.
+        // For ZSTD_WITH_DICT the router must additionally download the compression dictionary
+        // before it can decompress responses (otherwise it returns 500 "Dictionary not
+        // downloaded"); 10s was insufficient for that path, so widen the budget to 60s.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
           assertNotNull(readValue(storeReader, "1"), "Router should have version metadata by now");
         });
 
@@ -208,10 +213,18 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
     VeniceClusterWrapper veniceClusterWrapper = getClusterDC0();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
-      assertCommand(
-          parentControllerClient.retryableRequest(
-              3,
-              c -> c.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString())));
+      /*
+       * Use the idempotent helper: plain assertCommand(retryableRequest(createNewStore))
+       * races when attempt 1 succeeds server-side but its response is lost — attempt 2 sees
+       * the store and returns HTTP 409 "already exists", which propagates as an error and
+       * fails assertCommand even though the store IS present.
+       */
+      TestUtils.createNewStoreWithRetry(
+          parentControllerClient,
+          storeName,
+          "test_owner",
+          keySchemaStr,
+          valueSchema.toString());
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setWriteComputationEnabled(true)
@@ -863,13 +876,15 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       // Record A: timestamp 1 — lower than all field timestamps from the 30 initial updates,
       // so this will be ignored by DCR (ignoreNewUpdate returns true).
       // Record B: timestamp 10000 — higher than all field timestamps, so this wins DCR.
+      //
+      // IMPORTANT: Record A targets ONLY a scalar field. The previous version also called
+      // setElementsToAddToListField, but the collection's RMD topLevelFieldTimestamp for a
+      // setElementsToAddToListField-only history stays at 0 — so 0 <= 1 makes
+      // isRmdFieldTimestampSmaller return true and ignoreNewUpdate returns FALSE. That broke
+      // the test's premise that A is fully ignored; A's 10000 entries leaked through
+      // element-level merge, producing 320000 instead of the expected 310000.
       UpdateBuilderImpl ignoredUpdateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
       ignoredUpdateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
-      List<Float> ignoredEntries = new ArrayList<>();
-      for (int j = 0; j < singleUpdateEntryCount; j++) {
-        ignoredEntries.add((float) (initialUpdateCount * singleUpdateEntryCount + j));
-      }
-      ignoredUpdateBuilder.setElementsToAddToListField(listFieldName, ignoredEntries);
       sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, ignoredUpdateBuilder.build(), 1L);
 
       UpdateBuilderImpl winningUpdateBuilder = new UpdateBuilderImpl(partialUpdateSchema);

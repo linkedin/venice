@@ -9,11 +9,13 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 
@@ -70,11 +72,17 @@ public class ServerOverloadTest extends AbstractClientEndToEndSetup {
     assertTrue(receivedOverloadException);
     assertEquals(healthMonitor.getOverloadedInstanceCount(), 2);
 
-    // Verify some metrics
+    /*
+     * Verify some metrics. The OccurrenceRate stat (no_available_replica_request_count) is a
+     * Tehuti rate over a sliding window — freshly-emitted events take a brief moment to
+     * reflect in `value()`. The Avg stat (overloaded_instance_count) may also be sampled
+     * asynchronously by AsyncGauge. Poll for a few seconds rather than reading synchronously.
+     */
     String overloadInstanceCountMetricName = "." + storeName + "--overloaded_instance_count.Avg";
-    assertTrue(clientMetricsRepository.getMetric(overloadInstanceCountMetricName).value() > 0);
-
     String nonAvailReplicaMetricName = "." + storeName + "--no_available_replica_request_count.OccurrenceRate";
-    assertTrue(clientMetricsRepository.getMetric(nonAvailReplicaMetricName).value() > 0);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertTrue(clientMetricsRepository.getMetric(overloadInstanceCountMetricName).value() > 0);
+      assertTrue(clientMetricsRepository.getMetric(nonAvailReplicaMetricName).value() > 0);
+    });
   }
 }

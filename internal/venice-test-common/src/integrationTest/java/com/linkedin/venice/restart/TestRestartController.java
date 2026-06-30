@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -195,15 +196,21 @@ public class TestRestartController {
   }
 
   private VersionCreationResponse createNewVersionWithRetry(String storeName) {
-    // After restart, regardless who is leader, there should be only one leader and could handle request correctly.
-    VersionCreationResponse response = null;
-    try {
-      response = cluster.getNewVersion(storeName);
-    } catch (Exception e) {
-      // Some times, the leader controller would be changed after getting it from cluster. Just retry on the new leader.
-      cluster.getLeaderVeniceController();
-      response = cluster.getNewVersion(storeName);
-    }
-    return response;
+    // Leader election after a controller restart can take several seconds; during that window
+    // both the old and new leader can briefly answer "not the leader" to /request_topic. A single
+    // retry is not enough — poll until the new leader has stabilised and accepts the request.
+    AtomicReference<VersionCreationResponse> result = new AtomicReference<>();
+    // The 4-arg overload's third boolean is exponentialBackOff (not retryOnThrowable). Use the
+    // 5-arg form with explicit exponentialBackOff=false, retryOnThrowable=true so that a
+    // request_topic call that raises (e.g., connection refused mid-leader-election) is retried
+    // instead of failing the wait.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+      VersionCreationResponse response = cluster.getNewVersion(storeName);
+      Assert.assertFalse(
+          response.isError(),
+          "Expected request_topic to succeed after leader election, but got: " + response.getError());
+      result.set(response);
+    });
+    return result.get();
   }
 }

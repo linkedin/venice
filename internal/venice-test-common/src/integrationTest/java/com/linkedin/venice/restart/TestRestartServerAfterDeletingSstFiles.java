@@ -226,15 +226,27 @@ public class TestRestartServerAfterDeletingSstFiles {
       return currentVersion == newVersion;
     });
 
-    // use client to query for all the keys
-    // 1. invalid key
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    /*
+     * Wait for the router's store-metadata view to learn about newVersion before issuing reads.
+     * The version swap above is observed at the controller's currentVersion, but the router
+     * receives its update via a separate ZK watcher and lags briefly. During that window
+     * storeClient.get throws ExecutionException wrapping VeniceClientHttpException 400 "no
+     * version for store". The 3-arg waitForNonDeterministicAssertion does NOT retry on
+     * Throwable — only AssertionError — so a single transient 400 kills the test. Use the 4-arg
+     * overload with retryOnThrowable=true so the router gets the full 30s budget to catch up.
+     */
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
       Assert.assertNull(storeClient.get(keyPrefix + (startingKey - 1)).get());
     });
 
-    // 2. all valid keys
+    // 2. all valid keys — same router-metadata race applies to the first valid-key read.
     int currkey = startingKey;
     int endKey = startingKey + numKeys;
+    int firstKey = currkey;
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+      Assert.assertEquals(storeClient.get(keyPrefix + firstKey).get().toString(), valuePrefix + firstKey);
+    });
+    currkey++;
     while (currkey < endKey) {
       Assert.assertEquals(storeClient.get(keyPrefix + currkey).get().toString(), valuePrefix + currkey);
       currkey++;

@@ -87,6 +87,12 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
             .setActiveActiveReplicationEnabled(true)
             .setNativeReplicationSourceFabric(dcNames[0])).close();
 
+    // Wait for A/A flag to propagate from parent to ALL child controllers before pushing.
+    // Without this, the first @Test in each shard races and the controller throws
+    // HTTP 500 "Store doesn't have Active/Active enabled in region dc-1, but A/A is
+    // enabled in parent which indicates A/A is fully ramped."
+    waitForAAReplicationPropagation(storeName);
+
     try (VenicePushJob batchPush = new VenicePushJob("repush-basic-batch-v1", batchProps)) {
       batchPush.run();
     }
@@ -159,6 +165,9 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
             .setNativeReplicationSourceFabric(dcNames[0])
             .setCompressionStrategy(CompressionStrategy.GZIP)).close();
 
+    // Wait for A/A to propagate before pushing — see waitForAAReplicationPropagation Javadoc.
+    waitForAAReplicationPropagation(storeName);
+
     try (VenicePushJob batchPush = new VenicePushJob("repush-gzip-batch-v1", batchProps)) {
       batchPush.run();
     }
@@ -209,6 +218,12 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
             .setNativeReplicationEnabled(true)
             .setActiveActiveReplicationEnabled(true)
             .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    // Wait for A/A flag to propagate from parent to ALL child controllers before pushing.
+    // Without this, the first @Test in each shard races and the controller throws
+    // HTTP 500 "Store doesn't have Active/Active enabled in region dc-1, but A/A is
+    // enabled in parent which indicates A/A is fully ramped."
+    waitForAAReplicationPropagation(storeName);
 
     try (VenicePushJob batchPush = new VenicePushJob("repush-zstd-batch-v1", batchProps)) {
       batchPush.run();
@@ -280,6 +295,9 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
             .setHybridRewindSeconds(5)
             .setHybridOffsetLagThreshold(2)).close();
 
+    // Wait for A/A to propagate before pushing — see waitForAAReplicationPropagation Javadoc.
+    waitForAAReplicationPropagation(storeName);
+
     try (VenicePushJob batchPush = new VenicePushJob("repush-aa-batch-v1", batchProps)) {
       batchPush.run();
     }
@@ -330,6 +348,12 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
             .setNativeReplicationEnabled(true)
             .setActiveActiveReplicationEnabled(true)
             .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    // Wait for A/A flag to propagate from parent to ALL child controllers before pushing.
+    // Without this, the first @Test in each shard races and the controller throws
+    // HTTP 500 "Store doesn't have Active/Active enabled in region dc-1, but A/A is
+    // enabled in parent which indicates A/A is fully ramped."
+    waitForAAReplicationPropagation(storeName);
 
     try (VenicePushJob batchPush = new VenicePushJob("repush-reducer-count-batch-v1", batchProps)) {
       batchPush.run();
@@ -388,6 +412,12 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
             .setNativeReplicationEnabled(true)
             .setActiveActiveReplicationEnabled(true)
             .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    // Wait for A/A flag to propagate from parent to ALL child controllers before pushing.
+    // Without this, the first @Test in each shard races and the controller throws
+    // HTTP 500 "Store doesn't have Active/Active enabled in region dc-1, but A/A is
+    // enabled in parent which indicates A/A is fully ramped."
+    waitForAAReplicationPropagation(storeName);
 
     try (VenicePushJob batchPush = new VenicePushJob("repush-large-batch-v1", batchProps)) {
       batchPush.run();

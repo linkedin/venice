@@ -88,8 +88,13 @@ public class VeniceClientCompatibilityTest {
             .setVeniceURL(routerAddress)
             .setForceClusterDiscoveryAtStartTime(true));
 
-    // Block until the store is ready.
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+    /*
+     * Block until the forked VeniceClusterInitializer JVM has finished bringing up ZK +
+     * Kafka + controller + server + router on the pre-reserved port. On a loaded CI shard
+     * this routinely brushes against 60s. Bump to 180s — matches the established branch
+     * pattern (commits 6edb0287fd, 44f1d5bc50) for similar fixture-startup budgets.
+     */
+    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
       if (!clusterProcess.isAlive()) {
         throw new VeniceException("Cluster process exited unexpectedly.");
       }
@@ -102,7 +107,7 @@ public class VeniceClientCompatibilityTest {
     });
 
     String[] zkAddress = new String[1];
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
       if (!clusterProcess.isAlive()) {
         throw new VeniceException("Cluster process exited unexpectedly.");
       }

@@ -241,7 +241,16 @@ public class ReadComputeValidationTest {
     }
   }
 
-  @Test(timeOut = TIMEOUT)
+  /*
+   * 3 * TIMEOUT (3 min). Unlike the other @Test methods in this class which do a single push
+   * + compute query, testComputeSwappedFields additionally performs a full
+   * stopAndRestartVeniceServer between the second push and the compute query (line 307). The
+   * server shutdown chain (VeniceServer.shutdown -> KafkaStoreIngestionService.stopInner ->
+   * AggKafkaConsumerService.stopInner -> KafkaConsumerService.stopInner with awaitTermination
+   * loops) plus the start-up chain regularly consumes 40-50s under loaded CI on its own, and
+   * the rest of the test body adds another ~20s. The 60s @Test cap from TIMEOUT is too tight.
+   */
+  @Test(timeOut = 3 * TIMEOUT)
   public void testComputeSwappedFields() throws Exception {
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean fastAvro = true;
