@@ -103,10 +103,19 @@ public class PartitionConsumptionState {
   private LeaderFollowerStateType leaderFollowerState;
 
   /**
-   * The VT produce future should be read/set by the same consumer thread during normal operation. Making it volatile
-   * since the SIT thread might want to shortcircuit this future when closing {@link LeaderFollowerStoreIngestionTask}.
+   * Head of the VT produce-call chain. All swaps from the ingestion loop (data writes via
+   * {@code queueUpVersionTopicWritesWithViewWriters}, CMs via {@code maybeQueueCMWritesToVersionTopic}, HBs
+   * via {@code sendIngestionHeartbeatToVT}) execute on the SIT main thread today — AAWC workers only build
+   * MCRs; the SIT main thread iterates batch results and does the actual swap. The concurrent reader is the
+   * close/kill thread ({@code closeVeniceViewWriters}), which reads the current head and may complete it
+   * exceptionally — close does NOT install a new head.
+   *
+   * <p>{@link AtomicReference} is forward-compatibility insurance: a future refactor that moves swaps into
+   * worker threads (e.g. parallelizing the per-key VT produce) would race read-modify-write on this field;
+   * {@code getAndSet} keeps the linked-chain invariant intact without additional synchronization.
    */
-  private volatile CompletableFuture<Void> lastVTProduceCallFuture;
+  private final AtomicReference<CompletableFuture<Void>> lastVTProduceCallFuture =
+      new AtomicReference<>(CompletableFuture.completedFuture(null));
 
   /**
    * State machine that can only transition to LATCH_CREATED if LatchStatus is NONE, and transition to LATCH_RELEASED
@@ -473,7 +482,6 @@ public class PartitionConsumptionState {
     this.latestProcessedRemoteVtPosition = offsetRecord.getCheckpointedRemoteVtPosition();
     this.leaderHostId = offsetRecord.getLeaderHostId();
     this.leaderGUID = offsetRecord.getLeaderGUID();
-    this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
@@ -660,11 +668,23 @@ public class PartitionConsumptionState {
   }
 
   public CompletableFuture<Void> getLastVTProduceCallFuture() {
-    return this.lastVTProduceCallFuture;
+    return this.lastVTProduceCallFuture.get();
   }
 
-  public void setLastVTProduceCallFuture(CompletableFuture<Void> lastVTProduceCallFuture) {
-    this.lastVTProduceCallFuture = lastVTProduceCallFuture;
+  /**
+   * Atomically install {@code next} as the new head of the VT produce-call chain and return the previous head.
+   * Callers must wire a callback on the returned future before completing {@code next} — that callback is what
+   * runs the actual produce when the previous future completes. Replaces the prior non-atomic
+   * {@code getLastVTProduceCallFuture + setLastVTProduceCallFuture} pattern, which lost updates under concurrent
+   * callers and could leave a writer's future orphaned (no subsequent write waiting for it).
+   *
+   * <p>{@code next} must be non-null — installing null would permanently break the chain (every subsequent
+   * {@code getLastVTProduceCallFuture().whenCompleteAsync(...)} would NPE, and {@code closeVeniceViewWriters}
+   * would NPE on {@code .isDone()}). Surface a caller bug here rather than as an obscure NPE in close/shutdown.
+   */
+  public CompletableFuture<Void> swapLastVTProduceCallFuture(CompletableFuture<Void> next) {
+    Objects.requireNonNull(next, "next chain head must be non-null");
+    return this.lastVTProduceCallFuture.getAndSet(next);
   }
 
   public void setCurrentVersionSupplier(BooleanSupplier isCurrentVersion) {

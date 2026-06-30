@@ -256,7 +256,8 @@ public class ActiveKeyCountTest {
 
   private PubSubMessageHeaders createSignalHeaders(byte signalValue) {
     PubSubMessageHeaders headers = new PubSubMessageHeaders();
-    headers.add(new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { signalValue }));
+    headers
+        .add(new PubSubMessageHeader(PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER, new byte[] { signalValue }));
     return headers;
   }
 
@@ -623,7 +624,8 @@ public class ActiveKeyCountTest {
   @DataProvider(name = "signalInvalidatesCases")
   public Object[][] signalInvalidatesCases() {
     PubSubMessageHeaders multiByteHeaders = new PubSubMessageHeaders();
-    multiByteHeaders.add(new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { 1, 2 }));
+    multiByteHeaders
+        .add(new PubSubMessageHeader(PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER, new byte[] { 1, 2 }));
     /* Columns: headers, messageType, simulateUnderflow, expectedLogSubstring, desc */
     return new Object[][] {
         { createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE), MessageType.DELETE, true,
@@ -632,8 +634,7 @@ public class ActiveKeyCountTest {
             "Leader propagated invalidation signal", "explicit invalidate signal" },
         { createSignalHeaders((byte) 99), MessageType.PUT, false, "Unexpected kcs signal value 99",
             "unexpected single-byte value" },
-        { multiByteHeaders, MessageType.PUT, false, "Unexpected multi-byte kcs signal (length=2)",
-            "multi-byte signal" } };
+        { multiByteHeaders, MessageType.PUT, false, "Unexpected kcs header length=2", "multi-byte signal" } };
   }
 
   @Test(dataProvider = "signalInvalidatesCases")
@@ -721,11 +722,11 @@ public class ActiveKeyCountTest {
     PubSubMessageHeaders[] headerCases =
         new PubSubMessageHeaders[] { new PubSubMessageHeaders(), new PubSubMessageHeaders() {
           {
-            add(new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, null));
+            add(new PubSubMessageHeader(PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER, null));
           }
         }, new PubSubMessageHeaders() {
           {
-            add(new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[0]));
+            add(new PubSubMessageHeader(PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER, new byte[0]));
           }
         } };
     for (PubSubMessageHeaders headers: headerCases) {
@@ -841,7 +842,8 @@ public class ActiveKeyCountTest {
 
       verify(localPcs).decrementActiveKeyCount();
       verify(localPcs).setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
-      verify(ingestionTask, times(1)).recordActiveKeyCountInvalidation();
+      verify(ingestionTask, times(1))
+          .recordActiveKeyCountInvalidation(ActiveKeyCountInvalidationReason.LEADER_DCR_UNDERFLOW);
 
       String capturedLog = appender.getLog();
       Assert.assertTrue(
@@ -883,7 +885,8 @@ public class ActiveKeyCountTest {
 
     PartitionConsumptionState recorderFails = mock(PartitionConsumptionState.class);
     doReturn("replica-recorder-fails").when(recorderFails).getReplicaId();
-    doThrow(new RuntimeException("metric explosion")).when(ingestionTask).recordActiveKeyCountInvalidation();
+    doThrow(new RuntimeException("metric explosion")).when(ingestionTask)
+        .recordActiveKeyCountInvalidation(any(ActiveKeyCountInvalidationReason.class));
 
     TestLogAppender appender2 = new TestLogAppender("RecorderFailsAppender", PatternLayout.createDefaultLayout());
     appender2.start();

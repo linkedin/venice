@@ -138,6 +138,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -157,6 +158,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import org.apache.logging.log4j.LogManager;
@@ -499,7 +501,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     put.schemaId = 1;
     when(mockResult.getNewPut()).thenReturn(put);
     AtomicBoolean writeToVersionTopic = new AtomicBoolean(false);
-    when(mockPartitionConsumptionState.getLastVTProduceCallFuture())
+    // The atomic swap returns the previous head (already-completed in this test) and installs the new one.
+    when(mockPartitionConsumptionState.swapLastVTProduceCallFuture(any()))
         .thenReturn(CompletableFuture.completedFuture(null));
     leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
         mockPartitionConsumptionState,
@@ -507,9 +510,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
             .processRecord(mock(ByteBuffer.class), new byte[1], 1, viewPartitionSet, Lazy.of(() -> null)),
         null,
         () -> writeToVersionTopic.set(true));
-    verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
     ArgumentCaptor<CompletableFuture> vtWriteFutureCaptor = ArgumentCaptor.forClass(CompletableFuture.class);
-    verify(mockPartitionConsumptionState, times(1)).setLastVTProduceCallFuture(vtWriteFutureCaptor.capture());
+    verify(mockPartitionConsumptionState, times(1)).swapLastVTProduceCallFuture(vtWriteFutureCaptor.capture());
     verify(materializedViewWriter, times(1)).processRecord(any(), any(), anyInt(), any(), any());
     verify(hostLevelIngestionStats, times(1)).recordViewProducerLatency(anyDouble());
     verify(hostLevelIngestionStats, never()).recordViewProducerAckLatency(anyDouble());
@@ -523,6 +525,128 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertTrue(vtWriteFutureCaptor.getValue().isDone());
     assertFalse(vtWriteFutureCaptor.getValue().isCompletedExceptionally());
     assertTrue(writeToVersionTopic.get());
+  }
+
+  /**
+   * Regression test for the try/finally + try/catch exception-safety added to
+   * {@code queueUpVersionTopicWritesWithViewWriters}. If the {@code viewWriterRecordProcessor.apply}
+   * call throws during setup AFTER the atomic swap installed our future as the head, the future must
+   * be completed exceptionally so subsequent chained writes don't block forever.
+   */
+  @Test
+  public void testQueueUpVersionTopicWritesCompletesChainWhenViewWriterApplyThrows() throws InterruptedException {
+    mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
+    Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
+    MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
+    when(materializedViewWriter.getViewWriterType()).thenReturn(VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW);
+    viewWriterMap.put("testView", materializedViewWriter);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt())).thenReturn(viewWriterMap);
+    setUp();
+    when(mockPartitionConsumptionState.swapLastVTProduceCallFuture(any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    RuntimeException setupFailure = new RuntimeException("processRecord blew up before allOf was scheduled");
+    /*
+     * The setup-throw propagates out of queueUpVersionTopicWritesWithViewWriters (the try/finally completes
+     * the future exceptionally but doesn't swallow the throw). What we're asserting is that the chain head
+     * was nonetheless put into a terminal state so downstream chained writes can unblock.
+     */
+    try {
+      leaderFollowerStoreIngestionTask
+          .queueUpVersionTopicWritesWithViewWriters(mockPartitionConsumptionState, (viewWriter, viewPartitionSet) -> {
+            throw setupFailure;
+          }, null, () -> { /* never reached */ });
+      fail("Expected setup throw to propagate");
+    } catch (RuntimeException expected) {
+      assertEquals(expected, setupFailure);
+    }
+
+    ArgumentCaptor<CompletableFuture> futureCap = ArgumentCaptor.forClass(CompletableFuture.class);
+    verify(mockPartitionConsumptionState, times(1)).swapLastVTProduceCallFuture(futureCap.capture());
+    CompletableFuture<Void> currentVersionTopicWrite = futureCap.getValue();
+    assertTrue(
+        currentVersionTopicWrite.isDone(),
+        "Chain head must reach a terminal state when setup throws — otherwise downstream blocks forever");
+    assertTrue(currentVersionTopicWrite.isCompletedExceptionally(), "Should be exceptional, not normal");
+  }
+
+  /**
+   * Regression test for the try/catch added inside the allOf callback of
+   * {@code queueUpVersionTopicWritesWithViewWriters}. If the {@code versionTopicWrite.run()} call
+   * throws when allOf eventually fires, the future must still reach a terminal state.
+   */
+  @Test
+  public void testQueueUpVersionTopicWritesCompletesChainWhenVersionTopicWriteThrows() throws Exception {
+    mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
+    Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
+    MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
+    when(materializedViewWriter.getViewWriterType()).thenReturn(VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW);
+    viewWriterMap.put("testView", materializedViewWriter);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt())).thenReturn(viewWriterMap);
+    CompletableFuture<Void> viewWriterFuture = CompletableFuture.completedFuture(null);
+    when(materializedViewWriter.processRecord(any(), any(), anyInt(), any(), any())).thenReturn(viewWriterFuture);
+    setUp();
+    when(mockPartitionConsumptionState.swapLastVTProduceCallFuture(any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    RuntimeException runFailure = new RuntimeException("VT produce blew up inside allOf callback");
+    leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
+        mockPartitionConsumptionState,
+        (viewWriter, viewPartitionSet) -> viewWriter
+            .processRecord(mock(ByteBuffer.class), new byte[1], 1, viewPartitionSet, Lazy.of(() -> null)),
+        null,
+        () -> {
+          throw runFailure;
+        });
+
+    ArgumentCaptor<CompletableFuture> futureCap = ArgumentCaptor.forClass(CompletableFuture.class);
+    verify(mockPartitionConsumptionState, times(1)).swapLastVTProduceCallFuture(futureCap.capture());
+    CompletableFuture<Void> currentVersionTopicWrite = futureCap.getValue();
+    // The whenCompleteAsync runs on the ForkJoinPool — wait for it to reach the terminal state.
+    try {
+      currentVersionTopicWrite.get(5, TimeUnit.SECONDS);
+      fail("Should have completed exceptionally");
+    } catch (ExecutionException expected) {
+      // Expected — chain reached a terminal exceptional state.
+    }
+    assertTrue(currentVersionTopicWrite.isCompletedExceptionally(), "Should be exceptional");
+  }
+
+  /**
+   * Regression test for the try/catch added to {@code maybeQueueCMWritesToVersionTopic}. If the
+   * {@code produceCall.run()} throws, the chain future must still be completed exceptionally.
+   */
+  @Test
+  public void testMaybeQueueCMWritesCompletesChainWhenProduceCallThrows() throws Exception {
+    mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
+    Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
+    MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
+    viewWriterMap.put("testView", materializedViewWriter);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt())).thenReturn(viewWriterMap);
+    setUp();
+    when(mockPartitionConsumptionState.swapLastVTProduceCallFuture(any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    RuntimeException produceFailure = new RuntimeException("CM produce blew up");
+    // maybeQueueCMWritesToVersionTopic is private — use the public path that calls it for CM-on-VT.
+    // Easier: invoke directly via reflection since it's package-private but the test is in the same package.
+    Method maybeQueueCM = LeaderFollowerStoreIngestionTask.class
+        .getDeclaredMethod("maybeQueueCMWritesToVersionTopic", PartitionConsumptionState.class, Runnable.class);
+    maybeQueueCM.setAccessible(true);
+    maybeQueueCM.invoke(leaderFollowerStoreIngestionTask, mockPartitionConsumptionState, (Runnable) () -> {
+      throw produceFailure;
+    });
+
+    ArgumentCaptor<CompletableFuture> futureCap = ArgumentCaptor.forClass(CompletableFuture.class);
+    verify(mockPartitionConsumptionState, times(1)).swapLastVTProduceCallFuture(futureCap.capture());
+    CompletableFuture<Void> propagateSegmentCMWrite = futureCap.getValue();
+    try {
+      propagateSegmentCMWrite.get(5, TimeUnit.SECONDS);
+      fail("Should have completed exceptionally");
+    } catch (ExecutionException expected) {
+      // Expected.
+    }
+    assertTrue(propagateSegmentCMWrite.isCompletedExceptionally(), "Should be exceptional");
   }
 
   @Test(timeOut = 30000)
@@ -586,6 +710,64 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
+   * Regression: checkAndWaitForLastVTProduceFuture (called from EOP processing) caps its wait at
+   * VIEW_WRITER_CLOSE_TIMEOUT_IN_MS so a stuck chain head — e.g. a common-pool starvation that blocks an
+   * hbProduceFuture's completion — surfaces as a TimeoutException the caller can attribute, rather than
+   * parking the SIT thread indefinitely. We override .get(long, TimeUnit) on a CompletableFuture subclass
+   * to simulate the timeout without making the test wait the production 60-second budget.
+   */
+  @Test(timeOut = 30000, expectedExceptions = TimeoutException.class)
+  public void testCheckAndWaitForLastVTProduceFutureBoundedByTimeout() throws Exception {
+    setUp();
+    CompletableFuture<Void> stuckHead = new CompletableFuture<Void>() {
+      @Override
+      public Void get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+        throw new TimeoutException("simulated chain stall");
+      }
+    };
+    doReturn(stuckHead).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+    Method check = LeaderFollowerStoreIngestionTask.class
+        .getDeclaredMethod("checkAndWaitForLastVTProduceFuture", PartitionConsumptionState.class);
+    check.setAccessible(true);
+    try {
+      check.invoke(leaderFollowerStoreIngestionTask, mockPartitionConsumptionState);
+    } catch (InvocationTargetException e) {
+      throw (Exception) e.getCause();
+    }
+  }
+
+  /**
+   * Regression: closeVeniceViewWriters must short-circuit the chain head even when viewWriters is empty.
+   * Hybrid A/A with the active-key-count replica consistency check populates the chain via
+   * sendIngestionHeartbeatToVT without any view writers; the prior implementation skipped the entire
+   * short-circuit loop in that configuration, leaving any pending hbProduceFuture orphaned at close.
+   */
+  @Test(timeOut = 30000)
+  public void testCloseVeniceViewWritersShortCircuitsChainWhenViewWritersEmpty() throws InterruptedException {
+    mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt())).thenReturn(new HashMap<>());
+    setUp();
+    CompletableFuture<Void> pendingHead = new CompletableFuture<>();
+    doReturn(pendingHead).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+
+    // doFlush=false (killed ingestion): the head should be completed normally.
+    leaderFollowerStoreIngestionTask.closeVeniceViewWriters(false);
+    assertTrue(pendingHead.isDone());
+    assertFalse(pendingHead.isCompletedExceptionally());
+
+    // doFlush=true with deadline already exceeded: the head should be completed exceptionally.
+    setUp();
+    Time mockTime = mock(Time.class);
+    when(mockTime.getMilliseconds()).thenReturn(0L).thenReturn(VIEW_WRITER_CLOSE_TIMEOUT_IN_MS + 100L);
+    leaderFollowerStoreIngestionTask.setTime(mockTime);
+    CompletableFuture<Void> forcefullyCompleted = new CompletableFuture<>();
+    doReturn(forcefullyCompleted).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+    leaderFollowerStoreIngestionTask.closeVeniceViewWriters(true);
+    assertTrue(forcefullyCompleted.isDone());
+    assertTrue(forcefullyCompleted.isCompletedExceptionally());
+  }
+
+  /**
    * This test is to ensure if there are view writers the CMs produced to the VT don't get out of order due previous
    * writes to the VT getting delayed by corresponding view writers. Since during NR we write to view topic(s) before VT
    */
@@ -601,7 +783,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubMessageProcessedResultWrapper secondCM = getMockMessage(2);
     CompletableFuture<Void> lastVTWriteFuture = new CompletableFuture<>();
     CompletableFuture<Void> nextVTWriteFuture = new CompletableFuture<>();
-    when(mockPartitionConsumptionState.getLastVTProduceCallFuture()).thenReturn(lastVTWriteFuture)
+    /*
+     * The atomic swap returns the previous head each time it's called: lastVTWriteFuture for the first CM,
+     * nextVTWriteFuture for the second. The new head is what the caller passes in.
+     */
+    when(mockPartitionConsumptionState.swapLastVTProduceCallFuture(any())).thenReturn(lastVTWriteFuture)
         .thenReturn(nextVTWriteFuture);
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
     doReturn(Lazy.of(() -> veniceWriter)).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();

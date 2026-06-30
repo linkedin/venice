@@ -3532,6 +3532,19 @@ public class ConfigKeys {
       "server.active.key.count.for.hybrid.store.enabled";
 
   /**
+   * Enables the active-key-count consistency check across replicas. When ON, the A/A leader attaches the
+   * {@code lkc} header carrying its current active key count on every VT heartbeat, and the follower
+   * compares it against its own count when processing the heartbeat. A divergence bumps the diagnostic
+   * {@code ingestion.key.active_count_mismatch_across_replicas} metric and emits a rate-limited WARN log;
+   * the follower's count is NOT invalidated (the check is observation-only during rollout).
+   *
+   * <p>Requires {@link #SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED} — if hybrid tracking itself is off,
+   * there is no count to compare. Default: {@code false} (opt-in rollout).
+   */
+  public static final String SERVER_ACTIVE_KEY_COUNT_REPLICA_CONSISTENCY_CHECK_ENABLED =
+      "server.active.key.count.replica.consistency.check.enabled";
+
+  /**
    * Partial-update results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map
    * for amplification detection. Default: 100 KB.
    */

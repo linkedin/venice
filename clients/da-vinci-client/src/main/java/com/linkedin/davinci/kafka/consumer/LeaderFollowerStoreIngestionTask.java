@@ -10,6 +10,7 @@ import static com.linkedin.davinci.validation.PartitionTracker.TopicType.REALTIM
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
+import static com.linkedin.venice.offsets.OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.venice.offsets.OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -386,33 +387,37 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void closeVeniceViewWriters(boolean doFlush) {
+    long gracefulCloseDeadline = time.getMilliseconds() + VIEW_WRITER_CLOSE_TIMEOUT_IN_MS;
     if (!viewWriters.isEmpty()) {
-      long gracefulCloseDeadline = time.getMilliseconds() + VIEW_WRITER_CLOSE_TIMEOUT_IN_MS;
       viewWriters.forEach((k, v) -> v.close(doFlush));
-      // Short circuit last VT produce call future if it's incomplete to unblock any consumer thread(s) that are waiting
-      for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-        CompletableFuture<Void> lastVTProduceCallFuture = pcs.getLastVTProduceCallFuture();
-        if (!lastVTProduceCallFuture.isDone()) {
-          if (doFlush) {
-            long timeout = gracefulCloseDeadline - time.getMilliseconds();
-            if (timeout <= 0) {
+    }
+    /*
+     * Short-circuit the chain head to unblock waiters. Hybrid A/A with the active-key-count replica
+     * consistency check pushes an hbProduceFuture even when viewWriters is empty, so run unconditionally;
+     * the isDone() guard makes it a no-op on partitions whose head is already complete.
+     */
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      CompletableFuture<Void> lastVTProduceCallFuture = pcs.getLastVTProduceCallFuture();
+      if (!lastVTProduceCallFuture.isDone()) {
+        if (doFlush) {
+          long timeout = gracefulCloseDeadline - time.getMilliseconds();
+          if (timeout <= 0) {
+            lastVTProduceCallFuture.completeExceptionally(
+                new VeniceException(
+                    "Completing the future forcefully since we exceeded the view writer graceful close timeout for: "
+                        + kafkaVersionTopic));
+          } else {
+            try {
+              lastVTProduceCallFuture.get(timeout, MILLISECONDS);
+            } catch (Exception e) {
               lastVTProduceCallFuture.completeExceptionally(
                   new VeniceException(
-                      "Completing the future forcefully since we exceeded the view writer graceful close timeout for: "
-                          + kafkaVersionTopic));
-            } else {
-              try {
-                lastVTProduceCallFuture.get(timeout, MILLISECONDS);
-              } catch (Exception e) {
-                lastVTProduceCallFuture.completeExceptionally(
-                    new VeniceException(
-                        "Exception caught when closing the view writer in ingestion task for: " + kafkaVersionTopic,
-                        e));
-              }
+                      "Exception caught when closing the view writer in ingestion task for: " + kafkaVersionTopic,
+                      e));
             }
-          } else {
-            lastVTProduceCallFuture.complete(null);
           }
+        } else {
+          lastVTProduceCallFuture.complete(null);
         }
       }
     }
@@ -3153,6 +3158,56 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
       HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
       hbService.recordFollowerHeartbeat(cachedKey, timestamp, isComplete);
+      compareLeaderActiveKeyCountOnHeartbeat(partitionConsumptionState, consumerRecord);
+    }
+  }
+
+  /**
+   * Compare the leader's active-key-count carried on the {@code lkc} heartbeat header against this
+   * follower's own count. VT ordering guarantees all prior {@code kcs} signals are applied before the
+   * heartbeat is processed, so a difference is a real divergence across replicas.
+   *
+   * <p>Mismatch is diagnostic-only: bumps {@code ingestion.key.active_count_mismatch_across_replicas}
+   * and emits a WARN log; the follower's count is left intact. A malformed header (wrong byte length)
+   * is treated as producer corruption and DOES invalidate with
+   * {@link ActiveKeyCountInvalidationReason#CORRUPT_LEADER_KEY_COUNT_HEADER_LENGTH}.
+   *
+   * <p>Skips when {@link #activeKeyCountReplicaConsistencyCheckEnabled} is off, pre-EOP, the follower's
+   * count is {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}, or the leader did not attach the header.
+   */
+  void compareLeaderActiveKeyCountOnHeartbeat(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage consumerRecord) {
+    if (!activeKeyCountReplicaConsistencyCheckEnabled) {
+      return;
+    }
+    if (!partitionConsumptionState.isEndOfPushReceived()) {
+      // HB and lkc header are post EOP
+      return;
+    }
+    long followerCount = partitionConsumptionState.getActiveKeyCount();
+    if (followerCount == ACTIVE_KEY_COUNT_NOT_TRACKED) {
+      return;
+    }
+    PubSubMessageHeader header =
+        consumerRecord.getPubSubMessageHeaders().get(PubSubMessageHeaders.VENICE_LEADER_KEY_COUNT_HEADER);
+    if (header == null || header.value() == null) {
+      return; // Legacy/disabled leader — no comparison possible.
+    }
+    if (header.value().length != Long.BYTES) {
+      invalidateActiveKeyCount(
+          partitionConsumptionState,
+          ActiveKeyCountInvalidationReason.CORRUPT_LEADER_KEY_COUNT_HEADER_LENGTH,
+          header.value().length);
+      return;
+    }
+    long leaderCount = decodeLeaderKeyCountHeaderValue(header);
+    if (leaderCount == ACTIVE_KEY_COUNT_NOT_TRACKED) {
+      // Leader was not tracking at HB emission time — nothing to compare.
+      return;
+    }
+    if (leaderCount != followerCount) {
+      recordActiveKeyCountMismatchAcrossReplicas(partitionConsumptionState, leaderCount, followerCount);
     }
   }
 
@@ -3451,7 +3506,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // CMs then in the VT we might get out of order messages and with pass-through DIV that's going to be an
             // issue. e.g. a PUT record belonging to seg:0 can come after the EOS of seg:0 due to view writer delays.
             // Since SOP and EOP are rare we can simply wait for the last VT produce future.
-            checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
+            try {
+              checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
+            } catch (TimeoutException e) {
+              /*
+               * The chain head is stuck (likely common-pool starvation blocking an hbProduceFuture or a
+               * slow view-writer ack). Re-raise with explicit attribution so the operator-visible message
+               * names the failure mode instead of presenting as a generic ingestion error.
+               */
+              throw new VeniceException(
+                  "Timed out waiting for the VT produce-call chain to drain before EOP for replica "
+                      + partitionConsumptionState.getReplicaId(),
+                  e);
+            }
             /*
              * Forward only the "prc" partition-record-count header from the EOP to the local VT.
              */
@@ -4999,23 +5066,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionStateMap.put(partition, pcs);
   }
 
-  /**
-   * Log ingestion heartbeat propagated from upstream topic to version topic
-   */
-  private void logIngestionHeartbeat(PubSubTopicPartition topicPartition, Exception exception) {
+  /** Log ingestion heartbeat propagated from upstream topic to version topic */
+  private void logIngestionHeartbeat(PubSubTopicPartition topicPartition, Throwable cause) {
     String topicPartitionName = topicPartition.getPubSubTopic().getName();
     int partitionId = topicPartition.getPartitionNumber();
 
     String logMessage = String.format(
         "Forward ingestion heartbeat from upstream topic to version topic-partition: %s %s.",
         Utils.getReplicaId(topicPartitionName, partitionId),
-        exception != null ? "failed" : "succeeded");
+        cause != null ? "failed" : "succeeded");
 
     // using a redundant filter in case if the configured duration to send heartbeat
     // is too frequent for logging purposes
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
-      if (exception != null) {
-        LOGGER.error(logMessage, exception);
+      if (cause != null) {
+        LOGGER.error(logMessage, cause);
       } else {
         LOGGER.debug(logMessage);
       }
@@ -5031,7 +5096,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         false, // maybeSendIngestionHeartbeat logs for this case
         false,
         LeaderCompleteState.LEADER_NOT_COMPLETED,
-        System.currentTimeMillis());
+        System.currentTimeMillis(),
+        null); // RT heartbeats are consumed by leaders in other regions, not local followers — skip lkc.
   }
 
   private void sendIngestionHeartbeatToVT(
@@ -5041,15 +5107,97 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
-    sendIngestionHeartbeat(
-        partitionConsumptionState,
-        topicPartition,
-        callback,
-        leaderMetadataWrapper,
-        true,
-        true,
-        leaderCompleteState,
-        originTimeStampMs);
+    if (activeKeyCountReplicaConsistencyCheckEnabled) {
+      /*
+       * Capture lkc on SIT (NOT inside the deferred callback — that would pick up later SIT increments and
+       * emit an lkc the follower hasn't reached yet). Chain the HB send behind the previous VT produce.
+       */
+      PubSubMessageHeader extraHeader = buildLeaderActiveKeyCountHeader(partitionConsumptionState);
+      CompletableFuture<Void> hbProduceFuture = new CompletableFuture<>();
+      CompletableFuture<Void> previousVtWrite = partitionConsumptionState.swapLastVTProduceCallFuture(hbProduceFuture);
+      boolean callbackScheduled = false;
+      try {
+        previousVtWrite.whenCompleteAsync((value, exception) -> {
+          if (exception != null) {
+            // Prior chain entry failed; don't emit the HB (its lkc would reflect records that never landed).
+            hbProduceFuture.completeExceptionally(exception);
+            return;
+          }
+          try {
+            CompletableFuture<PubSubProduceResult> heartBeatFuture = sendIngestionHeartbeat(
+                partitionConsumptionState,
+                topicPartition,
+                callback,
+                leaderMetadataWrapper,
+                true,
+                true,
+                leaderCompleteState,
+                originTimeStampMs,
+                extraHeader);
+            /*
+             * Surface sync send failure (swallowed into the returned future) so the chain reflects reality.
+             * Async broker rejections are logged separately and don't gate the chain. exceptionally() runs
+             * synchronously here since heartBeatFuture is already done, so it's just a cause extractor.
+             */
+            if (heartBeatFuture.isCompletedExceptionally()) {
+              heartBeatFuture.exceptionally(cause -> {
+                hbProduceFuture.completeExceptionally(cause);
+                return null;
+              });
+            } else {
+              hbProduceFuture.complete(null);
+            }
+          } catch (Throwable t) {
+            hbProduceFuture.completeExceptionally(t);
+          }
+        });
+        callbackScheduled = true;
+      } finally {
+        if (!callbackScheduled) {
+          // whenCompleteAsync registration itself threw — fail the head so chained writes unblock.
+          hbProduceFuture.completeExceptionally(
+              new VeniceException("Aborted HB VT-produce setup before the chained callback was scheduled"));
+        }
+      }
+    } else {
+      sendIngestionHeartbeat(
+          partitionConsumptionState,
+          topicPartition,
+          callback,
+          leaderMetadataWrapper,
+          true,
+          true,
+          leaderCompleteState,
+          originTimeStampMs,
+          null);
+    }
+  }
+
+  /**
+   * Build the {@code lkc} PubSub header carrying the leader's current active key count, or {@code null} when
+   * not warranted (check disabled, pre-EOP, or count is {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}).
+   * Followers compare against their own count on HB-process; absent header = no comparison.
+   *
+   * <p>Call on the SIT/AAWC thread at swap-time, NOT from inside the chained callback — reading the count
+   * later picks up SIT increments for records queued AFTER this HB and produces false-positive mismatches.
+   *
+   * <p>Gated on {@link #activeKeyCountReplicaConsistencyCheckEnabled} so operators can toggle the check
+   * independently of underlying active-key-count tracking.
+   */
+  PubSubMessageHeader buildLeaderActiveKeyCountHeader(PartitionConsumptionState partitionConsumptionState) {
+    if (!activeKeyCountReplicaConsistencyCheckEnabled) {
+      return null;
+    }
+    if (partitionConsumptionState == null || !partitionConsumptionState.isEndOfPushReceived()) {
+      return null;
+    }
+    long count = partitionConsumptionState.getActiveKeyCount();
+    if (count == ACTIVE_KEY_COUNT_NOT_TRACKED) {
+      return null;
+    }
+    return new PubSubMessageHeader(
+        PubSubMessageHeaders.VENICE_LEADER_KEY_COUNT_HEADER,
+        encodeLeaderKeyCountHeaderValue(count));
   }
 
   private CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
@@ -5060,7 +5208,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean shouldLog,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
-      long originTimeStampMs) {
+      long originTimeStampMs,
+      PubSubMessageHeader extraHeader) {
     CompletableFuture<PubSubProduceResult> heartBeatFuture;
     try {
       heartBeatFuture = partitionConsumptionState.getVeniceWriterLazyRef()
@@ -5071,10 +5220,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               leaderMetadataWrapper,
               addLeaderCompleteState,
               leaderCompleteState,
-              originTimeStampMs);
+              originTimeStampMs,
+              extraHeader);
       if (shouldLog) {
-        heartBeatFuture
-            .whenComplete((ignore, throwable) -> logIngestionHeartbeat(topicPartition, (Exception) throwable));
+        heartBeatFuture.whenComplete((ignore, throwable) -> logIngestionHeartbeat(topicPartition, throwable));
       }
     } catch (Exception e) {
       heartBeatFuture = new CompletableFuture<>();
@@ -5254,39 +5403,64 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Runnable versionTopicWrite) {
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
+    /*
+     * Swap our future in as the chain head and stash the previous head in viewWriterFutures[0]. Once we're
+     * the head, downstream writers chain behind us — so the try/finally must always complete
+     * currentVersionTopicWrite, even if setup throws, or the chain hangs forever.
+     */
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
     int index = 0;
-    // The first future is for the previous write to VT
-    viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
-    for (VeniceViewWriter writer: viewWriters.values()) {
-      Set<Integer> viewPartitionSet = null;
-      if (viewPartitionMap != null && writer.getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
-        MaterializedViewWriter mvWriter = (MaterializedViewWriter) writer;
-        viewPartitionSet = viewPartitionMap.get(mvWriter.getViewName());
-        if (viewPartitionSet == null) {
-          throw new VeniceException("Unable to find view partition set for view: " + mvWriter.getViewName());
+    viewWriterFutures[index++] = partitionConsumptionState.swapLastVTProduceCallFuture(currentVersionTopicWrite);
+    boolean allOfScheduled = false;
+    try {
+      for (VeniceViewWriter writer: viewWriters.values()) {
+        Set<Integer> viewPartitionSet = null;
+        if (viewPartitionMap != null
+            && writer.getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
+          MaterializedViewWriter mvWriter = (MaterializedViewWriter) writer;
+          viewPartitionSet = viewPartitionMap.get(mvWriter.getViewName());
+          if (viewPartitionSet == null) {
+            throw new VeniceException("Unable to find view partition set for view: " + mvWriter.getViewName());
+          }
         }
+        viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer, viewPartitionSet);
       }
-      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer, viewPartitionSet);
+      double viewProduceLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
+      hostLevelIngestionStats.recordViewProducerLatency(viewProduceLatency);
+      versionedIngestionStats.recordViewWriterProduceTime(storeName, versionNumber, viewProduceLatency);
+      CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+        double viewAckLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
+        try {
+          if (exception == null) {
+            versionTopicWrite.run();
+            currentVersionTopicWrite.complete(null);
+          } else {
+            VeniceException veniceException = new VeniceException(exception);
+            // Complete the future BEFORE the side-effecting setIngestionException so a throw in the
+            // latter can't strand the chain.
+            currentVersionTopicWrite.completeExceptionally(veniceException);
+            this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+          }
+        } catch (Throwable t) {
+          /*
+           * Same protection as the setup try/finally: never leave currentVersionTopicWrite incomplete on a
+           * throw inside versionTopicWrite.run() — strict chaining behind us would block forever otherwise.
+           * Complete the future BEFORE setIngestionException for the same reason.
+           */
+          currentVersionTopicWrite.completeExceptionally(t);
+          this.setIngestionException(partitionConsumptionState.getPartition(), new VeniceException(t));
+        }
+        hostLevelIngestionStats.recordViewProducerAckLatency(viewAckLatency);
+        versionedIngestionStats.recordViewWriterAckTime(storeName, versionNumber, viewAckLatency);
+      });
+      allOfScheduled = true;
+    } finally {
+      if (!allOfScheduled) {
+        // Setup threw before we wired the allOf callback; fail the future so subsequent chained writes unblock.
+        currentVersionTopicWrite
+            .completeExceptionally(new VeniceException("Aborted VT-produce setup before allOf was scheduled"));
+      }
     }
-    double viewProduceLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
-    hostLevelIngestionStats.recordViewProducerLatency(viewProduceLatency);
-    versionedIngestionStats.recordViewWriterProduceTime(storeName, versionNumber, viewProduceLatency);
-    CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-      double viewAckLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
-      if (exception == null) {
-        versionTopicWrite.run();
-        currentVersionTopicWrite.complete(null);
-      } else {
-        VeniceException veniceException = new VeniceException(exception);
-        this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
-        currentVersionTopicWrite.completeExceptionally(veniceException);
-      }
-      hostLevelIngestionStats.recordViewProducerAckLatency(viewAckLatency);
-      versionedIngestionStats.recordViewWriterAckTime(storeName, versionNumber, viewAckLatency);
-    });
-
-    partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
   }
 
   /**
@@ -5316,8 +5490,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private void checkAndWaitForLastVTProduceFuture(PartitionConsumptionState partitionConsumptionState)
-      throws ExecutionException, InterruptedException {
-    partitionConsumptionState.getLastVTProduceCallFuture().get();
+      throws ExecutionException, InterruptedException, TimeoutException {
+    /*
+     * The chain head can now be an {@code hbProduceFuture} whose completion depends on a
+     * {@code whenCompleteAsync} callback queued on {@link java.util.concurrent.ForkJoinPool#commonPool()}.
+     * An unbounded {@code .get()} on this future would park the SIT thread indefinitely if the common pool
+     * is starved (unrelated parallel-stream load, deadlock-inducing chained callback, etc.). Cap the wait at
+     * {@link #VIEW_WRITER_CLOSE_TIMEOUT_IN_MS} so a stuck chain surfaces as a {@link TimeoutException} the
+     * caller can attribute, instead of an opaque ingestion hang.
+     */
+    partitionConsumptionState.getLastVTProduceCallFuture().get(VIEW_WRITER_CLOSE_TIMEOUT_IN_MS, MILLISECONDS);
   }
 
   protected boolean hasViewWriters() {
@@ -5329,17 +5511,41 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Runnable produceCall) {
     if (hasViewWriters()) {
       CompletableFuture<Void> propagateSegmentCMWrite = new CompletableFuture<>();
-      partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
-        if (exception == null) {
-          produceCall.run();
-          propagateSegmentCMWrite.complete(null);
-        } else {
-          VeniceException veniceException = new VeniceException(exception);
-          this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
-          propagateSegmentCMWrite.completeExceptionally(veniceException);
+      CompletableFuture<Void> previousVtWrite =
+          partitionConsumptionState.swapLastVTProduceCallFuture(propagateSegmentCMWrite);
+      boolean callbackScheduled = false;
+      try {
+        previousVtWrite.whenCompleteAsync((value, exception) -> {
+          try {
+            if (exception == null) {
+              produceCall.run();
+              propagateSegmentCMWrite.complete(null);
+            } else {
+              VeniceException veniceException = new VeniceException(exception);
+              // Complete the future BEFORE recording the ingestion exception — if setIngestionException
+              // itself throws, downstream chained writers must still unblock.
+              propagateSegmentCMWrite.completeExceptionally(veniceException);
+              this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+            }
+          } catch (Throwable t) {
+            /*
+             * Under strict chaining a throw inside produceCall.run() would block every subsequent write —
+             * make sure propagateSegmentCMWrite always reaches a terminal state. Complete the future
+             * BEFORE the side-effecting setIngestionException so any throw in the latter can't strand
+             * the chain.
+             */
+            propagateSegmentCMWrite.completeExceptionally(t);
+            this.setIngestionException(partitionConsumptionState.getPartition(), new VeniceException(t));
+          }
+        });
+        callbackScheduled = true;
+      } finally {
+        if (!callbackScheduled) {
+          // whenCompleteAsync registration itself threw — fail the future so the chain unblocks.
+          propagateSegmentCMWrite.completeExceptionally(
+              new VeniceException("Aborted CM VT-produce setup before the chained callback was scheduled"));
         }
-      });
-      partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
+      }
     } else {
       produceCall.run();
     }

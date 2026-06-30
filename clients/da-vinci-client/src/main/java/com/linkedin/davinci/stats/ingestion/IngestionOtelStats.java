@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats.ingestion;
 
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_MISMATCH_ACROSS_REPLICAS;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_ERROR_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_RECORD_COUNT;
@@ -60,6 +61,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIE
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.kafka.consumer.ActiveKeyCountInvalidationReason;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.IngestionStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -185,7 +187,8 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateAmplificationAlertCountMetric;
-  private final MetricEntityStateOneEnum<VersionRole> activeKeyCountInvalidationMetric;
+  private final MetricEntityStateTwoEnums<VersionRole, ActiveKeyCountInvalidationReason> activeKeyCountInvalidationMetric;
+  private final MetricEntityStateOneEnum<VersionRole> activeKeyCountMismatchAcrossReplicasMetric;
   private final MetricEntityStateOneEnum<VersionRole> batchPushRecordCountMatchMetric;
   private final MetricEntityStateOneEnum<VersionRole> batchPushRecordCountMismatchMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordCountMismatchFailureMetric;
@@ -263,6 +266,7 @@ public class IngestionOtelStats {
     this.checksumVerificationFailureCountMetric = null;
     this.partialUpdateAmplificationAlertCountMetric = null;
     this.activeKeyCountInvalidationMetric = null;
+    this.activeKeyCountMismatchAcrossReplicasMetric = null;
     this.batchPushRecordCountMatchMetric = null;
     this.batchPushRecordCountMismatchMetric = null;
     this.recordCountMismatchFailureMetric = null;
@@ -285,7 +289,8 @@ public class IngestionOtelStats {
       String localRegionName,
       boolean ingestionOtelStatsEnabled,
       boolean uniqueIngestedKeyCountHllEnabled,
-      boolean activeKeyCountEnabled) {
+      boolean activeKeyCountEnabled,
+      boolean mismatchCheckEnabled) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setOtelEnabledOverride(ingestionOtelStatsEnabled)
@@ -393,8 +398,17 @@ public class IngestionOtelStats {
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
     partialUpdateAmplificationAlertCountMetric =
         createOneEnumMetric(PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
-    activeKeyCountInvalidationMetric =
-        activeKeyCountEnabled ? createOneEnumMetric(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity()) : null;
+    activeKeyCountInvalidationMetric = activeKeyCountEnabled
+        ? createTwoEnumMetric(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity(), ActiveKeyCountInvalidationReason.class)
+        : null;
+    /*
+     * The mismatch metric only fires when the replica-consistency check is on (which itself requires hybrid
+     * tracking). Gating wiring on the same condition keeps the registered OTel metric aligned with what the
+     * recording site emits — a batch-only operator that flips on the check config no longer gets a permanently
+     * zero metric (false-negative monitoring).
+     */
+    activeKeyCountMismatchAcrossReplicasMetric =
+        mismatchCheckEnabled ? createOneEnumMetric(ACTIVE_KEY_COUNT_MISMATCH_ACROSS_REPLICAS.getMetricEntity()) : null;
     batchPushRecordCountMatchMetric = createOneEnumMetric(BATCH_PUSH_RECORD_COUNT_MATCH_COUNT.getMetricEntity());
     batchPushRecordCountMismatchMetric = createOneEnumMetric(BATCH_PUSH_RECORD_COUNT_MISMATCH_COUNT.getMetricEntity());
     recordCountMismatchFailureMetric = createOneEnumMetric(RECORD_COUNT_MISMATCH_FAILURE_COUNT.getMetricEntity());
@@ -830,9 +844,15 @@ public class IngestionOtelStats {
     partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
-  public void recordActiveKeyCountInvalidation(int version) {
+  public void recordActiveKeyCountInvalidation(int version, ActiveKeyCountInvalidationReason reason) {
     if (activeKeyCountInvalidationMetric != null) {
-      activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo));
+      activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo), reason);
+    }
+  }
+
+  public void recordActiveKeyCountMismatchAcrossReplicas(int version) {
+    if (activeKeyCountMismatchAcrossReplicasMetric != null) {
+      activeKeyCountMismatchAcrossReplicasMetric.record(1, classifyVersion(version, versionInfo));
     }
   }
 

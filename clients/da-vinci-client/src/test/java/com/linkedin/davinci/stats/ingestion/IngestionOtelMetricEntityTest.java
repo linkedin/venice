@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats.ingestion;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ACTIVE_KEY_COUNT_INVALIDATION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
@@ -63,6 +64,8 @@ public class IngestionOtelMetricEntityTest {
         setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_DCR_OPERATION);
     Set<VeniceMetricsDimensions> storeClusterVersionFailureReason =
         setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_INGESTION_FAILURE_REASON);
+    Set<VeniceMetricsDimensions> storeClusterVersionInvalidationReason =
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_ACTIVE_KEY_COUNT_INVALIDATION_REASON);
 
     // ASYNC_GAUGE metrics
     map.put(
@@ -539,14 +542,30 @@ public class IngestionOtelMetricEntityTest {
             "Count of reporting windows where partial-update amplification was detected (large result values)",
             storeClusterVersion));
 
-    // Active key count invalidation counter
+    // Active key count invalidation counter — dimensioned by reason
     map.put(
         IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION,
         new MetricEntityExpectation(
             "ingestion.key.active_count_invalidation",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of active key count invalidations due to underflow drift, keyExists failures, leader-propagated invalidation, or corrupt kcs signals",
+            "Count of active key count invalidations on this host, broken down by the "
+                + "venice.active_key_count.invalidation_reason dimension; see ActiveKeyCountInvalidationReason for the "
+                + "full set of causes",
+            storeClusterVersionInvalidationReason));
+
+    // Diagnostic-only cross-replica-mismatch counter — separate from invalidation since mismatch does not mutate state
+    map.put(
+        IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_MISMATCH_ACROSS_REPLICAS,
+        new MetricEntityExpectation(
+            "ingestion.key.active_count_mismatch_across_replicas",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Diagnostic-only count of active-key-count divergences across replicas detected on ingestion heartbeats. "
+                + "Follower receives the leader's count via the lkc heartbeat header and compares; a non-zero value "
+                + "indicates divergence at HB-processing time. The follower's count is NOT invalidated — operators "
+                + "alert on this metric and investigate. Kept separate from ACTIVE_KEY_COUNT_INVALIDATION so dashboards "
+                + "distinguish divergence (an observation) from invalidation (a corrective action).",
             storeClusterVersion));
 
     return map;

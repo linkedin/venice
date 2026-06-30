@@ -2588,22 +2588,57 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
+    return sendHeartbeat(
+        topicPartition,
+        callback,
+        leaderMetadataWrapper,
+        addLeaderCompleteState,
+        leaderCompleteState,
+        originTimeStampMs,
+        null);
+  }
+
+  /**
+   * Heartbeat variant that allows a single extra {@link PubSubMessageHeader} to be attached after the headers
+   * computed by {@link #getHeaders}. Used to carry the leader's active-key-count on the heartbeat — see
+   * {@link PubSubMessageHeaders#VENICE_LEADER_KEY_COUNT_HEADER}. {@code extraHeader} may be {@code null}, in which
+   * case behaviour is identical to the no-extra-header overload (no allocation on the existing call sites).
+   */
+  public CompletableFuture<PubSubProduceResult> sendHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      boolean addLeaderCompleteState,
+      LeaderCompleteState leaderCompleteState,
+      long originTimeStampMs,
+      PubSubMessageHeader extraHeader) {
     if (isClosed) {
       logger.warn("VeniceWriter already closed for topic-partition: {}", topicPartition);
       return CompletableFuture.completedFuture(null);
     }
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
+    PubSubMessageHeaders headers = getHeaders(
+        kafkaMessageEnvelope.getProducerMetadata(),
+        addLeaderCompleteState,
+        leaderCompleteState,
+        EmptyPubSubMessageHeaders.SINGLETON);
+    if (extraHeader != null) {
+      /*
+       * getHeaders may return the immutable EmptyPubSubMessageHeaders singleton when nothing was added — promote
+       * to a fresh mutable instance before appending so we don't trip the singleton's UnsupportedOperationException.
+       */
+      if (headers instanceof EmptyPubSubMessageHeaders) {
+        headers = new PubSubMessageHeaders();
+      }
+      headers.add(extraHeader);
+    }
     return producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(
-            kafkaMessageEnvelope.getProducerMetadata(),
-            addLeaderCompleteState,
-            leaderCompleteState,
-            EmptyPubSubMessageHeaders.SINGLETON),
+        headers,
         callback);
   }
 

@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats.ingestion;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ACTIVE_KEY_COUNT_INVALIDATION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
@@ -408,7 +409,19 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   ACTIVE_KEY_COUNT_INVALIDATION(
       "ingestion.key.active_count_invalidation", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of active key count invalidations due to underflow drift, keyExists failures, leader-propagated invalidation, or corrupt kcs signals",
+      "Count of active key count invalidations on this host, broken down by the "
+          + "venice.active_key_count.invalidation_reason dimension; see ActiveKeyCountInvalidationReason for the "
+          + "full set of causes",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_ACTIVE_KEY_COUNT_INVALIDATION_REASON)
+  ),
+
+  ACTIVE_KEY_COUNT_MISMATCH_ACROSS_REPLICAS(
+      "ingestion.key.active_count_mismatch_across_replicas", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Diagnostic-only count of active-key-count divergences across replicas detected on ingestion heartbeats. "
+          + "Follower receives the leader's count via the lkc heartbeat header and compares; a non-zero value "
+          + "indicates divergence at HB-processing time. The follower's count is NOT invalidated — operators "
+          + "alert on this metric and investigate. Kept separate from ACTIVE_KEY_COUNT_INVALIDATION so dashboards "
+          + "distinguish divergence (an observation) from invalidation (a corrective action).",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.ActiveKeyCountInvalidationReason;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.ingestion.IngestionOtelStats;
 import com.linkedin.davinci.stats.ingestion.NoOpIngestionOtelStats;
@@ -44,6 +45,7 @@ public class AggVersionedIngestionStats
   private final boolean emitOtelIngestionStats;
   private final boolean uniqueIngestedKeyCountHllEnabled;
   private final boolean activeKeyCountEnabled;
+  private final boolean mismatchCheckEnabled;
 
   public AggVersionedIngestionStats(
       MetricsRepository metricsRepository,
@@ -60,6 +62,11 @@ public class AggVersionedIngestionStats
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
     this.activeKeyCountEnabled = serverConfig.isAnyActiveKeyCountTrackingEnabled();
+    /*
+     * Tracks the recording-site gate (see StoreIngestionTask#activeKeyCountReplicaConsistencyCheckEnabled)
+     * so the OTel metric isn't registered when the recording path will never fire.
+     */
+    this.mismatchCheckEnabled = serverConfig.isActiveKeyCountReplicaConsistencyCheckEnabled();
   }
 
   /** Updates version info for existing OTel stats only. Null guard needed because eager loading
@@ -123,7 +130,8 @@ public class AggVersionedIngestionStats
           localRegionName,
           emitOtelIngestionStats,
           uniqueIngestedKeyCountHllEnabled,
-          activeKeyCountEnabled);
+          activeKeyCountEnabled,
+          mismatchCheckEnabled);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
@@ -586,7 +594,11 @@ public class AggVersionedIngestionStats
     getIngestionOtelStats(storeName).recordPartialUpdateAmplificationAlertCount(version, 1);
   }
 
-  public void recordActiveKeyCountInvalidation(String storeName, int version) {
-    getIngestionOtelStats(storeName).recordActiveKeyCountInvalidation(version);
+  public void recordActiveKeyCountInvalidation(String storeName, int version, ActiveKeyCountInvalidationReason reason) {
+    getIngestionOtelStats(storeName).recordActiveKeyCountInvalidation(version, reason);
+  }
+
+  public void recordActiveKeyCountMismatchAcrossReplicas(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordActiveKeyCountMismatchAcrossReplicas(version);
   }
 }

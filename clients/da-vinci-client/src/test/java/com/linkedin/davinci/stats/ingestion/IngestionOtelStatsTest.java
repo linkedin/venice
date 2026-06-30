@@ -79,6 +79,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.kafka.consumer.ActiveKeyCountInvalidationReason;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.venice.server.VersionRole;
@@ -135,7 +136,7 @@ public class IngestionOtelStatsTest {
   }
 
   private static IngestionOtelStats createStats(VeniceMetricsRepository repo) {
-    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true);
+    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true, true);
   }
 
   @BeforeMethod
@@ -167,7 +168,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(localReader)
             .build())) {
       IngestionOtelStats statsDisabled =
-          new IngestionOtelStats(localRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, false);
+          new IngestionOtelStats(localRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, false, false);
       statsDisabled.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
       /*
        * Register a task with a non-trivial active-key-count so that, if the ASYNC_GAUGE were
@@ -178,7 +179,9 @@ public class IngestionOtelStatsTest {
       when(probeTask.getActiveKeyCount(any(ReplicaType.class))).thenReturn(42L);
       statsDisabled.setIngestionTask(CURRENT_VERSION, probeTask);
       // Recorder must be a safe no-op so producers can call it without checking the flag.
-      statsDisabled.recordActiveKeyCountInvalidation(CURRENT_VERSION);
+      statsDisabled.recordActiveKeyCountInvalidation(
+          CURRENT_VERSION,
+          ActiveKeyCountInvalidationReason.LEADER_PROPAGATED_INVALIDATION);
 
       Collection<MetricData> metrics = localReader.collectAllMetrics();
       assertFalse(
@@ -206,8 +209,15 @@ public class IngestionOtelStatsTest {
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
-      IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true);
+      IngestionOtelStats stats = new IngestionOtelStats(
+          disabledMetricsRepository,
+          STORE_NAME,
+          CLUSTER_NAME,
+          LOCAL_REGION,
+          true,
+          true,
+          true,
+          true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
     }
   }
@@ -220,8 +230,15 @@ public class IngestionOtelStatsTest {
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
-      IngestionOtelStats stats =
-          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false, true, true);
+      IngestionOtelStats stats = new IngestionOtelStats(
+          enabledMetricsRepository,
+          STORE_NAME,
+          CLUSTER_NAME,
+          LOCAL_REGION,
+          false,
+          true,
+          true,
+          true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
     }
   }
@@ -230,7 +247,7 @@ public class IngestionOtelStatsTest {
   public void testConstructorWithNonVeniceMetricsRepository() {
     MetricsRepository regularRepository = new MetricsRepository();
     IngestionOtelStats stats =
-        new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true);
+        new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true, true);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
 
     // RT recording methods should not throw when baseDimensionsMap is null
@@ -1010,8 +1027,15 @@ public class IngestionOtelStatsTest {
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(disabledMetricReader)
             .build())) {
-      IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true);
+      IngestionOtelStats stats = new IngestionOtelStats(
+          disabledMetricsRepository,
+          STORE_NAME,
+          CLUSTER_NAME,
+          LOCAL_REGION,
+          true,
+          true,
+          true,
+          true);
       stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
       stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
       stats.recordIngestionTime(CURRENT_VERSION, 50.0);
