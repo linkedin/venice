@@ -176,7 +176,6 @@ import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
-import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
@@ -1257,9 +1256,8 @@ public class VeniceControllerClusterConfig {
     this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.logCompactionThreadCount = props.getInt(LOG_COMPACTION_THREAD_COUNT, 1);
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
-    this.logCompactionVersionStalenessThresholdMS = props.getLong(
-        LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS,
-        props.getLong(LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24)));
+    this.logCompactionVersionStalenessThresholdMS =
+        props.getLong(LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
     this.logCompactionDuplicateKeyThreshold = props.getLong(LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD, 0);
 
     this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
