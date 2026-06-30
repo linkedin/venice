@@ -2,11 +2,11 @@ package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.utils.Utils;
+import java.lang.management.ManagementFactory;
 import java.lang.reflect.Constructor;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -24,7 +24,8 @@ public abstract class HeapSizeEstimatorTest {
    * for now, though we could come back to it later...
    */
   private static final int SKIP_EXPECTED_FIELD_OVERHEAD = -1;
-  private static final Runtime RUNTIME = Runtime.getRuntime();
+  private static final com.sun.management.ThreadMXBean THREAD_MX_BEAN =
+      (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
   private static final int NUMBER_OF_ALLOCATIONS_WHEN_MEASURING = 200_000;
   protected static final int JAVA_MAJOR_VERSION = Utils.getJavaMajorVersion();
   protected static final int BOOLEAN_SIZE = 1;
@@ -118,17 +119,14 @@ public abstract class HeapSizeEstimatorTest {
 
   protected void empiricalMeasurement(Class c, int predictedUsage, Supplier<?> constructor) {
     /**
-     * The reason for having multiple attempts is that the allocation measurement method is not always reliable.
-     * Presumably, this is because GC could kick in during the middle of the allocation loop. If the allocated memory
-     * is negative then for sure it's not right. If the GC reduces memory allocated but not enough to make the
-     * measurement go negative, then we cannot know if it's a measurement error, or a bug... In any case, we will do
-     * a few attempts and assume that the measurement is good if it falls within the prescribed delta (even though
-     * technically that could be a false negative).
+     * The previous approach used Runtime.maxMemory() - Runtime.freeMemory() to measure heap usage, which
+     * was susceptible to GC running during the allocation loop, causing measurements to be too low (or even
+     * negative). We now use ThreadMXBean.getCurrentThreadAllocatedBytes() which tracks allocations on the
+     * current thread monotonically, independent of GC activity.
      */
     int currentAttempt = 0;
     int totalAttempts = 10;
     while (currentAttempt++ < totalAttempts) {
-      assertNotEquals(RUNTIME.maxMemory(), Long.MAX_VALUE);
       Object[] allocations = new Object[NUMBER_OF_ALLOCATIONS_WHEN_MEASURING];
 
       if (constructor == null) {
@@ -172,7 +170,6 @@ public abstract class HeapSizeEstimatorTest {
           fail(errorMessage);
         }
       }
-
       double memoryAllocatedPerInstance =
           (double) memoryAllocatedByInstantiations / (double) NUMBER_OF_ALLOCATIONS_WHEN_MEASURING;
 
@@ -180,7 +177,8 @@ public abstract class HeapSizeEstimatorTest {
         assertNotNull(allocations[i]);
       }
 
-      // Since the above method for measuring allocated memory is imperfect, we need to tolerate some delta.
+      // Since the above method measures all bytes allocated on the current thread, we need to tolerate some
+      // delta due to JVM internal bookkeeping allocations that may occur between our two measurement points.
       double allocatedToPredictedRatio = memoryAllocatedPerInstance / (double) predictedUsage;
       double delta = Math.abs(1 - allocatedToPredictedRatio);
 
@@ -203,7 +201,7 @@ public abstract class HeapSizeEstimatorTest {
           String.valueOf(predictedUsage),
           String.format("%.3f", memoryAllocatedPerInstance));
 
-      // A best-effort attempt to minimize the chance of needing to GC in the middle of the next measurement run...
+      // Release the allocated objects to keep heap usage from growing across measurement iterations.
       allocations = null;
       System.gc();
 
@@ -228,8 +226,7 @@ public abstract class HeapSizeEstimatorTest {
   }
 
   private static long getCurrentlyAllocatedMemory() {
-    System.gc();
-    return RUNTIME.maxMemory() - RUNTIME.freeMemory();
+    return THREAD_MX_BEAN.getCurrentThreadAllocatedBytes();
   }
 
   @BeforeClass
