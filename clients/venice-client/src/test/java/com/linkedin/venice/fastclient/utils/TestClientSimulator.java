@@ -13,6 +13,7 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.r2.message.rest.RestResponseBuilder;
 import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -30,6 +31,7 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
@@ -162,10 +164,28 @@ public class TestClientSimulator implements Client {
       int requestId,
       String route,
       int... partitions) {
+    return expectRequestWithKeysForPartitionOnRouteInternal(false, timeTick, requestId, route, partitions);
+  }
+
+  public TestClientSimulator expectSingleGetRequestWithKeyForPartitionOnRoute(
+      int timeTick,
+      int requestId,
+      String route,
+      int partition) {
+    return expectRequestWithKeysForPartitionOnRouteInternal(true, timeTick, requestId, route, partition);
+  }
+
+  private TestClientSimulator expectRequestWithKeysForPartitionOnRouteInternal(
+      boolean singleGetRequest,
+      int timeTick,
+      int requestId,
+      String route,
+      int... partitions) {
     RequestInfo requestInfo = new RequestInfo();
     requestInfo.requestId = requestId;
     requestInfo.route = route;
     requestInfo.timeTick = timeTick;
+    requestInfo.singleGetRequest = singleGetRequest;
 
     Set<Integer> partitionSet = Sets.newHashSet(Ints.asList(partitions));
     requestInfo.keyValues = keysToPartitions.entrySet()
@@ -174,6 +194,9 @@ public class TestClientSimulator implements Client {
         .collect(Collectors.toMap(e -> e.getKey(), e -> keyValues.get(e.getKey())));
 
     requestedKeyValues.putAll(requestInfo.keyValues);
+    if (singleGetRequest) {
+      Assert.assertEquals(requestInfo.keyValues.size(), 1, "Single-get expectation must resolve to exactly one key");
+    }
 
     requestIdToRequestInfos.put(requestInfo.requestId, requestInfo);
     ExpectedRequestEvent expectedRequestEvent = new ExpectedRequestEvent(requestInfo, timeTick);
@@ -255,16 +278,33 @@ public class TestClientSimulator implements Client {
           expectedRequestEvent.info.requestId);
 
       ByteString entity = request.getEntity();
-      Iterable<MultiGetRouterRequestKeyV1> multiGetRouterRequestKeyV1s =
-          multiGetRequestDeserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(entity.copyBytes()));
-      for (MultiGetRouterRequestKeyV1 keyRecord: multiGetRouterRequestKeyV1s) {
-        Utf8 key = keyDeserializer.deserialize(keyRecord.keyBytes);
-        LOGGER.info("t:{} Received key {} on route {} ", currentTimeTick.get(), key, route);
+      boolean singleGetRequest = entity.length() == 0;
+      Assert.assertEquals(
+          singleGetRequest,
+          expectedRequestEvent.info.singleGetRequest,
+          "Unexpected request type for route " + route);
+      if (singleGetRequest) {
+        String path = uri.getPath();
+        String encodedKey = path.substring(path.lastIndexOf('/') + 1);
+        Utf8 key = keyDeserializer.deserialize(EncodingUtils.base64DecodeFromString(encodedKey));
+        LOGGER.info("t:{} Received single-get key {} on route {} ", currentTimeTick.get(), key, route);
         Assert.assertTrue(
             expectedKeys.contains(key.toString()),
             "Unexpected key received: " + key + " Expected keys: " + expectedKeys);
         expectedKeys.remove(key.toString());
         expectedRequestEvent.info.orderedKeys.add(key.toString());
+      } else {
+        Iterable<MultiGetRouterRequestKeyV1> multiGetRouterRequestKeyV1s =
+            multiGetRequestDeserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(entity.copyBytes()));
+        for (MultiGetRouterRequestKeyV1 keyRecord: multiGetRouterRequestKeyV1s) {
+          Utf8 key = keyDeserializer.deserialize(keyRecord.keyBytes);
+          LOGGER.info("t:{} Received key {} on route {} ", currentTimeTick.get(), key, route);
+          Assert.assertTrue(
+              expectedKeys.contains(key.toString()),
+              "Unexpected key received: " + key + " Expected keys: " + expectedKeys);
+          expectedKeys.remove(key.toString());
+          expectedRequestEvent.info.orderedKeys.add(key.toString());
+        }
       }
       Assert.assertTrue(expectedKeys.isEmpty());
       expectedRequestEvent.info.callback = callback;
@@ -322,6 +362,7 @@ public class TestClientSimulator implements Client {
     Map<String, String> keyValues;
     Callback<RestResponse> callback;
     List<String> orderedKeys;
+    boolean singleGetRequest;
 
     @Override
     public String toString() {
@@ -390,18 +431,25 @@ public class TestClientSimulator implements Client {
             info.keyValues.size(),
             info.route,
             info.requestId);
-        List<MultiGetResponseRecordV1> multiGetResponse = new ArrayList<>();
-        for (int i = 0; i < info.orderedKeys.size(); i++) {
-          MultiGetResponseRecordV1 rec = new MultiGetResponseRecordV1();
-          rec.value = ByteBuffer.wrap(keySerializer.serialize(info.keyValues.get(info.orderedKeys.get(i))));
-          rec.keyIndex = i;
-          rec.schemaId = expectedValueSchemaId;
-          multiGetResponse.add(rec);
-        }
         RestResponseBuilder restResponseBuilder = new RestResponseBuilder();
-        restResponseBuilder.setEntity(multiGetResponseSerializer.serializeObjects(multiGetResponse))
-            .setStatus(200)
-            .build();
+        if (info.singleGetRequest) {
+          restResponseBuilder.setEntity(keySerializer.serialize(info.keyValues.get(info.orderedKeys.get(0))))
+              .setHeader(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(expectedValueSchemaId))
+              .setStatus(200)
+              .build();
+        } else {
+          List<MultiGetResponseRecordV1> multiGetResponse = new ArrayList<>();
+          for (int i = 0; i < info.orderedKeys.size(); i++) {
+            MultiGetResponseRecordV1 rec = new MultiGetResponseRecordV1();
+            rec.value = ByteBuffer.wrap(keySerializer.serialize(info.keyValues.get(info.orderedKeys.get(i))));
+            rec.keyIndex = i;
+            rec.schemaId = expectedValueSchemaId;
+            multiGetResponse.add(rec);
+          }
+          restResponseBuilder.setEntity(multiGetResponseSerializer.serializeObjects(multiGetResponse))
+              .setStatus(200)
+              .build();
+        }
         info.callback.onSuccess(restResponseBuilder.build());
       }
       future.complete(timeTick);

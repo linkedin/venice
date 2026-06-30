@@ -71,6 +71,35 @@ public class BatchGetAvroStoreClientUnitTest {
     validateMetrics(client, 1000, 1000, 0, 0);
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSingleKeyStreamingBatchGetUsesSingleGet()
+      throws InterruptedException, ExecutionException, TimeoutException {
+    TestClientSimulator client = new TestClientSimulator();
+    client.generateKeyValues(0, 1)
+        .setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds("1-:10000")
+        .partitionKeys(1)
+        .assignRouteToPartitions("https://host1.linkedin.com", 0)
+        .expectSingleGetRequestWithKeyForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
+        .respondToRequestWithKeyValues(5, 1)
+        .simulate();
+
+    callStreamingBatchGetAndVerifyResults(
+        client.getFastClient(),
+        client.getRequestedKeyValues(),
+        client.getSimulatorCompleteFuture());
+
+    validateMetrics(client, 1, 1, 0, 0);
+
+    // The single-key batch-get should be counted as routed to a single-GET lookup.
+    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
+    assertTrue(
+        metrics
+            .get(
+                "." + client.UNIT_TEST_STORE_NAME
+                    + "--multiget_streaming_batch_get_routed_to_single_get_request_count.OccurrenceRate")
+            .value() > 0);
+  }
+
   /**
    * Error case: Timeout due to response taking a longer time than the simulator's allowed timeout.
    */
@@ -79,8 +108,10 @@ public class BatchGetAvroStoreClientUnitTest {
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client.generateKeyValues(0, 2)
-        .partitionKeys(2)
+    // Use >=5 keys on a single partition so this stays a multi-get request (a 1-key batch-get is served via
+    // single-GET) while still exercising the batch-get timeout path on a single route.
+    client.generateKeyValues(0, 5)
+        .partitionKeys(1)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
         .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
         .respondToRequestWithKeyValues((int) CLIENT_TIME_OUT_IN_SECONDS * 2 * 1000, 1)

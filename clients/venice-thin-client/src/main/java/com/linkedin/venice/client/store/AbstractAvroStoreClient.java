@@ -45,6 +45,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -441,12 +442,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    *
    * @param stats The {@link ClientStats} object to record into. Should be the one passed by the {@link StatTrackingStoreClient}.
    * @param preRequestTimeInNS The request start time. Should be the one passed by the {@link StatTrackingStoreClient}.
-   * @param handleResponseOnDeserializationExecutor if true, will execute the {@param responseHandler} on the {@link deserializationExecutor}
-   *                                                if false, will execute the {@param responseHandler} on the same thread.
+   * @param handleResponseOnDeserializationExecutor if true, will execute the {@code responseHandler} on the {@link #deserializationExecutor}
+   *                                                if false, will execute the {@code responseHandler} on the same thread.
    * @param requestSubmitter A closure which ONLY submits the request to the backend. Should not include any pre-submission work (i.e.: serialization).
    * @param responseHandler A closure which interprets the response from the backend (i.e.: deserialization).
-   * @param <R> The return type of the {@param responseHandler}.
-   * @return a {@link CompletableFuture<R>} wrapping the return of the {@param responseHandler}.
+   * @param <R> The return type of the {@code responseHandler}.
+   * @return a {@link CompletableFuture<R>} wrapping the return of the {@code responseHandler}.
    * @throws VeniceClientException
    */
   private <R> CompletableFuture<R> requestSubmissionWithStatsHandling(
@@ -745,10 +746,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       // empty key set
       return;
     }
+    TrackingStreamingCallback<K, V> decoderCallback = DelegatingTrackingCallback.wrap(callback);
+    if (keys.size() == 1) {
+      streamingBatchGetForSingleKey(keys.iterator().next(), decoderCallback);
+      return;
+    }
     tryStart(1);
 
     List<K> keyList = new ArrayList<>(keys);
-    TrackingStreamingCallback<K, V> decoderCallback = DelegatingTrackingCallback.wrap(callback);
     RecordStreamDecoder decoder = new MultiGetRecordStreamDecoder<>(
         keyList,
         decoderCallback,
@@ -757,6 +762,40 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         this::getDataRecordDeserializerFromCache,
         this::decompressRecord);
     streamingBatchGet(keyList, decoder, decoderCallback.getStats());
+  }
+
+  /**
+   * Serves a single-key batchGet/streamingBatchGet by issuing a single-GET request instead of a multi-get request.
+   *
+   * NOTE: this changes the request type seen by the server from a multi-get to a single-get, which shifts
+   * server-side routing, read-quota accounting (single-get and batch-get quotas are tracked/throttled separately)
+   * and per-request-type server metrics for these 1-key requests. Single-get timing is recorded into the
+   * multi-get-streaming {@link com.linkedin.venice.client.stats.ClientStats} carried by {@code callback}.
+   */
+  private void streamingBatchGetForSingleKey(K key, TrackingStreamingCallback<K, V> callback) {
+    get(key, callback.getStats(), System.nanoTime()).whenComplete((value, throwable) -> {
+      Optional<Exception> completedException = Optional.empty();
+      int successKeyCount = 0;
+      if (throwable != null) {
+        completedException = Optional.of(toException(throwable));
+      } else {
+        callback.onRecordReceived(key, value);
+        callback.onRecordDeserialized();
+        if (value != null) {
+          successKeyCount = 1;
+        }
+      }
+      callback.onCompletion(completedException);
+      callback.onDeserializationCompletion(completedException, successKeyCount, 0);
+    });
+  }
+
+  private static Exception toException(Throwable throwable) {
+    Throwable unwrappedThrowable =
+        throwable instanceof CompletionException && throwable.getCause() != null ? throwable.getCause() : throwable;
+    return unwrappedThrowable instanceof Exception
+        ? (Exception) unwrappedThrowable
+        : new VeniceClientException(unwrappedThrowable);
   }
 
   private void streamingBatchGet(

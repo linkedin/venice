@@ -297,6 +297,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
+    if (keys.size() == 1) {
+      streamingBatchGetForSingleKey(keys.iterator().next(), callback);
+      return;
+    }
+
     multiKeyStreamingRequest(
         requestContext,
         RequestType.MULTI_GET_STREAMING,

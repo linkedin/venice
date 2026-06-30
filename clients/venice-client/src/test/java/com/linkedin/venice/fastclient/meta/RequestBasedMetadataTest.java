@@ -521,15 +521,26 @@ public class RequestBasedMetadataTest {
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       RequestBasedMetadata spy = spy(requestBasedMetadata);
       spy.setD2ServiceDiscovery(d2ServiceDiscovery);
-      // let child thread handling the start logic otherwise the main thread cannot verify the invocation times.
-      CompletableFuture.runAsync(spy::start);
+      // Run start() on a dedicated thread (not the shared ForkJoinPool.commonPool() that runAsync uses): start()
+      // blocks indefinitely on isReadyLatch.await() in this all-failures scenario, and dispatching it onto the common
+      // pool makes the test flaky under load (the task can sit queued past the verification timeout). A dedicated
+      // daemon thread guarantees start() begins promptly so the main thread can verify the invocation counts.
+      Thread starter = new Thread(spy::start, "on-demand-refresh-start");
+      starter.setDaemon(true);
+      starter.start();
 
-      // refresh would happen multiple times
-      // the first one w/o onDemond refresh and would fail due to d2 client exception
-      verify(spy, timeout(3000).atLeast(1)).updateCache(false);
+      try {
+        // refresh would happen multiple times
+        // the first one w/o onDemond refresh and would fail due to d2 client exception
+        verify(spy, timeout(3000).atLeast(1)).updateCache(false);
 
-      // the first failed refresh triggers a onDemand refresh
-      verify(spy, timeout(3000).atLeast(1)).updateCache(true);
+        // the first failed refresh triggers a onDemand refresh
+        verify(spy, timeout(3000).atLeast(1)).updateCache(true);
+      } finally {
+        starter.interrupt();
+        starter.join(TimeUnit.SECONDS.toMillis(5));
+        assertFalse(starter.isAlive(), "starter thread should exit after interruption");
+      }
     }
   }
 

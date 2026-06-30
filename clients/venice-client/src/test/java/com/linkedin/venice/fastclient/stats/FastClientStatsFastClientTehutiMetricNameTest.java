@@ -26,6 +26,9 @@ public class FastClientStatsFastClientTehutiMetricNameTest {
         FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
         "rejected_request_count_by_load_controller");
     map.put(FastClientTehutiMetricName.REJECTION_RATIO, "rejection_ratio");
+    map.put(
+        FastClientTehutiMetricName.BATCH_GET_ROUTED_TO_SINGLE_GET_REQUEST_COUNT,
+        "batch_get_routed_to_single_get_request_count");
     return map;
   }
 }

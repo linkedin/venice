@@ -8,12 +8,14 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFutur
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -38,6 +40,37 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
   }
 
   protected abstract CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException;
+
+  /**
+   * Serves a single-key batchGet/streamingBatchGet by issuing a single-GET request instead of a multi-get
+   * streaming request.
+   *
+   * NOTE: this changes the request type seen by the server from a (streaming) multi-get to a single-get. That
+   * shifts server-side routing, read-quota accounting (single-get and batch-get quotas are tracked/throttled
+   * separately) and per-request-type server metrics for these 1-key requests. It also means the request follows
+   * the single-get long-tail retry configuration rather than the batch-get one (see
+   * {@link RetriableAvroGenericStoreClient#get}); a store that enabled only batch-get long-tail retry will get no
+   * long-tail retry on 1-key batch gets.
+   */
+  protected final void streamingBatchGetForSingleKey(K key, StreamingCallback<K, V> callback) {
+    getClientConfig().getStats(RequestType.MULTI_GET_STREAMING).recordBatchGetRoutedToSingleGetRequest();
+    get(key).whenComplete((value, throwable) -> {
+      if (throwable != null) {
+        callback.onCompletion(Optional.of(toException(throwable)));
+        return;
+      }
+      callback.onRecordReceived(key, value);
+      callback.onCompletion(Optional.empty());
+    });
+  }
+
+  private static Exception toException(Throwable throwable) {
+    Throwable unwrappedThrowable =
+        throwable instanceof CompletionException && throwable.getCause() != null ? throwable.getCause() : throwable;
+    return unwrappedThrowable instanceof Exception
+        ? (Exception) unwrappedThrowable
+        : new VeniceClientException(unwrappedThrowable);
+  }
 
   @Override
   public final CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {

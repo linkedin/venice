@@ -33,6 +33,14 @@ public class FastClientMetricEntityTest {
             "Count of retry requests which won",
             setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
+        FastClientMetricEntity.BATCH_GET_SINGLE_KEY_REROUTE_COUNT,
+        new MetricEntityExpectation(
+            "request.batch_get_routed_to_single_get_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of single-key batch-get requests served via a single-GET lookup",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
+    map.put(
         FastClientMetricEntity.METADATA_STALENESS_DURATION,
         new MetricEntityExpectation(
             "metadata.staleness_duration",
