@@ -1,6 +1,7 @@
 package com.linkedin.venice.spark.utils;
 
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -26,7 +27,16 @@ public final class RmdPushUtils {
       throw new IllegalArgumentException(
           "Push job setting missing rmd field. Please set the rmd field in the job properties.");
     }
-    return pushJobSetting.inputDataSchema.getField(pushJobSetting.rmdField).schema();
+    Schema.Field rmdField = pushJobSetting.inputDataSchema.getField(pushJobSetting.rmdField);
+    if (rmdField == null) {
+      throw new VeniceSchemaFieldNotFoundException(
+          pushJobSetting.rmdField,
+          "Could not find the configured timestamp.field '" + pushJobSetting.rmdField
+              + "' at the top level of the push input record schema. The timestamp field must be a top-level field "
+              + "of the input record (a sibling of the key and value fields), not nested inside the value. "
+              + "Input record schema: " + pushJobSetting.inputDataSchema);
+    }
+    return rmdField.schema();
   }
 
   public static boolean containsLogicalTimestamp(PushJobSetting pushJobSetting) {
