@@ -252,6 +252,13 @@ public class TopicManager implements Closeable {
       boolean useFastPubSubOperationTimeout,
       boolean useAlternativeBackend,
       Optional<Boolean> uncleanLeaderElectionEnable) {
+    if (useAlternativeBackend) {
+      /*
+       * Clamp once here so both the create config below and the "topic already exists" recreate branch
+       * (which reuses retentionTimeMs via updateTopicRetention) pass the supported value to the backend.
+       */
+      retentionTimeMs = clampRetentionForAlternativeBackend(topicName, retentionTimeMs);
+    }
     long startTimeMs = System.currentTimeMillis();
     long deadlineMs = startTimeMs + (useFastPubSubOperationTimeout
         ? PUBSUB_FAST_OPERATION_TIMEOUT_MS
@@ -299,6 +306,28 @@ public class TopicManager implements Closeable {
     waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
     boolean eternal = retentionTimeMs == PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS;
     logger.info("Successfully created {}topic: {}", eternal ? "eternal " : "", topicName);
+  }
+
+  /**
+   * Some alternative PubSub backends reject retentions above a backend-specific maximum (for example, they do
+   * not support effectively-infinite / {@link PubSubConstants#ETERNAL_TOPIC_RETENTION_POLICY_MS} retention).
+   * When a topic targets such a backend, clamp the requested retention down to
+   * {@link TopicManagerContext#getAlternativeBackendMaxRetentionMs()} so Venice passes an explicit, supported
+   * value instead of relying on the backend to silently clamp (or reject) it. The backend adapter remains the
+   * authoritative enforcement point; clamping here keeps Venice's intended retention consistent with what the
+   * backend will actually store.
+   */
+  long clampRetentionForAlternativeBackend(PubSubTopic topicName, long retentionTimeMs) {
+    long maxRetentionMs = topicManagerContext.getAlternativeBackendMaxRetentionMs();
+    if (retentionTimeMs > maxRetentionMs) {
+      logger.info(
+          "Clamping retention for topic: {} on alternative backend from {}ms to max supported: {}ms",
+          topicName,
+          retentionTimeMs,
+          maxRetentionMs);
+      return maxRetentionMs;
+    }
+    return retentionTimeMs;
   }
 
   protected void waitUntilTopicCreated(PubSubTopic topicName, int partitionCount, long deadlineMs) {

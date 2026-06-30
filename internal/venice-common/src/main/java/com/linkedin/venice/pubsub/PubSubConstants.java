@@ -119,6 +119,17 @@ public class PubSubConstants {
 
   public static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
 
+  /**
+   * Some PubSub backends do not support an effectively-infinite ({@link #ETERNAL_TOPIC_RETENTION_POLICY_MS})
+   * retention and reject (or silently clamp) topic creations whose retention exceeds a backend-specific
+   * maximum. When a topic is created/updated against an alternative backend (see
+   * {@link com.linkedin.venice.pubsub.PubSubTopicConfiguration#isUseAlternativeBackend()}), Venice clamps
+   * the requested retention down to this value so it passes an explicit, supported retention instead of
+   * relying on the backend to clamp it. This is the default; deployments can override it via
+   * {@link com.linkedin.venice.pubsub.manager.TopicManagerContext.Builder#setAlternativeBackendMaxRetentionMs(long)}.
+   */
+  public static final long DEFAULT_ALTERNATIVE_BACKEND_MAX_RETENTION_MS = 365 * Time.MS_PER_DAY;
+
   public static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = 5 * Time.MS_PER_DAY;
 
   public static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;

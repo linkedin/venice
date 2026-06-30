@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.manager;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_ALTERNATIVE_BACKEND_MAX_RETENTION_MS;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
@@ -30,6 +31,7 @@ public class TopicManagerContext {
   private final long pubSubOperationTimeoutMs;
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
+  private final long alternativeBackendMaxRetentionMs;
   private final long topicOffsetCheckIntervalMs;
   private final int topicMetadataFetcherConsumerPoolSize;
   private final int topicMetadataFetcherThreadPoolSize;
@@ -41,6 +43,7 @@ public class TopicManagerContext {
     this.pubSubOperationTimeoutMs = builder.pubSubOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = builder.topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = builder.topicMinLogCompactionLagMs;
+    this.alternativeBackendMaxRetentionMs = builder.alternativeBackendMaxRetentionMs;
     this.pubSubAdminAdapterFactory = builder.pubSubAdminAdapterFactory;
     this.pubSubConsumerAdapterFactory = builder.pubSubConsumerAdapterFactory;
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
@@ -65,6 +68,15 @@ public class TopicManagerContext {
 
   public long getTopicMinLogCompactionLagMs() {
     return topicMinLogCompactionLagMs;
+  }
+
+  /**
+   * @return the maximum retention, in ms, that Venice will request when creating/updating a topic on an
+   *         alternative PubSub backend (see {@link com.linkedin.venice.pubsub.PubSubTopicConfiguration#isUseAlternativeBackend()}).
+   *         Requested retentions above this value are clamped down to it.
+   */
+  public long getAlternativeBackendMaxRetentionMs() {
+    return alternativeBackendMaxRetentionMs;
   }
 
   public PubSubAdminAdapterFactory<PubSubAdminAdapter> getPubSubAdminAdapterFactory() {
@@ -127,8 +139,9 @@ public class TopicManagerContext {
   public String toString() {
     return "TopicManagerContext{veniceComponent=" + veniceComponent + ", pubSubOperationTimeoutMs="
         + pubSubOperationTimeoutMs + ", topicDeletionStatusPollIntervalMs=" + topicDeletionStatusPollIntervalMs
-        + ", topicMinLogCompactionLagMs=" + topicMinLogCompactionLagMs + ", topicOffsetCheckIntervalMs="
-        + topicOffsetCheckIntervalMs + ", topicMetadataFetcherConsumerPoolSize=" + topicMetadataFetcherConsumerPoolSize
+        + ", topicMinLogCompactionLagMs=" + topicMinLogCompactionLagMs + ", alternativeBackendMaxRetentionMs="
+        + alternativeBackendMaxRetentionMs + ", topicOffsetCheckIntervalMs=" + topicOffsetCheckIntervalMs
+        + ", topicMetadataFetcherConsumerPoolSize=" + topicMetadataFetcherConsumerPoolSize
         + ", topicMetadataFetcherThreadPoolSize=" + topicMetadataFetcherThreadPoolSize + ", pubSubAdminAdapterFactory="
         + pubSubAdminAdapterFactory.getClass().getSimpleName() + ", pubSubConsumerAdapterFactory="
         + pubSubConsumerAdapterFactory.getClass().getSimpleName() + '}';
@@ -147,6 +160,7 @@ public class TopicManagerContext {
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+    private long alternativeBackendMaxRetentionMs = DEFAULT_ALTERNATIVE_BACKEND_MAX_RETENTION_MS;
     private long topicOffsetCheckIntervalMs = 60_000L; // 1 minute
     private int topicMetadataFetcherConsumerPoolSize = 1;
     private int topicMetadataFetcherThreadPoolSize = 2;
@@ -163,6 +177,11 @@ public class TopicManagerContext {
 
     public Builder setTopicMinLogCompactionLagMs(long topicMinLogCompactionLagMs) {
       this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
+      return this;
+    }
+
+    public Builder setAlternativeBackendMaxRetentionMs(long alternativeBackendMaxRetentionMs) {
+      this.alternativeBackendMaxRetentionMs = alternativeBackendMaxRetentionMs;
       return this;
     }
 
@@ -263,6 +282,10 @@ public class TopicManagerContext {
 
       if (topicMetadataFetcherThreadPoolSize <= 0) {
         throw new IllegalArgumentException("topicMetadataFetcherThreadPoolSize must be positive");
+      }
+
+      if (alternativeBackendMaxRetentionMs <= 0) {
+        throw new IllegalArgumentException("alternativeBackendMaxRetentionMs must be positive");
       }
     }
 
