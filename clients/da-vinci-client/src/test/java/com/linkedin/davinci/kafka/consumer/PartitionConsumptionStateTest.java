@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -18,7 +19,10 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
@@ -633,5 +637,73 @@ public class PartitionConsumptionStateTest {
       pcs.incrementBatchPushRecordCount();
     }
     assertEquals(pcs.getBatchPushRecordCount(), expectedFinalCount, description);
+  }
+
+  // The version topic the F->L prepare path resolves as the leader topic.
+  private PubSubTopic versionLeaderTopic() {
+    return TOPIC_REPOSITORY.getTopic("topic1_v1");
+  }
+
+  /**
+   * F->L transition (useCheckpointedDivRtPosition=true), remote source-VT leader (consumeRemotely=true):
+   * even when the in-memory processed-remote-VT position has raced ahead (offset 9677) of the durable remote
+   * LCVP (offset 2) during a post-wipe DoL re-consume, the resolved leader start must be the durable remote LCVP
+   * (2), never the in-memory 9677 that outruns the persisted VT DIV.
+   */
+  @Test
+  public void testGetLeaderPositionRemoteVtTransitionUsesRemoteLcvpNotInMemory() {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(versionLeaderTopic()).when(offsetRecord).getLeaderTopic(any());
+    PubSubPosition remoteLcvp = InMemoryPubSubPosition.of(2L);
+    doReturn(remoteLcvp).when(offsetRecord).getLatestConsumedRemoteVtPosition();
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, true, false, false, null);
+    pcs.setConsumeRemotely(true);
+    // In-memory processed-remote-VT raced ahead during DoL re-consume of the local VT.
+    pcs.setLatestProcessedRemoteVtPosition(InMemoryPubSubPosition.of(9677L));
+
+    // F->L transition path: resolve to the durable remote LCVP, not the in-memory position.
+    assertEquals(pcs.getLeaderPosition("broker", true), remoteLcvp);
+    // Steady-state path is unchanged: still returns the in-memory processed position.
+    assertEquals(pcs.getLeaderPosition("broker", false), InMemoryPubSubPosition.of(9677L));
+  }
+
+  /**
+   * F->L transition with no durable remote LCVP (e.g. first leader / never checkpointed) must fall back to
+   * EARLIEST rather than the in-memory position.
+   */
+  @Test
+  public void testGetLeaderPositionRemoteVtTransitionFallsBackToEarliestWhenNoLcvp() {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(versionLeaderTopic()).when(offsetRecord).getLeaderTopic(any());
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getLatestConsumedRemoteVtPosition();
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, true, false, false, null);
+    pcs.setConsumeRemotely(true);
+    pcs.setLatestProcessedRemoteVtPosition(InMemoryPubSubPosition.of(9677L));
+
+    assertEquals(pcs.getLeaderPosition("broker", true), PubSubSymbolicPosition.EARLIEST);
+  }
+
+  /**
+   * Symmetric local-VT case (consumeRemotely=false): F->L transition resolves to the durable local LCVP, not the
+   * in-memory processed local VT position which can likewise outrun the VT DIV.
+   */
+  @Test
+  public void testGetLeaderPositionLocalVtTransitionUsesLocalLcvpNotInMemory() {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(versionLeaderTopic()).when(offsetRecord).getLeaderTopic(any());
+    PubSubPosition localLcvp = InMemoryPubSubPosition.of(2L);
+    doReturn(localLcvp).when(offsetRecord).getLatestConsumedVtPosition();
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+    // consumeRemotely defaults to false.
+    pcs.setLatestProcessedVtPosition(InMemoryPubSubPosition.of(9677L));
+
+    assertEquals(pcs.getLeaderPosition("broker", true), localLcvp);
+    assertEquals(pcs.getLeaderPosition("broker", false), InMemoryPubSubPosition.of(9677L));
   }
 }
