@@ -748,6 +748,31 @@ public class TestPartitionTracker {
   }
 
   /**
+   * The remote LCVP must be snapshotted into the OffsetRecord by updateOffsetRecord (independently of the local LCVP),
+   * and carried by cloneVtProducerStates, so an F->L remote-VT resume reads a DIV-consistent start position.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testUpdateOffsetRecordPersistsRemoteLcvp() {
+    PubSubPosition remoteLcvp = ApacheKafkaOffsetPosition.of(9677L);
+    partitionTracker.updateLatestConsumedRemoteVtPosition(remoteLcvp);
+    assertEquals(partitionTracker.getLatestConsumedRemoteVtPosition(), remoteLcvp);
+
+    OffsetRecord offsetRecord = TestUtils
+        .getOffsetRecord(ApacheKafkaOffsetPosition.of(0L), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    partitionTracker.updateOffsetRecord(vt, offsetRecord);
+    assertEquals(
+        offsetRecord.getLatestConsumedRemoteVtPosition(),
+        remoteLcvp,
+        "Remote LCVP must be written to OffsetRecord even when no VT producer segments have been tracked yet");
+
+    // cloneVtProducerStates carries the remote LCVP to the destination tracker.
+    PartitionTracker destTracker = createDestTracker();
+    partitionTracker
+        .cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED, System.currentTimeMillis(), false);
+    assertEquals(destTracker.getLatestConsumedRemoteVtPosition(), remoteLcvp, "remote LCVP should be copied on clone");
+  }
+
+  /**
    * Tests that cloneVtProducerStates correctly handles the maxAgeInMs threshold and data-relative anchor:
    * <ul>
    *   <li>With DISABLED maxAgeInMs: all segments retained regardless of age.</li>

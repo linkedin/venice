@@ -200,6 +200,11 @@ public class DataIntegrityValidator {
     partitionTracker.updateLatestConsumedVtPosition(vtPosition);
   }
 
+  public void updateLatestConsumedRemoteVtPosition(int partition, PubSubPosition vtPosition) {
+    PartitionTracker partitionTracker = registerPartition(partition);
+    partitionTracker.updateLatestConsumedRemoteVtPosition(vtPosition);
+  }
+
   /**
    * N.B. Intended for tests only
    *

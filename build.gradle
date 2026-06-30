@@ -328,12 +328,7 @@ subprojects {
       // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
-      def versionOverrides = [
-          // PartitionState v24 introduces `upstreamLastConsumedVersionTopicPubSubPosition` (the remote/upstream
-          // last-consumed VT position, "remote LCVP"). Pinned to v23 until the consumer code (OffsetRecord +
-          // PartitionTracker + LeaderFollowerStoreIngestionTask + PartitionConsumptionState) lands in a follow-up PR.
-          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v23', PathValidation.DIRECTORY)
-      ]
+      def versionOverrides = []
 
       def schemaDirs = [sourceDir]
       sourceDir.eachDir { typeDir ->
