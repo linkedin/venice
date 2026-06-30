@@ -5024,14 +5024,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             null);
         if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
             || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
-          LOGGER.warn(
-              "postStoreVersionSwap hook returned {} for store {} v{}, triggering rollback",
+          LOGGER.debug(
+              "postStoreVersionSwap hooks returned {} for store {} v{}, triggering rollback",
               outcome,
               storeName,
               futureVersion);
           rollbackToBackupVersion(clusterName, storeName, getRegionName());
         } else if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-          LOGGER.warn("postStoreVersionSwap hook returned {} for store {} v{}", outcome, storeName, futureVersion);
+          LOGGER.debug("postStoreVersionSwap hooks returned {} for store {} v{}", outcome, storeName, futureVersion);
         }
       } catch (Exception e) {
         LOGGER.error(
@@ -5115,8 +5115,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             null);
         if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
             || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
-          LOGGER.warn(
-              "postStoreVersionSwap hook returned {} for store {} v{} during rollback — already on backup version, cannot roll back further",
+          LOGGER.debug(
+              "postStoreVersionSwap hooks returned {} for store {} v{} during rollback — already on backup version, cannot roll back further",
               outcome,
               storeName,
               capturedVersions[0]);

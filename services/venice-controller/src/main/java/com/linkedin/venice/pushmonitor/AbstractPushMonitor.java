@@ -1315,8 +1315,8 @@ public abstract class AbstractPushMonitor
       StoreVersionLifecycleEventOutcome outcome = storeLifecycleHooksCache
           .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
       if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-        LOGGER.warn(
-            "postStoreVersionSwap hook returned {} for store {} v{} in region {}",
+        LOGGER.debug(
+            "postStoreVersionSwap hooks returned {} for store {} v{} in region {}",
             outcome,
             store.getName(),
             versionNumber,

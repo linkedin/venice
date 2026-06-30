@@ -78,11 +78,14 @@ public class StoreLifecycleHooksCache {
 
   /**
    * Invokes {@link StoreLifecycleHooks#postStoreVersionSwap} for every hook registered on
-   * {@code store} and returns the worst outcome across all hooks
-   * (ABORT = ROLLBACK &gt; WAIT &gt; PROCEED).
+   * {@code store}. Returns {@link StoreVersionLifecycleEventOutcome#ROLLBACK} or
+   * {@link StoreVersionLifecycleEventOutcome#ABORT} immediately if any hook requests it
+   * (short-circuit — remaining hooks are not called). Returns
+   * {@link StoreVersionLifecycleEventOutcome#WAIT} if any hook requested it and none requested
+   * rollback/abort. Returns {@link StoreVersionLifecycleEventOutcome#PROCEED} otherwise.
    *
    * <p>Null or malformed {@link LifecycleHooksRecord}s are skipped. Any exception thrown by a
-   * hook is caught, logged, and the hook is skipped without affecting the accumulated outcome.
+   * hook is caught, logged, and the hook is skipped without affecting the outcome.
    */
   public StoreVersionLifecycleEventOutcome invokePostVersionSwapHooks(
       String clusterName,
@@ -91,11 +94,11 @@ public class StoreLifecycleHooksCache {
       int previousVersion,
       String regionName,
       @Nullable Lazy<JobStatusQueryResponse> jobStatus) {
-    StoreVersionLifecycleEventOutcome worstOutcome = StoreVersionLifecycleEventOutcome.PROCEED;
     List<LifecycleHooksRecord> hooks = store.getStoreLifecycleHooks();
     if (hooks == null || hooks.isEmpty()) {
-      return worstOutcome;
+      return StoreVersionLifecycleEventOutcome.PROCEED;
     }
+    boolean waitRequested = false;
     for (LifecycleHooksRecord record: hooks) {
       if (record == null || record.getStoreLifecycleHooksClassName() == null) {
         continue;
@@ -137,44 +140,21 @@ public class StoreLifecycleHooksCache {
             versionNumber);
         continue;
       }
-      if (StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-        LOGGER.debug(
-            "postStoreVersionSwap hook {} returned PROCEED for store {} v{} in region {}",
-            record.getStoreLifecycleHooksClassName(),
-            store.getName(),
-            versionNumber,
-            regionName);
-      } else {
-        LOGGER.warn(
-            "postStoreVersionSwap hook {} returned {} for store {} v{} in region {}",
-            record.getStoreLifecycleHooksClassName(),
-            outcome,
-            store.getName(),
-            versionNumber,
-            regionName);
-        if (isWorse(outcome, worstOutcome)) {
-          worstOutcome = outcome;
-        }
+      LOGGER.debug(
+          "postStoreVersionSwap hook {} returned {} for store {} v{} in region {}",
+          record.getStoreLifecycleHooksClassName(),
+          outcome,
+          store.getName(),
+          versionNumber,
+          regionName);
+      if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
+          || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
+        return outcome;
+      }
+      if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
+        waitRequested = true;
       }
     }
-    return worstOutcome;
-  }
-
-  private static boolean isWorse(
-      StoreVersionLifecycleEventOutcome candidate,
-      StoreVersionLifecycleEventOutcome current) {
-    return severity(candidate) > severity(current);
-  }
-
-  private static int severity(StoreVersionLifecycleEventOutcome outcome) {
-    switch (outcome) {
-      case ABORT:
-      case ROLLBACK:
-        return 2;
-      case WAIT:
-        return 1;
-      default:
-        return 0;
-    }
+    return waitRequested ? StoreVersionLifecycleEventOutcome.WAIT : StoreVersionLifecycleEventOutcome.PROCEED;
   }
 }
