@@ -481,6 +481,7 @@
       <Class name="com.linkedin.venice.router.api.path.VeniceSingleGetPath"/>
       <Class name="com.linkedin.venice.router.api.path.VeniceSingleGetPath"/>
       <Class name="com.linkedin.davinci.config.VeniceStoreVersionConfig"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTask"/>
       <Class name="com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask"/>
       <Class name="com.linkedin.venice.controller.VeniceParentHelixAdmin"/>
       <Class name="com.linkedin.venice.controller.VeniceHelixAdmin"/>

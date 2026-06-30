@@ -7698,4 +7698,201 @@ public abstract class StoreIngestionTaskTest {
     negativeTs.producerMetadata = negativeMetadata;
     assertEquals(StoreIngestionTask.getHeartbeatProducerTimestamp(negativeTs), 0L);
   }
+
+  // -------------------------------------------------------------------------
+  // Future-slot pause / resume helpers
+  // -------------------------------------------------------------------------
+
+  /**
+   * Builds a mock-based SIT for future-slot pause/resume tests.
+   * Uses {@code doReturn()} stubs for all field accessors instead of reflection.
+   */
+  private StoreIngestionTask buildMinimalSitForFutureSlotTests(
+      VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap,
+      PubSubTopic vt,
+      AggKafkaConsumerService agg) {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(vt).when(task).getVersionTopic();
+    doReturn(agg).when(task).getAggKafkaConsumerService();
+    doReturn(pubSubTopicRepository).when(task).getPubSubTopicRepository();
+    doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
+    doCallRealMethod().when(task).resumeFromFutureSlotPause();
+    doCallRealMethod().when(task).isFutureSlotPaused();
+    doCallRealMethod().when(task).resumeConsumptionForTest(anyString(), anyInt());
+    return task;
+  }
+
+  /** Returns a mock PCS whose futureSlotPaused flag is backed by an AtomicBoolean for real state tracking. */
+  private PartitionConsumptionState mockPcsWithFutureSlotFlag(boolean storeLevelPaused) {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    AtomicBoolean futureSlotPaused = new AtomicBoolean(false);
+    doAnswer(inv -> {
+      futureSlotPaused.set(inv.getArgument(0));
+      return null;
+    }).when(pcs).setFutureSlotPaused(anyBoolean());
+    doAnswer(inv -> futureSlotPaused.get()).when(pcs).isFutureSlotPaused();
+    doReturn(storeLevelPaused).when(pcs).isStoreLevelPaused();
+    return pcs;
+  }
+
+  @Test
+  public void testFutureSlotPauseAndResume() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    // Pause
+    assertFalse(pcs.isFutureSlotPaused(), "should not be paused before pausePartitionForFutureSlot");
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
+    assertTrue(task.isFutureSlotPaused(), "isFutureSlotPaused() should return true");
+    verify(aggConsumerService).pauseConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_FOO)));
+
+    // Resume
+    task.resumeFromFutureSlotPause();
+    assertFalse(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be cleared after resume");
+    assertFalse(task.isFutureSlotPaused(), "isFutureSlotPaused() should return false after resume");
+    verify(aggConsumerService).resumeConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_FOO)));
+  }
+
+  @Test
+  public void testFutureSlotResumeDoesNotPhysicallyResumeWhenStoreLevelPauseActive() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(true); // store-level pause active
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
+
+    task.resumeFromFutureSlotPause();
+    assertTrue(
+        pcs.isFutureSlotPaused(),
+        "PCS futureSlotPaused flag should remain true when store-level pause is still active");
+    // Store-level pause is still active: resumeConsumerFor must NOT be called
+    verify(aggConsumerService, never()).resumeConsumerFor(any(), any());
+  }
+
+  @Test
+  public void testQuotaResumeDoesNotOverrideFutureSlotPause() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false); // no store-level pause
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    // Apply future-slot pause
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
+
+    // Fire quota resumeConsumption — must NOT physically resume the partition
+    task.resumeConsumptionForTest(vt.getName(), PARTITION_FOO);
+
+    // futureSlotPaused flag must still be set
+    assertTrue(pcs.isFutureSlotPaused(), "futureSlotPaused must remain true after quota resumeConsumption");
+    // Physical resume must not have been called
+    verify(aggConsumerService, never()).resumeConsumerFor(any(), any());
+  }
+
+  @Test
+  public void testPauseAfterStartOfPushFieldSetAndRead() {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(task).isPauseAfterStartOfPush();
+    doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
+
+    // Verify the field can be set and read (SOP integration tested in testProcessStartOfPushPausesPartitionWhenFlagSet)
+    assertFalse(task.isPauseAfterStartOfPush(), "pauseAfterStartOfPush should default to false");
+    task.setPauseAfterStartOfPush(true);
+    assertTrue(task.isPauseAfterStartOfPush(), "pauseAfterStartOfPush should be true after setter");
+  }
+
+  @Test
+  public void testBlobTransferSuppressedWhenPauseAfterStartOfPushSet() {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(task).isPauseAfterStartOfPush();
+    doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
+    doCallRealMethod().when(task).shouldStartBlobTransfer(anyInt(), anyString(), any());
+
+    // When pauseAfterStartOfPush=false, shouldStartBlobTransfer falls through to the blobTransferHelper check;
+    // with a null helper (default mock return) it returns false but for a different reason — no assertion here.
+
+    // When pauseAfterStartOfPush=true, shouldStartBlobTransfer must short-circuit and return false
+    // regardless of blobTransferHelper state.
+    task.setPauseAfterStartOfPush(true);
+    assertFalse(
+        task.shouldStartBlobTransfer(0, "replica-1", null),
+        "shouldStartBlobTransfer must return false when pauseAfterStartOfPush=true");
+  }
+
+  @Test
+  public void testProcessStartOfPushPausesPartitionWhenFlagSet() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
+    doReturn(PARTITION_FOO).when(pcs).getPartition();
+    doReturn(false).when(pcs).isEndOfPushReceived();
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StorageMetadataService sms = mock(StorageMetadataService.class);
+    StoreVersionState svs = new StoreVersionState();
+    svs.sorted = false;
+    doReturn(svs).when(sms).computeStoreVersionState(anyString(), any());
+
+    VeniceServerConfig serverCfg = mock(VeniceServerConfig.class);
+    RocksDBServerConfig rocksDBCfg = mock(RocksDBServerConfig.class);
+    doReturn(false).when(rocksDBCfg).isBlobFilesEnabled();
+    doReturn(rocksDBCfg).when(serverCfg).getRocksDBServerConfig();
+
+    IngestionNotificationDispatcher dispatcher = mock(IngestionNotificationDispatcher.class);
+
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(vt).when(task).getVersionTopic();
+    doReturn(aggConsumerService).when(task).getAggKafkaConsumerService();
+    doReturn(pubSubTopicRepository).when(task).getPubSubTopicRepository();
+    doReturn(sms).when(task).getStorageMetadataService();
+    doReturn(serverCfg).when(task).getServerConfig();
+    doReturn(topic).when(task).getKafkaVersionTopic();
+    doReturn(dispatcher).when(task).getIngestionNotificationDispatcher();
+    doCallRealMethod().when(task).processStartOfPush(any(), any(), any());
+    doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
+    doCallRealMethod().when(task).isPauseAfterStartOfPush();
+    doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
+    doReturn(false).when(task).isHybridMode();
+    doNothing().when(task).beginBatchWrite(anyBoolean(), any());
+
+    // Build a minimal SOP KME and ControlMessage
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    ControlMessage cm = new ControlMessage();
+    StartOfPush sop = new StartOfPush();
+    sop.sorted = false;
+    sop.chunked = false;
+    cm.controlMessageUnion = sop;
+
+    // Case 1: pauseAfterStartOfPush=false — partition should NOT be paused
+    task.setPauseAfterStartOfPush(false);
+    task.processStartOfPush(kme, cm, pcs);
+    verify(dispatcher).reportStarted(pcs);
+    assertFalse(pcs.isFutureSlotPaused(), "partition should NOT be paused when pauseAfterStartOfPush=false");
+    verify(aggConsumerService, never()).pauseConsumerFor(any(), any());
+
+    // Case 2: pauseAfterStartOfPush=true — partition MUST be paused after reportStarted
+    task.setPauseAfterStartOfPush(true);
+    task.processStartOfPush(kme, cm, pcs);
+    verify(dispatcher, times(2)).reportStarted(pcs); // called once more
+    assertTrue(pcs.isFutureSlotPaused(), "partition should be paused when pauseAfterStartOfPush=true");
+    verify(aggConsumerService).pauseConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_FOO)));
+  }
 }
