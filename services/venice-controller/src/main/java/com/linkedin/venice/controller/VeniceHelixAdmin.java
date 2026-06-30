@@ -4935,6 +4935,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     int futureVersion = onlineFutureVersion == Store.NON_EXISTING_VERSION ? pushedFutureVersion : onlineFutureVersion;
+    int[] capturedPreviousVersion = new int[] { Store.NON_EXISTING_VERSION };
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -4998,10 +4999,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           futureVersion,
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
-      storeLifecycleHooksCache
-          .invokePostVersionSwapHooks(clusterName, store, futureVersion, previousVersion, getRegionName(), null);
+      capturedPreviousVersion[0] = previousVersion;
       return store;
     });
+    // Invoke post-swap hooks outside the write lock so slow hook implementations (e.g. gRPC
+    // calls) do not hold the per-store lock. capturedPreviousVersion[0] is NON_EXISTING_VERSION
+    // if storeMetadataUpdate threw before reaching the capture point (in which case the swap
+    // did not complete and hooks should not run).
+    if (capturedPreviousVersion[0] != Store.NON_EXISTING_VERSION) {
+      Store updatedStore = getStore(clusterName, storeName);
+      try {
+        StoreVersionLifecycleEventOutcome outcome = storeLifecycleHooksCache.invokePostVersionSwapHooks(
+            clusterName,
+            updatedStore,
+            futureVersion,
+            capturedPreviousVersion[0],
+            getRegionName(),
+            null);
+        if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
+            || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
+          LOGGER.warn(
+              "postStoreVersionSwap hook returned {} for store {} v{}, triggering rollback",
+              outcome,
+              storeName,
+              futureVersion);
+          rollbackToBackupVersion(clusterName, storeName, getRegionName());
+        }
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in postStoreVersionSwap hook for store {} v{}: {}",
+            storeName,
+            futureVersion,
+            e.getMessage(),
+            e);
+      }
+    }
   }
 
   /**
@@ -5023,6 +5055,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
+    int[] capturedVersions = new int[] { NON_EXISTING_VERSION, NON_EXISTING_VERSION }; // [backupVersion,
+                                                                                       // previousVersion]
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -5051,10 +5085,40 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ROLLED_BACK);
-      storeLifecycleHooksCache
-          .invokePostVersionSwapHooks(clusterName, store, backupVersion, previousVersion, getRegionName(), null);
+      capturedVersions[0] = backupVersion;
+      capturedVersions[1] = previousVersion;
       return store;
     });
+    // Invoke post-swap hooks outside the write lock. capturedVersions[0] is NON_EXISTING_VERSION
+    // if storeMetadataUpdate threw or there was no backup version, meaning the rollback did not
+    // complete and hooks should not run.
+    if (capturedVersions[0] != NON_EXISTING_VERSION) {
+      Store updatedStore = getStore(clusterName, storeName);
+      try {
+        StoreVersionLifecycleEventOutcome outcome = storeLifecycleHooksCache.invokePostVersionSwapHooks(
+            clusterName,
+            updatedStore,
+            capturedVersions[0],
+            capturedVersions[1],
+            getRegionName(),
+            null);
+        if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
+            || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
+          LOGGER.warn(
+              "postStoreVersionSwap hook returned {} for store {} v{} during rollback — already on backup version, cannot roll back further",
+              outcome,
+              storeName,
+              capturedVersions[0]);
+        }
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in postStoreVersionSwap hook for store {} v{}: {}",
+            storeName,
+            capturedVersions[0],
+            e.getMessage(),
+            e);
+      }
+    }
   }
 
   /**
