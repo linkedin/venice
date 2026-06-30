@@ -4,6 +4,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -30,6 +31,7 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -91,6 +93,130 @@ public class TestVeniceHelixResources {
         Optional.empty(),
         mock(HelixAdminClient.class),
         mock(VeniceVersionLifecycleEventManager.class));
+  }
+
+  /**
+   * The ZK address {@link HelixVeniceClusterResources} selects for the spectator Helix manager, captured by
+   * {@link CapturingHelixVeniceClusterResources} during construction (no real connection is opened).
+   */
+  private static final ThreadLocal<String> CAPTURED_SPECTATOR_ZK_ADDRESS = new ThreadLocal<>();
+
+  /**
+   * Subclass that intercepts {@link HelixVeniceClusterResources#getSpectatorManager(String, String)} to record the ZK
+   * address chosen for the spectator manager, returning a stubbed manager instead of opening a real ZK connection.
+   */
+  private static class CapturingHelixVeniceClusterResources extends HelixVeniceClusterResources {
+    CapturingHelixVeniceClusterResources(
+        String clusterName,
+        ZkClient zkClient,
+        HelixAdapterSerializer adapterSerializer,
+        SafeHelixManager helixManager,
+        VeniceControllerClusterConfig config,
+        VeniceHelixAdmin admin,
+        MetricsRepository metricsRepository,
+        RealTimeTopicSwitcher realTimeTopicSwitcher,
+        Optional<DynamicAccessController> accessController,
+        HelixAdminClient helixAdminClient,
+        VeniceVersionLifecycleEventManager veniceVersionLifecycleEventManager) {
+      super(
+          clusterName,
+          zkClient,
+          adapterSerializer,
+          helixManager,
+          config,
+          admin,
+          metricsRepository,
+          realTimeTopicSwitcher,
+          accessController,
+          helixAdminClient,
+          veniceVersionLifecycleEventManager);
+    }
+
+    @Override
+    SafeHelixManager getSpectatorManager(String clusterName, String zkAddress) {
+      // Invoked from the super constructor; record the selected address without opening a real ZK connection.
+      CAPTURED_SPECTATOR_ZK_ADDRESS.set(zkAddress);
+      SafeHelixManager manager = mock(SafeHelixManager.class);
+      // HelixExternalViewRepository's constructor reads the cluster name off the manager.
+      when(manager.getClusterName()).thenReturn(clusterName);
+      return manager;
+    }
+  }
+
+  /**
+   * Construct a {@link CapturingHelixVeniceClusterResources} and return the ZK address it selected for the spectator
+   * Helix manager. {@code metadataZkAddress} backs the Venice-metadata {@link ZkClient} (must be a live test ZK);
+   * {@code configHelixZkAddress} is what {@link VeniceControllerClusterConfig#getZkAddress()} reports.
+   */
+  private String captureSpectatorZkAddress(String cluster, String metadataZkAddress, String configHelixZkAddress) {
+    ZkClient zkClient = ZkClientFactory.newZkClient(metadataZkAddress);
+    ZKHelixManager controller =
+        new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, metadataZkAddress);
+    ZKHelixAdmin admin = new ZKHelixAdmin(metadataZkAddress);
+    admin.addCluster(cluster);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(mock(MetaStoreWriter.class)).when(veniceHelixAdmin).getMetaStoreWriter();
+    doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin)
+        .getReadOnlyZKSharedSystemStoreRepository();
+    doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin)
+        .getReadOnlyZKSharedSchemaRepository();
+    doReturn(Collections.emptyList()).when(veniceHelixAdmin).getAllStores(cluster);
+
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+    when(config.getZkAddress()).thenReturn(configHelixZkAddress);
+
+    CAPTURED_SPECTATOR_ZK_ADDRESS.remove();
+    new CapturingHelixVeniceClusterResources(
+        cluster,
+        zkClient,
+        new HelixAdapterSerializer(),
+        new SafeHelixManager(controller),
+        config,
+        veniceHelixAdmin,
+        new MetricsRepository(),
+        mock(RealTimeTopicSwitcher.class),
+        Optional.empty(),
+        mock(HelixAdminClient.class),
+        mock(VeniceVersionLifecycleEventManager.class));
+    String captured = CAPTURED_SPECTATOR_ZK_ADDRESS.get();
+    CAPTURED_SPECTATOR_ZK_ADDRESS.remove();
+    return captured;
+  }
+
+  @DataProvider(name = "spectatorZkAddressCases")
+  public Object[][] spectatorZkAddressCases() {
+    // name, configHelixZkAddress (null -> reuse the live metadata ZK address), expectMatchesMetadataAddress
+    return new Object[][] { { "config-only-specified", "helix-zk-standalone.example.com:2181", false },
+        { "both-specified-and-identical", null, true },
+        { "both-specified-and-different", "helix-zk-different.example.com:2181", false } };
+  }
+
+  /**
+   * Guards the ZK-client re-architecture: the spectator Helix manager must bind to the Helix ZK address from
+   * {@link VeniceControllerClusterConfig#getZkAddress()}, independent of the Venice-metadata {@link ZkClient}. When the
+   * metadata client is later repointed to a backup ensemble for HA, Helix-coordination reads must stay on the Helix ZK.
+   * Covers the address-source combinations: config-only, both-identical (today's prod), and both-different (post-HA).
+   */
+  @Test(dataProvider = "spectatorZkAddressCases")
+  public void testSpectatorManagerBindsToConfigZkAddress(
+      String name,
+      String configHelixZkAddress,
+      boolean expectMatchesMetadataAddress) {
+    String metadataZkAddress = zkServer.getAddress();
+    String configZkAddress = configHelixZkAddress == null ? metadataZkAddress : configHelixZkAddress;
+
+    String captured = captureSpectatorZkAddress("test-spectator-" + name, metadataZkAddress, configZkAddress);
+
+    Assert.assertEquals(
+        captured,
+        configZkAddress,
+        "[" + name + "] spectator manager must bind to the config Helix ZK address.");
+    if (!expectMatchesMetadataAddress) {
+      Assert.assertNotEquals(
+          captured,
+          metadataZkAddress,
+          "[" + name + "] spectator manager must not fall back to the Venice-metadata zkClient address.");
+    }
   }
 
   @Test
