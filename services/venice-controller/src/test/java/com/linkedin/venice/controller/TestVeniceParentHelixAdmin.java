@@ -2150,6 +2150,60 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testAbsentVersionReturnsArchived() {
+    // Version is null (e.g. pruned by retention/supersession) and versionNum <= largestUsedVersionNumber,
+    // meaning the version existed at some point. Expect ARCHIVED instead of NPE/500.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    controllerClients.put("cluster", clientMap.get(ExecutionStatus.STARTED));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(5).when(store).getLargestUsedVersionNumber();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus =
+        parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v3", controllerClients);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ARCHIVED);
+  }
+
+  @Test
+  public void testAbsentVersionReturnsNotCreated() {
+    // Version is null and versionNum > largestUsedVersionNumber, meaning the parent version has not
+    // been materialized yet (the legitimate pre-creation window at the start of a push). Expect the
+    // non-terminal NOT_CREATED so VPJ keeps polling, instead of NPE/500 or a terminal status that
+    // would abort an in-flight push.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    controllerClients.put("cluster", clientMap.get(ExecutionStatus.STARTED));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(2).when(store).getLargestUsedVersionNumber();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus =
+        parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v9", controllerClients);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+  }
+
+  @Test
   public void testUpdateStore() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());

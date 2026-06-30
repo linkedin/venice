@@ -3356,6 +3356,39 @@ public class VeniceParentHelixAdmin implements Admin {
     Store parentStore = repository.getStore(storeName);
     Version version = parentStore.getVersion(versionNum);
 
+    // The version may be absent from parent store metadata. Short-circuit here so the unguarded
+    // deref below (the KILLED check) cannot escape as HTTP 500. The two cases need different
+    // statuses, distinguished by largestUsedVersionNumber:
+    // - versionNum <= largestUsedVersionNumber: the version existed once and was retired (retention
+    // eviction, supersession, manual cleanup) -> terminal ARCHIVED so VPJ stops polling and fails
+    // the push.
+    // - versionNum > largestUsedVersionNumber: the parent version has not been materialized yet.
+    // This is the legitimate pre-creation window at the start of a push (child regions report
+    // "version creation got delayed"), not an inconsistency -> non-terminal NOT_CREATED so VPJ keeps
+    // polling until the version is created. Returning a terminal status here would abort in-flight
+    // pushes.
+    if (version == null) {
+      boolean wasRetired = versionNum <= parentStore.getLargestUsedVersionNumber();
+      ExecutionStatus absentStatus = wasRetired ? ExecutionStatus.ARCHIVED : ExecutionStatus.NOT_CREATED;
+      String statusDetails = wasRetired
+          ? "Parent version " + versionNum + " was retired and is no longer present in store metadata"
+          : "Parent version " + versionNum + " has not been created yet (largest used version number is "
+              + parentStore.getLargestUsedVersionNumber() + ")";
+      LOGGER.info(
+          "Version {} for store {} not present in parent store metadata; returning {}: {}",
+          versionNum,
+          storeName,
+          absentStatus,
+          statusDetails);
+      return new OfflinePushStatusInfo(
+          absentStatus,
+          null,
+          extraInfo,
+          statusDetails,
+          extraDetails,
+          extraInfoUpdateTimestamp);
+    }
+
     // Check if push is in a terminal status in target regions for pushes using deferred swap and try
     // updating the parent status. Parent status should only be updated if it is currently in a STARTED state to avoid
     // multiple duplicate updates as vpj will keep polling until all regions are complete
