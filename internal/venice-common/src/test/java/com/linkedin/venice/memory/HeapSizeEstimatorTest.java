@@ -235,6 +235,9 @@ public abstract class HeapSizeEstimatorTest {
       // Class.forName rather than casting the impl instance — this avoids an IllegalAccessException
       // when the implementation class is in a non-exported package (Java 17+ module system).
       Class<?> iface = Class.forName("com.sun.management.ThreadMXBean");
+      if (!iface.isInstance(THREAD_MX_BEAN)) {
+        throw new IllegalStateException("ThreadMXBean does not implement com.sun.management.ThreadMXBean on this JVM");
+      }
       return iface.getMethod("getCurrentThreadAllocatedBytes");
     } catch (ReflectiveOperationException e) {
       throw new IllegalStateException("getCurrentThreadAllocatedBytes() is not available on this JVM", e);
@@ -243,7 +246,14 @@ public abstract class HeapSizeEstimatorTest {
 
   private static long getCurrentlyAllocatedMemory() {
     try {
-      return (long) GET_THREAD_ALLOCATED_BYTES.invoke(THREAD_MX_BEAN);
+      // Use (long)(Long) to unbox explicitly: invoke() returns Object, which holds a boxed Long.
+      long bytes = (long) (Long) GET_THREAD_ALLOCATED_BYTES.invoke(THREAD_MX_BEAN);
+      if (bytes < 0) {
+        throw new IllegalStateException(
+            "getCurrentThreadAllocatedBytes() returned " + bytes
+                + "; thread allocation tracking may be disabled on this JVM");
+      }
+      return bytes;
     } catch (ReflectiveOperationException e) {
       throw new IllegalStateException("Failed to invoke getCurrentThreadAllocatedBytes()", e);
     }
