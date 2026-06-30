@@ -3956,12 +3956,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public int getCurrentVersion(String clusterName, String storeName) {
-    Store store = getStoreForReadOnly(clusterName, storeName);
-    if (store.isEnableReads()) {
-      return store.getCurrentVersion();
-    } else {
-      return NON_EXISTING_VERSION;
-    }
+    checkControllerLeadershipFor(clusterName);
+    return getHelixVeniceClusterResources(clusterName).getStoreVersionManager().getCurrentVersion(storeName);
   }
 
   /**
@@ -3970,46 +3966,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public int getFutureVersion(String clusterName, String storeName) {
-    // Find all ongoing offline pushes at first.
-    PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-    List<OfflinePushStatus> offlinePushStatuses = monitor.getOfflinePushStatusForStore(storeName);
-    if (offlinePushStatuses.isEmpty()) {
-      return NON_EXISTING_VERSION;
-    }
-    Optional<String> offlinePush = offlinePushStatuses.stream()
-        .filter(status -> !status.getCurrentStatus().isTerminal())
-        .map(OfflinePushStatus::getKafkaTopic)
-        .findFirst();
-    if (offlinePush.isPresent()) {
-      return Version.parseVersionFromKafkaTopicName(offlinePush.get());
-    }
-    // If the push status is finished, then return the largest online version greater than current version
-    int onlineFutureVersion = getFutureVersionWithStatus(clusterName, storeName, VersionStatus.ONLINE);
-    int pushedFutureVersion = getFutureVersionWithStatus(clusterName, storeName, PUSHED);
-    return pushedFutureVersion != NON_EXISTING_VERSION ? pushedFutureVersion : onlineFutureVersion;
+    checkControllerLeadershipFor(clusterName);
+    return getHelixVeniceClusterResources(clusterName).getStoreVersionManager().getFutureVersion(storeName);
   }
 
   @Override
   public int getBackupVersion(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
-      Store store = resources.getStoreMetadataRepository().getStore(storeName);
-      return VersionLifecyclePolicy.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
-    }
+    return getHelixVeniceClusterResources(clusterName).getStoreVersionManager().getBackupVersion(storeName);
   }
 
   public int getFutureVersionWithStatus(String clusterName, String storeName, VersionStatus status) {
-    Store store = getStoreForReadOnly(clusterName, storeName);
-    if (store.getVersions().isEmpty()) {
-      return NON_EXISTING_VERSION;
-    }
-
-    Version version = store.getVersions().stream().max(Comparable::compareTo).get();
-    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(status)) {
-      return version.getNumber();
-    }
-    return NON_EXISTING_VERSION;
+    checkControllerLeadershipFor(clusterName);
+    return getHelixVeniceClusterResources(clusterName).getStoreVersionManager()
+        .getFutureVersionWithStatus(storeName, status);
   }
 
   @Override
@@ -4760,41 +4730,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  /***
-   * If you need to do mutations on the store, then you must hold onto the lock until you've persisted your mutations.
-   * Only use this method if you're doing read-only operations on the store.
-   * @param clusterName
-   * @param storeName
-   * @return
-   */
-  private Store getStoreForReadOnly(String clusterName, String storeName) {
-    checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
-      Store store = resources.getStoreMetadataRepository().getStore(storeName);
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName);
-      }
-      return store; /* is a clone */
-    }
-  }
-
   /**
    * @return all versions of the specified store from a cluster.
    */
   @Override
   public List<Version> versionsForStore(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    List<Version> versions;
-    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
-      Store store = resources.getStoreMetadataRepository().getStore(storeName);
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName);
-      }
-      versions = store.getVersions();
-    }
-    return versions;
+    return getHelixVeniceClusterResources(clusterName).getStoreVersionManager().versionsForStore(storeName);
   }
 
   /**
@@ -8869,12 +8811,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public int getLargestUsedVersion(String clusterName, String storeName) {
-    Store store = getStore(clusterName, storeName);
-    // If the store does not exist, check the store graveyard.
-    if (store == null) {
-      return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
-    }
-    return Math.max(store.getLargestUsedVersionNumber(), getStoreGraveyard().getLargestUsedVersionNumber(storeName));
+    checkControllerLeadershipFor(clusterName);
+    return getHelixVeniceClusterResources(clusterName).getStoreVersionManager().getLargestUsedVersion(storeName);
   }
 
   /**

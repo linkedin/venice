@@ -88,6 +88,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final VeniceHelixAdmin admin;
   private final Optional<MultiTaskSchedulerService> multiTaskSchedulerService;
   private final VeniceVersionLifecycleEventManager veniceVersionLifecycleEventManager;
+  private final StoreVersionManager storeVersionManager;
 
   public HelixVeniceClusterResources(
       String clusterName,
@@ -214,6 +215,12 @@ public class HelixVeniceClusterResources implements VeniceResource {
               updatedStore.isMigrating(),
               this::isSourceCluster);
         });
+
+    // StoreVersionManager owns the per-cluster store version metadata behavior. Its collaborators are injected
+    // explicitly: the per-cluster lock manager and store repository created above, the push monitor just built, and
+    // the controller-wide store graveyard owned by VeniceHelixAdmin.
+    this.storeVersionManager =
+        new StoreVersionManager(clusterLockManager, storeMetadataRepository, pushMonitor, admin.getStoreGraveyard());
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
         clusterName,
@@ -588,6 +595,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   public VeniceVersionLifecycleEventManager getVeniceVersionLifecycleEventManager() {
     return veniceVersionLifecycleEventManager;
+  }
+
+  public StoreVersionManager getStoreVersionManager() {
+    return storeVersionManager;
   }
 
   public boolean isSourceCluster(String clusterName, String storeName) {
