@@ -1297,8 +1297,12 @@ public class TestVeniceHelixAdmin {
   * isPartitionReadyToServe=>false: Future version exists but partitions aren’t ready → exception
   */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) {
+  public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) throws Exception {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    StoreLifecycleHooksCache mockHookExecutor = mock(StoreLifecycleHooksCache.class);
+    java.lang.reflect.Field hookExecutorField = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHooksCache");
+    hookExecutorField.setAccessible(true);
+    hookExecutorField.set(mockVeniceHelixAdmin, mockHookExecutor);
     doReturn(2).when(mockVeniceHelixAdmin).getFutureVersionWithStatus(clusterName, storeName, VersionStatus.ONLINE);
 
     // build a fake Store whose version 2 has 2 partitions but only 1 ready replica

@@ -21,6 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.StoreLifecycleHooksCache;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
@@ -38,6 +39,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -46,6 +48,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -72,7 +75,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         null,
         mock(DisabledPartitionStats.class),
         getMockVeniceWriterFactory(),
-        getCurrentVersionChangeNotifier());
+        getCurrentVersionChangeNotifier(),
+        new StoreLifecycleHooksCache(new VeniceProperties(new Properties())));
   }
 
   @Override
@@ -93,7 +97,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         null,
         mock(DisabledPartitionStats.class),
         getMockVeniceWriterFactory(),
-        getCurrentVersionChangeNotifier());
+        getCurrentVersionChangeNotifier(),
+        new StoreLifecycleHooksCache(new VeniceProperties(new Properties())));
   }
 
   @Test

@@ -10,12 +10,14 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.StoreLifecycleHooksCache;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -106,6 +108,7 @@ public abstract class AbstractPushMonitor
   private final VeniceWriterFactory veniceWriterFactory;
   private String sequentialRollForwardFirstRegion = null;
   private final CurrentVersionChangeNotifier currentVersionChangeNotifier;
+  private final StoreLifecycleHooksCache storeLifecycleHooksCache;
 
   public interface CurrentVersionChangeNotifier {
     void onCurrentVersionChange(Store store, String clusterName, int currentVersion, int previousVersion);
@@ -127,7 +130,8 @@ public abstract class AbstractPushMonitor
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats,
       VeniceWriterFactory veniceWriterFactory,
-      CurrentVersionChangeNotifier currentVersionChangeNotifier) {
+      CurrentVersionChangeNotifier currentVersionChangeNotifier,
+      StoreLifecycleHooksCache storeLifecycleHooksCache) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -167,6 +171,7 @@ public abstract class AbstractPushMonitor
       this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
     }
     this.currentVersionChangeNotifier = currentVersionChangeNotifier;
+    this.storeLifecycleHooksCache = storeLifecycleHooksCache;
     pushStatusCollector.start();
   }
 
@@ -1248,6 +1253,7 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            invokePostVersionSwapHooks(store, versionNumber, previousVersion);
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
@@ -1261,6 +1267,7 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            invokePostVersionSwapHooks(store, versionNumber, previousVersion);
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "
@@ -1298,6 +1305,33 @@ public abstract class AbstractPushMonitor
     }
   }
 
+  /**
+   * Invokes post-version-swap hooks for the given store/version pair, logging a warning for
+   * non-PROCEED outcomes and wrapping the call in a try/catch so that a throwing hook cannot
+   * propagate up through the push-completion path.
+   */
+  private void invokePostVersionSwapHooks(Store store, int versionNumber, int previousVersion) {
+    try {
+      StoreVersionLifecycleEventOutcome outcome = storeLifecycleHooksCache
+          .invokePostVersionSwapHooks(clusterName, store, versionNumber, previousVersion, regionName, null);
+      if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
+        LOGGER.debug(
+            "postStoreVersionSwap hooks returned {} for store {} v{} in region {}",
+            outcome,
+            store.getName(),
+            versionNumber,
+            regionName);
+      }
+    } catch (Exception e) {
+      LOGGER.error(
+          "Exception invoking postStoreVersionSwap hooks for store {} v{}: {}",
+          store.getName(),
+          versionNumber,
+          e.getMessage(),
+          e);
+    }
+  }
+
   private Integer getStoreCurrentVersion(String storeName) {
     Store store = metadataRepository.getStore(storeName);
     if (store == null) {
@@ -1327,4 +1361,5 @@ public abstract class AbstractPushMonitor
   public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
     return isOfflinePushMonitorDaVinciPushStatusEnabled;
   }
+
 }
