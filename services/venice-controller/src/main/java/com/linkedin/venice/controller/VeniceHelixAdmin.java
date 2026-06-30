@@ -4935,7 +4935,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     int futureVersion = onlineFutureVersion == Store.NON_EXISTING_VERSION ? pushedFutureVersion : onlineFutureVersion;
-    int[] capturedPreviousVersion = new int[] { Store.NON_EXISTING_VERSION };
+    // Use a Store[] holder so we can capture the store object from inside the storeMetadataUpdate
+    // lambda and avoid a second getStore() call outside the lock (which could return a stale or
+    // null reference if the ZK cache hasn't refreshed yet).
+    Store[] capturedStore = new Store[] { null };
+    int[] capturedPreviousVersion = new int[] { -1 };
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -4999,19 +5003,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           futureVersion,
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
+      // Capture the store object and previous version so post-swap hooks can be invoked outside
+      // the write lock without a second getStore() call.
+      capturedStore[0] = store;
       capturedPreviousVersion[0] = previousVersion;
       return store;
     });
     // Invoke post-swap hooks outside the write lock so slow hook implementations (e.g. gRPC
-    // calls) do not hold the per-store lock. capturedPreviousVersion[0] is NON_EXISTING_VERSION
-    // if storeMetadataUpdate threw before reaching the capture point (in which case the swap
-    // did not complete and hooks should not run).
-    if (capturedPreviousVersion[0] != Store.NON_EXISTING_VERSION) {
-      Store updatedStore = getStore(clusterName, storeName);
+    // calls) do not hold the per-store lock. capturedStore[0] is null if storeMetadataUpdate
+    // threw before reaching the capture point (in which case the swap did not complete and
+    // hooks should not run).
+    if (capturedStore[0] != null) {
       try {
         StoreVersionLifecycleEventOutcome outcome = storeLifecycleHooksCache.invokePostVersionSwapHooks(
             clusterName,
-            updatedStore,
+            capturedStore[0],
             futureVersion,
             capturedPreviousVersion[0],
             getRegionName(),
@@ -5055,6 +5061,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
+    // Use a Store[] holder to capture the store from inside the lambda — avoids a second
+    // getStore() call outside the lock that could return a stale or null reference.
+    Store[] capturedStore = new Store[] { null };
     int[] capturedVersions = new int[] { NON_EXISTING_VERSION, NON_EXISTING_VERSION }; // [backupVersion,
                                                                                        // previousVersion]
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -5085,19 +5094,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ROLLED_BACK);
+      capturedStore[0] = store;
       capturedVersions[0] = backupVersion;
       capturedVersions[1] = previousVersion;
       return store;
     });
-    // Invoke post-swap hooks outside the write lock. capturedVersions[0] is NON_EXISTING_VERSION
-    // if storeMetadataUpdate threw or there was no backup version, meaning the rollback did not
-    // complete and hooks should not run.
-    if (capturedVersions[0] != NON_EXISTING_VERSION) {
-      Store updatedStore = getStore(clusterName, storeName);
+    // Invoke post-swap hooks outside the write lock. capturedStore[0] is null if storeMetadataUpdate
+    // threw or there was no backup version, meaning the rollback did not complete and hooks should
+    // not run.
+    if (capturedStore[0] != null) {
       try {
         StoreVersionLifecycleEventOutcome outcome = storeLifecycleHooksCache.invokePostVersionSwapHooks(
             clusterName,
-            updatedStore,
+            capturedStore[0],
             capturedVersions[0],
             capturedVersions[1],
             getRegionName(),

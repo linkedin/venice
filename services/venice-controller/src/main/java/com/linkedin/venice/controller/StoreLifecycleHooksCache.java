@@ -129,6 +129,14 @@ public class StoreLifecycleHooksCache {
             e);
         continue;
       }
+      if (outcome == null) {
+        LOGGER.warn(
+            "postStoreVersionSwap hook {} returned null for store {} v{} — treating as PROCEED",
+            record.getStoreLifecycleHooksClassName(),
+            store.getName(),
+            versionNumber);
+        continue;
+      }
       if (StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
         LOGGER.debug(
             "postStoreVersionSwap hook {} returned PROCEED for store {} v{} in region {}",
