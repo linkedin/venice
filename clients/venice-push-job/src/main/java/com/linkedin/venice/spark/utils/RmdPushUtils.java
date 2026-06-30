@@ -1,5 +1,6 @@
 package com.linkedin.venice.spark.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -26,6 +27,12 @@ public final class RmdPushUtils {
     if (!rmdFieldPresent(pushJobSetting)) {
       throw new IllegalArgumentException(
           "Push job setting missing rmd field. Please set the rmd field in the job properties.");
+    }
+    if (pushJobSetting.inputDataSchema == null) {
+      throw new VeniceException(
+          "The configured timestamp.field '" + pushJobSetting.rmdField
+              + "' cannot be resolved because the push input record schema is not available. A top-level Avro "
+              + "input record schema is required to use timestamp.field (for example, VSON inputs do not populate it).");
     }
     Schema.Field rmdField = pushJobSetting.inputDataSchema.getField(pushJobSetting.rmdField);
     if (rmdField == null) {

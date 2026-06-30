@@ -7,6 +7,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
@@ -47,6 +48,16 @@ public class TestRmdPushUtils {
     PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.rmdField = rmdField;
     pushJobSetting.inputDataSchema = mockSchema;
+    RmdPushUtils.getInputRmdSchema(pushJobSetting);
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testGetInputRmdSchemaWhenInputDataSchemaIsNull() {
+    // timestamp.field is configured but the input record schema was never populated (e.g. a VSON input). The
+    // configured-but-unavailable schema must fail with a clear error, not an NPE.
+    PushJobSetting pushJobSetting = new PushJobSetting();
+    pushJobSetting.rmdField = "createdTimeEpoch";
+    pushJobSetting.inputDataSchema = null;
     RmdPushUtils.getInputRmdSchema(pushJobSetting);
   }
 
