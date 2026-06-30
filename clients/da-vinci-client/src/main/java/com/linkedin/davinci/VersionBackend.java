@@ -31,6 +31,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.VeniceView;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
@@ -101,8 +102,11 @@ public class VersionBackend {
     // push status store must be enabled both in Da Vinci and the store, and disabled for version-specific clients
     boolean isVersionSpecificClient =
         DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(version.getStoreName()));
+    // View stores inherit the parent store's push-status-store setting but have no push-status system store of their
+    // own, so attempting to report push status for them blocks the shared push-status writer. Exclude them here.
     this.reportPushStatus = !isVersionSpecificClient && store.isDaVinciPushStatusStoreEnabled()
-        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+        && !VeniceView.isViewStore(version.getStoreName())
+        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, true);
     this.heartbeatInterval = this.config.getClusterProperties()
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
     this.stopConsumptionTimeoutInSeconds =
