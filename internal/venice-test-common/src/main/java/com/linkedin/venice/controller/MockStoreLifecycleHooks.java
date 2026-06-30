@@ -13,21 +13,23 @@ public class MockStoreLifecycleHooks extends StoreLifecycleHooks {
   }
 
   @Override
-  public StoreVersionLifecycleEventOutcome postStoreVersionSwap(
+  public StoreVersionLifecycleEventOutcome preStoreVersionSwap(
       String clusterName,
       String storeName,
       int versionNumber,
-      int previousVersion,
       String regionName,
       Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
+    return outcomeFromConfig(storeHooksConfigs);
+  }
+
+  private StoreVersionLifecycleEventOutcome outcomeFromConfig(VeniceProperties storeHooksConfigs) {
     String outcome = storeHooksConfigs.getString("outcome");
     if (StoreVersionLifecycleEventOutcome.PROCEED.toString().equals(outcome)) {
       return StoreVersionLifecycleEventOutcome.PROCEED;
     } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.toString().equals(outcome)) {
       return StoreVersionLifecycleEventOutcome.ROLLBACK;
     }
-
     return StoreVersionLifecycleEventOutcome.WAIT;
   }
 }
