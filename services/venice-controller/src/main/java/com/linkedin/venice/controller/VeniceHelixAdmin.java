@@ -4124,7 +4124,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Check if we should skip truncating topic. Parent controllers do not write version topics, so topic truncation is
    * skipped for them; otherwise return false.
-   * @param clusterName the cluster name to check
+   * @param clusterName not used by this implementation; kept for override/interface compatibility
    * @return true if topic truncation should be skipped, false otherwise
    */
   public boolean shouldSkipTruncatingTopic(String clusterName) {

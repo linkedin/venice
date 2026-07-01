@@ -1251,8 +1251,10 @@ public class VeniceParentHelixAdmin implements Admin {
   /**
    * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
    * else will return the ongoing Kafka topic.
+   *
+   * <p>Note: {@code isIncrementalPush} and {@code isRepush} are accepted for interface/call-site compatibility but
+   * are not used by this parent-controller implementation, which relies solely on parent version status.
    */
-
   public Optional<String> getTopicForCurrentPushJob(
       String clusterName,
       String storeName,
@@ -1318,12 +1320,14 @@ public class VeniceParentHelixAdmin implements Admin {
     if (lastVersion.getStatus() == CREATED || lastVersion.getStatus() == PUSHED) {
       // CREATED: the version exists but its push has not begun. PUSHED: a target-region push that has
       // completed in its target region but not yet in the rest. In both cases a future version already
-      // occupies the store, so the next push must wait. (Unlike STARTED below, polling the child job
-      // status would not help: for PUSHED the children already report the push as terminal, which would
-      // incorrectly unblock the next push.)
+      // occupies the store, so the next push must wait. STARTED is excluded here: a STARTED version may
+      // already be terminal in child regions but not yet reflected on the parent, so it is handled by
+      // the polling branch below. (Unlike STARTED, polling PUSHED children would incorrectly report the
+      // push as terminal, since the children have already completed it.)
       LOGGER.info(
-          "The push for version {} of store {} is not completed (status {}); the next push must wait.",
+          "The push for version {} (pushJobId {}) of store {} is not completed (status {}); the next push must wait.",
           lastVersionNum,
+          lastVersion.getPushJobId(),
           storeName,
           lastVersion.getStatus());
       return latestTopic;
@@ -1610,10 +1614,10 @@ public class VeniceParentHelixAdmin implements Admin {
             storeName);
       } else {
         String msg;
-        if (version.isVersionSwapDeferred() && version.getStatus() == ONLINE) {
-          // The blocking version finished its push but is mid deferred (colo-by-colo) version swap: ONLINE on
-          // the parent yet not current in every region. Surface the per-region status so operators do not
-          // mistake this for an in-flight concurrent push.
+        if (version.isVersionSwapDeferred() && version.getStatus() == PUSHED) {
+          // The blocking version finished its push but is mid deferred (colo-by-colo) version swap:
+          // PUSHED on the parent (push complete but swap not yet done) and not yet current in every region.
+          // Surface the per-region status so operators do not mistake this for an in-flight concurrent push.
           Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
           String targetSwapRegion = version.getTargetSwapRegion();
           msg = ". Version " + version.getNumber() + " of store " + storeName
