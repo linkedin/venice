@@ -190,6 +190,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.store.write_type");
           break;
+        case VENICE_EXTERNAL_STORAGE_READ_MODE:
+          assertEquals(dimension.getDimensionName(format), "venice.external_storage.read_mode");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -378,6 +381,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.store.writeType");
           break;
+        case VENICE_EXTERNAL_STORAGE_READ_MODE:
+          assertEquals(dimension.getDimensionName(format), "venice.externalStorage.readMode");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -565,6 +571,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Store.WriteType");
+          break;
+        case VENICE_EXTERNAL_STORAGE_READ_MODE:
+          assertEquals(dimension.getDimensionName(format), "Venice.ExternalStorage.ReadMode");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

@@ -186,7 +186,10 @@ public enum VeniceMetricsDimensions {
   VENICE_RECORD_TRANSFORMER_OPERATION("venice.record_transformer.operation"),
 
   /** {@link VeniceStoreWriteType} Store write type: regular or write_compute. */
-  VENICE_STORE_WRITE_TYPE("venice.store.write_type");
+  VENICE_STORE_WRITE_TYPE("venice.store.write_type"),
+
+  /** Read mode for external storage routing — see {@link com.linkedin.venice.meta.ExternalStorageReadMode}. */
+  VENICE_EXTERNAL_STORAGE_READ_MODE("venice.external_storage.read_mode");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
