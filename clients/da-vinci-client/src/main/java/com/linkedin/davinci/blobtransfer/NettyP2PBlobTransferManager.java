@@ -23,8 +23,10 @@ import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -32,7 +34,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -131,7 +132,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     List<String> discoverPeers = response.getDiscoveryResult();
     List<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
-    // 2: Process peers sequentially to fetch the blob
+    // 2. Process the discovered peers sequentially in finder-provided priority order.
     processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, perPartitionTransferFuture);
 
     return perPartitionTransferFuture;
@@ -242,19 +243,20 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       }, replicaBlobFetchExecutor);
     }
 
-    // error case 2: all hosts have been tried and failed for blob transfer
+    // error case 2: all hosts in this pass have been tried and failed for blob transfer
     chainOfPeersFuture.thenRun(() -> {
-      if (!perPartitionTransferFuture.isDone()) {
-        if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
-          // Receive cancellation request, skip Kafka bootstrapping
-          perPartitionTransferFuture.completeExceptionally(
-              new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
-        } else {
-          // All hosts failed, fall back to Kafka bootstrapping
-          perPartitionTransferFuture.completeExceptionally(
-              new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
-        }
+      if (perPartitionTransferFuture.isDone()) {
+        return;
       }
+      if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
+        // Receive cancellation request, skip Kafka bootstrapping
+        perPartitionTransferFuture.completeExceptionally(
+            new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
+        return;
+      }
+      // No usable peers available, fall back to Kafka bootstrapping.
+      perPartitionTransferFuture.completeExceptionally(
+          new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
     });
   }
 
@@ -337,15 +339,19 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @return the set of unique connectable hosts
    */
   private List<String> getConnectableHosts(List<String> discoverPeers, String storeName, int version, int partition) {
-    // Extract unique hosts from the discovered peers
-    Set<String> uniquePeers = discoverPeers.stream().map(peer -> peer.split("_")[0]).collect(Collectors.toSet());
+    // Extract unique hosts from the discovered peers while preserving discovery order. Composite finders can mark this
+    // order as meaningful (for example, Da Vinci peers before Venice servers); otherwise we shuffle as before.
+    Set<String> uniquePeers = new LinkedHashSet<>();
+    for (String peer: discoverPeers) {
+      uniquePeers.add(peer.split("_")[0]);
+    }
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
 
     LOGGER.info("Discovered {} unique peers for replica {}, peers are {}", uniquePeers.size(), replicaId, uniquePeers);
 
     // Get the connectable hosts for this store, version, and partition
     Set<String> connectablePeers =
-        nettyClient.getConnectableHosts((HashSet<String>) uniquePeers, storeName, version, partition);
+        nettyClient.getConnectableHosts(new HashSet<>(uniquePeers), storeName, version, partition);
 
     LOGGER.info(
         "Total {} unique connectable peers for replica {}, peers are {}",
@@ -353,10 +359,15 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         replicaId,
         connectablePeers);
 
-    // Change to list and shuffle the list
-    List<String> connectablePeersList = connectablePeers.stream().collect(Collectors.toList());
-    Collections.shuffle(connectablePeersList);
-
+    List<String> connectablePeersList = new ArrayList<>();
+    for (String peer: uniquePeers) {
+      if (connectablePeers.contains(peer)) {
+        connectablePeersList.add(peer);
+      }
+    }
+    if (!peerFinder.shouldPreservePeerOrder()) {
+      Collections.shuffle(connectablePeersList);
+    }
     return connectablePeersList;
   }
 }

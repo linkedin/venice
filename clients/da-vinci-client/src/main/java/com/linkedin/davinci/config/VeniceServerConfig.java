@@ -22,6 +22,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTE
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_BLOB_TRANSFER_SERVER_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
@@ -83,8 +84,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GE
 import static com.linkedin.venice.ConfigKeys.SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ACCEPT_CLIENT_REQUEST_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_CLIENT_CAPACITY_PERCENT;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
@@ -679,6 +682,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final ConfigCommonUtils.ActivationState blobTransferReceiverServerPolicy;
   private final boolean blobTransferSslEnabled;
   private final boolean blobTransferAclEnabled;
+  private final boolean serverAcceptClientBlobRequestEnabled;
+  private final boolean davinciBlobTransferServerFallbackEnabled;
+  private final int blobTransferClientCapacityPercent;
   private final int snapshotRetentionTimeInMin;
   private final int maxConcurrentSnapshotUser;
   private final int blobTransferMaxTimeoutInMin;
@@ -814,6 +820,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             .getString(BLOB_TRANSFER_RECEIVER_SERVER_POLICY, ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name()));
     blobTransferSslEnabled = serverProperties.getBoolean(BLOB_TRANSFER_SSL_ENABLED, false);
     blobTransferAclEnabled = serverProperties.getBoolean(BLOB_TRANSFER_ACL_ENABLED, false);
+    serverAcceptClientBlobRequestEnabled =
+        serverProperties.getBoolean(SERVER_BLOB_TRANSFER_ACCEPT_CLIENT_REQUEST_ENABLED, false);
+    davinciBlobTransferServerFallbackEnabled =
+        serverProperties.getBoolean(DAVINCI_BLOB_TRANSFER_SERVER_FALLBACK_ENABLED, false);
+    blobTransferClientCapacityPercent = serverProperties.getInt(SERVER_BLOB_TRANSFER_CLIENT_CAPACITY_PERCENT, 25);
 
     snapshotRetentionTimeInMin = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 60);
     maxConcurrentSnapshotUser = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER, 15);
@@ -1405,6 +1416,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getMaxConcurrentSnapshotUser() {
     return maxConcurrentSnapshotUser;
+  }
+
+  public boolean isServerAcceptClientBlobRequestEnabled() {
+    return serverAcceptClientBlobRequestEnabled;
+  }
+
+  public boolean isDavinciBlobTransferServerFallbackEnabled() {
+    return davinciBlobTransferServerFallbackEnabled;
+  }
+
+  public int getBlobTransferClientCapacityPercent() {
+    return blobTransferClientCapacityPercent;
   }
 
   public int getSnapshotRetentionTimeInMin() {

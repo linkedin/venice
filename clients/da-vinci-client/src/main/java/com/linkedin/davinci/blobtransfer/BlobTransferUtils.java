@@ -3,6 +3,7 @@ package com.linkedin.davinci.blobtransfer;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
@@ -10,14 +11,19 @@ import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.AttributeKey;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -46,6 +52,14 @@ public class BlobTransferUtils {
       "X-Blob-Transfer-Store-Version-State-Schema-Version";
   /** Sentinel returned by {@link #parseProtocolVersionHeader} when the header is missing or unparseable. */
   private static final int VERSION_UNKNOWN = -1;
+
+  /**
+   * Channel attribute carrying the {@link BlobTransferRequestOrigin} of an inbound request. Set by
+   * {@code BlobTransferAclHandler} during the TLS/ACL stage and read by downstream handlers
+   * ({@code P2PFileTransferServerHandler}, admission control) for prioritization and store-level ACL.
+   */
+  public static final AttributeKey<BlobTransferRequestOrigin> BLOB_TRANSFER_REQUEST_ORIGIN =
+      AttributeKey.valueOf("blobTransferRequestOrigin");
 
   public enum BlobTransferType {
     FILE, METADATA
@@ -88,6 +102,24 @@ public class BlobTransferUtils {
      * - No cancellation was requested
      */
     TRANSFER_COMPLETED
+  }
+
+  /**
+   * Identifies the origin (caller type) of an inbound blob transfer request, as observed
+   * by the receiving Venice Server or DaVinci instance.
+   */
+  public enum BlobTransferRequestOrigin {
+    /**
+     * A peer Venice server or same-application DaVinci instance (server-to-server or DVC-to-DVC bootstrap). Bypasses
+     * the store-level ACL and counts against the server-origin concurrency cap.
+     */
+    SERVER,
+
+    /**
+     * An external consumer (e.g. a Stateful CDC client) bootstrapping a snapshot. Subject to the per-store read ACL
+     * and counted against the client-origin concurrency cap.
+     */
+    CLIENT
   }
 
   /**
@@ -282,19 +314,47 @@ public class BlobTransferUtils {
   }
 
   /**
-   * Create the acl handler for blob transfer, for both DVC peers and server peers
+   * Create the acl handler for blob transfer, for both DVC peers and server peers.
+   *
+   * @param serverAcceptClientBlobRequestEnabled whether this server accepts client-origin requests; gates the
+   *        client-origin accept check and per-store read ACL in the returned handler.
    */
-  public static Optional<BlobTransferAclHandler> createAclHandler(VeniceConfigLoader configLoader) {
+  public static Optional<BlobTransferAclHandler> createAclHandler(
+      VeniceConfigLoader configLoader,
+      Optional<DynamicAccessController> storeAccessController,
+      boolean serverAcceptClientBlobRequestEnabled) {
     if (!isBlobTransferDVCSslEnabled(configLoader) || !isBlobTransferAclValidationEnabled(configLoader)) {
       String errorMsg =
           "Blob transfer SSL or ACL validation is not enabled. sslEnabled: " + isBlobTransferDVCSslEnabled(configLoader)
               + ", aclEnabled: " + isBlobTransferAclValidationEnabled(configLoader) + ", skip create ACL handler.";
       throw new IllegalArgumentException(errorMsg);
     }
+    String identityParserClassName =
+        configLoader.getCombinedProperties().getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(identityParserClassName);
+    validateAclHandlerConfig(storeAccessController, serverAcceptClientBlobRequestEnabled, identityParserClass);
     try {
-      return Optional.of(new BlobTransferAclHandler());
+      IdentityParser identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+      return Optional
+          .of(new BlobTransferAclHandler(storeAccessController, identityParser, serverAcceptClientBlobRequestEnabled));
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to create ACL handler for blob transfer", e);
+    }
+  }
+
+  private static void validateAclHandlerConfig(
+      Optional<DynamicAccessController> storeAccessController,
+      boolean serverAcceptClientBlobRequestEnabled,
+      Class<IdentityParser> identityParserClass) {
+    if (serverAcceptClientBlobRequestEnabled && !storeAccessController.isPresent()) {
+      throw new IllegalArgumentException(
+          "storeAccessController is required when accepting client-origin blob transfer requests");
+    }
+    if (storeAccessController.isPresent() && DefaultIdentityParser.class.isAssignableFrom(identityParserClass)) {
+      throw new IllegalArgumentException(
+          "Blob transfer requires a non-default identity.parser.class when a store access controller is present; "
+              + "DefaultIdentityParser parses the cert subject DN and can misclassify same-issuer peers as "
+              + "CLIENT-origin");
     }
   }
 
