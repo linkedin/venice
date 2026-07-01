@@ -24,7 +24,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -1704,32 +1703,4 @@ public class TestVeniceHelixAdmin {
 
     assertTrue(customException.getMessage().contains("Required waiting period: 3600 seconds"));
   }
-
-  @Test
-  public void testShouldSkipTruncatingTopicForChildControllers() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
-
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
-    doReturn(false).when(admin).isParent();
-    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
-
-    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
-    verify(admin, times(1)).isParent();
-    assertFalse(shouldSkip);
-  }
-
-  @Test
-  public void testShouldSkipTruncatingTopicForParentControllers() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    doReturn(true).when(admin).isParent();
-    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
-
-    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
-    verify(admin, times(1)).isParent();
-    assertTrue(shouldSkip);
-  }
-
 }

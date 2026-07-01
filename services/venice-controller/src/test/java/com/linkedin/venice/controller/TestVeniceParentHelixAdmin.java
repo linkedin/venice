@@ -1847,49 +1847,34 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     // A compliance push cannot kill the existing push, so the flow reaches the rejection path.
     String incomingPushId = Version.generateCompliancePushId("compliance_push");
+    // Stub both the 5-arg overload and the full 17-arg impl it delegates to.
+    doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1);
     doCallRealMethod().when(mockParentAdmin)
         .incrementVersionIdempotent(
-            clusterName,
-            storeName,
-            incomingPushId,
-            1,
-            1,
-            Version.PushType.BATCH,
-            false,
-            false,
-            null,
-            Optional.empty(),
-            Optional.empty(),
-            -1,
-            Optional.empty(),
-            false,
-            null,
-            -1,
-            -1);
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            any(),
+            anyBoolean(),
+            any(),
+            anyInt(),
+            anyInt());
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
     doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
 
     try {
-      mockParentAdmin.incrementVersionIdempotent(
-          clusterName,
-          storeName,
-          incomingPushId,
-          1,
-          1,
-          Version.PushType.BATCH,
-          false,
-          false,
-          null,
-          Optional.empty(),
-          Optional.empty(),
-          -1,
-          Optional.empty(),
-          false,
-          null,
-          -1,
-          -1);
+      mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1);
       fail("Expected VeniceException to be thrown");
     } catch (VeniceException e) {
       assertTrue(
