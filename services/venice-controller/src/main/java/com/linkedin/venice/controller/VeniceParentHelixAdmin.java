@@ -267,9 +267,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * The parent controller no longer writes or truncates version topics, so errored version topics are
-   * neither retained nor cleaned up here. {@link #maxErroredTopicNumToKeep} now only gates cleanup of
+   * neither retained nor cleaned up here. {@link #maxErroredTopicNumToKeep} now only gates: cleanup of
    * the corresponding stream-reprocessing topic in {@link #killOfflinePush(String, String, boolean)}
-   * (when it is 0) and a diagnostic status detail in {@link #getOffLineJobStatus}.
+   * (when it is 0); and, in {@link #truncateTopicsOptionally}, whether an errored push's stream-reprocessing
+   * topic is skipped for truncation and reported as such in the status details (when it is greater than 0).
    */
   private int maxErroredTopicNumToKeep;
 
@@ -1267,8 +1268,18 @@ public class VeniceParentHelixAdmin implements Admin {
     int lastVersionNum = store.getLargestUsedVersionNumber();
     Version lastVersion = store.getVersion(lastVersionNum);
 
-    if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
+    if (lastVersionNum == NON_EXISTING_VERSION) {
       LOGGER.info("Store {} does not have any version", storeName);
+      return Optional.empty();
+    }
+    if (lastVersion == null) {
+      // largestUsedVersionNumber is monotonic and isn't decremented on deleteVersion, and can also be
+      // advanced before the corresponding Version is added (e.g. initiateDataRecovery); in either case
+      // there is no ongoing push to wait on for this (missing) version.
+      LOGGER.info(
+          "Store {} largest used version {} does not correspond to an existing version; no ongoing push to wait on",
+          storeName,
+          lastVersionNum);
       return Optional.empty();
     }
 
@@ -1311,7 +1322,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // the child-status poll below, whose side effects would otherwise advance the version to a
       // terminal status and incorrectly unblock the next push -- for a deferred swap the push is
       // "complete" yet the version is deliberately not made current.
-      if (validateChildCurrentVersions(clusterName, storeName, lastVersionNum)) {
+      if (validateChildCurrentVersions(clusterName, storeName, lastVersion)) {
         return Optional.empty();
       }
       return latestTopic;
@@ -1376,7 +1387,8 @@ public class VeniceParentHelixAdmin implements Admin {
     return Optional.empty();
   }
 
-  private boolean validateChildCurrentVersions(String clusterName, String storeName, int lastVersionNum) {
+  private boolean validateChildCurrentVersions(String clusterName, String storeName, Version lastVersion) {
+    int lastVersionNum = lastVersion.getNumber();
     Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
     List<String> regionsNotYetCurrent = new ArrayList<>();
     for (Map.Entry<String, Integer> entry: currentVersionsMap.entrySet()) {
@@ -1386,10 +1398,11 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     if (!regionsNotYetCurrent.isEmpty()) {
       LOGGER.info(
-          "Store {} version {} is waiting on deferred version swap (colo-by-colo roll-forward); regions not yet "
-              + "current: {}; current version per region: {}",
+          "Store {} version {} (status {}) defers its version swap and is not yet current in all regions; "
+              + "regions not yet current: {}; current version per region: {}",
           storeName,
           lastVersionNum,
+          lastVersion.getStatus(),
           regionsNotYetCurrent,
           currentVersionsMap);
       return false;
