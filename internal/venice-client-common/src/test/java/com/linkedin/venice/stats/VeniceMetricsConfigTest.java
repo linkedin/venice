@@ -65,8 +65,8 @@ public class VeniceMetricsConfigTest {
           type.name());
     }
     assertEquals(config.useOtelExponentialHistogram(), true);
-    assertEquals(config.getOtelExponentialHistogramMaxScale(), 3);
-    assertEquals(config.getOtelExponentialHistogramMaxBuckets(), 250);
+    assertEquals(config.getOtelExponentialHistogramMaxScale(), 5);
+    assertEquals(config.getOtelExponentialHistogramMaxBuckets(), 370);
     assertTrue(config.getOtelCustomDimensionsMap().isEmpty());
     assertFalse(config.useOpenTelemetryInitializedByApplication());
     assertNull(config.getOtelCustomDescriptionForHistogramMetrics());
