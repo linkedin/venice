@@ -4,7 +4,6 @@ import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
-import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
@@ -222,9 +221,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdmin.class);
 
-  private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
-
-  private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
@@ -288,9 +284,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final IdentityParser identityParser;
   private final LogContext logContext;
-
-  private static final Set<VersionStatus> TERMINAL_VERSION_SWAP_STATUSES =
-      Utils.setOf(ONLINE, PARTIALLY_ONLINE, KILLED, ERROR);
 
   // Visible for testing
   public VeniceParentHelixAdmin(
@@ -1477,25 +1470,6 @@ public class VeniceParentHelixAdmin implements Admin {
         targetedRegions,
         repushSourceVersion,
         repushTtlSeconds);
-  }
-
-  /**
-   * Validate the given targeted regions are all valid. A valid region should have a controller client present in the cluster.
-   * @param targetedRegions
-   * @param clusterName
-   */
-  private void validateTargetedRegions(String targetedRegions, String clusterName) throws VeniceException {
-    if (StringUtils.isEmpty(targetedRegions)) {
-      return;
-    }
-    Set<String> targetedRegionSet = parseRegionsFilterList(targetedRegions);
-    Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    for (String region: targetedRegionSet) {
-      if (!clientMap.containsKey(region)) {
-        throw new VeniceException(
-            "One of the targeted region " + region + " is not a valid region in cluster " + clusterName);
-      }
-    }
   }
 
   Version addVersionAndTopicOnly(
@@ -4411,10 +4385,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   IdentityParser getIdentityParser() {
     return identityParser;
-  }
-
-  int getMaxErroredTopicNumToKeep() {
-    return maxErroredTopicNumToKeep;
   }
 
   @VisibleForTesting
