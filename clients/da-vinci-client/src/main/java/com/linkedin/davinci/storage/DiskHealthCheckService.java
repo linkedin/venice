@@ -46,6 +46,8 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   // Visible for testing
   static final String TMP_FILE_NAME = ".health_check_file";
   private static final int TMP_FILE_SIZE_IN_BYTES = 64 * 1024; // 64KB
+  // Keep the disk health check responsive even when other components are under heavy load, without using max priority.
+  static final int HEALTH_CHECK_THREAD_PRIORITY = 8;
 
   // lock object protects diskHealthy and lastStatusUpdateTimeInNS.
   private final Lock lock = new ReentrantLock();
@@ -118,7 +120,8 @@ public class DiskHealthCheckService extends AbstractVeniceService {
     setLastStatusUpdateTimeInNS(System.nanoTime());
     healthCheckTask = new DiskHealthCheckTask();
     runner =
-        new DaemonThreadFactory("Storage Disk Health Check Background Thread", logContext).newThread(healthCheckTask);
+        new DaemonThreadFactory("Storage Disk Health Check Background Thread", HEALTH_CHECK_THREAD_PRIORITY, logContext)
+            .newThread(healthCheckTask);
     runner.start();
 
     return true;
@@ -159,6 +162,11 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   // Only for testing
   DiskHealthCheckTask getHealthCheckTask() {
     return healthCheckTask;
+  }
+
+  // Only for testing
+  Thread getHealthCheckThread() {
+    return runner;
   }
 
   // Visible for testing
