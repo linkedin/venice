@@ -290,7 +290,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Verify only the future version is allowed to perform the version swap
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
+      recordTransformer.onVersionSwap(null, CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
       recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
       futureRecordTransformer
           .processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId, recordMetadata);
@@ -299,7 +299,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Perform a version swap from the future version and verify the buffer only contains FUTURE_STORE_VERSION's values
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
+      futureRecordTransformer.onVersionSwap(null, CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
       recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
       futureRecordTransformer
           .processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId, recordMetadata);
@@ -322,7 +322,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     assertThrows(
         Exception.class,
-        () -> futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0));
+        () -> futureRecordTransformer.onVersionSwap(null, CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0));
     verify(changeCaptureStats).emitVersionSwapCountMetrics(FAIL);
   }
 
@@ -554,7 +554,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().get(partitionId) < System.currentTimeMillis());
 
     // Perform version swap on one partition
-    futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
+    futureRecordTransformer.onVersionSwap(null, CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
     clearInvocations(changeCaptureStats);
     futureRecordTransformer.onHeartbeat(partitionId, 2L);
 

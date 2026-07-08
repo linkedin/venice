@@ -5,6 +5,7 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.pubsub.PubSubContext;
@@ -14,6 +15,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.IntConsumer;
 import org.apache.avro.Schema;
 
 
@@ -34,6 +36,13 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    */
   private final CountDownLatch startLatchConsumptionLatch;
 
+  /**
+   * Wired by {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} so that the CDC consumer
+   * can pause/resume Kafka prefetch on its own version's partitions during the AA version swap barrier.
+   */
+  private IntConsumer pausePartitionConsumer;
+  private IntConsumer resumePartitionConsumer;
+
   public InternalDaVinciRecordTransformer(
       DaVinciRecordTransformer recordTransformer,
       Schema keySchema,
@@ -50,6 +59,20 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer = recordTransformer;
     this.startLatchConsumptionLatch =
         new CountDownLatch(internalRecordTransformerConfig.getStartConsumptionLatchCount());
+  }
+
+  /**
+   * Wires the back-reference from the CDC inner-class transformer to this {@code InternalDaVinciRecordTransformer},
+   * enabling the AA version-swap coordinator to drive Kafka prefetch pause/resume on this version's partitions.
+   * Called from {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} after construction; calling this
+   * after construction (rather than inside it) avoids invoking an overridable method on the user's transformer
+   * before initialization is complete.
+   */
+  public void initializeChangelogConsumerBackReference() {
+    if (isCDCRecordTransformer()) {
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
+          .setInternalRecordTransformer(this);
+    }
   }
 
   @Override
@@ -91,13 +114,44 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   }
 
   /**
-   * Lifecycle event triggered when a version swap is detected for partitionId
-   * It is used for DVRT CDC.
+   * Lifecycle event triggered when a version swap is detected for partitionId.
+   * It is used for the DaVinciRecordTransformer CDC consumer. The {@code versionSwap} payload is
+   * required for AA-aware version-swap coordination (region filtering, generation-id matching);
+   * it may be null when invoked from legacy or test code paths.
    */
-  public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
+  public void onVersionSwap(VersionSwap versionSwap, int currentVersion, int futureVersion, int partitionId) {
     if (isCDCRecordTransformer()) {
       ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
-          .onVersionSwap(currentVersion, futureVersion, partitionId);
+          .onVersionSwap(versionSwap, currentVersion, futureVersion, partitionId);
+    }
+  }
+
+  /**
+   * Wires the pause/resume handlers used by the AA version-swap coordinator to drive Kafka prefetch
+   * pause/resume on this transformer's own version's partitions.
+   */
+  public void setPartitionPauseHandlers(IntConsumer pauseHandler, IntConsumer resumeHandler) {
+    this.pausePartitionConsumer = pauseHandler;
+    this.resumePartitionConsumer = resumeHandler;
+  }
+
+  /**
+   * Pauses Kafka prefetch for {@code partitionId} on this transformer's version. No-op when handlers
+   * are not wired (e.g. unit tests or non-server contexts).
+   */
+  public void pausePartitionConsumption(int partitionId) {
+    if (pausePartitionConsumer != null) {
+      pausePartitionConsumer.accept(partitionId);
+    }
+  }
+
+  /**
+   * Resumes Kafka prefetch for {@code partitionId} on this transformer's version. No-op when handlers
+   * are not wired.
+   */
+  public void resumePartitionConsumption(int partitionId) {
+    if (resumePartitionConsumer != null) {
+      resumePartitionConsumer.accept(partitionId);
     }
   }
 

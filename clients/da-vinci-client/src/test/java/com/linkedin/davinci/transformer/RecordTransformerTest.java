@@ -42,6 +42,10 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
@@ -435,8 +439,47 @@ public class RecordTransformerTest {
             valueSchema,
             internalRecordTransformerConfig);
 
-    internalRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
-    verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
+    internalRecordTransformer.onVersionSwap(null, currentVersion, futureVersion, partitionId);
+    verify(clientRecordTransformer).onVersionSwap(null, currentVersion, futureVersion, partitionId);
+  }
+
+  /**
+   * Verifies the pause/resume Kafka prefetch wiring used by the AA version-swap coordinator.
+   * Each handler is delivered a partition id; before {@link InternalDaVinciRecordTransformer#setPartitionPauseHandlers}
+   * is called the methods are silent no-ops, after wiring they invoke the registered handlers.
+   */
+  @Test
+  public void testInternalRecordTransformerPartitionPauseResume() {
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = new InternalDaVinciRecordTransformerConfig(
+        dummyRecordTransformerConfig,
+        mock(AggVersionedDaVinciRecordTransformerStats.class));
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer clientRecordTransformer =
+        mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer.class);
+    InternalDaVinciRecordTransformer<Integer, String, String> internalRecordTransformer =
+        new InternalDaVinciRecordTransformer<>(
+            clientRecordTransformer,
+            keySchema,
+            valueSchema,
+            valueSchema,
+            internalRecordTransformerConfig);
+
+    // Before wiring: should be silent no-ops
+    internalRecordTransformer.pausePartitionConsumption(0);
+    internalRecordTransformer.resumePartitionConsumption(0);
+
+    List<Integer> paused = new ArrayList<>();
+    List<Integer> resumed = new ArrayList<>();
+    internalRecordTransformer.setPartitionPauseHandlers(paused::add, resumed::add);
+
+    internalRecordTransformer.pausePartitionConsumption(3);
+    internalRecordTransformer.pausePartitionConsumption(7);
+    internalRecordTransformer.resumePartitionConsumption(3);
+
+    assertEquals(paused, Arrays.asList(3, 7));
+    assertEquals(resumed, Collections.singletonList(3));
   }
 
   @Test
