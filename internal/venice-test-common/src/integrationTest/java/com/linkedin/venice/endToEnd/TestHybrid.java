@@ -7,7 +7,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
-import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
@@ -152,7 +152,7 @@ public class TestHybrid {
   // Log compaction test constants
   private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
   private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 10; // ms
-  private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
+  private static final long TEST_VERSION_STALENESS_THRESHOLD_MS = 0;
 
   /**
    * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
@@ -1706,8 +1706,9 @@ public class TestHybrid {
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
-    extraProperties
-        .setProperty(LOG_COMPACTION_THRESHOLD_MS, String.valueOf(TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS));
+    extraProperties.setProperty(
+        LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS,
+        String.valueOf(TEST_VERSION_STALENESS_THRESHOLD_MS));
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(0)
         .numberOfRouters(0)

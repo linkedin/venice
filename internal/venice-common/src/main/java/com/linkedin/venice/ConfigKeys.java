@@ -470,11 +470,6 @@ public class ConfigKeys {
   public static final String LOG_COMPACTION_INTERVAL_MS = "log.compaction.interval.ms";
 
   /**
-   * Time since last log compaction before a store is considered for log compaction
-   */
-  public static final String LOG_COMPACTION_THRESHOLD_MS = "log.compaction.threshold.ms";
-
-  /**
    * Version staleness threshold to decide when a store should be nominated for compaction
    */
   public static final String LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS =
