@@ -759,7 +759,7 @@ public class BatchingVeniceWriterTest {
   }
 
   @Test
-  public void testIntermediateProduceFailurePropagatesToProduceResultFuture() {
+  public void testIntermediateProduceFailureCompletesCallbackFutureExceptionally() {
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
     Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
     List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
@@ -791,14 +791,15 @@ public class BatchingVeniceWriterTest {
     for (int i = 0; i < 200; i++) {
       largeIntArray.add(i);
     }
-    doReturn(2000).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
-
     String key = "a";
     GenericRecord updateRecord1 =
         new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
     GenericRecord updateRecord2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
     GenericRecord updateRecord3 =
         new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
+    // Force a split so an intermediate produce happens (and fails) by setting the limit below the fully merged size.
+    doReturn(totalMergedPayloadSize(key, updateRecord1, updateRecord2, updateRecord3) - 1).when(writer)
+        .getMaxSizeForUserPayloadPerMessageInBytes();
 
     writer.update(key, updateRecord1, 1, 1, completableFutureCallbackList.get(0));
     writer.update(key, updateRecord2, 1, 1, completableFutureCallbackList.get(1));
@@ -806,9 +807,9 @@ public class BatchingVeniceWriterTest {
 
     writer.checkAndMaybeProduceBatchRecord();
 
-    // The shared produce result future should be completed exceptionally
-    CompletableFuture<Void> sharedFuture = completableFutureList.get(0);
-    Assert.assertTrue(sharedFuture.isCompletedExceptionally());
+    // The failure must propagate to the caller's callback-backed future (completed exceptionally via the callback).
+    CompletableFuture<Void> callbackFuture = completableFutureList.get(0);
+    Assert.assertTrue(callbackFuture.isCompletedExceptionally());
   }
 
   @Test

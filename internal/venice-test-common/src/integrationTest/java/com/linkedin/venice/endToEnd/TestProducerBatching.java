@@ -312,7 +312,7 @@ public class TestProducerBatching extends AbstractMultiRegionTest {
       veniceProducer.stop();
     }
 
-    // The oversized merge must have been split into exactly two data messages on the real-time topic.
+    // The oversized merge must have been split into at least two data messages on the real-time topic.
     PubSubBrokerWrapper pubSubBrokerWrapper =
         childDatacenters.get(0).getClusters().get(CLUSTER_NAME).getPubSubBrokerWrapper();
     Properties properties = new Properties();
