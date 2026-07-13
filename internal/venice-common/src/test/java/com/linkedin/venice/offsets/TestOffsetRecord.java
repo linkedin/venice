@@ -6,6 +6,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -62,6 +63,19 @@ public class TestOffsetRecord {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     Assert.assertEquals(offsetRecord2, offsetRecord1);
+  }
+
+  @Test
+  public void testLatestConsumedRemoteVtPositionEmptyBufferDefaultsToEarliest() {
+    // Simulates a pre-v24 persisted record: Avro schema resolution supplies the field default (empty bytes) for the
+    // newly added field. The getter must resolve that to EARLIEST rather than deserializing an empty payload.
+    PartitionState partitionState = new PartitionState();
+    partitionState.upstreamLastConsumedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    OffsetRecord offsetRecord = new OffsetRecord(
+        partitionState,
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(offsetRecord.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
   }
 
   @Test

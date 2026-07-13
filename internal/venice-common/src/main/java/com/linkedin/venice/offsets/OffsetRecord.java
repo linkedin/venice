@@ -394,8 +394,13 @@ public class OffsetRecord {
   }
 
   public PubSubPosition getLatestConsumedRemoteVtPosition() {
-    return pubSubPositionDeserializer
-        .toPosition(this.partitionState.getUpstreamLastConsumedVersionTopicPubSubPosition());
+    ByteBuffer wireFormat = this.partitionState.getUpstreamLastConsumedVersionTopicPubSubPosition();
+    // Records persisted before PartitionState v24 lack this field, so Avro schema resolution supplies the field
+    // default (empty bytes). Treat null/empty as EARLIEST rather than deserializing an empty payload, which throws.
+    if (wireFormat == null || !wireFormat.hasRemaining()) {
+      return PubSubSymbolicPosition.EARLIEST;
+    }
+    return pubSubPositionDeserializer.toPosition(wireFormat);
   }
 
   public long getActiveKeyCount() {

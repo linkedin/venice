@@ -179,6 +179,12 @@ public class PartitionTracker {
     long earliestAllowableTimestamp =
         computeEarliestAllowableTimestamp(maxAgeInMs, offsetRecord.calculateLatestMessageTimeInMs());
     setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), earliestAllowableTimestamp);
+    if (TopicType.isVersionTopic(type)) {
+      // Rehydrate the durable remote LCVP so a follower's VT-DIV checkpoint writes back the persisted value instead of
+      // EARLIEST across a restart. Unlike the local LCVP (re-advanced live on the consume path), the remote LCVP is
+      // only advanced by a remote-consume leader, so without this it would collapse to EARLIEST before an F->L resume.
+      updateLatestConsumedRemoteVtPosition(offsetRecord.getLatestConsumedRemoteVtPosition());
+    }
   }
 
   public void setPartitionState(

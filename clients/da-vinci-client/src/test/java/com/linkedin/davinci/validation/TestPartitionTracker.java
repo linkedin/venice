@@ -41,6 +41,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
@@ -770,6 +771,29 @@ public class TestPartitionTracker {
     partitionTracker
         .cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED, System.currentTimeMillis(), false);
     assertEquals(destTracker.getLatestConsumedRemoteVtPosition(), remoteLcvp, "remote LCVP should be copied on clone");
+  }
+
+  /**
+   * On restart, {@link PartitionTracker#setPartitionState(TopicType, OffsetRecord, long)} must rehydrate the remote
+   * LCVP from the durable OffsetRecord. Otherwise a follower's VT-DIV checkpoint would write the in-memory EARLIEST
+   * back over the persisted value, collapsing the F->L remote-VT resume position to EARLIEST across any bounce.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testSetPartitionStateRehydratesRemoteLcvp() {
+    PubSubPosition remoteLcvp = ApacheKafkaOffsetPosition.of(100L);
+    OffsetRecord offsetRecord = TestUtils
+        .getOffsetRecord(ApacheKafkaOffsetPosition.of(0L), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    offsetRecord.setLatestConsumedRemoteVtPosition(remoteLcvp);
+
+    // Fresh tracker starts at EARLIEST, mirroring a restart before any remote-VT record is consumed.
+    PartitionTracker restartedTracker = createDestTracker();
+    assertEquals(restartedTracker.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
+
+    restartedTracker.setPartitionState(vt, offsetRecord, MAX_AGE_IN_MS);
+    assertEquals(
+        restartedTracker.getLatestConsumedRemoteVtPosition(),
+        remoteLcvp,
+        "Remote LCVP must be rehydrated from the OffsetRecord on restart so it is not clobbered back to EARLIEST");
   }
 
   /**
