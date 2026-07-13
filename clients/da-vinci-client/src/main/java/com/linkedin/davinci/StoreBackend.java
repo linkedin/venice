@@ -161,6 +161,11 @@ public class StoreBackend {
     return backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
   }
 
+  private Version getVersionByNumber(int versionNumber) {
+    Store store = backend.getStoreRepository().getStore(storeName);
+    return store == null ? null : store.getVersion(versionNumber);
+  }
+
   public synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion,
@@ -348,7 +353,12 @@ public class StoreBackend {
     if (daVinciFutureVersion == null || !daVinciFutureVersion.isPaused()) {
       return;
     }
-    if (daVinciFutureVersion.getVersion().isTargetRegionPromoted()) {
+    // Re-fetch the version fresh from the store repository instead of reading
+    // daVinciFutureVersion.getVersion(), which is an immutable snapshot captured at subscribe time.
+    // VersionBackend holds a final Version whose targetRegionPromoted flag never updates, so trusting
+    // the snapshot here would never observe the flip and the paused SIT would never resume.
+    Version freshFutureVersion = getVersionByNumber(daVinciFutureVersion.getVersion().getNumber());
+    if (freshFutureVersion != null && freshFutureVersion.isTargetRegionPromoted()) {
       LOGGER.info("Resuming future-slot-paused SIT for version {}", daVinciFutureVersion.getVersion().kafkaTopicName());
       daVinciFutureVersion.resume();
     }

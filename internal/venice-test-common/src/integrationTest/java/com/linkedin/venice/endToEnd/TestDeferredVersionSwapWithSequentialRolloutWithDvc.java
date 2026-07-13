@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
@@ -136,6 +137,29 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
       assertNotNull(client1.get(i).get());
     }
 
+    client1.close();
+
+    // Create a DVC client in the non-target region (REGION2) up front, alongside client1 and
+    // before the target-region push even starts. This guarantees client2's backend is fully
+    // bootstrapped by the time v2 is created, so it will observe v2 as a future version (and
+    // get created in a paused state) rather than racing the sequential rollout and picking up
+    // v2 as an already-current version.
+    VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
+    VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
+        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(LOCAL_REGION_NAME, REGION2)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DAVINCI_PAUSED_SIT_ENABLED, true)
+        .build();
+    DaVinciClient<Object, Object> client2 =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster2, new DaVinciConfig(), backendConfig2);
+    client2.subscribeAll().get();
+
+    // Check that v1 is ingested in the non-target region as well
+    for (int i = 1; i <= keyCount; i++) {
+      assertNotNull(client2.get(i).get());
+    }
+
     // Do another push with target region enabled
     int keyCount2 = 200;
     File inputDir2 = getTempDataDirectory();
@@ -152,29 +176,6 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
-
-      // Data should be automatically ingested in target region for dvc
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int i = 101; i <= keyCount2; i++) {
-          assertNotNull(client1.get(i).get());
-        }
-      });
-
-      // Close dvc client in target region
-      client1.close();
-
-      // Create a DVC client in the non-target region (REGION2).
-      // targetRegionSwapWaitTime=1 (minute), so DeferredVersionSwapService hasn't fired yet;
-      // use this window to capture the "before" state and verify strict ordering.
-      VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
-      VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
-          .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-          .put(LOCAL_REGION_NAME, REGION2)
-          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-          .build();
-      DaVinciClient<Object, Object> client2 =
-          ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster2, new DaVinciConfig(), backendConfig2);
-      client2.subscribeAll().get();
 
       // Verify targetRegionPromoted=true is set on the parent and all child controllers.
       // DeferredVersionSwapService sets the field once the target-region push completes and

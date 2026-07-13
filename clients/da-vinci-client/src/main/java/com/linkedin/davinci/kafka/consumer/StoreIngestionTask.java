@@ -519,7 +519,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * {@link #resumeFromFutureSlotPause()} is called.  Used by the DaVinci paused-SIT feature to
    * hold a future-version SIT in a ready-but-paused state until the version is promoted.
    */
-  volatile boolean pauseAfterStartOfPush = false;
+  private volatile boolean pauseAfterStartOfPush = false;
 
   // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.
   protected final BlobTransferIngestionHelper blobTransferHelper;
@@ -6800,20 +6800,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
     PubSubTopic vt = getVersionTopic();
     if (pcs == null) {
-      LOGGER.info("pausePartitionForFutureSlot: no PCS for partition {} in {}, skipping", partition, vt);
+      LOGGER.debug("pausePartitionForFutureSlot: no PCS for partition {} in {}, skipping", partition, vt);
       return;
     }
     pcs.setFutureSlotPaused(true);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vt, partition);
     getAggKafkaConsumerService().pauseConsumerFor(vt, topicPartition);
-    LOGGER.info("pausePartitionForFutureSlot: paused partition {} in {}", partition, vt);
+    LOGGER.debug("pausePartitionForFutureSlot: paused partition {} in {}", partition, vt);
   }
 
   /**
-   * Resume all partitions that were paused via the future-slot pause mechanism.
-   * Clears the {@link PartitionConsumptionState#setFutureSlotPaused} flag for every partition and
-   * physically resumes the consumer assignment — but only if the partition is not still held by a
-   * store-level pause ({@link PartitionConsumptionState#isStoreLevelPaused()}).
+   * Resume partitions that were paused via the future-slot pause mechanism.
+   * For each partition, clears the {@link PartitionConsumptionState#setFutureSlotPaused} flag and
+   * physically resumes the consumer assignment — but only when the partition is not still held by a
+   * store-level pause ({@link PartitionConsumptionState#isStoreLevelPaused()}); partitions that are
+   * store-level paused are skipped and remain paused.
    */
   public void resumeFromFutureSlotPause() {
     PubSubTopic vt = getVersionTopic();
@@ -6824,9 +6825,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pcs.setFutureSlotPaused(false);
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vt, partition);
         getAggKafkaConsumerService().resumeConsumerFor(vt, topicPartition);
-        LOGGER.info("resumeFromFutureSlotPause: resumed partition {} in {}", partition, vt);
+        LOGGER.debug("resumeFromFutureSlotPause: resumed partition {} in {}", partition, vt);
       } else {
-        LOGGER.info(
+        LOGGER.debug(
             "resumeFromFutureSlotPause: partition {} in {} is still store-level paused, skipping physical resume",
             partition,
             vt);
