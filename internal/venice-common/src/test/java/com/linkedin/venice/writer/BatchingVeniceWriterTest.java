@@ -813,6 +813,60 @@ public class BatchingVeniceWriterTest {
   }
 
   @Test
+  public void testIntermediateProduceToleratesNullCallback() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 3;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    // Make the internal writer throw so the failure path invokes the produced callback; a null callback in a split
+    // segment would NPE (and abort the whole batch) without the null-filtering guard.
+    RuntimeException produceError = new RuntimeException("Simulated produce failure");
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = writer.getVeniceWriter();
+    org.mockito.Mockito.when(internalWriter.update(any(), any(byte[].class), anyInt(), anyInt(), any(), anyLong()))
+        .thenThrow(produceError);
+
+    StringBuilder largeName = new StringBuilder();
+    for (int i = 0; i < 100; i++) {
+      largeName.append("abcdefghij");
+    }
+    Map<String, String> largeMap = new java.util.HashMap<>();
+    for (int i = 0; i < 50; i++) {
+      largeMap.put("key_" + i, "value_" + i);
+    }
+    List<Integer> largeIntArray = new ArrayList<>();
+    for (int i = 0; i < 200; i++) {
+      largeIntArray.add(i);
+    }
+
+    String key = "a";
+    GenericRecord update1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
+    GenericRecord update2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
+    GenericRecord update3 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
+    doReturn(totalMergedPayloadSize(key, update1, update2, update3) - 1).when(writer)
+        .getMaxSizeForUserPayloadPerMessageInBytes();
+
+    // A dependent record carries a null callback (allowed by the public writer API) that lands in the split segment.
+    writer.update(key, update1, 1, 1, null);
+    writer.update(key, update2, 1, 1, completableFutureCallbackList.get(1));
+    writer.update(key, update3, 1, 1, completableFutureCallbackList.get(2));
+
+    // Must not throw NPE despite the null callback in a split segment; the batch proceeds and the winning record's
+    // callback still completes (exceptionally, due to the simulated produce failure). Without the guard, the null
+    // callback would NPE inside maybeUpdateRecordUpdatePayload (outside the surrounding try/catch) and abort the batch.
+    writer.checkAndMaybeProduceBatchRecord();
+
+    Assert.assertTrue(completableFutureList.get(2).isCompletedExceptionally());
+  }
+
+  @Test
   public void testMultipleSplitsWithFiveUpdates() {
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
     Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();

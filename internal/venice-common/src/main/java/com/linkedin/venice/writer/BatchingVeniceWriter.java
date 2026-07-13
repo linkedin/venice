@@ -561,13 +561,23 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       ProducerBufferRecord referenceRecord,
       byte[] serializedUpdate,
       List<PubSubProducerCallback> callbacks) {
+    // Public writer APIs allow a null callback, so drop nulls before building the intermediate callback. Otherwise a
+    // null entry would NPE here (or later inside ChainedPubSubCallback), and since this runs outside the try/catch in
+    // checkAndMaybeProduceBatchRecord() it would abort the whole batch and leave every caller's callback uncompleted.
+    List<PubSubProducerCallback> nonNullCallbacks = new ArrayList<>(callbacks.size());
+    for (PubSubProducerCallback candidate: callbacks) {
+      if (candidate != null) {
+        nonNullCallbacks.add(candidate);
+      }
+    }
     PubSubProducerCallback callback;
-    if (callbacks.isEmpty()) {
+    if (nonNullCallbacks.isEmpty()) {
       callback = (result, exception) -> {};
-    } else if (callbacks.size() == 1) {
-      callback = callbacks.get(0);
+    } else if (nonNullCallbacks.size() == 1) {
+      callback = nonNullCallbacks.get(0);
     } else {
-      callback = new ChainedPubSubCallback(callbacks.get(0), callbacks.subList(1, callbacks.size()));
+      callback =
+          new ChainedPubSubCallback(nonNullCallbacks.get(0), nonNullCallbacks.subList(1, nonNullCallbacks.size()));
     }
     try {
       CompletableFuture<PubSubProduceResult> intermediateFuture = getVeniceWriter().update(
