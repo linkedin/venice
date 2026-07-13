@@ -540,27 +540,25 @@ public class BatchingVeniceWriterTest {
     for (int i = 0; i < 200; i++) {
       largeIntArray.add(i);
     }
-    doReturn(2000).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
-
     String key = "a";
-    writer.update(
-        key,
-        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build(),
-        1,
-        1,
-        completableFutureCallbackList.get(0));
-    writer.update(
-        key,
-        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build(),
-        1,
-        1,
-        completableFutureCallbackList.get(1));
-    writer.update(
-        key,
-        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build(),
-        1,
-        1,
-        completableFutureCallbackList.get(2));
+    GenericRecord update1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
+    GenericRecord update2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
+    GenericRecord update3 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
+
+    // Derive the size limit from the actual fully merged payload (using the production merge + serializer) and set it
+    // to
+    // mergedSize - 1, so the optimistic merge is guaranteed to exceed the limit and trigger a split regardless of the
+    // exact Avro encoding sizes, instead of relying on a hard-coded constant.
+    GenericRecord fullyMerged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, null, update1);
+    fullyMerged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, fullyMerged, update2);
+    fullyMerged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, fullyMerged, update3);
+    int keyLength = new StringSerializer().serialize(writer.getTopicName(), key).length;
+    int mergedPayloadSize = keyLength + updateSerializer.serialize(fullyMerged).length;
+    doReturn(mergedPayloadSize - 1).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
+
+    writer.update(key, update1, 1, 1, completableFutureCallbackList.get(0));
+    writer.update(key, update2, 1, 1, completableFutureCallbackList.get(1));
+    writer.update(key, update3, 1, 1, completableFutureCallbackList.get(2));
 
     writer.checkAndMaybeProduceBatchRecord();
 
