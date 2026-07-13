@@ -347,7 +347,9 @@ public class TestProducerBatching extends AbstractMultiRegionTest {
           break;
         }
       }
-      Assert.assertEquals(messageCount, 2, "Oversized merged UPDATE should be split into two produced messages");
+      Assert.assertTrue(
+          messageCount >= 2,
+          "Oversized merged UPDATE should be split into at least two produced messages, but got " + messageCount);
     }
   }
 

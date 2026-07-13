@@ -503,6 +503,20 @@ public class BatchingVeniceWriterTest {
     return writer;
   }
 
+  /**
+   * Returns the total serialized size (key bytes + merged update payload) of the given updates merged in order, using
+   * the same merge handler and serializer as production. Tests use {@code size - 1} as the max payload limit to force a
+   * split deterministically, independent of the exact Avro encoding size.
+   */
+  private int totalMergedPayloadSize(String key, GenericRecord... updates) {
+    GenericRecord merged = null;
+    for (GenericRecord update: updates) {
+      merged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, merged, update);
+    }
+    int keyLength = new StringSerializer().serialize("", key).length;
+    return keyLength + updateSerializer.serialize(merged).length;
+  }
+
   @Test
   public void testSplitMessagesGetStrictlyIncreasingProduceTimestamps() {
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
@@ -545,16 +559,10 @@ public class BatchingVeniceWriterTest {
     GenericRecord update2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
     GenericRecord update3 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
 
-    // Derive the size limit from the actual fully merged payload (using the production merge + serializer) and set it
-    // to
-    // mergedSize - 1, so the optimistic merge is guaranteed to exceed the limit and trigger a split regardless of the
-    // exact Avro encoding sizes, instead of relying on a hard-coded constant.
-    GenericRecord fullyMerged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, null, update1);
-    fullyMerged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, fullyMerged, update2);
-    fullyMerged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, fullyMerged, update3);
-    int keyLength = new StringSerializer().serialize(writer.getTopicName(), key).length;
-    int mergedPayloadSize = keyLength + updateSerializer.serialize(fullyMerged).length;
-    doReturn(mergedPayloadSize - 1).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
+    // Derive the size limit from the actual fully merged payload and set it to mergedSize - 1, so the optimistic merge
+    // is guaranteed to exceed the limit and trigger a split regardless of the exact Avro encoding sizes.
+    doReturn(totalMergedPayloadSize(key, update1, update2, update3) - 1).when(writer)
+        .getMaxSizeForUserPayloadPerMessageInBytes();
 
     writer.update(key, update1, 1, 1, completableFutureCallbackList.get(0));
     writer.update(key, update2, 1, 1, completableFutureCallbackList.get(1));
@@ -602,16 +610,17 @@ public class BatchingVeniceWriterTest {
       largeIntArray.add(i);
     }
 
-    // Each individual update is ~500-1000 bytes, but merging all 3 produces ~2500+ bytes.
-    // Set limit so individual fits but merged-all exceeds.
-    doReturn(2000).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
-
     String key = "a";
     GenericRecord updateRecord1 =
         new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
     GenericRecord updateRecord2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
     GenericRecord updateRecord3 =
         new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
+
+    // Set the limit to (fully merged size - 1) so merging all three is guaranteed to exceed it and trigger a split,
+    // while each individual update stays under it, independent of the exact Avro encoding size.
+    doReturn(totalMergedPayloadSize(key, updateRecord1, updateRecord2, updateRecord3) - 1).when(writer)
+        .getMaxSizeForUserPayloadPerMessageInBytes();
 
     writer.update(key, updateRecord1, 1, 1, completableFutureCallbackList.get(0));
     writer.update(key, updateRecord2, 1, 1, completableFutureCallbackList.get(1));

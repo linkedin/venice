@@ -60,6 +60,13 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
 
   private final long batchIntervalInMs;
   private final int maxBatchSizeInBytes;
+  /**
+   * Upper bound (in wall-clock milliseconds, measured with the monotonic {@link System#nanoTime()}) on how long
+   * {@link #produceIntermediateUpdate} waits for {@link System#currentTimeMillis()} to advance between same-key split
+   * produces. This caps the wait so a coarse or backwards wall clock cannot stall batch production under the lock; on a
+   * normal millisecond-resolution clock the wait exits after the first attempt.
+   */
+  private static final long MAX_TIMESTAMP_ADVANCE_WAIT_MS = 100;
   private final ReentrantLock lock = new ReentrantLock();
   private final ExecutorService checkServiceExecutor = Executors.newSingleThreadExecutor();
   private final List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
@@ -578,10 +585,13 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
        * would share a timestamp and DCR would break ties by value comparison instead of by recency, which can drop the
        * latest write for a scalar field that is re-set across a split boundary. Looping on the observed clock value
        * (instead of sleeping a fixed duration) keeps this correct even where {@link System#currentTimeMillis()} has
-       * coarse resolution. There is always a subsequent same-key produce after an intermediate, so the wait is warranted.
+       * coarse resolution. The wait is bounded by {@link #MAX_TIMESTAMP_ADVANCE_WAIT_MS} using the monotonic
+       * {@link System#nanoTime()} so a coarse or backwards wall clock cannot stall production under the lock. There is
+       * always a subsequent same-key produce after an intermediate, so the wait is warranted.
        */
       long producedAtMs = System.currentTimeMillis();
-      while (System.currentTimeMillis() <= producedAtMs) {
+      long waitDeadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MAX_TIMESTAMP_ADVANCE_WAIT_MS);
+      while (System.currentTimeMillis() <= producedAtMs && System.nanoTime() < waitDeadlineNs) {
         if (!Utils.sleep(1)) {
           // Interrupted: Utils.sleep already restored the interrupt flag; stop waiting and let the caller react.
           break;
