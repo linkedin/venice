@@ -570,6 +570,16 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
           referenceRecord.getProtocolId(),
           callback,
           referenceRecord.getTimestamp());
+      /**
+       * Every split message targets the same key, and batched records carry {@link VeniceWriter#APP_DEFAULT_LOGICAL_TS},
+       * so Active/Active DCR falls back to the broker {@code messageTimestamp} for conflict resolution. Advance the wall
+       * clock by at least one millisecond so this message and the next same-key message (the next split, or the final
+       * record produced right after via {@link #sendRecord}) land on strictly increasing timestamps. Without this gap
+       * they would share a timestamp and DCR would break ties by value comparison instead of by recency, which can drop
+       * the latest write for a scalar field that is re-set across a split boundary. There is always a subsequent same-key
+       * produce after an intermediate, so the wait is always warranted here.
+       */
+      Utils.sleep(1);
       // Chain to the shared produce result future so async failures propagate to callers
       CompletableFuture<PubSubProduceResult> produceResultFuture = referenceRecord.getProduceResultFuture();
       if (produceResultFuture != null && intermediateFuture != null) {

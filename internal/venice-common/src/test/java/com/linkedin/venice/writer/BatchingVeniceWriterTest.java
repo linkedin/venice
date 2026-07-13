@@ -504,6 +504,78 @@ public class BatchingVeniceWriterTest {
   }
 
   @Test
+  public void testSplitMessagesGetStrictlyIncreasingProduceTimestamps() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 3;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    // Capture the wall-clock millisecond at which each internal produce happens. The internal VeniceWriter stamps
+    // messageTimestamp = SystemTime at produce time (synchronously inside update()), so this reflects the DCR
+    // timestamp.
+    List<Long> produceMs = java.util.Collections.synchronizedList(new ArrayList<>());
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = writer.getVeniceWriter();
+    org.mockito.Mockito.doAnswer(inv -> {
+      produceMs.add(System.currentTimeMillis());
+      return null;
+    }).when(internalWriter).update(any(), any(byte[].class), anyInt(), anyInt(), any(), anyLong());
+
+    // Each update touches a different field so the merged result exceeds the limit and is split into multiple messages.
+    StringBuilder largeName = new StringBuilder();
+    for (int i = 0; i < 100; i++) {
+      largeName.append("abcdefghij");
+    }
+    Map<String, String> largeMap = new java.util.HashMap<>();
+    for (int i = 0; i < 50; i++) {
+      largeMap.put("key_" + i, "value_" + i);
+    }
+    List<Integer> largeIntArray = new ArrayList<>();
+    for (int i = 0; i < 200; i++) {
+      largeIntArray.add(i);
+    }
+    doReturn(2000).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
+
+    String key = "a";
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(0));
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(1));
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(2));
+
+    writer.checkAndMaybeProduceBatchRecord();
+
+    Assert.assertTrue(
+        produceMs.size() >= 2,
+        "Merged payload exceeds the limit, so the same key must be split into multiple produced messages");
+    for (int i = 1; i < produceMs.size(); i++) {
+      Assert.assertTrue(
+          produceMs.get(i) > produceMs.get(i - 1),
+          "Each same-key split message must be produced at a strictly greater messageTimestamp than the previous one so "
+              + "Active/Active DCR resolves conflicts by recency instead of value comparison; got " + produceMs);
+    }
+  }
+
+  @Test
   public void testMergedUpdateExceedsSizeLimitProducesIntermediateBatch() {
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
     Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
