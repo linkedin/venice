@@ -524,7 +524,7 @@ public class BatchingVeniceWriterTest {
     VeniceWriter<byte[], byte[], byte[]> internalWriter = writer.getVeniceWriter();
     org.mockito.Mockito.doAnswer(inv -> {
       produceMs.add(System.currentTimeMillis());
-      return null;
+      return CompletableFuture.completedFuture(null);
     }).when(internalWriter).update(any(), any(byte[].class), anyInt(), anyInt(), any(), anyLong());
 
     // Each update touches a different field so the merged result exceeds the limit and is split into multiple messages.
@@ -752,7 +752,7 @@ public class BatchingVeniceWriterTest {
   }
 
   @Test
-  public void testIntermediateProduceFailurePropagesToProduceResultFuture() {
+  public void testIntermediateProduceFailurePropagatesToProduceResultFuture() {
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
     Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
     List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();

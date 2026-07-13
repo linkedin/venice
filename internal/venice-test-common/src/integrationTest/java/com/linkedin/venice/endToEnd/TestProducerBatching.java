@@ -329,14 +329,22 @@ public class TestProducerBatching extends AbstractMultiRegionTest {
           new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName, 1)), 0),
           PubSubSymbolicPosition.EARLIEST,
           false);
-      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(1000 * Time.MS_PER_SECOND);
+      // Poll in a bounded loop with a short per-poll timeout and an overall deadline so a regression that drops
+      // messages fails fast instead of blocking on a single long poll, and a late-arriving message is not undercounted.
       int messageCount = 0;
-      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messages.entrySet()) {
-        List<DefaultPubSubMessage> pubSubMessages = entry.getValue();
-        for (DefaultPubSubMessage message: pubSubMessages) {
-          if (!message.getKey().isControlMessage()) {
-            messageCount += 1;
+      long deadlineMs = System.currentTimeMillis() + 30 * Time.MS_PER_SECOND;
+      while (System.currentTimeMillis() < deadlineMs) {
+        Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(2 * Time.MS_PER_SECOND);
+        for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messages.entrySet()) {
+          List<DefaultPubSubMessage> pubSubMessages = entry.getValue();
+          for (DefaultPubSubMessage message: pubSubMessages) {
+            if (!message.getKey().isControlMessage()) {
+              messageCount += 1;
+            }
           }
+        }
+        if (messageCount >= 2) {
+          break;
         }
       }
       Assert.assertEquals(messageCount, 2, "Oversized merged UPDATE should be split into two produced messages");
