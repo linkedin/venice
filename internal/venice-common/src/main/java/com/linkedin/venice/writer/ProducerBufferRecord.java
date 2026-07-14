@@ -87,7 +87,11 @@ public class ProducerBufferRecord implements Measurable {
   }
 
   public void addDependentCallback(PubSubProducerCallback callback) {
-    this.dependentCallbackList.add(callback);
+    // Public writer APIs allow a null callback; drop nulls so this list never NPEs when sendRecord() wraps it in a
+    // ChainedPubSubCallback (whose onCompletion invokes each entry without a null check).
+    if (callback != null) {
+      this.dependentCallbackList.add(callback);
+    }
   }
 
   public PubSubProducerCallback getCallback() {

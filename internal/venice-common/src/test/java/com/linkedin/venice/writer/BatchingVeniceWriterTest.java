@@ -508,12 +508,15 @@ public class BatchingVeniceWriterTest {
    * the same merge handler and serializer as production. Tests use {@code size - 1} as the max payload limit to force a
    * split deterministically, independent of the exact Avro encoding size.
    */
-  private int totalMergedPayloadSize(String key, GenericRecord... updates) {
+  private int totalMergedPayloadSize(
+      BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer,
+      String key,
+      GenericRecord... updates) {
     GenericRecord merged = null;
     for (GenericRecord update: updates) {
       merged = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, merged, update);
     }
-    int keyLength = new StringSerializer().serialize("", key).length;
+    int keyLength = writer.getKeySerializer().serialize(writer.getTopicName(), key).length;
     return keyLength + updateSerializer.serialize(merged).length;
   }
 
@@ -561,7 +564,7 @@ public class BatchingVeniceWriterTest {
 
     // Derive the size limit from the actual fully merged payload and set it to mergedSize - 1, so the optimistic merge
     // is guaranteed to exceed the limit and trigger a split regardless of the exact Avro encoding sizes.
-    doReturn(totalMergedPayloadSize(key, update1, update2, update3) - 1).when(writer)
+    doReturn(totalMergedPayloadSize(writer, key, update1, update2, update3) - 1).when(writer)
         .getMaxSizeForUserPayloadPerMessageInBytes();
 
     writer.update(key, update1, 1, 1, completableFutureCallbackList.get(0));
@@ -619,7 +622,7 @@ public class BatchingVeniceWriterTest {
 
     // Set the limit to (fully merged size - 1) so merging all three is guaranteed to exceed it and trigger a split,
     // while each individual update stays under it, independent of the exact Avro encoding size.
-    doReturn(totalMergedPayloadSize(key, updateRecord1, updateRecord2, updateRecord3) - 1).when(writer)
+    doReturn(totalMergedPayloadSize(writer, key, updateRecord1, updateRecord2, updateRecord3) - 1).when(writer)
         .getMaxSizeForUserPayloadPerMessageInBytes();
 
     writer.update(key, updateRecord1, 1, 1, completableFutureCallbackList.get(0));
@@ -798,7 +801,7 @@ public class BatchingVeniceWriterTest {
     GenericRecord updateRecord3 =
         new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
     // Force a split so an intermediate produce happens (and fails) by setting the limit below the fully merged size.
-    doReturn(totalMergedPayloadSize(key, updateRecord1, updateRecord2, updateRecord3) - 1).when(writer)
+    doReturn(totalMergedPayloadSize(writer, key, updateRecord1, updateRecord2, updateRecord3) - 1).when(writer)
         .getMaxSizeForUserPayloadPerMessageInBytes();
 
     writer.update(key, updateRecord1, 1, 1, completableFutureCallbackList.get(0));
@@ -850,7 +853,7 @@ public class BatchingVeniceWriterTest {
     GenericRecord update1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
     GenericRecord update2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
     GenericRecord update3 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
-    doReturn(totalMergedPayloadSize(key, update1, update2, update3) - 1).when(writer)
+    doReturn(totalMergedPayloadSize(writer, key, update1, update2, update3) - 1).when(writer)
         .getMaxSizeForUserPayloadPerMessageInBytes();
 
     // A dependent record carries a null callback (allowed by the public writer API) that lands in the split segment.
@@ -915,7 +918,7 @@ public class BatchingVeniceWriterTest {
     // Limit = size(merge(name,map)) - 1: merging name+map overflows (split there, isolating name), while the smaller
     // final merge (map + intArray + winning age) fits. So the winning record keeps a dependent callback list of
     // [null (map), non-null (intArray)] — a null followed by a real callback.
-    doReturn(totalMergedPayloadSize(key, nameUpdate, mapUpdate) - 1).when(writer)
+    doReturn(totalMergedPayloadSize(writer, key, nameUpdate, mapUpdate) - 1).when(writer)
         .getMaxSizeForUserPayloadPerMessageInBytes();
 
     writer.update(key, nameUpdate, 1, 1, completableFutureCallbackList.get(0));
@@ -929,6 +932,56 @@ public class BatchingVeniceWriterTest {
     // filtering, ChainedPubSubCallback NPEs on the null and this callback is silently dropped (its future hangs).
     Assert.assertTrue(completableFutureList.get(2).isDone(), "Callback after the null must not be dropped");
     Assert.assertTrue(completableFutureList.get(3).isDone(), "Winning record callback must complete");
+  }
+
+  @Test
+  public void testNormalPathToleratesNullDependentCallback() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 3;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    // Invoke the produced callback so the ChainedPubSubCallback actually iterates its dependents.
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = writer.getVeniceWriter();
+    org.mockito.Mockito.doAnswer(inv -> {
+      PubSubProducerCallback producedCallback = inv.getArgument(4);
+      if (producedCallback != null) {
+        producedCallback.onCompletion(null, null);
+      }
+      return CompletableFuture.completedFuture(null);
+    }).when(internalWriter).update(any(), any(byte[].class), anyInt(), anyInt(), any(), anyLong());
+
+    // Small updates so the merge stays under the (default) limit: this exercises the normal compaction path with no
+    // split. A superseded record with a null callback (added before a non-null one) must not NPE / drop the callback
+    // that follows it when sendRecord() wraps the dependent callbacks in a ChainedPubSubCallback.
+    String key = "a";
+    writer.update(key, new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "aaa").build(), 1, 1, null);
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("age", 1).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(1));
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("age", 2).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(2));
+
+    writer.checkAndMaybeProduceBatchRecord();
+
+    Assert.assertTrue(
+        completableFutureList.get(1).isDone(),
+        "Dependent callback after the null must not be dropped in the non-split path");
+    Assert.assertTrue(completableFutureList.get(2).isDone(), "Winning record callback must complete");
   }
 
   @Test
