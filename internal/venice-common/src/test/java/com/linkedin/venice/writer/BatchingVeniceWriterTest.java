@@ -985,6 +985,68 @@ public class BatchingVeniceWriterTest {
   }
 
   @Test
+  public void testChainedPubSubCallbackToleratesNullEntries() {
+    CompletableFuture<Void> future = new CompletableFuture<>();
+    CompletableFutureCallback realCallback = new CompletableFutureCallback(future);
+    List<PubSubProducerCallback> dependents = new ArrayList<>();
+    dependents.add(null); // a null dependent before the real one
+    dependents.add(realCallback);
+    // Null main callback + a null dependent must not NPE, and the real dependent must still be completed.
+    ChainedPubSubCallback chained = new ChainedPubSubCallback(null, dependents);
+    chained.onCompletion(null, null);
+    Assert.assertTrue(future.isDone());
+  }
+
+  @Test
+  public void testNullMainCallbackDoesNotAbortBatch() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 3;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    // Invoke the produced callback so a null main callback in a ChainedPubSubCallback is actually exercised.
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = writer.getVeniceWriter();
+    org.mockito.Mockito.doAnswer(inv -> {
+      PubSubProducerCallback producedCallback = inv.getArgument(4);
+      if (producedCallback != null) {
+        producedCallback.onCompletion(null, null);
+      }
+      return CompletableFuture.completedFuture(null);
+    }).when(internalWriter).update(any(), any(byte[].class), anyInt(), anyInt(), any(), anyLong());
+
+    // Key "a": winning record has a null main callback but a non-null dependent. Key "b" is buffered after it.
+    // Without a null-safe main callback, sendRecord("a") NPEs (twice, including the error path) and aborts the whole
+    // batch, so "b" would never be produced.
+    String keyA = "a";
+    writer.update(
+        keyA,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "x").build(),
+        1,
+        1,
+        completableFutureCallbackList.get(0));
+    writer.update(keyA, new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("age", 1).build(), 1, 1, null);
+    String keyB = "b";
+    writer.update(
+        keyB,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("age", 5).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(2));
+
+    writer.checkAndMaybeProduceBatchRecord();
+
+    Assert.assertTrue(completableFutureList.get(0).isDone(), "Dependent of the null-main record must complete");
+    Assert.assertTrue(completableFutureList.get(2).isDone(), "A later key must still be produced (batch not aborted)");
+  }
+
+  @Test
   public void testMultipleSplitsWithFiveUpdates() {
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
     Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();

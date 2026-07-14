@@ -54,6 +54,12 @@ import org.apache.logging.log4j.Logger;
  *
  * When the last message is produced, its callback will be completed (either successfully or exceptionally), all the
  * related messages' callbacks will also be completed with the same result.
+ *
+ * Exception: when a merged partial-update (UPDATE) payload for a key would exceed the producer size limit, it cannot be
+ * produced as a single message (UPDATE does not support chunking). In that (rare) case the batch for that key is split
+ * into multiple under-limit UPDATE messages produced in order at strictly increasing timestamps. Each user callback is
+ * then completed when the split segment carrying its record is produced, with that segment's {@link PubSubProduceResult}
+ * (which differs from the final segment's), rather than all together with the final produce's result.
  */
 public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final Logger LOGGER = LogManager.getLogger(BatchingVeniceWriter.class);
@@ -286,7 +292,11 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
         try {
           sendRecord(record);
         } catch (Exception e) {
-          record.getCallback().onCompletion(null, e);
+          // The record's own callback may be null (public APIs allow it); only notify it if present.
+          PubSubProducerCallback recordCallback = record.getCallback();
+          if (recordCallback != null) {
+            recordCallback.onCompletion(null, e);
+          }
         }
       }
     } finally {

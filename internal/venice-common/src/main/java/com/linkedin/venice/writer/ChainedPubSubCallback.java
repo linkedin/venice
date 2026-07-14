@@ -24,9 +24,15 @@ public class ChainedPubSubCallback implements PubSubProducerCallback {
 
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
-    callback.onCompletion(produceResult, exception);
+    // Public writer APIs allow null callbacks, so both the main and any dependent callback may be null. Skip nulls
+    // instead of dereferencing them, otherwise a single null would NPE and drop the remaining callbacks.
+    if (callback != null) {
+      callback.onCompletion(produceResult, exception);
+    }
     for (PubSubProducerCallback producerCallback: dependentCallbackList) {
-      producerCallback.onCompletion(produceResult, exception);
+      if (producerCallback != null) {
+        producerCallback.onCompletion(produceResult, exception);
+      }
     }
   }
 
@@ -35,9 +41,13 @@ public class ChainedPubSubCallback implements PubSubProducerCallback {
    */
   @Override
   public void setInternalCallback(PubSubProducerCallback internalCallback) {
-    callback.setInternalCallback(internalCallback);
+    if (callback != null) {
+      callback.setInternalCallback(internalCallback);
+    }
     for (PubSubProducerCallback dependentCallback: dependentCallbackList) {
-      dependentCallback.setInternalCallback(internalCallback);
+      if (dependentCallback != null) {
+        dependentCallback.setInternalCallback(internalCallback);
+      }
     }
   }
 
