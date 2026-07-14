@@ -507,7 +507,14 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       }
     }
 
-    // Incrementally merge dependent UPDATE records with size checks
+    // Incrementally merge dependent UPDATE records with size checks.
+    /**
+     * NOTE: {@link WriteComputeHandlerV1#mergeUpdateRecord} mutates its first argument (the accumulated record) in place
+     * and returns it, so {@code resultUpdateRecord} is not a fresh object after a merge. We therefore capture each
+     * accepted segment eagerly as serialized bytes in {@code lastValidSerialized}, and the produce path emits those
+     * immutable bytes rather than the live (mutable) record. Do not defer this serialization to produce time: a later
+     * in-place merge would otherwise retroactively corrupt an already-accumulated segment.
+     */
     for (int i = anchorIdx + 1; i < dependentRecordList.size(); i++) {
       GenericRecord updateRecord = deserializeUpdateBytes(dependentRecordList.get(i).getSerializedUpdate());
       GenericRecord newMerged = getUpdateHandler().mergeUpdateRecord(supersetSchema, resultUpdateRecord, updateRecord);
@@ -542,16 +549,34 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
         // Accumulated callbacks were handled by intermediate produce
         producerBufferRecord.getDependentCallbackList().clear();
       } else {
-        // No intermediate payload was produced — preserve accumulated callbacks on the final record
+        // No intermediate payload was produced — preserve accumulated callbacks on the final record.
+        // Filter nulls: dependent callbacks flow into a ChainedPubSubCallback in sendRecord(), which invokes each
+        // entry without null checks, and public writer APIs allow a null callback.
         producerBufferRecord.getDependentCallbackList().clear();
-        producerBufferRecord.getDependentCallbackList().addAll(accumulatedCallbacks);
+        producerBufferRecord.getDependentCallbackList().addAll(filterNonNullCallbacks(accumulatedCallbacks));
       }
     } else {
-      // Final merge fits; update payload and remaining callbacks
+      // Final merge fits; update payload and remaining callbacks (null-filtered for the same ChainedPubSubCallback
+      // reason).
       producerBufferRecord.updateSerializedUpdate(finalSerialized);
       producerBufferRecord.getDependentCallbackList().clear();
-      producerBufferRecord.getDependentCallbackList().addAll(accumulatedCallbacks);
+      producerBufferRecord.getDependentCallbackList().addAll(filterNonNullCallbacks(accumulatedCallbacks));
     }
+  }
+
+  /**
+   * Public writer APIs allow a null callback, so drop nulls before wiring callbacks into a {@link ChainedPubSubCallback}
+   * (whose {@code onCompletion} invokes each entry without a null check). Returns a new list of only the non-null
+   * callbacks.
+   */
+  private static List<PubSubProducerCallback> filterNonNullCallbacks(List<PubSubProducerCallback> callbacks) {
+    List<PubSubProducerCallback> nonNullCallbacks = new ArrayList<>(callbacks.size());
+    for (PubSubProducerCallback candidate: callbacks) {
+      if (candidate != null) {
+        nonNullCallbacks.add(candidate);
+      }
+    }
+    return nonNullCallbacks;
   }
 
   /**
@@ -564,12 +589,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     // Public writer APIs allow a null callback, so drop nulls before building the intermediate callback. Otherwise a
     // null entry would NPE here (or later inside ChainedPubSubCallback), and since this runs outside the try/catch in
     // checkAndMaybeProduceBatchRecord() it would abort the whole batch and leave every caller's callback uncompleted.
-    List<PubSubProducerCallback> nonNullCallbacks = new ArrayList<>(callbacks.size());
-    for (PubSubProducerCallback candidate: callbacks) {
-      if (candidate != null) {
-        nonNullCallbacks.add(candidate);
-      }
-    }
+    List<PubSubProducerCallback> nonNullCallbacks = filterNonNullCallbacks(callbacks);
     PubSubProducerCallback callback;
     if (nonNullCallbacks.isEmpty()) {
       callback = (result, exception) -> {};

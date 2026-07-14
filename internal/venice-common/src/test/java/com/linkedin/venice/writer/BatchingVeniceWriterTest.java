@@ -867,6 +867,71 @@ public class BatchingVeniceWriterTest {
   }
 
   @Test
+  public void testFinalRecordToleratesNullDependentCallback() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 4;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    // Invoke the produced callback so a ChainedPubSubCallback carrying a null dependent actually iterates (and would
+    // NPE on the null, silently dropping any callback that follows the null in the chain).
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = writer.getVeniceWriter();
+    org.mockito.Mockito.doAnswer(inv -> {
+      PubSubProducerCallback producedCallback = inv.getArgument(4);
+      if (producedCallback != null) {
+        producedCallback.onCompletion(null, null);
+      }
+      return CompletableFuture.completedFuture(null);
+    }).when(internalWriter).update(any(), any(byte[].class), anyInt(), anyInt(), any(), anyLong());
+
+    StringBuilder largeName = new StringBuilder();
+    for (int i = 0; i < 100; i++) {
+      largeName.append("abcdefghij");
+    }
+    Map<String, String> largeMap = new java.util.HashMap<>();
+    for (int i = 0; i < 50; i++) {
+      largeMap.put("key_" + i, "value_" + i);
+    }
+    List<Integer> largeIntArray = new ArrayList<>();
+    for (int i = 0; i < 200; i++) {
+      largeIntArray.add(i);
+    }
+
+    String key = "a";
+    GenericRecord nameUpdate =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
+    GenericRecord mapUpdate = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
+    GenericRecord intArrayUpdate =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
+    GenericRecord ageUpdate = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("age", 42).build();
+
+    // Limit = size(merge(name,map)) - 1: merging name+map overflows (split there, isolating name), while the smaller
+    // final merge (map + intArray + winning age) fits. So the winning record keeps a dependent callback list of
+    // [null (map), non-null (intArray)] — a null followed by a real callback.
+    doReturn(totalMergedPayloadSize(key, nameUpdate, mapUpdate) - 1).when(writer)
+        .getMaxSizeForUserPayloadPerMessageInBytes();
+
+    writer.update(key, nameUpdate, 1, 1, completableFutureCallbackList.get(0));
+    writer.update(key, mapUpdate, 1, 1, null); // null dependent callback
+    writer.update(key, intArrayUpdate, 1, 1, completableFutureCallbackList.get(2)); // follows the null in the chain
+    writer.update(key, ageUpdate, 1, 1, completableFutureCallbackList.get(3)); // winning record
+
+    writer.checkAndMaybeProduceBatchRecord();
+
+    // The callback that follows the null in the final record's dependent list must still be invoked. Without null
+    // filtering, ChainedPubSubCallback NPEs on the null and this callback is silently dropped (its future hangs).
+    Assert.assertTrue(completableFutureList.get(2).isDone(), "Callback after the null must not be dropped");
+    Assert.assertTrue(completableFutureList.get(3).isDone(), "Winning record callback must complete");
+  }
+
+  @Test
   public void testMultipleSplitsWithFiveUpdates() {
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
     Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
