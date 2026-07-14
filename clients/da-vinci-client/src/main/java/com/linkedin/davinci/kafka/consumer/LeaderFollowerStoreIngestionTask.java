@@ -2424,6 +2424,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     callback.setOnCompletionCallback(produceResult -> {
       try {
         vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition());
+        // Stamp the consumed upstream position onto the snapshot as the remote LCVP, mirroring the local LCVP set from
+        // the produced position above. It uses the same offset the OffsetRecord checkpoint uses
+        // (LeaderProducedRecordContext#getConsumedPosition, see updateOffsetsAsRemoteConsumeLeader): advanced for any
+        // leader whose upstream is a non-RT topic, and skipped when there is no corresponding upstream message (e.g.
+        // leader-generated chunks or TopicSwitch) or on the RT-source path (whose position is checkpointed as the
+        // LCRP).
+        // The sync runs only after persistedToDBFuture completes, so the persisted remote LCVP never leads the
+        // persisted
+        // data; an F->L resume (PartitionConsumptionState#getCheckpointedVtLeaderPosition) then re-subscribes the
+        // remote
+        // VT at a position that is durable by construction.
+        DefaultPubSubMessage sourceRecord = callback.getSourceConsumerRecord();
+        LeaderProducedRecordContext leaderProducedRecordContext = callback.getLeaderProducedRecordContext();
+        if (!sourceRecord.getTopicPartition().getPubSubTopic().isRealTime() && leaderProducedRecordContext != null
+            && leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
+          vtDiv.updateLatestConsumedRemoteVtPosition(leaderProducedRecordContext.getConsumedPosition());
+        }
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, persistedToDBFuture, this)
             .whenComplete((ignored, throwable) -> {
               if (throwable != null) {
@@ -3266,12 +3283,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
         }
         validateMessage(topicType, consumerDiv, record, pcs, false);
-        // Advance the remote LCVP in lockstep with the remote VT segments registered just above, so an F->L resume
-        // (PartitionConsumptionState#getCheckpointedVtLeaderPosition) starts the remote VT consistently with the
-        // snapshotted VT DIV producer state instead of an in-memory processed position that can outrun it.
-        if (pcs.consumeRemotely() && TopicType.isVersionTopic(topicType)) {
-          getConsumerDiv().updateLatestConsumedRemoteVtPosition(pcs.getPartition(), record.getPosition());
-        }
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!pcs.isEndOfPushReceived()) {

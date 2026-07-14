@@ -749,51 +749,75 @@ public class TestPartitionTracker {
   }
 
   /**
-   * The remote LCVP must be snapshotted into the OffsetRecord by updateOffsetRecord (independently of the local LCVP),
-   * and carried by cloneVtProducerStates, so an F->L remote-VT resume reads a DIV-consistent start position.
+   * End-to-end remote LCVP durability: it is snapshotted into the OffsetRecord by updateOffsetRecord (independently of
+   * the local LCVP), carried by cloneVtProducerStates, and rehydrated on restart by setPartitionState - so an F->L
+   * remote-VT resume reads a DIV-consistent start position instead of collapsing to EARLIEST across a bounce.
    */
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
-  public void testUpdateOffsetRecordPersistsRemoteLcvp() {
+  public void testRemoteLcvpPersistsClonesAndRehydrates() {
     PubSubPosition remoteLcvp = ApacheKafkaOffsetPosition.of(9677L);
     partitionTracker.updateLatestConsumedRemoteVtPosition(remoteLcvp);
     assertEquals(partitionTracker.getLatestConsumedRemoteVtPosition(), remoteLcvp);
 
+    // Snapshotted into the OffsetRecord even when no VT producer segments have been tracked yet.
     OffsetRecord offsetRecord = TestUtils
         .getOffsetRecord(ApacheKafkaOffsetPosition.of(0L), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     partitionTracker.updateOffsetRecord(vt, offsetRecord);
-    assertEquals(
-        offsetRecord.getLatestConsumedRemoteVtPosition(),
-        remoteLcvp,
-        "Remote LCVP must be written to OffsetRecord even when no VT producer segments have been tracked yet");
+    assertEquals(offsetRecord.getLatestConsumedRemoteVtPosition(), remoteLcvp);
 
-    // cloneVtProducerStates carries the remote LCVP to the destination tracker.
+    // Carried by cloneVtProducerStates.
     PartitionTracker destTracker = createDestTracker();
     partitionTracker
         .cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED, System.currentTimeMillis(), false);
     assertEquals(destTracker.getLatestConsumedRemoteVtPosition(), remoteLcvp, "remote LCVP should be copied on clone");
-  }
 
-  /**
-   * On restart, {@link PartitionTracker#setPartitionState(TopicType, OffsetRecord, long)} must rehydrate the remote
-   * LCVP from the durable OffsetRecord. Otherwise a follower's VT-DIV checkpoint would write the in-memory EARLIEST
-   * back over the persisted value, collapsing the F->L remote-VT resume position to EARLIEST across any bounce.
-   */
-  @Test(timeOut = 10 * Time.MS_PER_SECOND)
-  public void testSetPartitionStateRehydratesRemoteLcvp() {
-    PubSubPosition remoteLcvp = ApacheKafkaOffsetPosition.of(100L);
-    OffsetRecord offsetRecord = TestUtils
-        .getOffsetRecord(ApacheKafkaOffsetPosition.of(0L), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    offsetRecord.setLatestConsumedRemoteVtPosition(remoteLcvp);
-
-    // Fresh tracker starts at EARLIEST, mirroring a restart before any remote-VT record is consumed.
+    // Rehydrated on restart from the durable OffsetRecord (a fresh tracker starts at EARLIEST), so a follower's VT-DIV
+    // checkpoint writes back the real value instead of clobbering it to EARLIEST before an F->L resume.
     PartitionTracker restartedTracker = createDestTracker();
     assertEquals(restartedTracker.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
-
     restartedTracker.setPartitionState(vt, offsetRecord, MAX_AGE_IN_MS);
     assertEquals(
         restartedTracker.getLatestConsumedRemoteVtPosition(),
         remoteLcvp,
-        "Remote LCVP must be rehydrated from the OffsetRecord on restart so it is not clobbered back to EARLIEST");
+        "Remote LCVP must be rehydrated from the OffsetRecord on restart");
+  }
+
+  /**
+   * Backwards compatibility for the remote-LCVP (v24) field: a pre-v24 version resumes its remote source VT from
+   * {@link PubSubSymbolicPosition#EARLIEST} (the default when the field was never persisted) while already holding VT
+   * DIV producer state that is ahead. Re-consuming an already-validated non-SOS record from EARLIEST must be a benign
+   * {@link DuplicateDataException} (which the leader skips) - because the producer is already registered, trackSegment
+   * short-circuits to duplicate handling instead of a fatal {@link ImproperlyStartedSegmentException} - so an F->L
+   * resume on an upgraded-but-not-yet-recheckpointed replica does not error out.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testEarliestRemoteVtResumeToleratesPreExistingVtDivState() {
+    PubSubTopicPartition tp = getPubSubTopicPartition(vt);
+    Segment segment = new Segment(partitionId, 0, CheckSumType.NONE);
+
+    // Pre-existing VT DIV state: SOS + one data record register the producer at segment 0, seq 1.
+    partitionTracker.validateMessage(vt, buildVtRecord(tp, MessageType.CONTROL_MESSAGE, segment, 0), true, Lazy.FALSE);
+    partitionTracker.validateMessage(vt, buildVtRecord(tp, MessageType.PUT, segment, 1), true, Lazy.FALSE);
+
+    // An EARLIEST resume re-delivers the already-seen non-SOS record: benign duplicate, not a fatal DIV error.
+    assertThrows(
+        DuplicateDataException.class,
+        () -> partitionTracker.validateMessage(vt, buildVtRecord(tp, MessageType.PUT, segment, 1), true, Lazy.FALSE));
+  }
+
+  /** Builds a VT SOS (segment 0) or PUT {@link DefaultPubSubMessage} with an explicit producer sequence number. */
+  private DefaultPubSubMessage buildVtRecord(PubSubTopicPartition tp, MessageType type, Segment segment, int seq) {
+    boolean isControl = type == MessageType.CONTROL_MESSAGE;
+    Object payload = isControl ? getStartOfSegment() : getPutMessage(("v" + seq).getBytes());
+    KafkaMessageEnvelope envelope = getKafkaMessageEnvelope(type, guid, segment, Optional.of(seq), payload);
+    KafkaKey key = isControl ? getControlMessageKey(envelope) : getPutMessageKey(("k" + seq).getBytes());
+    return new ImmutablePubSubMessage(
+        key,
+        envelope,
+        tp,
+        ApacheKafkaOffsetPosition.of(seq),
+        System.currentTimeMillis(),
+        0);
   }
 
   /**

@@ -66,26 +66,24 @@ public class TestOffsetRecord {
   }
 
   @Test
-  public void testLatestConsumedRemoteVtPositionEmptyBufferDefaultsToEarliest() {
-    // Simulates a pre-v24 persisted record: Avro schema resolution supplies the field default (empty bytes) for the
-    // newly added field. The getter must resolve that to EARLIEST rather than deserializing an empty payload.
-    PartitionState partitionState = new PartitionState();
-    partitionState.upstreamLastConsumedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
-    OffsetRecord offsetRecord = new OffsetRecord(
-        partitionState,
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    assertEquals(offsetRecord.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
-  }
-
-  @Test
-  public void testLatestConsumedRemoteVtPositionRoundTrip() {
+  public void testLatestConsumedRemoteVtPosition() {
     OffsetRecord fresh = new OffsetRecord(
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     // Unset -> EARLIEST (empty-state default), never null.
     assertEquals(fresh.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
 
+    // Pre-v24 persisted record: Avro supplies the empty-bytes field default, which must also resolve to EARLIEST
+    // rather than attempting to deserialize an empty payload.
+    PartitionState preV24 = new PartitionState();
+    preV24.upstreamLastConsumedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    OffsetRecord preV24Record = new OffsetRecord(
+        preV24,
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(preV24Record.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
+
+    // A set value round-trips through serialization.
     PubSubPosition remoteLcvp = ApacheKafkaOffsetPosition.of(9677);
     fresh.setLatestConsumedRemoteVtPosition(remoteLcvp);
     OffsetRecord restored = new OffsetRecord(
