@@ -34,6 +34,10 @@ public class P2PBlobTransferConfig {
   private final int maxConcurrentBlobReceiveReplicas;
   // Number of Netty worker (event-loop) threads for the blob transfer client.
   private final int p2pTransferClientNettyWorkerThreadCount;
+  // Client-origin share (percentage) of the host blob-transfer budget; server-origin may use the full budget.
+  private final int clientCapacityPercent;
+  // Whether the server accepts client-origin (e.g. Stateful CDC) blob transfer requests.
+  private final boolean serverAcceptClientBlobRequestEnabled;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -50,7 +54,9 @@ public class P2PBlobTransferConfig {
       long blobTransferServiceWriteLimitBytesPerSec,
       int snapshotCleanupIntervalInMins,
       int maxConcurrentBlobReceiveReplicas,
-      int p2pTransferClientNettyWorkerThreadCount) {
+      int p2pTransferClientNettyWorkerThreadCount,
+      int clientCapacityPercent,
+      boolean serverAcceptClientBlobRequestEnabled) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -66,6 +72,8 @@ public class P2PBlobTransferConfig {
     this.snapshotCleanupIntervalInMins = snapshotCleanupIntervalInMins;
     this.maxConcurrentBlobReceiveReplicas = maxConcurrentBlobReceiveReplicas;
     this.p2pTransferClientNettyWorkerThreadCount = p2pTransferClientNettyWorkerThreadCount;
+    this.clientCapacityPercent = clientCapacityPercent;
+    this.serverAcceptClientBlobRequestEnabled = serverAcceptClientBlobRequestEnabled;
   }
 
   public int getP2pTransferServerPort() {
@@ -126,5 +134,13 @@ public class P2PBlobTransferConfig {
 
   public int getP2pTransferClientNettyWorkerThreadCount() {
     return p2pTransferClientNettyWorkerThreadCount;
+  }
+
+  public int getClientCapacityPercent() {
+    return clientCapacityPercent;
+  }
+
+  public boolean isServerAcceptClientBlobRequestEnabled() {
+    return serverAcceptClientBlobRequestEnabled;
   }
 }

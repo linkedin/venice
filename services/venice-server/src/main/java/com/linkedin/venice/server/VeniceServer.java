@@ -533,7 +533,9 @@ public class VeniceServer {
           serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
           serverConfig.getSnapshotCleanupIntervalInMins(),
           serverConfig.getMaxConcurrentBlobReceiveReplicas(),
-          serverConfig.getBlobTransferClientNettyWorkerThreadCount());
+          serverConfig.getBlobTransferClientNettyWorkerThreadCount(),
+          serverConfig.getBlobTransferClientCapacityPercent(),
+          serverConfig.isServerAcceptClientBlobRequestEnabled());
       VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
       VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
       if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {
@@ -568,7 +570,11 @@ public class VeniceServer {
           .setStorageEngineRepository(storageService.getStorageEngineRepository())
           .setAggBlobTransferStats(aggBlobTransferStats)
           .setBlobTransferSSLFactory(sslFactory)
-          .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
+          .setBlobTransferAclHandler(
+              BlobTransferUtils.createAclHandler(
+                  veniceConfigLoader,
+                  storeAccessController,
+                  serverConfig.isServerAcceptClientBlobRequestEnabled()))
           .setAdaptiveBlobTransferWriteTrafficThrottler(writeThrottler)
           .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
           .setPushStatusNotifierSupplier(

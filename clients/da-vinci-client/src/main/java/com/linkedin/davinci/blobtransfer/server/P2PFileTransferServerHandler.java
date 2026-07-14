@@ -1,8 +1,10 @@
 package com.linkedin.davinci.blobtransfer.server;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_REQUEST_ORIGIN;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferRequestOrigin;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
@@ -68,22 +70,36 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   // Global counter for all active transfer requests across all topics and partitions
   private final AtomicInteger globalConcurrentTransferRequests = new AtomicInteger(0);
   private final AggBlobTransferStats aggBlobTransferStats;
+  // Admission control bounding concurrent client-origin (Stateful CDC) transfers against their own reservation.
+  private final BlobTransferAdmissionController admissionController;
+  // Whether this server accepts client-origin (e.g. Stateful CDC) blob requests.
+  private final boolean serverAcceptClientBlobRequestEnabled;
   private static final AttributeKey<BlobTransferPayload> BLOB_TRANSFER_REQUEST =
       AttributeKey.valueOf("blobTransferRequest");
   private static final AttributeKey<AtomicBoolean> SUCCESS_COUNTED =
       AttributeKey.valueOf("successCountedAsActiveCurrentUser");
+  // Set when a client-origin request is admitted, so channelInactive releases exactly that slot.
+  private static final AttributeKey<Boolean> CLIENT_ADMITTED = AttributeKey.valueOf("blobTransferClientAdmitted");
 
   public P2PFileTransferServerHandler(
       String baseDir,
       int blobTransferMaxTimeoutInMin,
       BlobSnapshotManager blobSnapshotManager,
       AggBlobTransferStats aggBlobTransferStats,
-      int maxAllowedConcurrentSnapshotUsers) {
+      int maxAllowedConcurrentSnapshotUsers,
+      BlobTransferAdmissionController admissionController,
+      boolean serverAcceptClientBlobRequestEnabled) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
     this.aggBlobTransferStats = aggBlobTransferStats;
     this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
+    if (serverAcceptClientBlobRequestEnabled && admissionController == null) {
+      throw new IllegalArgumentException(
+          "admissionController is required when client-origin blob requests are enabled");
+    }
+    this.admissionController = admissionController;
+    this.serverAcceptClientBlobRequestEnabled = serverAcceptClientBlobRequestEnabled;
   }
 
   /**
@@ -143,39 +159,75 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         return;
       }
 
-      // Check the concurrent request limit
-      if (globalConcurrentTransferRequests.get() >= maxAllowedConcurrentSnapshotUsers) {
-        String errMessage =
-            "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
-                + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
-        LOGGER.error(errMessage);
-        setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
-        return;
-      }
-
-      try {
-        transferPartitionMetadata =
-            blobSnapshotManager.getTransferMetadata(blobTransferRequest, successCountedAsActiveCurrentUser);
-        ctx.channel().attr(SUCCESS_COUNTED).set(successCountedAsActiveCurrentUser);
-        ctx.channel().attr(BLOB_TRANSFER_REQUEST).set(blobTransferRequest);
-        if (successCountedAsActiveCurrentUser.get()) {
-          if (globalConcurrentTransferRequests.incrementAndGet() >= maxAllowedConcurrentSnapshotUsers) {
-            String errMessage =
-                "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
-                    + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
-            LOGGER.error(errMessage);
-            setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
-            return;
-          }
+      // Client-origin requests (Stateful CDC server-fallback) are admitted against their own reservation; all other
+      // requests use the global concurrent-user counter.
+      BlobTransferRequestOrigin origin = ctx.channel().attr(BLOB_TRANSFER_REQUEST_ORIGIN).get();
+      if (serverAcceptClientBlobRequestEnabled && origin == BlobTransferRequestOrigin.CLIENT) {
+        // Reserve a client-admission slot before any snapshot work, on a budget separate from the global counter so
+        // client traffic cannot delay server-to-server transfers. Released in channelInactive via CLIENT_ADMITTED.
+        if (!admissionController.tryAdmitClient()) {
+          String errMessage = "Client-origin blob transfer rejected (client reservation full) for "
+              + blobTransferRequest.getFullResourceName();
+          LOGGER.warn(errMessage);
+          setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+          return;
         }
-      } catch (Exception e) {
-        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
-        return;
+        ctx.channel().attr(CLIENT_ADMITTED).set(Boolean.TRUE);
+        LOGGER.info(
+            "Admitted client-origin (server-fallback) blob transfer request for {}; client in-flight {}/{}.",
+            blobTransferRequest.getFullResourceName(),
+            admissionController.getClientInFlight(),
+            admissionController.getMaxClientTransfers());
+        try {
+          // getTransferMetadata increments the snapshot-user count and sets the success flag, then can still throw
+          // (stale snapshot in use); stamp the cleanup attributes first so channelInactive releases that count.
+          ctx.channel().attr(SUCCESS_COUNTED).set(successCountedAsActiveCurrentUser);
+          ctx.channel().attr(BLOB_TRANSFER_REQUEST).set(blobTransferRequest);
+          transferPartitionMetadata =
+              blobSnapshotManager.getTransferMetadata(blobTransferRequest, successCountedAsActiveCurrentUser);
+        } catch (Exception e) {
+          // Close the channel (last arg) so channelInactive runs the existing cleanup and releases any
+          // snapshot-user count and admission slot getTransferMetadata may have taken before throwing.
+          String message = e.getMessage() == null ? "Failed to fetch transfer metadata" : e.getMessage();
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, message.getBytes(), false, ctx, true);
+          return;
+        }
+      } else {
+        // Check the concurrent request limit
+        if (globalConcurrentTransferRequests.get() >= maxAllowedConcurrentSnapshotUsers) {
+          String errMessage =
+              "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
+                  + ", won't be able to process the request for " + blobTransferRequest.getFullResourceName();
+          LOGGER.error(errMessage);
+          setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+          return;
+        }
+
+        try {
+          transferPartitionMetadata =
+              blobSnapshotManager.getTransferMetadata(blobTransferRequest, successCountedAsActiveCurrentUser);
+          ctx.channel().attr(SUCCESS_COUNTED).set(successCountedAsActiveCurrentUser);
+          ctx.channel().attr(BLOB_TRANSFER_REQUEST).set(blobTransferRequest);
+          if (successCountedAsActiveCurrentUser.get()) {
+            if (globalConcurrentTransferRequests.incrementAndGet() >= maxAllowedConcurrentSnapshotUsers) {
+              String errMessage =
+                  "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
+                      + ", won't be able to process the request for " + blobTransferRequest.getFullResourceName();
+              LOGGER.error(errMessage);
+              setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+              return;
+            }
+          }
+        } catch (Exception e) {
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
+          return;
+        }
       }
 
       if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
         byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
-        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+        LOGGER.debug("Snapshot missing for {}; returning NOT_FOUND.", blobTransferRequest.getFullResourceName());
+        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx, isAdmittedClientOrigin(ctx));
         return;
       }
     } catch (IllegalArgumentException e) {
@@ -192,7 +244,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           HttpResponseStatus.INTERNAL_SERVER_ERROR,
           ("Failed to access files at " + snapshotDir).getBytes(),
           false,
-          ctx);
+          ctx,
+          isAdmittedClientOrigin(ctx));
       return;
     }
 
@@ -211,7 +264,12 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         String errMessage =
             String.format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
         LOGGER.error(errMessage);
-        setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
+        setupResponseAndFlush(
+            HttpResponseStatus.REQUEST_TIMEOUT,
+            errMessage.getBytes(),
+            false,
+            ctx,
+            isAdmittedClientOrigin(ctx));
         return;
       }
       // send file
@@ -246,16 +304,26 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   public void channelInactive(ChannelHandlerContext ctx) {
     AtomicBoolean successCountedAsActiveCurrentUser = ctx.channel().attr(SUCCESS_COUNTED).get();
     BlobTransferPayload blobTransferRequest = ctx.channel().attr(BLOB_TRANSFER_REQUEST).get();
+    boolean clientOrigin = Boolean.TRUE.equals(ctx.channel().attr(CLIENT_ADMITTED).get());
     if (successCountedAsActiveCurrentUser != null && successCountedAsActiveCurrentUser.get()
         && blobTransferRequest != null) {
       try {
         blobSnapshotManager.decreaseConcurrentUserCount(blobTransferRequest);
-        globalConcurrentTransferRequests.decrementAndGet();
+        if (!clientOrigin) {
+          globalConcurrentTransferRequests.decrementAndGet();
+        }
       } catch (Exception e) {
         LOGGER.error("Failed to decrease the snapshot concurrent user count for request {}", blobTransferRequest, e);
       }
     }
+    if (clientOrigin) {
+      admissionController.releaseClient();
+    }
     ctx.fireChannelInactive();
+  }
+
+  private boolean isAdmittedClientOrigin(ChannelHandlerContext ctx) {
+    return Boolean.TRUE.equals(ctx.channel().attr(CLIENT_ADMITTED).get());
   }
 
   /**

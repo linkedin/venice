@@ -2313,6 +2313,25 @@ public class ConfigKeys {
   // Enable acl for the blob transfer between Da Vinci peers, or server peers
   public static final String BLOB_TRANSFER_ACL_ENABLED = "blob.transfer.acl.enabled";
 
+  /**
+   * This is the server host-level flag -- when true and the blob transfer service is enabled, the Venice
+   * server accepts blob transfer requests from (Da Vinci /
+   * Stateful CDC) clients. Defaults to false.
+   */
+  public static final String SERVER_BLOB_TRANSFER_ACCEPT_CLIENT_REQUEST_ENABLED =
+      "server.blob.transfer.accept.client.request.enabled";
+
+  // Client-side flag: when true, after peer-to-peer (client) blob discovery finds no usable peer, the
+  // Stateful CDC / Da Vinci client falls back to requesting the blob from a Venice server. Defaults to false.
+  public static final String DAVINCI_BLOB_TRANSFER_SERVER_FALLBACK_ENABLED =
+      "davinci.blob.transfer.server.fallback.enabled";
+
+  // Server-side hard cap, as a percentage of the host blob-transfer budget
+  // (BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER), that client-origin transfers may occupy. Server-origin
+  // (server-to-server) transfers are not capped and may use the full budget. Defaults to 25.
+  public static final String SERVER_BLOB_TRANSFER_CLIENT_CAPACITY_PERCENT =
+      "server.blob.transfer.client.capacity.percent";
+
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.

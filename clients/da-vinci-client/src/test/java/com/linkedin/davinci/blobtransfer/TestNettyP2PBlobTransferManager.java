@@ -55,6 +55,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -64,6 +65,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -127,7 +129,7 @@ public class TestNettyP2PBlobTransferManager {
     VeniceConfigLoader configLoader = Mockito.mock(VeniceConfigLoader.class);
 
     Mockito.when(configLoader.getCombinedProperties()).thenReturn(veniceProperties);
-    aclHandler = createAclHandler(configLoader);
+    aclHandler = createAclHandler(configLoader, Optional.empty(), false);
 
     blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     notifier = Mockito.mock(VeniceNotifier.class);
@@ -143,7 +145,9 @@ public class TestNettyP2PBlobTransferManager {
         blobTransferStats,
         sslFactory,
         aclHandler,
-        20);
+        20,
+        25,
+        true);
     client = Mockito.spy(
         new NettyFileTransferClient(
             port,
@@ -375,6 +379,37 @@ public class TestNettyP2PBlobTransferManager {
     verifyFileTransferSuccess(expectOffsetRecord);
   }
 
+  @Test
+  public void testFallsBackFromDaVinciPeerToServerAfterTransferFailure() throws Exception {
+    List<String> hostlist = Arrays.asList("dvc-host", "server-host");
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(hostlist);
+    doReturn(response).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(true).when(finder).shouldPreservePeerOrder();
+    doReturn(new HashSet<>(hostlist)).when(client)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    CompletableFuture<InputStream> daVinciFailure = new CompletableFuture<>();
+    daVinciFailure.completeExceptionally(new VeniceBlobTransferFileNotFoundException("DVC snapshot unavailable"));
+    InputStream serverResponse = mock(InputStream.class);
+    doReturn(daVinciFailure).when(client)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    doReturn(CompletableFuture.completedFuture(serverResponse)).when(client)
+        .get("server-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    InputStream result =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture()
+            .get(10, TimeUnit.SECONDS);
+
+    Assert.assertSame(result, serverResponse);
+    InOrder transferOrder = Mockito.inOrder(client);
+    transferOrder.verify(client)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    transferOrder.verify(client)
+        .get("server-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+  }
+
   /**
    * The client is initialized with host freshness 30 sec, so when purgeStaleConnectivityRecords is called,
    * All hosts connectivity records older than 30s should be purged.
@@ -540,7 +575,9 @@ public class TestNettyP2PBlobTransferManager {
         blobTransferStats,
         sslFactory,
         aclHandler,
-        20);
+        20,
+        25,
+        true);
 
     NettyP2PBlobTransferManager newManager = new NettyP2PBlobTransferManager(
         newServer,

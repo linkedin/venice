@@ -10,6 +10,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
+import com.linkedin.venice.blobtransfer.ServerAndDaVinciBlobFinder;
 import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -44,6 +45,7 @@ public class BlobTransferManagerBuilder {
   private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
   private Supplier<VeniceNotifier> veniceNotifier;
   private LogContext logContext;
+  private boolean serverFallbackEnabled = false;
 
   public BlobTransferManagerBuilder() {
   }
@@ -122,6 +124,15 @@ public class BlobTransferManagerBuilder {
     return aggBlobTransferStats;
   }
 
+  /**
+   * Enable the client-side fallback to include Venice servers after Da Vinci peers in the discovered host list. Defaults
+   * to false; typically set only on the Da Vinci / Stateful CDC client path.
+   */
+  public BlobTransferManagerBuilder setServerFallbackEnabled(boolean serverFallbackEnabled) {
+    this.serverFallbackEnabled = serverFallbackEnabled;
+    return this;
+  }
+
   public BlobTransferManager<Void> build() {
     try {
       validateFields();
@@ -130,7 +141,11 @@ public class BlobTransferManagerBuilder {
       if (customizedViewFuture != null && clientConfig == null) {
         blobFinder = new ServerBlobFinder(customizedViewFuture);
       } else if (customizedViewFuture == null && clientConfig != null) {
-        blobFinder = new DaVinciBlobFinder(clientConfig);
+        if (serverFallbackEnabled) {
+          blobFinder = new ServerAndDaVinciBlobFinder(clientConfig);
+        } else {
+          blobFinder = new DaVinciBlobFinder(clientConfig);
+        }
       } else {
         throw new IllegalArgumentException(
             "The client config and customized view future must one of them be null during the initialization for blob transfer manager.");
@@ -164,7 +179,9 @@ public class BlobTransferManagerBuilder {
               getAggBlobTransferStats(),
               sslFactory,
               aclHandler,
-              blobTransferConfig.getMaxConcurrentSnapshotUser()),
+              blobTransferConfig.getMaxConcurrentSnapshotUser(),
+              blobTransferConfig.getClientCapacityPercent(),
+              blobTransferConfig.isServerAcceptClientBlobRequestEnabled()),
           new NettyFileTransferClient(
               blobTransferConfig.getP2pTransferClientPort(),
               blobTransferConfig.getBaseDir(),
