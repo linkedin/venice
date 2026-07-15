@@ -2401,7 +2401,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     PartitionTracker vtDiv =
         getConsumerDiv().cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
-    sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture);
+    sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture, pcs);
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
   }
 
@@ -2416,7 +2416,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderProducerCallback callback,
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDiv,
-      CompletableFuture<Void> persistedToDBFuture) {
+      CompletableFuture<Void> persistedToDBFuture,
+      PartitionConsumptionState pcs) {
     // Relay future the leader graceful-shutdown path awaits. It completes when the drainer-side VT DIV sync node has
     // run. The leader-produce callback only fires on produce success, so also fail the relay if the produce/persist
     // fails — otherwise the shutdown await would hang until its timeout instead of completing promptly.
@@ -2429,6 +2430,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     callback.setOnCompletionCallback(produceResult -> {
       try {
         vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition());
+        // Stamp the consumed upstream position onto the snapshot as the remote LCVP, mirroring the local LCVP set from
+        // the produced position above. It uses the same offset the OffsetRecord checkpoint uses
+        // (LeaderProducedRecordContext#getConsumedPosition, see updateOffsetsAsRemoteConsumeLeader): advanced for any
+        // leader whose upstream is a non-RT topic, and skipped when there is no corresponding upstream message (e.g.
+        // leader-generated chunks or TopicSwitch) or on the RT-source path (whose position is checkpointed as the
+        // LCRP).
+        // The domain is gated on the leader's upstream topic (leaderTopic), NOT the source consumer record's topic:
+        // the graceful-shutdown flush (sendGlobalRtDivMessage) synthesizes a local-VT source record while
+        // getConsumedPosition() carries the RT-domain LCRP, so gating on the source record would cross-write an RT
+        // position into the remote-VT LCVP field. leaderTopic is the same predicate updateOffsetsAsRemoteConsumeLeader
+        // uses to route getConsumedPosition() to the RT vs remote-VT domain, so it stays correct on the flush path
+        // (leaderTopic == RT there) and preserves the steady-state VT-source behavior (leaderTopic == VT).
+        // The sync runs only after persistedToDBFuture completes, so the persisted remote LCVP never leads the
+        // persisted data; an F->L resume (PartitionConsumptionState#getCheckpointedVtLeaderPosition) then
+        // re-subscribes the remote VT at a position that is durable by construction.
+        LeaderProducedRecordContext leaderProducedRecordContext = callback.getLeaderProducedRecordContext();
+        PubSubTopic upstreamTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+        if (upstreamTopic == null) {
+          upstreamTopic = versionTopic;
+        }
+        if (!upstreamTopic.isRealTime() && leaderProducedRecordContext != null
+            && leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
+          vtDiv.updateLatestConsumedRemoteVtPosition(leaderProducedRecordContext.getConsumedPosition());
+        }
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, persistedToDBFuture, this)
             .whenComplete((ignored, throwable) -> {
               if (throwable != null) {
@@ -4524,7 +4549,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         divCallback,
         topicPartition,
         vtDiv,
-        divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture());
+        divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture(),
+        pcs);
 
     // Read the old manifest (if any) so VeniceWriter can delete orphaned old chunks in Kafka.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();

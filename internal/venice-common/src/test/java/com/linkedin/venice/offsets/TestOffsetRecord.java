@@ -6,6 +6,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -62,6 +63,34 @@ public class TestOffsetRecord {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     Assert.assertEquals(offsetRecord2, offsetRecord1);
+  }
+
+  @Test
+  public void testLatestConsumedRemoteVtPosition() {
+    OffsetRecord fresh = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    // Unset -> EARLIEST (empty-state default), never null.
+    assertEquals(fresh.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
+
+    // Pre-v24 persisted record: Avro supplies the empty-bytes field default, which must also resolve to EARLIEST
+    // rather than attempting to deserialize an empty payload.
+    PartitionState preV24 = new PartitionState();
+    preV24.upstreamLastConsumedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    OffsetRecord preV24Record = new OffsetRecord(
+        preV24,
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(preV24Record.getLatestConsumedRemoteVtPosition(), PubSubSymbolicPosition.EARLIEST);
+
+    // A set value round-trips through serialization.
+    PubSubPosition remoteLcvp = ApacheKafkaOffsetPosition.of(9677);
+    fresh.setLatestConsumedRemoteVtPosition(remoteLcvp);
+    OffsetRecord restored = new OffsetRecord(
+        fresh.toBytes(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(restored.getLatestConsumedRemoteVtPosition(), remoteLcvp);
   }
 
   @Test

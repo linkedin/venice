@@ -111,6 +111,8 @@ public class OffsetRecord {
     emptyPartitionState.lastProcessedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.upstreamLastConsumedVersionTopicPubSubPosition =
+        PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.activeKeyCount = ACTIVE_KEY_COUNT_NOT_TRACKED;
     return emptyPartitionState;
   }
@@ -383,6 +385,22 @@ public class OffsetRecord {
 
   public PubSubPosition getLatestConsumedVtPosition() {
     return pubSubPositionDeserializer.toPosition(this.partitionState.getLastConsumedVersionTopicPubSubPosition());
+  }
+
+  // Updated from {@link PartitionTracker#updateOffsetRecord}; the remote/upstream counterpart of the local LCVP above.
+  public void setLatestConsumedRemoteVtPosition(PubSubPosition latestConsumedRemoteVtPosition) {
+    this.partitionState
+        .setUpstreamLastConsumedVersionTopicPubSubPosition(latestConsumedRemoteVtPosition.toWireFormatBuffer());
+  }
+
+  public PubSubPosition getLatestConsumedRemoteVtPosition() {
+    ByteBuffer wireFormat = this.partitionState.getUpstreamLastConsumedVersionTopicPubSubPosition();
+    // Records persisted before PartitionState v24 lack this field, so Avro schema resolution supplies the field
+    // default (empty bytes). Treat null/empty as EARLIEST rather than deserializing an empty payload, which throws.
+    if (wireFormat == null || !wireFormat.hasRemaining()) {
+      return PubSubSymbolicPosition.EARLIEST;
+    }
+    return pubSubPositionDeserializer.toPosition(wireFormat);
   }
 
   public long getActiveKeyCount() {

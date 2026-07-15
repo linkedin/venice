@@ -27,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
@@ -725,6 +726,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
+    // The graceful-shutdown flush produces the GlobalRtDivState to the LOCAL VT, so the callback's synthetic source
+    // record sits on a non-RT (VT) topic-partition, while the leader's upstream (leaderTopic) is the RT topic whose
+    // LCRP is carried as the consumed position. The remote-LCVP stamp in sendVtDivSnapshotOnCompletion keys off
+    // leaderTopic (RT here) and must skip the stamp, since that RT-domain position is checkpointed separately as the
+    // LCRP; keying off the source record's topic would cross-write the RT LCRP into the remote-VT LCVP field.
+    PubSubTopic mockLocalVtTopic = mock(PubSubTopic.class);
+    doReturn(false).when(mockLocalVtTopic).isRealTime();
+    doReturn(mockLocalVtTopic).when(mockTopicPartition).getPubSubTopic();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
     Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = Lazy.of(() -> mockWriter);
     doReturn(lazyMockWriter).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
@@ -735,6 +744,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes(StandardCharsets.UTF_8);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic mockLeaderRtTopic = mock(PubSubTopic.class);
+    doReturn(true).when(mockLeaderRtTopic).isRealTime();
+    doReturn(mockLeaderRtTopic).when(mockOffsetRecord).getLeaderTopic(any());
     doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
 
     leaderFollowerStoreIngestionTask
@@ -779,7 +791,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
     // and that produceResult should override the LCVP of the VT DIV sent to the drainer
-    fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L));
+    PartitionTracker captured = fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L));
+    // The flush send must not advance the remote VT LCVP: its consumed position (p3) is the RT/LCRP domain,
+    // checkpointed separately, and leaderTopic is RT. It stays at its default rather than picking up the produced
+    // (11L) or the RT LCRP (p3) - a regression guard against cross-writing an RT position into the remote-VT LCVP.
+    assertNotEquals(captured.getLatestConsumedRemoteVtPosition(), InMemoryPubSubPosition.of(11L));
+    assertNotEquals(captured.getLatestConsumedRemoteVtPosition(), p3);
   }
 
   /**
@@ -1149,6 +1166,28 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
+   * Verifies that {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded} stamps the consumed
+   * upstream position carried by the {@link LeaderProducedRecordContext} onto the VT DIV snapshot as the remote LCVP
+   * ({@link PartitionTracker#getLatestConsumedRemoteVtPosition()}) whenever the leader's upstream is a non-RT topic -
+   * the same offset the OffsetRecord checkpoint uses ({@code updateOffsetsAsRemoteConsumeLeader}), independent of
+   * {@code consumeRemotely()}. That is the position an F-&gt;L resume subscribes the remote VT from, and it is synced to
+   * the OffsetRecord only after the record persists - mirroring the local LCVP, rather than being advanced eagerly
+   * per-record during batch validation.
+   */
+  @Test
+  public void testAddVtDivToProducerCallbackIfNeededStampsRemoteLcvp() throws InterruptedException {
+    setUp();
+    LeaderProducerCallback callback = addVtDivToProducerCallbackIfNeededWithMocks(
+        mock(PubSubTopicPartition.class),
+        CompletableFuture.completedFuture(null));
+
+    PartitionTracker captured = fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(42L));
+    // Remote LCVP is the consumed upstream position carried by the LeaderProducedRecordContext (99L), distinct from the
+    // produced local-VT position (42L) carried by the local LCVP asserted above.
+    assertEquals(captured.getLatestConsumedRemoteVtPosition(), InMemoryPubSubPosition.of(99L));
+  }
+
+  /**
    * Verifies that when {@link StoreBufferService#execSyncOffsetFromSnapshotAsync} throws
    * {@link InterruptedException} from inside the produce-completion callback, the exception is
    * caught (so it doesn't propagate up to the producer) and the current thread's interrupt flag
@@ -1219,6 +1258,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
     doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
+    // Stub the consumed upstream position and its presence so the non-RT-source path stamps it onto the snapshot as the
+    // remote LCVP - the LeaderProducedRecordContext offset the OffsetRecord checkpoint uses, not the raw source record.
+    doReturn(true).when(mockContext).hasCorrespondingUpstreamMessage();
+    doReturn(InMemoryPubSubPosition.of(99L)).when(mockContext).getConsumedPosition();
+
+    // The remote-LCVP stamp gate keys off the leader's upstream topic (leaderTopic), not the source consumer record.
+    // A non-RT (VT) leaderTopic models the steady-state remote-VT-source leader, so the stamp runs.
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic mockLeaderVtTopic = mock(PubSubTopic.class);
+    doReturn(false).when(mockLeaderVtTopic).isRealTime();
+    doReturn(mockLeaderVtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
 
     // Build a consumer record on a non-RT topic so the install gate accepts it. Non-control-message
     // record so isNonSegmentControlMessage short-circuits and the install decision flows through
