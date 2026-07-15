@@ -1007,12 +1007,13 @@ public class TestAvroSupersetSchemaUtils {
     Assert
         .assertFalse(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputWrongType.toString()));
 
-    // A non-nullable complex union (not a [null, X] pair) must not be treated as a nullable wrap.
+    // A non-nullable complex union (not a [null, X] pair) is blocked with a clear error.
     Schema inputComplexUnion = AvroCompatibilityHelper.parse(
         "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
             + "{\"name\":\"f1\",\"type\":[\"null\",\"string\",\"int\"],\"default\":null}]}");
-    Assert.assertFalse(
-        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputComplexUnion.toString()));
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputComplexUnion.toString()));
 
     // A missing writer field in the input still fails (writer not a subset of input).
     Schema inputMissingField = AvroCompatibilityHelper
@@ -1039,15 +1040,95 @@ public class TestAvroSupersetSchemaUtils {
   @Test
   public void testValidateSubsetSchemaForProjectionBlocksNestedMultiUnion() {
     // The complex-union guardrail also applies recursively: a 3-branch union ([null, string, int]) inside a
-    // nested record is not a [null, X] wrap and must stay blocked, mirroring the top-level guardrail.
+    // nested record is not a [null, X] wrap and is blocked with a clear error, mirroring the top-level guardrail.
     Schema writer = AvroCompatibilityHelper.parse(
         "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
             + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}}]}");
     Schema inputNestedMultiUnion = AvroCompatibilityHelper.parse(
         "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"nested\",\"type\":"
             + "{\"type\":\"record\",\"name\":\"N\",\"fields\":[{\"name\":\"city\",\"type\":[\"null\",\"string\",\"int\"],\"default\":null}]}}]}");
-    Assert.assertFalse(
-        AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputNestedMultiUnion.toString()));
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, inputNestedMultiUnion.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionRelaxesNullableUnionWriterEvolvedBranch() {
+    // A nullable-union writer [null, Addr{city}] projects from a nullable-union input whose non-null branch evolved
+    // into a superset ([null, Addr{city, zip}]): the non-null branch is a projection-subset, so this is allowed.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}],"
+            + "\"default\":null}]}");
+    Schema input = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"},"
+            + "{\"name\":\"zip\",\"type\":[\"null\",\"int\"],\"default\":null}]}],\"default\":null}]}");
+    Assert.assertTrue(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, input.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksNullableUnionWriterNonSubsetBranch() {
+    // A nullable-union writer still enforces the subset rule on its non-null branch: writer [null, Addr{city}] vs
+    // input [null, Addr{zip}] fails because the writer's `city` field is absent from the input's non-null branch.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}],"
+            + "\"default\":null}]}");
+    Schema input = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"zip\",\"type\":\"int\"}]}],"
+            + "\"default\":null}]}");
+    Assert.assertFalse(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, input.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionBlocksComplexUnionOnWriterSide() {
+    // The complex-union guardrail applies to the writer schema too: a writer field typed [null, string, int] is
+    // blocked with a clear error, mirroring the input-side guardrail.
+    Schema writerComplexUnion = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"f1\",\"type\":[\"null\",\"string\",\"int\"],\"default\":null}]}");
+    Schema input = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"f1\",\"type\":[\"null\",\"string\",\"int\"],\"default\":null}]}");
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writerComplexUnion, input.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionAllowsEmptyStructWriterAgainstDummyFilledInput() {
+    // An empty-struct writer (fields: []) is a projection-subset of the OH input that fills the struct with a synthetic
+    // dummy field: the writer declares no fields, so the input's dummy filler is a tolerated extra field.
+    Schema writer = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"recordWithEmptyStruct\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructRecord\","
+            + "\"namespace\":\"com.linkedin.SchemaWithEmptyStructs.emptyStruct\",\"doc\":\"record with empty struct\","
+            + "\"fields\":[{\"name\":\"emptyStructUnionField\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructField\",\"fields\":[]}],\"default\":null}]}],"
+            + "\"default\":null}]}");
+    Schema input = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"recordWithEmptyStruct\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructRecord\","
+            + "\"namespace\":\"com.linkedin.SchemaWithEmptyStructs.emptyStruct\",\"doc\":\"record with empty struct\","
+            + "\"fields\":[{\"name\":\"emptyStructUnionField\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructField\",\"fields\":[{\"name\":"
+            + "\"__dummy_field_to_fill_empty_struct__\",\"type\":\"int\",\"doc\":"
+            + "\"Dummy field added to handle empty struct records.\",\"default\":-1}]}],\"default\":null}]}],"
+            + "\"default\":null}]}");
+    Assert.assertTrue(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, input.toString()));
+  }
+
+  @Test
+  public void testValidateSubsetSchemaForProjectionAllowsSingleElementUnionWriter() {
+    // Input field: nullable union [null, long]. Writer field: single-element union [long], which is semantically
+    // equivalent to a bare long, so the nullable input projects onto it.
+    Schema writer = AvroCompatibilityHelper
+        .parse("{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"f1\",\"type\":[\"long\"]}]}");
+    Schema input = AvroCompatibilityHelper.parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"f1\",\"type\":[\"null\",\"long\"],\"default\":null}]}");
+    Assert.assertTrue(AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection(writer, input.toString()));
   }
 
   @Test

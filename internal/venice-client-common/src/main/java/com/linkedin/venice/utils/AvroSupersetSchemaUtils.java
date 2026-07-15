@@ -363,6 +363,18 @@ public class AvroSupersetSchemaUtils {
   }
 
   private static boolean isProjectionSubset(Schema writerSchema, Schema inputSchema) {
+    // Normalize single-element unions [X] to X (semantically equivalent) so they project like the bare type.
+    writerSchema = unwrapSingleElementUnion(writerSchema);
+    inputSchema = unwrapSingleElementUnion(inputSchema);
+    rejectComplexUnion(writerSchema);
+    rejectComplexUnion(inputSchema);
+    // A nullable-union writer [null, X] requires a nullable-union input [null, X']; unwrap both to the non-null branch.
+    if (AvroSchemaUtils.isNullableUnionPair(writerSchema)
+        && writerSchema.getTypes().get(0).getType() == Schema.Type.NULL) {
+      return AvroSchemaUtils.isNullableUnionPair(inputSchema)
+          && inputSchema.getTypes().get(0).getType() == Schema.Type.NULL
+          && isProjectionSubset(writerSchema.getTypes().get(1), inputSchema.getTypes().get(1));
+    }
     // Unwrap nullable wrapping on the input side only: an input null-first [null, X] against a non-union writer matches
     // writer vs X. Null-last ([X, null]) is not OH-produced, so it is left to fail the type check below.
     if (writerSchema.getType() != Schema.Type.UNION && AvroSchemaUtils.isNullableUnionPair(inputSchema)
@@ -391,9 +403,29 @@ public class AvroSupersetSchemaUtils {
       case MAP:
         return isProjectionSubset(writerSchema.getValueType(), inputSchema.getValueType());
       default:
-        // Primitives, enums, fixed, and unions (nullable on both sides or otherwise) must match exactly. Reverse
-        // nullability drift (writer union vs non-union input) is already rejected above by the type check.
+        // Primitives, enums, and fixed must match exactly.
         return writerSchema.equals(inputSchema);
+    }
+  }
+
+  /**
+   * Complex unions (more than one non-null branch, e.g. {@code [X, Y]} or {@code [null, X, Y]}) are not supported for
+   * value schema projection. Only nullable wrapping ({@code [null, X]}) is allowed. Throws if {@param schema} is a
+   * complex union.
+   */
+  private static void rejectComplexUnion(Schema schema) {
+    if (schema.getType() != Schema.Type.UNION) {
+      return;
+    }
+    int nonNullBranchCount = 0;
+    for (Schema branch: schema.getTypes()) {
+      if (branch.getType() != Schema.Type.NULL) {
+        nonNullBranchCount++;
+      }
+    }
+    if (nonNullBranchCount > 1) {
+      throw new VeniceException(
+          "Complex unions (more than one non-null branch) are not supported for value schema projection: " + schema);
     }
   }
 }
