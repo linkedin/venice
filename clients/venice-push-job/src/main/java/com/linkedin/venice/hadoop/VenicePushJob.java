@@ -1924,11 +1924,24 @@ public class VenicePushJob implements AutoCloseable {
     final boolean writersMayHaveTruncated =
         (dataWriterComputeJob == null || dataWriterComputeJob.truncatesDataExceedingQuota())
             && new InputStorageQuotaTracker(quotaUsedByWriters).exceedQuota(totalInputDataSizeInBytes);
-    if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes) || writersMayHaveTruncated) {
+    final boolean refreshedQuotaExceeded = inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes);
+    if (refreshedQuotaExceeded || writersMayHaveTruncated) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
-      // Report against the quota the writers actually used as the truncation boundary when they may
-      // have truncated, otherwise the (refreshed) store quota.
-      Long storeQuota = writersMayHaveTruncated ? quotaUsedByWriters : inputStorageQuotaTracker.getStoreStorageQuota();
+      if (writersMayHaveTruncated && !refreshedQuotaExceeded) {
+        // The current quota now covers the input, but the writers already truncated the dataset against
+        // the quota that was in effect when the job started, so this version is incomplete. The operator
+        // does not need more quota (they may have already raised it) — they need to re-run the push.
+        return String.format(
+            "Storage quota exceeded while writing the data. The store quota when the push started was %s"
+                + " and the input data size is %s, so the data writer truncated the dataset. The quota has"
+                + " since been increased to %s; please re-run the push to write the complete dataset.",
+            generateHumanReadableByteCountString(quotaUsedByWriters),
+            generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+            generateHumanReadableByteCountString(inputStorageQuotaTracker.getStoreStorageQuota()));
+      }
+      // Report the shortfall against the current (refreshed) store quota so the operator requests the
+      // right amount.
+      Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
       return String.format(
           "Storage quota exceeded. Store quota %s, Input data size %s."
               + " Please request at least %s additional quota.",

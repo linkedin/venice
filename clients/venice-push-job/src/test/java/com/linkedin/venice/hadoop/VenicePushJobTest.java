@@ -1783,8 +1783,12 @@ public class VenicePushJobTest {
       final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
       assertNotNull(errorMessage);
       assertTrue(errorMessage.contains("Storage quota exceeded"), errorMessage);
-      // Reported against the quota the writers used as the truncation boundary (100), not the refreshed one.
+      // The dataset was truncated against the job-start quota, so the operator should re-run the push,
+      // not "request more" quota (the quota was already raised to cover the input).
+      assertTrue(errorMessage.contains("re-run the push"), errorMessage);
+      assertFalse(errorMessage.contains("additional quota"), errorMessage);
       assertTrue(errorMessage.contains(generateHumanReadableByteCountString(cachedQuota)), errorMessage);
+      assertTrue(errorMessage.contains(generateHumanReadableByteCountString(refreshedQuota)), errorMessage);
       assertEquals(
           vpj.getPushJobDetails().pushJobLatestCheckpoint.intValue(),
           PushJobCheckpoints.QUOTA_EXCEEDED.getValue());
