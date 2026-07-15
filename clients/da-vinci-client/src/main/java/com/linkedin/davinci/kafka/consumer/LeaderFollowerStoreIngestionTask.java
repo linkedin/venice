@@ -2438,10 +2438,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // uses to route getConsumedPosition() to the RT vs remote-VT domain, so it stays correct on the flush path
         // (leaderTopic == RT there) and preserves the steady-state VT-source behavior (leaderTopic == VT).
         // The sync runs only after persistedToDBFuture completes, so the persisted remote LCVP never leads the
-        // persisted
-        // data; an F->L resume (PartitionConsumptionState#getCheckpointedVtLeaderPosition) then re-subscribes the
-        // remote
-        // VT at a position that is durable by construction.
+        // persisted data; an F->L resume (PartitionConsumptionState#getCheckpointedVtLeaderPosition) then
+        // re-subscribes the remote VT at a position that is durable by construction.
         LeaderProducedRecordContext leaderProducedRecordContext = callback.getLeaderProducedRecordContext();
         PubSubTopic upstreamTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
         if (upstreamTopic == null) {
