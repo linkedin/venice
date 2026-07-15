@@ -1910,15 +1910,25 @@ public class VenicePushJob implements AutoCloseable {
     // Quota exceeded
     final long totalInputDataSizeInBytes =
         dataWriterTaskTracker.getTotalKeySize() + dataWriterTaskTracker.getTotalValueSize();
-    // Always re-fetch the quota from the controller before evaluating it. The store quota can change
-    // (either increased or reduced) while the push is running, so relying on the value cached at job
-    // initialization can both fail a push spuriously (after an increase) and let one through that should
-    // now be rejected (after a reduction). Refreshing here keeps the decision consistent with the
-    // current store configuration.
+    // Re-fetch the store quota from the controller so a mid-push quota change is honored. The store
+    // quota can be raised (or lowered) while a push is running; because this driver-side check runs
+    // after the data writer job completes, refreshing here lets the push reflect the current quota.
+    //
+    // Safety for engines that truncate data beyond the quota while writing (e.g. MapReduce): such
+    // engines drop records once the job-start quota is hit, leaving a partial dataset on the topic. For
+    // those we must NOT accept a mid-push increase, or we would promote an incomplete version. Spark
+    // never truncates (the full dataset is always written), so accepting an increase is safe.
+    final long quotaUsedByWriters = pushJobSetting.storeStorageQuota;
     refreshStorageQuota();
-    if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
+    // If the engine is unknown (null) assume it truncates (fail-safe); Spark reports false, MR true.
+    final boolean writersMayHaveTruncated =
+        (dataWriterComputeJob == null || dataWriterComputeJob.truncatesDataExceedingQuota())
+            && new InputStorageQuotaTracker(quotaUsedByWriters).exceedQuota(totalInputDataSizeInBytes);
+    if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes) || writersMayHaveTruncated) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
-      Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
+      // Report against the quota the writers actually used as the truncation boundary when they may
+      // have truncated, otherwise the (refreshed) store quota.
+      Long storeQuota = writersMayHaveTruncated ? quotaUsedByWriters : inputStorageQuotaTracker.getStoreStorageQuota();
       return String.format(
           "Storage quota exceeded. Store quota %s, Input data size %s."
               + " Please request at least %s additional quota.",
@@ -1967,12 +1977,12 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * Re-fetch the store storage quota from the controller and update the quota tracker if it changed.
-   * This is invoked on every push before the quota check so that both increases and reductions that
-   * happen while the push is running are honored.
+   * This is invoked from the driver-side quota check ({@link #updatePushJobDetailsWithJobDetails}) after
+   * the data writer job completes, so a quota change that happened while the push was running is honored.
    *
    * <p>This performs a targeted quota-only fetch and intentionally does not reuse
    * {@link #getStoreResponse(String, boolean)} so it won't mutate the other cached store settings
-   * (compression strategy, chunking, max record size, etc.) on the happy path.
+   * (compression strategy, chunking, max record size, etc.).
    *
    * <p>Repush jobs (source Kafka) deliberately set the quota to {@link Store#UNLIMITED_STORAGE_QUOTA}
    * to skip the quota check, so those are left untouched. If the controller call fails, the cached

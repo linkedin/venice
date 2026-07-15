@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_OH_SUPERSET_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
@@ -1641,8 +1642,17 @@ public class VenicePushJobTest {
     }
   }
 
+  /** Spark-like (never truncates) or MR-like (truncates) data writer job for the quota-check tests. */
+  private void setDataWriterComputeJobTruncation(VenicePushJob vpj, boolean truncatesDataExceedingQuota) {
+    DataWriterComputeJob job = mock(DataWriterComputeJob.class);
+    doReturn(truncatesDataExceedingQuota).when(job).truncatesDataExceedingQuota();
+    vpj.setDataWriterComputeJob(job);
+  }
+
   @Test
-  public void testUpdatePushJobDetailsRefreshesQuotaBeforeFailing() {
+  public void testDriverAcceptsMidPushQuotaIncreaseForSpark() {
+    // The 1102 pattern: quota raised mid-push to a value that covers the input. Spark writes the full
+    // dataset, so the driver check must refresh and accept the increase.
     final long cachedQuota = 100L;
     final long refreshedQuota = 1000L;
     final long totalInputDataSize = 600L;
@@ -1652,6 +1662,7 @@ public class VenicePushJobTest {
       setPushJobSettingDefaults(vpj.getPushJobSetting());
       vpj.getPushJobSetting().storeStorageQuota = cachedQuota;
       vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(cachedQuota));
+      setDataWriterComputeJobTruncation(vpj, false); // Spark: never truncates
 
       final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
       doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
@@ -1664,17 +1675,17 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testUpdatePushJobDetailsStillFailsWhenRefreshedQuotaIsInsufficient() {
+  public void testDriverStillFailsWhenRefreshedQuotaIsInsufficient() {
     final long cachedQuota = 100L;
     final long refreshedQuota = 500L;
     final long totalInputDataSize = 600L;
-    // Force refresh returns a higher-but-still-insufficient quota, so the push must still fail.
     ControllerClient client = getClient(storeInfo -> storeInfo.setStorageQuotaInByte(refreshedQuota));
 
     try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
       setPushJobSettingDefaults(vpj.getPushJobSetting());
       vpj.getPushJobSetting().storeStorageQuota = cachedQuota;
       vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(cachedQuota));
+      setDataWriterComputeJobTruncation(vpj, false);
 
       final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
       doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
@@ -1692,11 +1703,10 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testUpdatePushJobDetailsFallsBackToCachedQuotaWhenRefreshFails() {
+  public void testDriverFallsBackToCachedQuotaWhenRefreshFails() {
     final long cachedQuota = 100L;
     final long totalInputDataSize = 600L;
     ControllerClient client = getClient();
-    // Force refresh from the controller fails; the push must fall back to the cached quota and still fail.
     StoreResponse errorResponse = new StoreResponse();
     errorResponse.setError("Simulated controller failure");
     doReturn(errorResponse).when(client).getStore(TEST_STORE);
@@ -1705,6 +1715,7 @@ public class VenicePushJobTest {
       setPushJobSettingDefaults(vpj.getPushJobSetting());
       vpj.getPushJobSetting().storeStorageQuota = cachedQuota;
       vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(cachedQuota));
+      setDataWriterComputeJobTruncation(vpj, false);
 
       final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
       doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
@@ -1713,7 +1724,6 @@ public class VenicePushJobTest {
       final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
       assertNotNull(errorMessage);
       assertTrue(errorMessage.contains("Storage quota exceeded"), errorMessage);
-      // Cached quota is retained because the refresh failed.
       assertEquals(vpj.getPushJobSetting().storeStorageQuota, cachedQuota);
       assertEquals(
           vpj.getPushJobDetails().pushJobLatestCheckpoint.intValue(),
@@ -1722,18 +1732,19 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testUpdatePushJobDetailsRejectsPushWhenQuotaReducedDuringPush() {
+  public void testDriverRejectsPushWhenQuotaReducedDuringPush() {
+    // Cached quota (1000) would have allowed the 600 input, but the quota was reduced to 500 mid-push.
+    // The unconditional refresh must pick up the reduction and fail.
     final long cachedQuota = 1000L;
     final long refreshedQuota = 500L;
     final long totalInputDataSize = 600L;
-    // The cached quota (1000) would have allowed this push, but the quota was reduced to 500 during
-    // the push, so the refreshed value must cause the push to fail.
     ControllerClient client = getClient(storeInfo -> storeInfo.setStorageQuotaInByte(refreshedQuota));
 
     try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
       setPushJobSettingDefaults(vpj.getPushJobSetting());
       vpj.getPushJobSetting().storeStorageQuota = cachedQuota;
       vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(cachedQuota));
+      setDataWriterComputeJobTruncation(vpj, false);
 
       final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
       doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
@@ -1751,17 +1762,47 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testUpdatePushJobDetailsSkipsQuotaRefreshForRepush() {
+  public void testDriverRejectsMidPushIncreaseWhenWriterTruncated() {
+    // MR truncates the dataset against the job-start quota (100), so even though the quota was raised to
+    // 1000 mid-push, the driver must NOT accept it (the topic data is incomplete).
+    final long cachedQuota = 100L;
+    final long refreshedQuota = 1000L;
+    final long totalInputDataSize = 600L;
+    ControllerClient client = getClient(storeInfo -> storeInfo.setStorageQuotaInByte(refreshedQuota));
+
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      setPushJobSettingDefaults(vpj.getPushJobSetting());
+      vpj.getPushJobSetting().storeStorageQuota = cachedQuota;
+      vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(cachedQuota));
+      setDataWriterComputeJobTruncation(vpj, true); // MR: truncates
+
+      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
+      doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
+      doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalValueSize();
+
+      final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
+      assertNotNull(errorMessage);
+      assertTrue(errorMessage.contains("Storage quota exceeded"), errorMessage);
+      // Reported against the quota the writers used as the truncation boundary (100), not the refreshed one.
+      assertTrue(errorMessage.contains(generateHumanReadableByteCountString(cachedQuota)), errorMessage);
+      assertEquals(
+          vpj.getPushJobDetails().pushJobLatestCheckpoint.intValue(),
+          PushJobCheckpoints.QUOTA_EXCEEDED.getValue());
+    }
+  }
+
+  @Test
+  public void testDriverSkipsQuotaRefreshForRepush() {
     final long totalInputDataSize = 600L;
     ControllerClient client = getClient();
 
     try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
       setPushJobSettingDefaults(vpj.getPushJobSetting());
-      // Repush (source Kafka) disables the quota check via an unlimited quota; the refresh must be
-      // skipped for repush so it is not re-enabled by re-fetching the store's real quota.
+      // Repush (source Kafka) disables the quota check via an unlimited quota; refresh must be skipped.
       vpj.getPushJobSetting().isSourceKafka = true;
       vpj.getPushJobSetting().storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
       vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(Store.UNLIMITED_STORAGE_QUOTA));
+      setDataWriterComputeJobTruncation(vpj, false);
 
       final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
       doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
@@ -1774,11 +1815,11 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testUpdatePushJobDetailsEnforcesQuotaWhenUnlimitedStoreReducedDuringPush() {
+  public void testDriverEnforcesQuotaWhenUnlimitedStoreReducedDuringPush() {
+    // A regular (non-repush) store starts unlimited, then the quota is set to a finite value during the
+    // push. The refresh must pick up the reduction and fail.
     final long refreshedQuota = 500L;
     final long totalInputDataSize = 600L;
-    // A regular (non-repush) store starts with an unlimited quota, then the quota is set to a finite
-    // value during the push. The refresh must pick up the reduction and fail the push.
     ControllerClient client = getClient(storeInfo -> storeInfo.setStorageQuotaInByte(refreshedQuota));
 
     try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
@@ -1786,6 +1827,7 @@ public class VenicePushJobTest {
       vpj.getPushJobSetting().isSourceKafka = false;
       vpj.getPushJobSetting().storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
       vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(Store.UNLIMITED_STORAGE_QUOTA));
+      setDataWriterComputeJobTruncation(vpj, false);
 
       final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
       doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
