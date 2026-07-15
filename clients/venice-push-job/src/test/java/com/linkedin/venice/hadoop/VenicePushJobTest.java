@@ -63,6 +63,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -1639,6 +1640,28 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testUpdatePushJobDetailsRefreshesQuotaBeforeFailing() {
+    final long cachedQuota = 100L;
+    final long refreshedQuota = 1000L;
+    final long totalInputDataSize = 600L;
+    ControllerClient client = getClient(storeInfo -> storeInfo.setStorageQuotaInByte(refreshedQuota));
+
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      setPushJobSettingDefaults(vpj.getPushJobSetting());
+      vpj.getPushJobSetting().storeStorageQuota = cachedQuota;
+      vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(cachedQuota));
+
+      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
+      doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
+      doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalValueSize();
+
+      assertNull(vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker));
+      assertEquals(vpj.getPushJobSetting().storeStorageQuota, refreshedQuota);
+      verify(client, times(1)).getStore(TEST_STORE);
+    }
+  }
+
   /**
    * Tests that the error message for the {@link com.linkedin.venice.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
    * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
@@ -1681,7 +1704,7 @@ public class VenicePushJobTest {
 
   /**
    * These are mainly for code coverage for the code paths of {@link VenicePushJob#getVeniceWriter(PushJobSetting)} and
-   * {@link VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
+   * {@code VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
    */
   @Test
   public void testGetVeniceWriter() {

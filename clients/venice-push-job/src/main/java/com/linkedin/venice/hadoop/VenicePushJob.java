@@ -1911,14 +1911,25 @@ public class VenicePushJob implements AutoCloseable {
     final long totalInputDataSizeInBytes =
         dataWriterTaskTracker.getTotalKeySize() + dataWriterTaskTracker.getTotalValueSize();
     if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
-      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
-      Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
-      return String.format(
-          "Storage quota exceeded. Store quota %s, Input data size %s."
-              + " Please request at least %s additional quota.",
-          generateHumanReadableByteCountString(storeQuota),
-          generateHumanReadableByteCountString(totalInputDataSizeInBytes),
-          generateHumanReadableByteCountString(totalInputDataSizeInBytes - storeQuota));
+      // Re-fetch quota from the controller before failing. The quota may have been increased
+      // after the push started (e.g., a Nuage approval that landed mid-push). Without this
+      // refresh the VPJ uses the stale value from job initialization and fails spuriously.
+      refreshStorageQuota();
+      if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
+        Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
+        return String.format(
+            "Storage quota exceeded. Store quota %s, Input data size %s."
+                + " Please request at least %s additional quota.",
+            generateHumanReadableByteCountString(storeQuota),
+            generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+            generateHumanReadableByteCountString(totalInputDataSizeInBytes - storeQuota));
+      }
+      LOGGER.info(
+          "Storage quota was exceeded based on cached value, but after refreshing from the controller "
+              + "the updated quota ({}) accommodates the input data size ({}). Continuing.",
+          generateHumanReadableByteCountString(pushJobSetting.storeStorageQuota),
+          generateHumanReadableByteCountString(totalInputDataSizeInBytes));
     }
     // Write ACL failed
     final long writeAclFailureCount = dataWriterTaskTracker.getWriteAclAuthorizationFailureCount();
@@ -1957,6 +1968,29 @@ public class VenicePushJob implements AutoCloseable {
           formatRecordTooLargeCompressionStatus());
     }
     return null;
+  }
+
+  /**
+   * Re-fetch the storage quota from the controller and update the quota tracker.
+   * Called only when the cached quota would cause a QUOTA_EXCEEDED failure, so
+   * there is no extra controller call on the happy path.
+   */
+  private void refreshStorageQuota() {
+    try {
+      StoreResponse storeResponse = getStoreResponse(pushJobSetting.storeName, true);
+      long freshQuota = storeResponse.getStore().getStorageQuotaInByte();
+      if (freshQuota != pushJobSetting.storeStorageQuota) {
+        LOGGER.info(
+            "Storage quota for store {} changed during push from {} to {}.",
+            pushJobSetting.storeName,
+            pushJobSetting.storeStorageQuota,
+            freshQuota);
+        pushJobSetting.storeStorageQuota = freshQuota;
+        inputStorageQuotaTracker = new InputStorageQuotaTracker(freshQuota);
+      }
+    } catch (Exception e) {
+      LOGGER.warn("Failed to refresh storage quota from controller. Using cached value.", e);
+    }
   }
 
   /* Helper function to format part of the record too large compression status */
