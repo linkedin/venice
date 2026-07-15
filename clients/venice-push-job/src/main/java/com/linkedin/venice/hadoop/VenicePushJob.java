@@ -1910,26 +1910,21 @@ public class VenicePushJob implements AutoCloseable {
     // Quota exceeded
     final long totalInputDataSizeInBytes =
         dataWriterTaskTracker.getTotalKeySize() + dataWriterTaskTracker.getTotalValueSize();
+    // Always re-fetch the quota from the controller before evaluating it. The store quota can change
+    // (either increased or reduced) while the push is running, so relying on the value cached at job
+    // initialization can both fail a push spuriously (after an increase) and let one through that should
+    // now be rejected (after a reduction). Refreshing here keeps the decision consistent with the
+    // current store configuration.
+    refreshStorageQuota();
     if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
-      // Re-fetch quota from the controller before failing. The quota may have been increased
-      // after the push started (e.g., a Nuage approval that landed mid-push). Without this
-      // refresh the VPJ uses the stale value from job initialization and fails spuriously.
-      refreshStorageQuota();
-      if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
-        Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
-        return String.format(
-            "Storage quota exceeded. Store quota %s, Input data size %s."
-                + " Please request at least %s additional quota.",
-            generateHumanReadableByteCountString(storeQuota),
-            generateHumanReadableByteCountString(totalInputDataSizeInBytes),
-            generateHumanReadableByteCountString(totalInputDataSizeInBytes - storeQuota));
-      }
-      LOGGER.info(
-          "Storage quota was exceeded based on cached value, but after refreshing from the controller "
-              + "the updated quota ({}) accommodates the input data size ({}). Continuing.",
-          generateHumanReadableByteCountString(pushJobSetting.storeStorageQuota),
-          generateHumanReadableByteCountString(totalInputDataSizeInBytes));
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
+      Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
+      return String.format(
+          "Storage quota exceeded. Store quota %s, Input data size %s."
+              + " Please request at least %s additional quota.",
+          generateHumanReadableByteCountString(storeQuota),
+          generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+          generateHumanReadableByteCountString(totalInputDataSizeInBytes - storeQuota));
     }
     // Write ACL failed
     final long writeAclFailureCount = dataWriterTaskTracker.getWriteAclAuthorizationFailureCount();
@@ -1971,13 +1966,35 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Re-fetch the storage quota from the controller and update the quota tracker.
-   * Called only when the cached quota would cause a QUOTA_EXCEEDED failure, so
-   * there is no extra controller call on the happy path.
+   * Re-fetch the store storage quota from the controller and update the quota tracker if it changed.
+   * This is invoked on every push before the quota check so that both increases and reductions that
+   * happen while the push is running are honored.
+   *
+   * <p>This performs a targeted quota-only fetch and intentionally does not reuse
+   * {@link #getStoreResponse(String, boolean)} so it won't mutate the other cached store settings
+   * (compression strategy, chunking, max record size, etc.) on the happy path.
+   *
+   * <p>Repush jobs (source Kafka) deliberately set the quota to {@link Store#UNLIMITED_STORAGE_QUOTA}
+   * to skip the quota check, so those are left untouched. If the controller call fails, the cached
+   * quota is retained so a transient controller error does not derail the push.
    */
   private void refreshStorageQuota() {
+    // Repush intentionally disables the quota check by setting an unlimited quota; don't override it.
+    if (pushJobSetting.storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
+      return;
+    }
     try {
-      StoreResponse storeResponse = getStoreResponse(pushJobSetting.storeName, true);
+      StoreResponse storeResponse = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          c -> c.getStore(pushJobSetting.storeName));
+      if (storeResponse.isError()) {
+        LOGGER.warn(
+            "Failed to refresh storage quota for store {} from controller: {}. Using cached value.",
+            pushJobSetting.storeName,
+            storeResponse.getError());
+        return;
+      }
       long freshQuota = storeResponse.getStore().getStorageQuotaInByte();
       if (freshQuota != pushJobSetting.storeStorageQuota) {
         LOGGER.info(
