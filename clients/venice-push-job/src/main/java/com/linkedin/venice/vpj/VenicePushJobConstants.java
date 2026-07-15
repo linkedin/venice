@@ -348,9 +348,12 @@ public final class VenicePushJobConstants {
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
 
   /**
-   * Optional writer (target) value schema ID. When set, input records are projected down to this schema
-   * via {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}; the input schema must
-   * be a strict superset of it.
+   * <strong>Internal / advanced use only &mdash; NOT for regular push jobs.</strong> Optional writer (target) value
+   * schema ID; when set, input records are projected down to that registered schema (via
+   * {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}) before serialization. The input schema must
+   * be a projection-compatible superset. Supports full (batch) pushes only. Projection <em>drops</em> fields absent
+   * from the target schema (silent, irreversible data loss if misused); leave unset (default {@code -1}) unless
+   * operating an internal flow (e.g. purger/re-push) that requires it.
    */
   public static final String TARGET_WRITER_VALUE_SCHEMA_ID_PROP = "target.writer.value.schema.id";
 

@@ -373,6 +373,113 @@ public class TestVeniceSchemaProjector {
   }
 
   @Test
+  public void testNullableUnionWriterFieldProjectedAndExtraDropped() {
+    // A nullable-union writer [null, Addr{city}] against a nullable-union input whose non-null branch evolved into a
+    // superset [null, Addr{city, zip}]: the present record value is rebuilt under the writer's non-null branch and the
+    // extra `zip` field is dropped.
+    Schema writer = parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}],"
+            + "\"default\":null}]}");
+    Schema input = parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"},"
+            + "{\"name\":\"zip\",\"type\":[\"null\",\"int\"],\"default\":null}]}],\"default\":null}]}");
+    Schema inputAddrSchema = input.getField("addr").schema().getTypes().get(1);
+    GenericRecord addr = new GenericData.Record(inputAddrSchema);
+    addr.put("city", "NYC");
+    addr.put("zip", 10001);
+    GenericRecord src = new GenericData.Record(input);
+    src.put("addr", addr);
+
+    GenericRecord out = projector.projectValue(src, writer);
+
+    Assert.assertEquals(out.getSchema(), writer);
+    GenericRecord outAddr = (GenericRecord) out.get("addr");
+    Assert.assertEquals(outAddr.getSchema().getName(), "Addr");
+    Assert.assertEquals(outAddr.get("city").toString(), "NYC");
+    Assert.assertNull(outAddr.getSchema().getField("zip"), "extra field in the nullable-union branch must be dropped");
+  }
+
+  @Test
+  public void testNullableUnionWriterFieldWithNullValueProjectedToNull() {
+    // Null value against a nullable-union writer [null, Addr] projects to null (the null branch needs no rebuild).
+    Schema writer = parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"}]}],"
+            + "\"default\":null}]}");
+    Schema input = parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"addr\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"Addr\",\"fields\":[{\"name\":\"city\",\"type\":\"string\"},"
+            + "{\"name\":\"zip\",\"type\":[\"null\",\"int\"],\"default\":null}]}],\"default\":null}]}");
+    GenericRecord src = new GenericData.Record(input);
+    src.put("addr", null);
+
+    GenericRecord out = projector.projectValue(src, writer);
+
+    Assert.assertEquals(out.getSchema(), writer);
+    Assert.assertNull(out.get("addr"));
+  }
+
+  @Test
+  public void testSingleElementUnionWriterFieldProjectsValue() {
+    // Input field: nullable union [null, long]. Writer field: single-element union [long] (equivalent to bare long).
+    // The present value projects onto the writer's single-element union.
+    Schema writer = parse("{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"f1\",\"type\":[\"long\"]}]}");
+    Schema input = parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"f1\",\"type\":[\"null\",\"long\"],\"default\":null}]}");
+    GenericRecord src = new GenericData.Record(input);
+    src.put("f1", 42L);
+
+    GenericRecord out = projector.projectValue(src, writer);
+
+    Assert.assertEquals(out.getSchema(), writer);
+    Assert.assertEquals(out.get("f1"), 42L);
+  }
+
+  @Test
+  public void testEmptyStructWriterDropsDummyFillerField() {
+    // OH cannot represent an empty struct, so it fills it with a synthetic dummy field. The registered writer keeps the
+    // empty struct; projection must rebuild the (empty) writer record and drop the input's dummy filler field.
+    Schema writer = parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"recordWithEmptyStruct\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructRecord\","
+            + "\"namespace\":\"com.linkedin.SchemaWithEmptyStructs.emptyStruct\",\"doc\":\"record with empty struct\","
+            + "\"fields\":[{\"name\":\"emptyStructUnionField\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructField\",\"fields\":[]}],\"default\":null}]}],"
+            + "\"default\":null}]}");
+    Schema input = parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"recordWithEmptyStruct\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructRecord\","
+            + "\"namespace\":\"com.linkedin.SchemaWithEmptyStructs.emptyStruct\",\"doc\":\"record with empty struct\","
+            + "\"fields\":[{\"name\":\"emptyStructUnionField\",\"type\":[\"null\","
+            + "{\"type\":\"record\",\"name\":\"emptyStructField\",\"fields\":[{\"name\":"
+            + "\"__dummy_field_to_fill_empty_struct__\",\"type\":\"int\",\"doc\":"
+            + "\"Dummy field added to handle empty struct records.\",\"default\":-1}]}],\"default\":null}]}],"
+            + "\"default\":null}]}");
+    Schema inputEmptyStructRecord = input.getField("recordWithEmptyStruct").schema().getTypes().get(1);
+    Schema inputEmptyStructField = inputEmptyStructRecord.getField("emptyStructUnionField").schema().getTypes().get(1);
+    GenericRecord innerStruct = new GenericData.Record(inputEmptyStructField);
+    innerStruct.put("__dummy_field_to_fill_empty_struct__", -1);
+    GenericRecord outerStruct = new GenericData.Record(inputEmptyStructRecord);
+    outerStruct.put("emptyStructUnionField", innerStruct);
+    GenericRecord src = new GenericData.Record(input);
+    src.put("recordWithEmptyStruct", outerStruct);
+
+    GenericRecord out = projector.projectValue(src, writer);
+
+    Assert.assertEquals(out.getSchema(), writer);
+    GenericRecord outOuter = (GenericRecord) out.get("recordWithEmptyStruct");
+    Assert.assertEquals(outOuter.getSchema().getName(), "emptyStructRecord");
+    GenericRecord outInner = (GenericRecord) outOuter.get("emptyStructUnionField");
+    Assert.assertEquals(outInner.getSchema().getName(), "emptyStructField");
+    Assert.assertTrue(outInner.getSchema().getFields().isEmpty(), "projected empty struct must have no fields");
+    Assert.assertNull(
+        outInner.getSchema().getField("__dummy_field_to_fill_empty_struct__"),
+        "OH dummy filler field must be dropped");
+  }
+
+  @Test
   public void testDeeplyNestedExtraFieldDropped() {
     // Projection recurses to arbitrary depth: an extra retained field two record levels down (R -> outer -> inner)
     // must still be dropped while the deeper non-nullable leaf is copied across.

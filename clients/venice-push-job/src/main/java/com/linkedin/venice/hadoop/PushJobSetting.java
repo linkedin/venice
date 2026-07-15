@@ -200,9 +200,10 @@ public class PushJobSetting implements Serializable {
   public Map<Integer, String> newKmeSchemasFromController;
 
   /**
-   * Schema-projection: target writer value schema to project superset
-   * input records down to (see {@code TARGET_WRITER_VALUE_SCHEMA_ID_PROP}).
-   * */
+   * Schema projection (internal / advanced use only &mdash; see {@code TARGET_WRITER_VALUE_SCHEMA_ID_PROP}): the
+   * target writer value schema ID to project superset input records down to. {@code -1} (default) disables projection.
+   * Not intended for regular push jobs; misuse silently drops fields absent from the target writer schema.
+   */
   public int targetWriterValueSchemaId = -1;
   public boolean projectInputToWriterSchema;
   public Schema writerValueSchema;

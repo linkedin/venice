@@ -2396,8 +2396,11 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Configure projection of input records down to a user-specified registered writer (target) value schema, used when
    * the input value schema does not match any registered value schema. Fetches the writer schema by ID, validates that
-   * the input value schema is a strict superset of it, and enables
-   * {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}-based projection.
+   * the input value schema is a projection-compatible superset of it (it may add fields and wrap fields as nullable
+   * unions), and enables {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}-based projection.
+   *
+   * <p>Note: this is an internal / advanced-use flow (see {@code TARGET_WRITER_VALUE_SCHEMA_ID_PROP}), not intended
+   * for regular push jobs.
    */
   private void configureValueSchemaProjection(ControllerClient controllerClient, PushJobSetting setting) {
     int writerSchemaId = setting.targetWriterValueSchemaId;
