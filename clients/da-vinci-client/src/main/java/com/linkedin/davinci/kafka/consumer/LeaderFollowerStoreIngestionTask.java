@@ -1908,7 +1908,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * metadata after successfully produce a corresponding message.
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
-      updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
+      // Advance the processed VT position only on the post-persist pass. Advancing it on the pre-persist (dry-run) pass
+      // would leave the position pointing at a record that has not been durably written yet; if the write then fails,
+      // a shutdown checkpoint could persist that position and the record would be skipped on restart (data loss).
+      if (!dryRun) {
+        updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
+      }
 
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states

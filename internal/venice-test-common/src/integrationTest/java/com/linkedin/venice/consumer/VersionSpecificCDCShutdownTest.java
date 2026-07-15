@@ -248,6 +248,17 @@ public class VersionSpecificCDCShutdownTest {
     newConsumerA.seekToCheckpoint(checkpoints).get();
     LOGGER.info("Restarted consumer A seeked to {} checkpoints.", checkpoints.size());
 
+    // seekToCheckpoint(...).get() only awaits the subscribe, not the inclusive re-scan backlog the
+    // seek schedules. Drain that backlog before producing the next batch so the new records (keys
+    // 120-129) never share the consumer pipeline with the re-scan of the pre-restart nearline tail.
+    // Key 119 is the last record produced before the restart, so re-observing it confirms the
+    // re-scan frontier has reached the checkpoint position and the backlog is quiesced.
+    Map<String, GenericRecord> drainEvents = new HashMap<>();
+    drainUntilKeyObserved(newConsumerA, drainEvents, "119");
+    LOGGER.info(
+        "Restarted consumer A drained re-scan backlog ({} events) before producing new batch.",
+        drainEvents.size());
+
     // Produce new nearline records after restart
     try (
         VeniceSystemProducer producerA =
@@ -273,6 +284,20 @@ public class VersionSpecificCDCShutdownTest {
     closeInBackground(consumerB);
     cleanUpStore(storeA);
     cleanUpStore(storeB);
+  }
+
+  /**
+   * Polls until the given key is observed, draining whatever the consumer has buffered (e.g. an
+   * inclusive seekToCheckpoint re-scan backlog) so it does not contend with records produced next.
+   */
+  private void drainUntilKeyObserved(
+      VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer,
+      Map<String, GenericRecord> eventsMap,
+      String key) {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      pollAndCollect(consumer, eventsMap);
+      assertNotNull(eventsMap.get(key), "Drain did not observe re-scanned key " + key);
+    });
   }
 
   private void pollAndVerifyNearlineRecords(
@@ -392,7 +417,11 @@ public class VersionSpecificCDCShutdownTest {
         .setLocalD2ZkHosts(zkAddress)
         .setControllerRequestRetryCount(3)
         .setD2Client(d2Client)
-        .setMaxBufferSize(10);
+        // The buffer must stay well above the per-restart nearline batch size (10). At parity (10),
+        // the inclusive seekToCheckpoint storage re-scan contends with the freshly produced target
+        // records for the same ArrayBlockingQueue slots, intermittently starving keys at the batch
+        // boundary and failing pollAndVerifyNearlineRecords within its 30s window.
+        .setMaxBufferSize(100);
     return new VeniceChangelogConsumerClientFactory(globalConfig, metricsRepository);
   }
 
