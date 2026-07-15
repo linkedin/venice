@@ -1751,13 +1751,15 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testUpdatePushJobDetailsSkipsQuotaRefreshForUnlimitedQuota() {
+  public void testUpdatePushJobDetailsSkipsQuotaRefreshForRepush() {
     final long totalInputDataSize = 600L;
     ControllerClient client = getClient();
 
     try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
       setPushJobSettingDefaults(vpj.getPushJobSetting());
-      // Repush disables the quota check via an unlimited quota; the refresh must not override it.
+      // Repush (source Kafka) disables the quota check via an unlimited quota; the refresh must be
+      // skipped for repush so it is not re-enabled by re-fetching the store's real quota.
+      vpj.getPushJobSetting().isSourceKafka = true;
       vpj.getPushJobSetting().storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
       vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(Store.UNLIMITED_STORAGE_QUOTA));
 
@@ -1768,6 +1770,35 @@ public class VenicePushJobTest {
       assertNull(vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker));
       assertEquals(vpj.getPushJobSetting().storeStorageQuota, Store.UNLIMITED_STORAGE_QUOTA);
       verify(client, never()).getStore(TEST_STORE);
+    }
+  }
+
+  @Test
+  public void testUpdatePushJobDetailsEnforcesQuotaWhenUnlimitedStoreReducedDuringPush() {
+    final long refreshedQuota = 500L;
+    final long totalInputDataSize = 600L;
+    // A regular (non-repush) store starts with an unlimited quota, then the quota is set to a finite
+    // value during the push. The refresh must pick up the reduction and fail the push.
+    ControllerClient client = getClient(storeInfo -> storeInfo.setStorageQuotaInByte(refreshedQuota));
+
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      setPushJobSettingDefaults(vpj.getPushJobSetting());
+      vpj.getPushJobSetting().isSourceKafka = false;
+      vpj.getPushJobSetting().storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
+      vpj.setInputStorageQuotaTracker(new InputStorageQuotaTracker(Store.UNLIMITED_STORAGE_QUOTA));
+
+      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
+      doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalKeySize();
+      doReturn(totalInputDataSize / 2).when(dataWriterTaskTracker).getTotalValueSize();
+
+      final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
+      assertNotNull(errorMessage);
+      assertTrue(errorMessage.contains("Storage quota exceeded"), errorMessage);
+      assertEquals(vpj.getPushJobSetting().storeStorageQuota, refreshedQuota);
+      assertEquals(
+          vpj.getPushJobDetails().pushJobLatestCheckpoint.intValue(),
+          PushJobCheckpoints.QUOTA_EXCEEDED.getValue());
+      verify(client, times(1)).getStore(TEST_STORE);
     }
   }
 

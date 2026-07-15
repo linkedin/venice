@@ -1979,8 +1979,11 @@ public class VenicePushJob implements AutoCloseable {
    * quota is retained so a transient controller error does not derail the push.
    */
   private void refreshStorageQuota() {
-    // Repush intentionally disables the quota check by setting an unlimited quota; don't override it.
-    if (pushJobSetting.storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
+    // Repush (source Kafka) intentionally disables the quota check; don't re-fetch and re-enable it.
+    // Note: this is gated on isSourceKafka rather than the quota value, so a regular store that is
+    // genuinely configured with an unlimited quota is still refreshed and a mid-push reduction to a
+    // finite quota is honored.
+    if (pushJobSetting.isSourceKafka) {
       return;
     }
     try {
