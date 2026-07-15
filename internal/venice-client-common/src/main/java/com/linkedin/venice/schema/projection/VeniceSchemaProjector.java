@@ -71,6 +71,17 @@ public class VeniceSchemaProjector {
    */
   @SuppressWarnings("unchecked")
   private static Object projectField(Schema writerType, Schema inputType, Object value) {
+    // Normalize single-element unions [X] to X (semantically equivalent) so they project like the bare type.
+    if (writerType.getType() == Schema.Type.UNION && writerType.getTypes().size() == 1) {
+      return projectField(writerType.getTypes().get(0), inputType, value);
+    }
+    if (inputType.getType() == Schema.Type.UNION && inputType.getTypes().size() == 1) {
+      return projectField(writerType, inputType.getTypes().get(0), value);
+    }
+    // Unwrap a nullable-union writer [null, X] to its non-null branch (complex unions are blocked upstream).
+    if (AvroSchemaUtils.isNullableUnionPair(writerType) && writerType.getTypes().get(0).getType() == Schema.Type.NULL) {
+      return projectField(writerType.getTypes().get(1), inputType, value);
+    }
     // Unwrap nullable wrapping on the input side: input null-first [null, X] against a non-union writer projects the
     // value against X. The runtime value is already the (possibly null) non-null-branch value.
     if (writerType.getType() != Schema.Type.UNION && AvroSchemaUtils.isNullableUnionPair(inputType)
@@ -107,7 +118,7 @@ public class VeniceSchemaProjector {
         return projectedMap;
       }
       default:
-        // Primitives, enums, fixed, and unions: validation guarantees compatibility, so copy the value as-is.
+        // Primitives, enums, and fixed: validation guarantees compatibility, so copy the value as-is.
         return value;
     }
   }
