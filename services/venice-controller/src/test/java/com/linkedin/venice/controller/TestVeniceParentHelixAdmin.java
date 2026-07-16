@@ -2838,9 +2838,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void checkRollbackOriginFromChildrenFallsBackToParentWhenNoChildClients() {
-    // Degenerate config: parent would block and there are no children to verify against -> fall back
-    // to the parent-metadata decision (block) to stay safe.
+  public void checkRollbackOriginFromChildrenSkipsWhenNoChildClients() {
+    // No children to verify against. Parent metadata can be stale, so we must NOT fall back to
+    // enforcing against it (that is the false-block this check exists to avoid) -> allow the push.
     String store = "rb_from_children_no_clients";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
@@ -2848,10 +2848,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
     doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
 
-    assertThrows(
-        VeniceException.class,
-        () -> mockParentAdmin
-            .checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store)));
+    // Should not throw even though parent metadata shows a rollback-origin version within retention.
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store));
   }
 
   private void mockRolledBackRetentionConfig(VeniceParentHelixAdmin admin, long retentionMs) {

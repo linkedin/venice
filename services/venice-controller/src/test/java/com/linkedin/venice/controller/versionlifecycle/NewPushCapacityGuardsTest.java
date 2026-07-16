@@ -220,6 +220,20 @@ public class NewPushCapacityGuardsTest {
 
   // ---------- checkRollbackOriginVersionCapacityForNewPush ----------
 
+  // Repoints the Store-based scenarios at the field overload (the only surviving signature),
+  // unpacking the Store snapshot exactly as the parent does for a child StoreInfo.
+  private static void checkRollbackOrigin(Store store, long rolledBackVersionRetentionMs, long currentTimeMs) {
+    VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
+        CLUSTER_NAME,
+        STORE_NAME,
+        null,
+        store.getVersions(),
+        store.getCurrentVersion(),
+        store.getLatestVersionPromoteToCurrentTimestamp(),
+        rolledBackVersionRetentionMs,
+        currentTimeMs);
+  }
+
   @Test
   public void rollbackOriginPassesWhenNoRollbackOriginVersions() {
     Store store = mockStoreWithVersions(
@@ -228,12 +242,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(1, VersionStatus.ONLINE),
         mockVersion(2, VersionStatus.ONLINE));
 
-    VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-        CLUSTER_NAME,
-        STORE_NAME,
-        store,
-        ROLLED_BACK_RETENTION_MS,
-        System.currentTimeMillis());
+    checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, System.currentTimeMillis());
   }
 
   @Test
@@ -245,14 +254,8 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.ROLLED_BACK));
 
-    VeniceException e = expectThrows(
-        VeniceException.class,
-        () -> VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-            CLUSTER_NAME,
-            STORE_NAME,
-            store,
-            ROLLED_BACK_RETENTION_MS,
-            now));
+    VeniceException e =
+        expectThrows(VeniceException.class, () -> checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now));
     assertTrue(e.getMessage().contains(STORE_NAME), "message should include store name: " + e.getMessage());
     assertTrue(e.getMessage().contains("ROLLED_BACK"), "message should include status: " + e.getMessage());
     assertTrue(e.getMessage().contains("version 5"), "message should include version number: " + e.getMessage());
@@ -267,8 +270,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.ROLLED_BACK));
 
-    VersionLifecyclePolicy
-        .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, ROLLED_BACK_RETENTION_MS, now);
+    checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now);
   }
 
   @Test
@@ -281,14 +283,8 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.PARTIALLY_ONLINE));
 
-    VeniceException e = expectThrows(
-        VeniceException.class,
-        () -> VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-            CLUSTER_NAME,
-            STORE_NAME,
-            store,
-            ROLLED_BACK_RETENTION_MS,
-            now));
+    VeniceException e =
+        expectThrows(VeniceException.class, () -> checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now));
     assertTrue(e.getMessage().contains("PARTIALLY_ONLINE"), "message should include status: " + e.getMessage());
   }
 
@@ -305,8 +301,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(2, VersionStatus.ROLLED_BACK),
         mockVersion(3, VersionStatus.ONLINE));
 
-    VersionLifecyclePolicy
-        .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, ROLLED_BACK_RETENTION_MS, now);
+    checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now);
   }
 
   @Test
@@ -323,14 +318,8 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.ROLLED_BACK));
 
-    VeniceException e = expectThrows(
-        VeniceException.class,
-        () -> VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-            CLUSTER_NAME,
-            STORE_NAME,
-            store,
-            ROLLED_BACK_RETENTION_MS,
-            now));
+    VeniceException e =
+        expectThrows(VeniceException.class, () -> checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now));
     assertTrue(
         e.getMessage().contains("version 5"),
         "should block on v5 (above current), not stale v2: " + e.getMessage());
@@ -346,8 +335,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(3, VersionStatus.ONLINE),
         mockVersion(4, VersionStatus.PARTIALLY_ONLINE));
 
-    VersionLifecyclePolicy
-        .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, ROLLED_BACK_RETENTION_MS, now);
+    checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now);
   }
 
   @Test
@@ -360,8 +348,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.PARTIALLY_ONLINE),
         mockVersion(5, VersionStatus.ONLINE));
 
-    VersionLifecyclePolicy
-        .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, ROLLED_BACK_RETENTION_MS, now);
+    checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now);
   }
 
   @Test
@@ -376,8 +363,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.ROLLED_BACK));
 
-    VersionLifecyclePolicy
-        .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, retention, now);
+    checkRollbackOrigin(store, retention, now);
   }
 
   @Test
@@ -390,10 +376,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.ROLLED_BACK));
 
-    expectThrows(
-        VeniceException.class,
-        () -> VersionLifecyclePolicy
-            .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, retention, now));
+    expectThrows(VeniceException.class, () -> checkRollbackOrigin(store, retention, now));
   }
 
   @Test
@@ -407,10 +390,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.ROLLED_BACK));
 
-    expectThrows(
-        VeniceException.class,
-        () -> VersionLifecyclePolicy
-            .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, retention, now));
+    expectThrows(VeniceException.class, () -> checkRollbackOrigin(store, retention, now));
   }
 
   @Test

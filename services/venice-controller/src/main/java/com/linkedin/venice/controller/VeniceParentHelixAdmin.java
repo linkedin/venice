@@ -2480,18 +2480,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (controllerClients.isEmpty()) {
-      // No children to consult — fall back to the parent-metadata decision to stay safe.
+      // No children to consult. Parent metadata can be stale, so we do not fall back to enforcing
+      // against it — that is the false-block this check exists to avoid. Skip the block instead.
       LOGGER.warn(
-          "No child controller clients for cluster {}; falling back to parent metadata for the "
-              + "rollback-origin retention check of store {}",
+          "No child controller clients for cluster {}; skipping rollback-origin retention check for store {}",
           clusterName,
           storeName);
-      VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-          clusterName,
-          storeName,
-          parentStore,
-          rolledBackVersionRetentionMs,
-          currentTimeMs);
       return;
     }
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {

@@ -118,29 +118,10 @@ public final class VersionLifecyclePolicy {
    * version status can go stale and falsely block pushes for the whole retention window. The
    * enforcement runs only on the parent; running it during child admin-message consumption would
    * fail the message and wedge the admin channel.
-   */
-  public static void checkRollbackOriginVersionCapacityForNewPush(
-      String clusterName,
-      String storeName,
-      Store store,
-      long rolledBackVersionRetentionMs,
-      long currentTimeMs) {
-    checkRollbackOriginVersionCapacityForNewPush(
-        clusterName,
-        storeName,
-        null,
-        store.getVersions(),
-        store.getCurrentVersion(),
-        store.getLatestVersionPromoteToCurrentTimestamp(),
-        rolledBackVersionRetentionMs,
-        currentTimeMs);
-  }
-
-  /**
-   * Field-level overload of {@link #checkRollbackOriginVersionCapacityForNewPush(String, String, Store, long, long)}
-   * so callers can evaluate a child {@code StoreInfo} snapshot (which is not a {@link Store}) without
-   * a conversion. {@code regionName} is used only to enrich the rejection message; pass {@code null}
-   * for a region-agnostic (parent-metadata) evaluation.
+   *
+   * <p>Evaluates the raw fields of a single snapshot so callers can pass a child {@code StoreInfo}
+   * (which is not a {@link Store}) without a conversion. {@code regionName} enriches the rejection
+   * message; pass {@code null} for a region-agnostic evaluation.
    */
   public static void checkRollbackOriginVersionCapacityForNewPush(
       String clusterName,
