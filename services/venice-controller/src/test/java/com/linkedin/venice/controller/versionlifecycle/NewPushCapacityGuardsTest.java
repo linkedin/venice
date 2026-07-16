@@ -412,4 +412,41 @@ public class NewPushCapacityGuardsTest {
         () -> VersionLifecyclePolicy
             .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, retention, now));
   }
+
+  @Test
+  public void rollbackOriginFieldOverloadBlocksAndIncludesRegionNameInMessage() {
+    // The child-snapshot overload evaluates raw fields (as fed from a child StoreInfo) and enriches
+    // the rejection message with the region name so operators can see which child is blocking.
+    long now = System.currentTimeMillis();
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
+            CLUSTER_NAME,
+            STORE_NAME,
+            "dc-0",
+            Arrays.asList(mockVersion(4, VersionStatus.ONLINE), mockVersion(5, VersionStatus.ROLLED_BACK)),
+            /* currentVersion */ 4,
+            /* latestVersionPromoteToCurrentTimestamp */ now - TimeUnit.HOURS.toMillis(1),
+            ROLLED_BACK_RETENTION_MS,
+            now));
+    assertTrue(e.getMessage().contains("in region dc-0"), "message should include region: " + e.getMessage());
+    assertTrue(e.getMessage().contains("version 5"), "message should include version number: " + e.getMessage());
+    assertTrue(e.getMessage().contains("ROLLED_BACK"), "message should include status: " + e.getMessage());
+  }
+
+  @Test
+  public void rollbackOriginFieldOverloadPassesWhenNoRollbackOriginVersion() {
+    // Live child snapshot shows no rollback-origin version -> no block, even within the retention
+    // window. This is the parent-side allow path when parent metadata is stale but children are clean.
+    long now = System.currentTimeMillis();
+    VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
+        CLUSTER_NAME,
+        STORE_NAME,
+        "dc-0",
+        Arrays.asList(mockVersion(4, VersionStatus.ONLINE), mockVersion(5, VersionStatus.ONLINE)),
+        /* currentVersion */ 5,
+        /* latestVersionPromoteToCurrentTimestamp */ now,
+        ROLLED_BACK_RETENTION_MS,
+        now);
+  }
 }

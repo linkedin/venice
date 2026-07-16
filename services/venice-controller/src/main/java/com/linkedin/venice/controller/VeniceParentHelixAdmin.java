@@ -1490,22 +1490,30 @@ public class VeniceParentHelixAdmin implements Admin {
       return Optional.empty();
     }
 
-    // Terminal statuses for the latest version mean there is no in-flight push to wait on, so
-    // the next push may proceed:
+    // Statuses for the latest version that mean there is no in-flight push to wait on, so the
+    // next push may proceed:
     // - KILLED / ERROR: failed/aborted push, version not serving.
     // - ROLLED_BACK: operator rolled back to a previous version; this version is preserved by
     // the rolled-back retention window, enforced separately by
     // checkRollbackOriginVersionCapacityForNewPush.
     // - PARTIALLY_ONLINE: parent-only terminal state from a region-filtered rollback (some
     // regions rolled back, some didn't); same retention window applies via the same guard.
+    // - ONLINE: the push already completed (a version only reaches ONLINE after its push finishes),
+    // so there is no in-flight push to protect. Any remaining deferred-swap roll-forward is
+    // orchestrated separately by DeferredVersionSwapService and does not require serializing new
+    // pushes behind it; a subsequent push simply supersedes the pending swap. Critically, this
+    // must NOT depend on the parent version topic existing: PARENT_VERSION_STATUS_ONLY is the
+    // parent-VT-deprecation strategy (topicWriteNeeded=false), so the parent VT may never exist,
+    // and keying off ZK version status alone is what keeps this correct.
     // Non-terminal statuses fall through to the polling branch below to wait on the in-flight push.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
       case ROLLED_BACK:
       case PARTIALLY_ONLINE:
+      case ONLINE:
         LOGGER.info(
-            "Store {} version {} is in terminal status {} (no ongoing push); allowing the next push to proceed",
+            "Store {} version {} is in status {} (no ongoing push); allowing the next push to proceed",
             storeName,
             lastVersionNum,
             lastVersion.getStatus());
@@ -1520,8 +1528,6 @@ public class VeniceParentHelixAdmin implements Admin {
         storeName,
         lastVersionNum);
     Optional<String> latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
-    boolean onlyDeferredSwap =
-        lastVersion.isVersionSwapDeferred() && StringUtils.isEmpty(lastVersion.getTargetSwapRegion());
 
     if ((lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
         || lastVersion.getStatus() == CREATED)) {
@@ -1530,12 +1536,6 @@ public class VeniceParentHelixAdmin implements Admin {
           lastVersionNum,
           storeName);
       return latestTopic;
-    } else if (onlyDeferredSwap && lastVersion.getStatus() == ONLINE) {
-      // for only deferred swap, users need to rollforward to mark it current for online status
-      boolean validateChildCurrentVersions = validateChildCurrentVersions(clusterName, storeName, lastVersionNum);
-      if (!validateChildCurrentVersions) {
-        return latestTopic;
-      }
     }
 
     /**
@@ -1789,16 +1789,14 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       // Block the push on the parent if any rollback-origin version (ROLLED_BACK, or rollback-origin
-      // PARTIALLY_ONLINE on the parent) is still within its retention window. The same check runs on
-      // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
-      // job synchronously instead of only failing the child admin-consumption asynchronously.
+      // PARTIALLY_ONLINE) is still within its retention window. We derive this from LIVE child-region
+      // status rather than parent metadata, which can go stale (a ROLLED_BACK/PARTIALLY_ONLINE record
+      // left behind after children moved on) and otherwise falsely block new pushes for the entire
+      // retention window. The parent is the sole synchronous gate — the equivalent check is NOT run
+      // during child admin-message consumption, where a throw would fail the message and wedge the
+      // admin channel.
       if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
-        VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-            clusterName,
-            storeName,
-            store,
-            getMultiClusterConfigs().getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
-            System.currentTimeMillis());
+        checkRollbackOriginVersionCapacityFromChildren(clusterName, storeName, store);
       }
     }
 
@@ -2441,6 +2439,89 @@ public class VeniceParentHelixAdmin implements Admin {
     // admin operations during the exponential-backoff polling of child regions.
     if (rolledBackVersionNum != NON_EXISTING_VERSION) {
       updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
+    }
+  }
+
+  /**
+   * Enforces the rollback-origin retention block for a new push using LIVE child-region status,
+   * rather than (potentially stale) parent metadata. Parent version status can retain a
+   * {@code ROLLED_BACK}/{@code PARTIALLY_ONLINE} record after the children have moved on, which
+   * would otherwise falsely block new pushes for the entire retention window (the same class of
+   * stale-parent-metadata bug as a lingering ONLINE deferred-swap record).
+   *
+   * <p>A cheap parent-metadata pre-check runs first: if the parent itself sees no rollback-origin
+   * version within its retention window there is nothing to block on, so we skip the child RPCs
+   * entirely (the common case). Only when the parent metadata WOULD block do we query each child
+   * controller and block solely if a reachable child still has a rollback-origin version within its
+   * retention window. The equivalent check is intentionally NOT run during child admin-message
+   * consumption ({@code VeniceHelixAdmin.addVersion}): a throw there fails admin-message consumption
+   * and wedges the admin channel, so the parent is the sole synchronous gate.
+   *
+   * <p>Unreachable/errored child regions are skipped (and logged) rather than blocking, so a
+   * transient child query failure cannot wedge pushes. If there are no child controllers to consult,
+   * we fall back to the parent-metadata decision to stay safe. A genuinely rolled-back, reachable
+   * child still blocks via {@link VersionLifecyclePolicy#checkRollbackOriginVersionCapacityForNewPush}.
+   */
+  void checkRollbackOriginVersionCapacityFromChildren(String clusterName, String storeName, Store parentStore) {
+    long rolledBackVersionRetentionMs =
+        getMultiClusterConfigs().getControllerConfig(clusterName).getRolledBackVersionRetentionMs();
+    long currentTimeMs = System.currentTimeMillis();
+
+    // Cheap parent-metadata pre-check: if the parent itself sees no rollback-origin version within
+    // its retention window, there is nothing to block on — skip the child RPCs (the common case).
+    if (!VersionLifecyclePolicy.hasRollbackOriginVersionWithinRetention(
+        parentStore.getVersions(),
+        parentStore.getCurrentVersion(),
+        parentStore.getLatestVersionPromoteToCurrentTimestamp(),
+        rolledBackVersionRetentionMs,
+        currentTimeMs)) {
+      return;
+    }
+
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClients.isEmpty()) {
+      // No children to consult — fall back to the parent-metadata decision to stay safe.
+      LOGGER.warn(
+          "No child controller clients for cluster {}; falling back to parent metadata for the "
+              + "rollback-origin retention check of store {}",
+          clusterName,
+          storeName);
+      VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
+          clusterName,
+          storeName,
+          parentStore,
+          rolledBackVersionRetentionMs,
+          currentTimeMs);
+      return;
+    }
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      StoreResponse storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      if (storeResponse == null || storeResponse.isError()) {
+        LOGGER.warn(
+            "Could not get store {} from region {} for rollback-origin retention check ({}); skipping region",
+            storeName,
+            region,
+            storeResponse == null ? "null response" : storeResponse.getError());
+        continue;
+      }
+      StoreInfo childStore = storeResponse.getStore();
+      if (childStore == null) {
+        LOGGER.warn(
+            "Null store payload for {} from region {} during rollback-origin retention check; skipping region",
+            storeName,
+            region);
+        continue;
+      }
+      VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
+          clusterName,
+          storeName,
+          region,
+          childStore.getVersions(),
+          childStore.getCurrentVersion(),
+          childStore.getLatestVersionPromoteToCurrentTimestamp(),
+          rolledBackVersionRetentionMs,
+          currentTimeMs);
     }
   }
 

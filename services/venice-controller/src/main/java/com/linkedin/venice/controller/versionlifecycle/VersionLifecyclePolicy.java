@@ -111,6 +111,13 @@ public final class VersionLifecyclePolicy {
    * lingering below currentVersion (e.g., after a subsequent push promoted higher) are skipped.
    * The block also lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
    * elapses; past that point, the version will be swept on the next SOP deletion pass.
+   *
+   * <p>This evaluates a single store snapshot (one region). The parent controller drives the block
+   * from LIVE child-region snapshots rather than its own metadata (see
+   * {@code VeniceParentHelixAdmin.checkRollbackOriginVersionCapacityFromChildren}), because parent
+   * version status can go stale and falsely block pushes for the whole retention window. The
+   * enforcement runs only on the parent; running it during child admin-message consumption would
+   * fail the message and wedge the admin channel.
    */
   public static void checkRollbackOriginVersionCapacityForNewPush(
       String clusterName,
@@ -118,35 +125,85 @@ public final class VersionLifecyclePolicy {
       Store store,
       long rolledBackVersionRetentionMs,
       long currentTimeMs) {
-    long retentionExpiresAt = store.getLatestVersionPromoteToCurrentTimestamp() + rolledBackVersionRetentionMs;
+    checkRollbackOriginVersionCapacityForNewPush(
+        clusterName,
+        storeName,
+        null,
+        store.getVersions(),
+        store.getCurrentVersion(),
+        store.getLatestVersionPromoteToCurrentTimestamp(),
+        rolledBackVersionRetentionMs,
+        currentTimeMs);
+  }
+
+  /**
+   * Field-level overload of {@link #checkRollbackOriginVersionCapacityForNewPush(String, String, Store, long, long)}
+   * so callers can evaluate a child {@code StoreInfo} snapshot (which is not a {@link Store}) without
+   * a conversion. {@code regionName} is used only to enrich the rejection message; pass {@code null}
+   * for a region-agnostic (parent-metadata) evaluation.
+   */
+  public static void checkRollbackOriginVersionCapacityForNewPush(
+      String clusterName,
+      String storeName,
+      String regionName,
+      List<Version> versions,
+      int currentVersion,
+      long latestVersionPromoteToCurrentTimestamp,
+      long rolledBackVersionRetentionMs,
+      long currentTimeMs) {
+    long retentionExpiresAt = latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs;
     if (currentTimeMs > retentionExpiresAt) {
       // Past retention — SOP deletion will clean up any rollback-origin versions.
       return;
     }
-    int currentVersion = store.getCurrentVersion();
-    for (Version v: store.getVersions()) {
+    for (Version v: versions) {
       VersionStatus status = v.getStatus();
       // A rollback-origin version is one that was promoted then rolled back to a lower version,
-      // so number > currentVersion holds (parent decrements currentVersion on rollback to mirror
-      // children, see VeniceParentHelixAdmin.updateParentVersionStatusAfterRollback). Once a
-      // subsequent push promotes higher than the rolled-back version, the retention contract is
-      // satisfied/superseded and the entry — which can linger in parent metadata since parent
-      // retains more versions than children — is correctly aged out by this filter.
+      // so number > currentVersion holds (rollback decrements currentVersion on both parent and
+      // child controllers). Once a subsequent push promotes higher than the rolled-back version,
+      // the retention contract is satisfied/superseded and the entry — which can linger in a store
+      // snapshot that retains more versions — is correctly aged out by this filter.
       // Push-origin PARTIALLY_ONLINE (number == currentVersion) is correctly excluded.
       boolean isRollbackOrigin =
           (status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion;
       if (isRollbackOrigin) {
         throw new VeniceException(
             String.format(
-                "Cannot start new push for store %s in cluster %s: version %d is %s from a rollback; "
+                "Cannot start new push for store %s in cluster %s: version %d is %s from a rollback%s; "
                     + "retention expires in %dms. Retry after the rolled-back version is cleaned up.",
                 storeName,
                 clusterName,
                 v.getNumber(),
                 status,
+                regionName == null ? "" : " in region " + regionName,
                 retentionExpiresAt - currentTimeMs));
       }
     }
+  }
+
+  /**
+   * Cheap boolean pre-check mirroring {@link #checkRollbackOriginVersionCapacityForNewPush} without
+   * throwing: returns {@code true} if the given store snapshot has a rollback-origin version
+   * ({@code ROLLED_BACK}/{@code PARTIALLY_ONLINE} above {@code currentVersion}) still within its
+   * retention window. The parent uses this against its own metadata to decide whether it is even
+   * worth paying for live child verification before enforcing the block.
+   */
+  public static boolean hasRollbackOriginVersionWithinRetention(
+      List<Version> versions,
+      int currentVersion,
+      long latestVersionPromoteToCurrentTimestamp,
+      long rolledBackVersionRetentionMs,
+      long currentTimeMs) {
+    if (currentTimeMs > latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs) {
+      return false;
+    }
+    for (Version v: versions) {
+      VersionStatus status = v.getStatus();
+      if ((status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // ---------- Version selection ----------

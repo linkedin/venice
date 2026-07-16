@@ -2763,6 +2763,136 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void checkRollbackOriginFromChildrenBlocksWhenChildRolledBackWithinRetention() {
+    String store = "rb_from_children_block";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+
+    // Parent metadata WOULD block (rollback-origin v2 within retention), and child dc-0 still holds
+    // the rollback-origin version too -> the parent must block the new push.
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", childClient(rolledBackOriginStore(store)));
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    assertThrows(
+        VeniceException.class,
+        () -> mockParentAdmin
+            .checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store)));
+  }
+
+  @Test
+  public void checkRollbackOriginFromChildrenAllowsWhenChildrenNotRolledBack() {
+    // The core fix: parent metadata carries a stale rollback-origin record (so the pre-check fires),
+    // but the LIVE child status shows no rollback-origin version -> the push must be allowed instead
+    // of being falsely blocked for the full retention window.
+    String store = "rb_from_children_allow";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", childClient(onlineOnlyStore(store)));
+    map.put("dc-1", childClient(onlineOnlyStore(store)));
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw despite the stale parent rollback-origin record.
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store));
+  }
+
+  @Test
+  public void checkRollbackOriginFromChildrenSkipsFastWhenParentHasNoRollbackOrigin() {
+    // Fast path: parent metadata shows no rollback-origin version, so children are never queried.
+    String store = "rb_from_children_fastpath";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+
+    // Should not throw, and the fast path must not enforce a block.
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, onlineOnlyStore(store));
+  }
+
+  @Test
+  public void checkRollbackOriginFromChildrenSkipsErroredRegion() {
+    // A transient child-query failure must not wedge pushes: the errored region is skipped, and
+    // with no reachable rollback-origin child the push is allowed.
+    String store = "rb_from_children_error";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+
+    ControllerClient errorClient = mock(ControllerClient.class);
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("Simulated error fetching store for rollback-origin retention check.");
+    doReturn(errorResponse).when(errorClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", errorClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw.
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store));
+  }
+
+  @Test
+  public void checkRollbackOriginFromChildrenFallsBackToParentWhenNoChildClients() {
+    // Degenerate config: parent would block and there are no children to verify against -> fall back
+    // to the parent-metadata decision (block) to stay safe.
+    String store = "rb_from_children_no_clients";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+    doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
+
+    assertThrows(
+        VeniceException.class,
+        () -> mockParentAdmin
+            .checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store)));
+  }
+
+  private void mockRolledBackRetentionConfig(VeniceParentHelixAdmin admin, long retentionMs) {
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(retentionMs).when(clusterConfig).getRolledBackVersionRetentionMs();
+    VeniceControllerMultiClusterConfig multiConfig = mock(VeniceControllerMultiClusterConfig.class);
+    doReturn(clusterConfig).when(multiConfig).getControllerConfig(anyString());
+    doReturn(multiConfig).when(admin).getMultiClusterConfigs();
+  }
+
+  private static ControllerClient childClient(Store store) {
+    ControllerClient client = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(StoreInfo.fromStore(store));
+    doReturn(response).when(client).getStore(anyString(), anyInt());
+    return client;
+  }
+
+  private static Store rolledBackOriginStore(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push1"));
+    store.addVersion(new VersionImpl(storeName, 2, "push2"));
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.updateVersionStatus(2, VersionStatus.ROLLED_BACK);
+    store.setCurrentVersion(1);
+    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    return store;
+  }
+
+  private static Store onlineOnlyStore(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push1"));
+    store.addVersion(new VersionImpl(storeName, 2, "push2"));
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.updateVersionStatus(2, VersionStatus.ONLINE);
+    store.setCurrentVersion(2);
+    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    return store;
+  }
+
+  @Test
   public void testGetCurrentVersionForMultiRegionsWithError() {
     int regionCount = 4;
     Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(regionCount - 1);
@@ -2858,53 +2988,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new StoreVersionInfo(store, store.getVersion(1))).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
-    String latestTopic = storeName + "_v1";
-
-    // When there is a regular topic and the job status is terminal
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    doReturn(false).when(mockParentAdmin).isTopicTruncated(latestTopic);
+    // Latest version ONLINE: the push already completed, so the parent allows the next push through
+    // (returns empty) WITHOUT polling offline push status. This is the fix that unblocks a stuck
+    // deferred-swap ONLINE version whose push-status resource no longer exists.
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
-    // When there is a regular topic and the job status is not terminal
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
+    verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
 
-    // When there is a regular topic and the job status is 'UNKNOWN' in some region,
-    // but overall status is 'COMPLETED'
-    Map<String, String> extraInfo = new HashMap<>();
-    extraInfo.put("cluster1", ExecutionStatus.UNKNOWN.toString());
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    doCallRealMethod().when(mockParentAdmin).setTimer(any());
-    mockParentAdmin.setTimer(new TestMockTime());
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertFalse(currentPush.isPresent());
-    verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
-
-    // When there is a regular topic and the job status is 'UNKNOWN' in some region,
-    // but overall status is 'PROGRESS'
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
-
-    // When there is a regular topic and the job status is 'UNKNOWN' in some region for the first time,
-    // but overall status is 'PROGRESS'
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    when(mockParentAdmin.getOffLinePushStatus(clusterName, latestTopic))
-        .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
-        .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS));
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
+    Optional<String> currentPush;
 
     version = new VersionImpl(storeName, 2, "test_push_id");
     version.setStatus(VersionStatus.KILLED);
