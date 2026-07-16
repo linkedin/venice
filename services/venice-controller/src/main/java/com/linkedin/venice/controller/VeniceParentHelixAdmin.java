@@ -1490,22 +1490,15 @@ public class VeniceParentHelixAdmin implements Admin {
       return Optional.empty();
     }
 
-    // Statuses for the latest version that mean there is no in-flight push to wait on, so the
-    // next push may proceed:
-    // - KILLED / ERROR: failed/aborted push, version not serving.
-    // - ROLLED_BACK: operator rolled back to a previous version; this version is preserved by
-    // the rolled-back retention window, enforced separately by
-    // checkRollbackOriginVersionCapacityForNewPush.
-    // - PARTIALLY_ONLINE: parent-only terminal state from a region-filtered rollback (some
-    // regions rolled back, some didn't); same retention window applies via the same guard.
-    // - ONLINE: the push already completed (a version only reaches ONLINE after its push finishes),
-    // so there is no in-flight push to protect. Any remaining deferred-swap roll-forward is
-    // orchestrated separately by DeferredVersionSwapService and does not require serializing new
-    // pushes behind it; a subsequent push simply supersedes the pending swap. Critically, this
-    // must NOT depend on the parent version topic existing: PARENT_VERSION_STATUS_ONLY is the
-    // parent-VT-deprecation strategy (topicWriteNeeded=false), so the parent VT may never exist,
-    // and keying off ZK version status alone is what keeps this correct.
-    // Non-terminal statuses fall through to the polling branch below to wait on the in-flight push.
+    // Terminal statuses for the latest version — no in-flight push to wait on, so the next push may
+    // proceed:
+    // - KILLED / ERROR: failed/aborted push, not serving.
+    // - ROLLED_BACK / PARTIALLY_ONLINE: rollback (PARTIALLY_ONLINE = region-filtered); the
+    // rolled-back retention window is enforced separately by checkRollbackOriginVersionCapacityForNewPush.
+    // - ONLINE: push already completed; any pending deferred-swap roll-forward is orchestrated by
+    // DeferredVersionSwapService and a subsequent push simply supersedes it. Keys off ZK version
+    // status alone (not the parent VT, which may never exist under PARENT_VERSION_STATUS_ONLY).
+    // Non-terminal statuses fall through to the polling branch below.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
@@ -1788,12 +1781,8 @@ public class VeniceParentHelixAdmin implements Admin {
             ErrorType.BAD_REQUEST);
       }
 
-      // Block the push on the parent if any child region still has a ROLLED_BACK version within its
-      // retention window. We derive this from LIVE child-region status rather than parent metadata,
-      // which can go stale (a ROLLED_BACK record left behind after children moved on) and otherwise
-      // falsely block new pushes for the entire retention window. The parent is the sole synchronous
-      // gate — the equivalent check is NOT run during child admin-message consumption, where a throw
-      // would fail the message and wedge the admin channel.
+      // Block on the parent if a child still has a ROLLED_BACK version within retention (verified
+      // from LIVE child status, not stale parent metadata). See the method javadoc for rationale.
       if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
         checkRollbackOriginVersionCapacityFromChildren(clusterName, storeName);
       }
@@ -2442,31 +2431,19 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Enforces the rollback-origin retention block for a new push using LIVE child-region status,
-   * rather than (potentially stale) parent metadata. Parent version status can retain a
-   * {@code ROLLED_BACK}/{@code PARTIALLY_ONLINE} record after the children have moved on, which
-   * would otherwise falsely block new pushes for the entire retention window (the same class of
-   * stale-parent-metadata bug as a lingering ONLINE deferred-swap record).
+   * Blocks a new push if any reachable child region still has a {@code ROLLED_BACK} version within
+   * its retention window, using LIVE child status. We do NOT consult parent metadata, which can go
+   * stale and either falsely block or falsely allow. This runs once per new-push start, so querying
+   * every child is negligible. It runs only on the parent — a throw during child admin-message
+   * consumption ({@code VeniceHelixAdmin.addVersion}) would wedge the admin channel.
    *
-   * <p>Children are the authoritative source, so we query each child controller directly and block
-   * solely if a reachable child still has a {@code ROLLED_BACK} version within its retention window.
-   * We deliberately do NOT consult parent metadata (not even as a pre-filter): a stale parent record
-   * could either falsely block or falsely allow. This runs once per new-push start, so the handful
-   * of child RPCs is negligible. The equivalent check is intentionally NOT run during child
-   * admin-message consumption ({@code VeniceHelixAdmin.addVersion}): a throw there fails
-   * admin-message consumption and wedges the admin channel, so the parent is the sole synchronous
-   * gate.
+   * <p>Matches {@code ROLLED_BACK} only: a per-region rollback is binary, so a child is never
+   * rollback-{@code PARTIALLY_ONLINE} (that is a parent-only aggregate); a child
+   * {@code PARTIALLY_ONLINE} is a degraded-mode forward push and must not block. A partial rollback
+   * is still caught because its rolled-back region reports {@code ROLLED_BACK}.
    *
-   * <p>A per-region rollback is binary — a child region is either {@code ROLLED_BACK} or not — so a
-   * rollback never leaves a child {@code PARTIALLY_ONLINE} (that is a parent-only aggregate of a
-   * partial rollback). A child {@code PARTIALLY_ONLINE} only arises from a degraded-mode forward
-   * push, which is not a rollback-origin and must not block; hence we match {@code ROLLED_BACK}
-   * only. A partial rollback is still caught here because its rolled-back region reports
-   * {@code ROLLED_BACK}.
-   *
-   * <p>Unreachable/errored child regions are skipped (and logged) rather than blocking, so a
-   * transient child query failure cannot wedge pushes. If there are no reachable rolled-back
-   * children, the push is allowed.
+   * <p>Unreachable/errored regions are skipped (and logged); with no reachable rolled-back child the
+   * push is allowed.
    */
   void checkRollbackOriginVersionCapacityFromChildren(String clusterName, String storeName) {
     long rolledBackVersionRetentionMs =
@@ -2475,8 +2452,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (controllerClients.isEmpty()) {
-      // No children to consult. Parent metadata can be stale, so we do not fall back to enforcing
-      // against it — that is the false-block this check exists to avoid. Skip the block instead.
+      // No children to verify against; parent metadata can be stale, so skip rather than block.
       LOGGER.warn(
           "No child controller clients for cluster {}; skipping rollback-origin retention check for store {}",
           clusterName,

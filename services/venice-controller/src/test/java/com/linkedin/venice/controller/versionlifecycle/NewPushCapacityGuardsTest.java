@@ -290,10 +290,8 @@ public class NewPushCapacityGuardsTest {
 
   @Test
   public void rollbackOriginPassesWhenRolledBackVersionBelowCurrentVersion() {
-    // Stale ROLLED_BACK entry on parent: a rollback happened, then a subsequent push promoted higher.
-    // Parent retains more versions than children, so the ROLLED_BACK entry can linger after parent's
-    // currentVersion has moved past it. The filter must skip such entries — otherwise every fresh
-    // promotion's retention window would re-trigger the guard against the stale entry forever.
+    // Stale ROLLED_BACK entry below currentVersion (a later push promoted higher) must be skipped —
+    // otherwise every fresh promotion's retention window would re-trigger the guard forever.
     long now = System.currentTimeMillis();
     Store store = mockStoreWithVersions(
         3,
@@ -306,10 +304,7 @@ public class NewPushCapacityGuardsTest {
 
   @Test
   public void rollbackOriginBlocksOnlyRolledBackEntryAboveCurrentVersion() {
-    // Multi-rollback on parent: stale ROLLED_BACK v2 lingers below currentVersion=4 (aged out by a
-    // subsequent push), while v5 is the active rollback-origin above current. The filter must skip
-    // v2 and block on v5 — pre-PR filter (status==ROLLED_BACK alone) would have matched v2 first
-    // and misattributed the block.
+    // Stale ROLLED_BACK v2 below current is skipped; the active v5 above current blocks.
     long now = System.currentTimeMillis();
     Store store = mockStoreWithVersions(
         4,
@@ -327,7 +322,7 @@ public class NewPushCapacityGuardsTest {
 
   @Test
   public void rollbackOriginPassesWhenPartiallyOnlineVersionEqualsCurrentVersion() {
-    // Push-origin PARTIALLY_ONLINE: v4 is PARTIALLY_ONLINE and IS the current version → not rollback-origin
+    // PARTIALLY_ONLINE at currentVersion is a push, not a rollback-origin.
     long now = System.currentTimeMillis();
     Store store = mockStoreWithVersions(
         4,
@@ -340,7 +335,7 @@ public class NewPushCapacityGuardsTest {
 
   @Test
   public void rollbackOriginPassesWhenPartiallyOnlineBelowCurrentVersion() {
-    // Push-origin PARTIALLY_ONLINE on an older version (current was promoted past it) → not rollback-origin
+    // PARTIALLY_ONLINE below currentVersion is a superseded push, not a rollback-origin.
     long now = System.currentTimeMillis();
     Store store = mockStoreWithVersions(
         5,
@@ -353,8 +348,8 @@ public class NewPushCapacityGuardsTest {
 
   @Test
   public void rollbackOriginPassesJustPastRetention() {
-    // Past retention → check short-circuits, no block.
-    // Mock promoteTimestamp explicitly so wall-clock jitter doesn't disturb the boundary.
+    // Past retention → short-circuits, no block. Mock promoteTimestamp so wall-clock jitter can't
+    // disturb the boundary.
     long now = 1_000_000L;
     long retention = ROLLED_BACK_RETENTION_MS;
     Store store = mockStoreWithPromoteTimestamp(
@@ -395,8 +390,7 @@ public class NewPushCapacityGuardsTest {
 
   @Test
   public void rollbackOriginFieldOverloadBlocksAndIncludesRegionNameInMessage() {
-    // The child-snapshot overload evaluates raw fields (as fed from a child StoreInfo) and enriches
-    // the rejection message with the region name so operators can see which child is blocking.
+    // The region-named overload enriches the rejection message so operators see which child blocks.
     long now = System.currentTimeMillis();
     VeniceException e = expectThrows(
         VeniceException.class,
@@ -416,8 +410,7 @@ public class NewPushCapacityGuardsTest {
 
   @Test
   public void rollbackOriginFieldOverloadPassesWhenNoRollbackOriginVersion() {
-    // Live child snapshot shows no rollback-origin version -> no block, even within the retention
-    // window. This is the parent-side allow path when parent metadata is stale but children are clean.
+    // Clean child snapshot within the retention window → no block.
     long now = System.currentTimeMillis();
     VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
         CLUSTER_NAME,
