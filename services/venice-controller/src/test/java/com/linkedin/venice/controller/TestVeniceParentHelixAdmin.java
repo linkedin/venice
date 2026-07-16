@@ -3028,6 +3028,77 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testGetTopicForCurrentPushJobBlocksInProgressVersion() {
+    // Regression coverage for the in-progress/polling branch of
+    // getTopicForCurrentPushJobParentVersionStatusBasedTracking. Terminal statuses early-exit (see
+    // testGetTopicForCurrentPushJob); a non-terminal latest version must instead block the next push -
+    // either immediately (STARTED/PUSHED/CREATED) or by polling getOffLinePushStatus until the offline
+    // job status is terminal. This guards the stuck-push prevention behavior.
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
+    ControllerClient client = mock(ControllerClient.class);
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", client);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
+    HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
+    doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
+    doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    doCallRealMethod().when(mockParentAdmin)
+        .getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
+    doCallRealMethod().when(mockParentAdmin).setTimer(any());
+    mockParentAdmin.setTimer(new TestMockTime());
+
+    String latestTopic = storeName + "_v1";
+
+    // STARTED: push still running -> blocked immediately, without polling offline push status.
+    doReturn(inProgressStore(storeName, VersionStatus.STARTED)).when(mockParentAdmin).getStore(clusterName, storeName);
+    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(currentPush.isPresent());
+    assertEquals(currentPush.get(), latestTopic);
+    verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
+
+    // Non-terminal latest version reaches the polling branch. PROGRESS offline status is non-terminal,
+    // so the parent blocks the next push and returns the in-flight topic.
+    doReturn(inProgressStore(storeName, VersionStatus.NOT_CREATED)).when(mockParentAdmin)
+        .getStore(clusterName, storeName);
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(currentPush.isPresent());
+    assertEquals(currentPush.get(), latestTopic);
+    verify(mockParentAdmin, atLeast(1)).getOffLinePushStatus(clusterName, latestTopic);
+
+    // UNKNOWN in a region triggers retries; once the overall status is terminal (COMPLETED) the parent
+    // stops blocking and allows the next push (returns empty).
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.UNKNOWN.toString());
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
+  }
+
+  private Store inProgressStore(String storeName, VersionStatus status) {
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl version = new VersionImpl(storeName, 1, "test_push_id");
+    version.setStatus(status);
+    store.addVersion(version);
+    return store;
+  }
+
+  @Test
   public void testTruncateTopicsBasedOnMaxErroredTopicNumToKeep() {
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
