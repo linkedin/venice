@@ -81,6 +81,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_PRE_WRITE_QUOTA_CHECK;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -491,6 +492,7 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, false);
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
+    pushJobSettingToReturn.sparkPreWriteQuotaCheckEnabled = props.getBoolean(SPARK_PRE_WRITE_QUOTA_CHECK, false);
     pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
         props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
     if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled

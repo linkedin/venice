@@ -75,6 +75,7 @@ The user may choose to specify the following configs:
   [TARGETED_REGION_PUSH_LIST](https://venicedb.org/javadoc/com/linkedin/venice/hadoop/VenicePushJob.html#TARGETED_REGION_PUSH_LIST).
 - `post.validation.consumption`: Whether to perform post validation consumption after targeted region push is finished.
   Default: `true`. Set this to `false` if you want to achieve a true single colo push.
+- `spark.pre.write.quota.check`: Enables Spark's pre-write quota check. Default: `false`.
 
 The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
 must specify the following configs:

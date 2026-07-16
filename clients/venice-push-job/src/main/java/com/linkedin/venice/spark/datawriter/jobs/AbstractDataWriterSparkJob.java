@@ -842,11 +842,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   /**
    * Spark measures the serialized input size and checks it against the storage quota before writing (see
    * {@code enforceStorageQuotaBeforeWrite}), so the driver-side post-write quota check is redundant and is
-   * skipped for Spark.
+   * skipped for Spark when the pre-write check is enabled.
    */
   @Override
   public boolean performsPreWriteQuotaCheck() {
-    return true;
+    return pushJobSetting != null && pushJobSetting.sparkPreWriteQuotaCheckEnabled;
   }
 
   @VisibleForTesting
@@ -1015,6 +1015,12 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    * @return the persisted DataFrame to be written, or the original one if the check was skipped
    */
   private Dataset<Row> enforceStorageQuotaBeforeWrite(Dataset<Row> processedDataFrame) {
+    if (!pushJobSetting.sparkPreWriteQuotaCheckEnabled) {
+      LOGGER.info(
+          "Spark pre-write storage quota check is disabled. Skipping intermediary data size and quota check stage.");
+      return processedDataFrame;
+    }
+
     // Repush (source Kafka) is not subject to the storage quota check. Also skip when the quota known at
     // job start is already unlimited — no materialization or controller round-trip is needed.
     if (pushJobSetting.isSourceKafka || pushJobSetting.storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {

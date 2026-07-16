@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_PRE_WRITE_QUOTA_CHECK;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -430,6 +431,48 @@ public class VenicePushJobStatusAndQuotaTest extends VenicePushJobTestBase {
 
       Assert.assertEquals(vpj.refreshAndGetCurrentStorageQuota(), 456L);
       verify(client, never()).getStore(anyString());
+    }
+  }
+
+  @Test
+  public void testSparkPreWriteStorageQuotaCheckConfigDefaultsToDisabledAndCanBeEnabled() {
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), getClient())) {
+      assertFalse(vpj.getPushJobSetting().sparkPreWriteQuotaCheckEnabled);
+    }
+
+    Properties props = getVpjRequiredProperties();
+    props.setProperty(SPARK_PRE_WRITE_QUOTA_CHECK, String.valueOf(true));
+
+    try (final VenicePushJob vpj = getSpyVenicePushJob(props, getClient())) {
+      assertTrue(vpj.getPushJobSetting().sparkPreWriteQuotaCheckEnabled);
+    }
+  }
+
+  @Test
+  public void testUpdatePushJobDetailsRunsPostWriteQuotaCheckWhenComputeJobDoesNotPerformPreWriteQuotaCheck() {
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), getClient())) {
+      setPushJobSettingDefaults(vpj.getPushJobSetting());
+      InputStorageQuotaTracker inputStorageQuotaTracker = mock(InputStorageQuotaTracker.class);
+      doReturn(true).when(inputStorageQuotaTracker).exceedQuota(anyLong());
+      doReturn(1L).when(inputStorageQuotaTracker).getStoreStorageQuota();
+      vpj.setInputStorageQuotaTracker(inputStorageQuotaTracker);
+
+      DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
+      doReturn(10L).when(dataWriterTaskTracker).getTotalKeySize();
+      doReturn(10L).when(dataWriterTaskTracker).getTotalValueSize();
+
+      DataWriterComputeJob dataWriterComputeJob = mock(DataWriterComputeJob.class);
+      doReturn(dataWriterComputeJob).when(vpj).getDataWriterComputeJob();
+      doReturn(ComputeJob.Status.SUCCEEDED).when(dataWriterComputeJob).getStatus();
+      doReturn(dataWriterTaskTracker).when(dataWriterComputeJob).getTaskTracker();
+      doReturn(false).when(dataWriterComputeJob).performsPreWriteQuotaCheck();
+
+      Assert.expectThrows(VeniceException.class, vpj::runJobAndUpdateStatus);
+
+      verify(inputStorageQuotaTracker).exceedQuota(20L);
+      Assert.assertEquals(
+          (int) vpj.getPushJobDetails().pushJobLatestCheckpoint,
+          PushJobCheckpoints.QUOTA_EXCEEDED.getValue());
     }
   }
 
