@@ -573,9 +573,10 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   }
 
   /**
-   * Collect the non-null callbacks of {@code records}, preserving order. Public writer APIs allow a null callback, so
-   * nulls are dropped here before the callbacks are wired into a {@link ChainedPubSubCallback} (whose
-   * {@code onCompletion} invokes each entry without a null check).
+   * Collect the non-null callbacks of {@code records}, preserving order. Public writer APIs allow a null callback.
+   * {@link ChainedPubSubCallback} already skips null entries, so this is not about avoiding an NPE; dropping nulls keeps
+   * the dependent-callback list clean and lets {@link #produceIntermediateUpdate} branch on the real callback count
+   * (none vs. single vs. chained).
    */
   private static List<PubSubProducerCallback> extractNonNullCallbacks(List<ProducerBufferRecord> records) {
     List<PubSubProducerCallback> nonNullCallbacks = new ArrayList<>(records.size());
@@ -606,9 +607,9 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       ProducerBufferRecord referenceRecord,
       byte[] serializedUpdate,
       List<ProducerBufferRecord> records) {
-    // Public writer APIs allow a null callback, so drop nulls before building the intermediate callback. Otherwise a
-    // null entry would NPE here (or later inside ChainedPubSubCallback), and since this runs outside the try/catch in
-    // checkAndMaybeProduceBatchRecord() it would abort the whole batch and leave every caller's callback uncompleted.
+    // Reduce to the real (non-null) callbacks so the branching below (no-op vs. single vs. chained) reflects the
+    // actual number of callers to notify. Public writer APIs allow a null callback, and ChainedPubSubCallback already
+    // skips nulls, so this is about correct branching rather than NPE-avoidance.
     List<PubSubProducerCallback> nonNullCallbacks = extractNonNullCallbacks(records);
     PubSubProducerCallback callback;
     if (nonNullCallbacks.isEmpty()) {
