@@ -2768,62 +2768,46 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
 
-    // Parent metadata WOULD block (rollback-origin v2 within retention), and child dc-0 still holds
-    // the rollback-origin version too -> the parent must block the new push.
+    // Child dc-0 still holds a ROLLED_BACK version within retention -> the parent must block the push.
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", childClient(rolledBackOriginStore(store)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     assertThrows(
         VeniceException.class,
-        () -> mockParentAdmin
-            .checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store)));
+        () -> mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store));
   }
 
   @Test
   public void checkRollbackOriginFromChildrenAllowsWhenChildrenNotRolledBack() {
-    // The core fix: parent metadata carries a stale rollback-origin record (so the pre-check fires),
-    // but the LIVE child status shows no rollback-origin version -> the push must be allowed instead
-    // of being falsely blocked for the full retention window.
+    // The core fix: LIVE child status shows no rolled-back version, so the push must be allowed
+    // rather than blocked on (potentially stale) parent metadata.
     String store = "rb_from_children_allow";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
 
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", childClient(onlineOnlyStore(store)));
     map.put("dc-1", childClient(onlineOnlyStore(store)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
-    // Should not throw despite the stale parent rollback-origin record.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store));
-  }
-
-  @Test
-  public void checkRollbackOriginFromChildrenSkipsFastWhenParentHasNoRollbackOrigin() {
-    // Fast path: parent metadata shows no rollback-origin version, so children are never queried.
-    String store = "rb_from_children_fastpath";
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
-
-    // Should not throw, and the fast path must not enforce a block.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, onlineOnlyStore(store));
+    // Should not throw — all children are clean.
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
   }
 
   @Test
   public void checkRollbackOriginFromChildrenSkipsErroredRegion() {
     // A transient child-query failure must not wedge pushes: the errored region is skipped, and
-    // with no reachable rollback-origin child the push is allowed.
+    // with no reachable rolled-back child the push is allowed.
     String store = "rb_from_children_error";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
 
     ControllerClient errorClient = mock(ControllerClient.class);
     StoreResponse errorResponse = new StoreResponse();
@@ -2834,7 +2818,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     // Should not throw.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store));
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
   }
 
   @Test
@@ -2845,11 +2829,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any(), any());
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
     doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
 
-    // Should not throw even though parent metadata shows a rollback-origin version within retention.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store, rolledBackOriginStore(store));
+    // Should not throw.
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
   }
 
   private void mockRolledBackRetentionConfig(VeniceParentHelixAdmin admin, long retentionMs) {

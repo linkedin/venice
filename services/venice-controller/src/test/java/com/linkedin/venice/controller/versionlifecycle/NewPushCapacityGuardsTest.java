@@ -274,8 +274,10 @@ public class NewPushCapacityGuardsTest {
   }
 
   @Test
-  public void rollbackOriginBlocksPushWhenPartiallyOnlineVersionAboveCurrentExistsWithinRetention() {
-    // Parent-side partial rollback: v5 is PARTIALLY_ONLINE with number > currentVersion (v4)
+  public void rollbackOriginPassesWhenPartiallyOnlineVersionAboveCurrentExists() {
+    // A child region's rollback is binary (ROLLED_BACK), so a rollback never leaves a child
+    // PARTIALLY_ONLINE. A child PARTIALLY_ONLINE above currentVersion comes only from a degraded-mode
+    // forward push, which is NOT a rollback-origin and must not block a new push.
     long now = System.currentTimeMillis();
     Store store = mockStoreWithVersions(
         4,
@@ -283,9 +285,7 @@ public class NewPushCapacityGuardsTest {
         mockVersion(4, VersionStatus.ONLINE),
         mockVersion(5, VersionStatus.PARTIALLY_ONLINE));
 
-    VeniceException e =
-        expectThrows(VeniceException.class, () -> checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now));
-    assertTrue(e.getMessage().contains("PARTIALLY_ONLINE"), "message should include status: " + e.getMessage());
+    checkRollbackOrigin(store, ROLLED_BACK_RETENTION_MS, now);
   }
 
   @Test

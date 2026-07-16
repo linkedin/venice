@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.versionlifecycle;
 
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
-import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -12,7 +11,6 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -104,20 +102,25 @@ public final class VersionLifecyclePolicy {
   }
 
   /**
-   * Throws if starting a new push would violate the retention window for a rollback-origin version.
-   * Blocks when a {@code ROLLED_BACK} or {@code PARTIALLY_ONLINE} version sits strictly above the
-   * current version — the rollback-origin invariant, since rollback decrements currentVersion below
-   * the rolled-back-from version's number on both parent and child controllers. Stale entries
-   * lingering below currentVersion (e.g., after a subsequent push promoted higher) are skipped.
-   * The block also lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
-   * elapses; past that point, the version will be swept on the next SOP deletion pass.
+   * Throws if starting a new push would violate the retention window for a rolled-back version in a
+   * single child region. Blocks when a {@code ROLLED_BACK} version sits strictly above the current
+   * version — the rollback-origin invariant, since rollback decrements currentVersion below the
+   * rolled-back-from version's number. Stale entries lingering below currentVersion (e.g., after a
+   * subsequent push promoted higher) are skipped. The block also lifts once
+   * {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs} elapses; past that
+   * point, the version will be swept on the next SOP deletion pass.
    *
-   * <p>This evaluates a single store snapshot (one region). The parent controller drives the block
-   * from LIVE child-region snapshots rather than its own metadata (see
+   * <p>This evaluates a single region's store snapshot. The parent controller drives the block from
+   * LIVE child-region snapshots rather than its own metadata (see
    * {@code VeniceParentHelixAdmin.checkRollbackOriginVersionCapacityFromChildren}), because parent
    * version status can go stale and falsely block pushes for the whole retention window. The
    * enforcement runs only on the parent; running it during child admin-message consumption would
    * fail the message and wedge the admin channel.
+   *
+   * <p>Only {@code ROLLED_BACK} counts. A per-region rollback is binary, so a rollback never leaves a
+   * child {@code PARTIALLY_ONLINE} (that is a parent-only aggregate of a partial rollback); the only
+   * child {@code PARTIALLY_ONLINE} comes from a degraded-mode forward push, which is not a
+   * rollback-origin and must not block.
    *
    * <p>Evaluates the raw fields of a single snapshot so callers can pass a child {@code StoreInfo}
    * (which is not a {@link Store}) without a conversion. {@code regionName} enriches the rejection
@@ -134,19 +137,16 @@ public final class VersionLifecyclePolicy {
       long currentTimeMs) {
     long retentionExpiresAt = latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs;
     if (currentTimeMs > retentionExpiresAt) {
-      // Past retention — SOP deletion will clean up any rollback-origin versions.
+      // Past retention — SOP deletion will clean up any rolled-back versions.
       return;
     }
     for (Version v: versions) {
-      VersionStatus status = v.getStatus();
-      // A rollback-origin version is one that was promoted then rolled back to a lower version,
-      // so number > currentVersion holds (rollback decrements currentVersion on both parent and
-      // child controllers). Once a subsequent push promotes higher than the rolled-back version,
-      // the retention contract is satisfied/superseded and the entry — which can linger in a store
-      // snapshot that retains more versions — is correctly aged out by this filter.
-      // Push-origin PARTIALLY_ONLINE (number == currentVersion) is correctly excluded.
-      boolean isRollbackOrigin =
-          (status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion;
+      // A rollback-origin version is one that was promoted then rolled back to a lower version, so
+      // number > currentVersion holds (rollback decrements currentVersion). Once a subsequent push
+      // promotes higher than the rolled-back version, the retention contract is satisfied/superseded
+      // and the entry — which can linger in a store snapshot that retains more versions — is
+      // correctly aged out by this filter.
+      boolean isRollbackOrigin = v.getStatus() == ROLLED_BACK && v.getNumber() > currentVersion;
       if (isRollbackOrigin) {
         throw new VeniceException(
             String.format(
@@ -155,39 +155,12 @@ public final class VersionLifecyclePolicy {
                 storeName,
                 clusterName,
                 v.getNumber(),
-                status,
+                v.getStatus(),
                 regionName == null ? "" : " in region " + regionName,
                 retentionExpiresAt - currentTimeMs));
       }
     }
-  }
-
-  /**
-   * Cheap boolean pre-check mirroring {@link #checkRollbackOriginVersionCapacityForNewPush} without
-   * throwing: returns {@code true} if the given store snapshot has a rollback-origin version
-   * ({@code ROLLED_BACK}/{@code PARTIALLY_ONLINE} above {@code currentVersion}) still within its
-   * retention window. The parent uses this against its own metadata to decide whether it is even
-   * worth paying for live child verification before enforcing the block.
-   */
-  public static boolean hasRollbackOriginVersionWithinRetention(
-      List<Version> versions,
-      int currentVersion,
-      long latestVersionPromoteToCurrentTimestamp,
-      long rolledBackVersionRetentionMs,
-      long currentTimeMs) {
-    if (currentTimeMs > latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs) {
-      return false;
-    }
-    for (Version v: versions) {
-      VersionStatus status = v.getStatus();
-      if ((status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // ---------- Version selection ----------
+  } // ---------- Version selection ----------
 
   /**
    * Largest {@code ONLINE} version number strictly less than {@code currentVersion}, or
