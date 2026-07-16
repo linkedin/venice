@@ -231,9 +231,8 @@ public class VenicePushJobStatusAndQuotaTest extends VenicePushJobTestBase {
           assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.UNKNOWN);
           break;
         default:
-          /** Newly added ExecutionStatus should be mapped properly in
-           * {@link VenicePushJob.getPerColoPushJobDetailsStatusFromExecutionStatus}
-           * and this test should be updated accordingly
+          /* Newly added ExecutionStatus should be mapped properly in
+           * VenicePushJob.getPerColoPushJobDetailsStatusFromExecutionStatus, and this test should be updated accordingly.
            */
           fail(status + " is not mapped properly in getPerColoPushJobDetailsStatusFromExecutionStatus");
       }
@@ -241,7 +240,7 @@ public class VenicePushJobStatusAndQuotaTest extends VenicePushJobTestBase {
   }
 
   /**
-   * Tests that the error message for the {@link com.linkedin.venice.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
+   * Tests that the error message for the {@link PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
    * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -264,7 +263,7 @@ public class VenicePushJobStatusAndQuotaTest extends VenicePushJobTestBase {
   }
 
   /**
-   * Tests that the error message for the {@link com.linkedin.venice.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
+   * Tests that the error message for the {@link PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
    * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
    */
   @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
@@ -394,8 +393,10 @@ public class VenicePushJobStatusAndQuotaTest extends VenicePushJobTestBase {
           new VeniceStorageQuotaExceededException("pre-write quota exceeded");
       doReturn(quotaExceededException).when(dataWriterComputeJob).getFailureReason();
 
-      Assert.expectThrows(VeniceStorageQuotaExceededException.class, vpj::runJobAndUpdateStatus);
+      VeniceStorageQuotaExceededException thrown =
+          Assert.expectThrows(VeniceStorageQuotaExceededException.class, vpj::runJobAndUpdateStatus);
 
+      Assert.assertSame(thrown, quotaExceededException);
       Assert.assertEquals(
           (int) vpj.getPushJobDetails().pushJobLatestCheckpoint,
           PushJobCheckpoints.QUOTA_EXCEEDED.getValue());

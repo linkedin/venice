@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.LongSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -115,13 +116,13 @@ public abstract class DataWriterComputeJob implements ComputeJob {
    * this to evaluate the quota against the up-to-date value — honoring a quota changed while the push ran —
    * rather than the value captured at job configuration time.
    */
-  private java.util.function.LongSupplier currentStorageQuotaSupplier = null;
+  private LongSupplier currentStorageQuotaSupplier = null;
 
-  public void setCurrentStorageQuotaSupplier(java.util.function.LongSupplier currentStorageQuotaSupplier) {
+  public void setCurrentStorageQuotaSupplier(LongSupplier currentStorageQuotaSupplier) {
     this.currentStorageQuotaSupplier = currentStorageQuotaSupplier;
   }
 
-  protected java.util.function.LongSupplier getCurrentStorageQuotaSupplier() {
+  protected LongSupplier getCurrentStorageQuotaSupplier() {
     return currentStorageQuotaSupplier;
   }
 

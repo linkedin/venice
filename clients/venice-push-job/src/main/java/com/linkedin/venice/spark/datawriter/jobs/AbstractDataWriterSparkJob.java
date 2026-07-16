@@ -637,7 +637,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             byte[] firstValue = rowsList.get(0).getAs(VALUE_COLUMN_NAME);
             for (int i = 1; i < rowsList.size(); i++) {
               byte[] currentValue = rowsList.get(i).getAs(VALUE_COLUMN_NAME);
-              if (!java.util.Arrays.equals(firstValue, currentValue)) {
+              if (!Arrays.equals(firstValue, currentValue)) {
                 hasDistinctValues = true;
                 break;
               }
@@ -774,7 +774,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     DataWriterAccumulators accumulators = accumulatorsForDataWriterJob;
 
     // Optimization: if strategies and dictionaries are the same and metrics are disabled, skip the map stage
-    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict) && !metricEnabled) {
+    if (sourceStrategy == destStrategy && Arrays.equals(sourceDict, destDict) && !metricEnabled) {
       LOGGER.info("Source and destination compression are identical ({}). Skipping re-encoding stage.", sourceStrategy);
       return dataFrame;
     }
@@ -926,11 +926,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
       // TODO: Add map-side combiner to reduce the data size before shuffling
 
-      // Intermediary stage: measure the serialized input size and fail the push before writing anything
-      // to Kafka if it exceeds the storage quota, avoiding the wasted work of writing the whole dataset
-      // only to reject it in the driver-side post-write check.
-      quotaCheckedInput = enforceStorageQuotaBeforeWrite(dataFrame);
-      dataFrame = quotaCheckedInput;
+      if (pushJobSetting.sparkPreWriteQuotaCheckEnabled) {
+        // Optional pre-write quota stage; materializes serialized rows before PubSub writes.
+        quotaCheckedInput = enforceStorageQuotaBeforeWrite(dataFrame);
+        dataFrame = quotaCheckedInput;
+      }
 
       // Partition the data using the custom partitioner and sort the data within that partition
       dataFrame = SparkPartitionUtils.repartitionAndSortWithinPartitions(
@@ -986,8 +986,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           topicName,
           perPartitionRecordCounts.size());
     } finally {
-      // Release the DataFrame cached by the pre-write quota check now that the write is done (the write
-      // reused it). unpersist() is a no-op if the check was skipped and nothing was cached.
+      // Release the DataFrame cached by the pre-write quota check now that the write is done.
       if (quotaCheckedInput != null) {
         quotaCheckedInput.unpersist();
       }
@@ -1000,7 +999,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   /**
-   * Intermediary stage between reading/serializing the input (stage 1) and writing to Kafka (stage 2):
+   * Intermediary stage between reading/serializing the input (stage 1) and writing to PubSub (stage 2):
    * materialize the record-processing pass once, measure the serialized data size, and fail the push before
    * any data is written if it exceeds the store's storage quota. Failing here avoids writing the entire
    * dataset only to have it rejected by the driver-side post-write quota check.
@@ -1009,19 +1008,13 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    * stats) already accumulates the key size and compressed value size, so we read
    * {@code getTotalKeySize() + getTotalValueSize()} — the exact quantity the driver-side check uses.
    * Persisting lets the downstream write reuse the result so that pass runs exactly once (which also keeps
-   * the size accumulators single-counted). Repush (source Kafka) and unlimited-quota stores skip the check.
+   * the size accumulators single-counted). Repush (source PubSub) and unlimited-quota stores skip the check.
    *
    * @param processedDataFrame the serialized (key, value, ...) rows, before partitioning/sorting
    * @return the persisted DataFrame to be written, or the original one if the check was skipped
    */
   private Dataset<Row> enforceStorageQuotaBeforeWrite(Dataset<Row> processedDataFrame) {
-    if (!pushJobSetting.sparkPreWriteQuotaCheckEnabled) {
-      LOGGER.info(
-          "Spark pre-write storage quota check is disabled. Skipping intermediary data size and quota check stage.");
-      return processedDataFrame;
-    }
-
-    // Repush (source Kafka) is not subject to the storage quota check. Also skip when the quota known at
+    // Repush (source PubSub) is not subject to the storage quota check. Also skip when the quota known at
     // job start is already unlimited — no materialization or controller round-trip is needed.
     if (pushJobSetting.isSourceKafka || pushJobSetting.storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
       return processedDataFrame;
@@ -1038,7 +1031,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     LongSupplier quotaSupplier = getCurrentStorageQuotaSupplier();
     long storageQuota = quotaSupplier != null ? quotaSupplier.getAsLong() : pushJobSetting.storeStorageQuota;
     LOGGER.info(
-        "Measured serialized input data size before writing to Kafka: {} (store quota: {})",
+        "Measured serialized input data size before writing to PubSub: {} (store quota: {})",
         ByteUtils.generateHumanReadableByteCountString(totalInputDataSizeInBytes),
         ByteUtils.generateHumanReadableByteCountString(storageQuota));
     if (storageQuota != Store.UNLIMITED_STORAGE_QUOTA && totalInputDataSizeInBytes > storageQuota) {

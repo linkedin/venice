@@ -43,6 +43,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -691,7 +692,7 @@ public class AbstractDataWriterSparkJobTest {
   }
 
   private static class QuotaTestingDataWriterSparkJob extends DataWriterSparkJob {
-    private boolean writerFactoryCreated = false;
+    private boolean writerFactoryCreated;
 
     boolean isWriterFactoryCreated() {
       return writerFactoryCreated;
@@ -700,7 +701,7 @@ public class AbstractDataWriterSparkJobTest {
     @Override
     protected MapPartitionsFunction<Row, Row> createPartitionWriterFactory(
         Broadcast<Properties> broadcastProperties,
-        com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators accumulators) {
+        DataWriterAccumulators accumulators) {
       writerFactoryCreated = true;
       return iterator -> {
         long recordCount = 0;
