@@ -203,7 +203,7 @@ public class VenicePushJobTargetedRegionTest extends VenicePushJobTestBase {
       VersionCreationResponse mockVersionCreationResponse = mockVersionCreationResponse(client);
       mockVersionCreationResponse.setKafkaSourceRegion(null);
 
-      // verify the kafka source region must be present when kick off post-validation consumption
+      // Verify the source region must be present when kicking off post-validation consumption.
       try {
         pushJob.run();
         fail("Test should fail, but doesn't.");
@@ -540,14 +540,14 @@ public class VenicePushJobTargetedRegionTest extends VenicePushJobTestBase {
       if (VersionStatus.PARTIALLY_ONLINE.equals(versionStatus)) {
         Assert.assertEquals(
             e.getMessage(),
-            "Version kafka-topic is only partially online in some regions. Check nuage to see which regions are not serving the latest version."
+            "Version pubsub-topic is only partially online in some regions. Check nuage to see which regions are not serving the latest version."
                 + " It is possible that there was a failure in rolling forward on the controller side or ingestion failed in some regions.");
       } else if (VersionStatus.KILLED.equals(versionStatus)) {
-        Assert.assertEquals(e.getMessage(), "Version kafka-topic was killed and cannot be served.");
+        Assert.assertEquals(e.getMessage(), "Version pubsub-topic was killed and cannot be served.");
       } else {
         Assert.assertEquals(
             e.getMessage(),
-            "Version kafka-topic was rolled back after ingestion completed due to validation failure");
+            "Version pubsub-topic was rolled back after ingestion completed due to validation failure");
       }
     }
   }

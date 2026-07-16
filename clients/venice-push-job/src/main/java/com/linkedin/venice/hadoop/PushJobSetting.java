@@ -110,7 +110,7 @@ public class PushJobSetting implements Serializable {
   // Multiple compute engine support
   public Class<? extends DataWriterComputeJob> dataWriterComputeJobClass;
   /** Refer {@link VenicePushJobConstants#SPARK_PRE_WRITE_QUOTA_CHECK}. */
-  public boolean sparkPreWriteQuotaCheckEnabled = false;
+  public boolean sparkPreWriteQuotaCheckEnabled;
 
   // Store-config setting
   public String clusterName;
