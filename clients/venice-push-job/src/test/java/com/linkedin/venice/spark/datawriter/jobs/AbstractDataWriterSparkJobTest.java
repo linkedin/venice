@@ -389,6 +389,7 @@ public class AbstractDataWriterSparkJobTest {
     setting.partitionCount = 1;
     setting.rmdField = "";
     setting.storeStorageQuota = startQuota;
+    setting.sparkPreWriteQuotaCheckEnabled = true;
 
     Properties properties = new Properties();
     properties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
@@ -428,6 +429,7 @@ public class AbstractDataWriterSparkJobTest {
   public void testRunJobSkipsPreWriteStorageQuotaCheckForKifRepush() throws IOException {
     PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
     setting.storeStorageQuota = 1L;
+    setting.sparkPreWriteQuotaCheckEnabled = true;
 
     AtomicLong quotaRefreshCount = new AtomicLong();
     try (KifQuotaTestingDataWriterSparkJob job = new KifQuotaTestingDataWriterSparkJob()) {
@@ -443,6 +445,38 @@ public class AbstractDataWriterSparkJobTest {
       Assert.assertNull(job.getFailureReason());
       Assert.assertTrue(job.isWriterFactoryCreated(), "KIF repush should continue to the writer path");
       Assert.assertEquals(quotaRefreshCount.get(), 0L, "KIF repush must not refresh or enforce storage quota");
+    }
+  }
+
+  @Test
+  public void testRunJobSkipsPreWriteStorageQuotaCheckWhenConfigDisabled() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.partitionCount = 1;
+    setting.rmdField = "";
+    setting.storeStorageQuota = 1L;
+    setting.sparkPreWriteQuotaCheckEnabled = false;
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+    AtomicLong quotaRefreshCount = new AtomicLong();
+
+    try (QuotaTestingDataWriterSparkJob job = new QuotaTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(properties), setting);
+      job.setCurrentStorageQuotaSupplier(() -> {
+        quotaRefreshCount.incrementAndGet();
+        return 1L;
+      });
+
+      Assert.assertFalse(job.performsPreWriteQuotaCheck());
+      job.runJob();
+
+      Assert.assertEquals(job.getStatus(), ComputeJob.Status.SUCCEEDED);
+      Assert.assertNull(job.getFailureReason());
+      Assert.assertTrue(job.isWriterFactoryCreated());
+      Assert.assertEquals(quotaRefreshCount.get(), 0L);
+      Assert.assertTrue(getTotalInputDataSize(job) > setting.storeStorageQuota);
     }
   }
 
