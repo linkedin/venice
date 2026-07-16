@@ -3036,6 +3036,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subscribePosition,
         localKafkaServer);
 
+    // Restart durability for the future-slot pause. The physical pause is normally applied when
+    // START_OF_PUSH is processed (processStartOfPush -> pausePartitionForFutureSlot). On a fresh SIT
+    // created after a restart/host-move for a still-unpromoted non-target region (createPaused=true,
+    // so isPauseAfterStartOfPush()==true), the partition resumes from a checkpointed position PAST
+    // SOP, so SOP is never re-delivered and processStartOfPush never runs. Re-apply the pause here so
+    // the partition stays held back until promotion. Skip the fresh-bootstrap case (EARLIEST): there
+    // SOP will be consumed naturally and reportStarted-then-pause runs as usual. Skip the
+    // custom-lifecycle seek path, which reports completion immediately and is unrelated to
+    // paused-SIT.
+    boolean isCustomSeek = consumerAction != null && consumerAction.getPubSubPosition() != null;
+    if (isPauseAfterStartOfPush() && !isCustomSeek && !PubSubSymbolicPosition.EARLIEST.equals(subscribePosition)) {
+      LOGGER.info(
+          "Re-applying future-slot pause on restart for replica: {} (resumed past SOP, region not yet promoted)",
+          newPartitionConsumptionState.getReplicaId());
+      pausePartitionForFutureSlot(partition);
+    }
+
     if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
       try {
         TopicManager topicManager = getTopicManager(localKafkaServer);
@@ -3989,6 +4006,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     getIngestionNotificationDispatcher().reportStarted(partitionConsumptionState);
     if (isPauseAfterStartOfPush()) {
+      // Soft boundary: pauseConsumerFor only stops *future* polls. Records already polled/buffered
+      // in the same fetch batch as SOP (or already handed to the drainer) will still be processed
+      // before the pause takes effect, so a few post-SOP records may be ingested in a non-target
+      // region. That is acceptable for the "register as reporter but don't complete" goal.
       pausePartitionForFutureSlot(partitionConsumptionState.getPartition());
     }
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
@@ -4972,7 +4993,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean pauseConsumption(String topic, int partitionId) {
     // Store-level pause takes precedence; no-op here so the two pause sources don't race.
     if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
-      logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId);
+      logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId, "store-level paused");
       return false;
     }
     aggKafkaConsumerService.pauseConsumerFor(
@@ -4985,8 +5006,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Store-level pause and future-slot pause both take precedence; no-op here so a quota resume
     // doesn't physically un-pause a partition that is intentionally held back.
     PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partitionId);
-    if (shouldSkipQuotaCallbackForStoreLevelPause(pcs) || (pcs != null && pcs.isFutureSlotPaused())) {
-      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId);
+    if (shouldSkipQuotaCallbackForStoreLevelPause(pcs)) {
+      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId, "store-level paused");
+      return false;
+    }
+    if (pcs != null && pcs.isFutureSlotPaused()) {
+      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId, "future-slot paused");
       return false;
     }
     getAggKafkaConsumerService().resumeConsumerFor(
@@ -5000,14 +5025,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return resumeConsumption(topic, partitionId);
   }
 
-  private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId) {
-    String key = storeName + "-" + callbackName + "-storeLevelPauseSuppressed";
+  private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId, String reason) {
+    String key = storeName + "-" + callbackName + "-" + reason + "-Suppressed";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(key)) {
       LOGGER.info(
-          "Disk-quota {} suppressed for {}-{} because partition is store-level paused.",
+          "Disk-quota {} suppressed for {}-{} because partition is {}.",
           callbackName,
           topic,
-          partitionId);
+          partitionId,
+          reason);
     }
   }
 
@@ -6810,36 +6836,64 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Resume partitions that were paused via the future-slot pause mechanism.
-   * For each partition, clears the {@link PartitionConsumptionState#setFutureSlotPaused} flag and
-   * physically resumes the consumer assignment — but only when the partition is not still held by a
-   * store-level pause ({@link PartitionConsumptionState#isStoreLevelPaused()}); partitions that are
-   * store-level paused are skipped and remain paused.
+   * Resume partitions that were paused via the future-slot pause mechanism, called once the region
+   * is promoted. Only partitions currently flagged
+   * {@link PartitionConsumptionState#isFutureSlotPaused()} are touched, so partitions paused for
+   * other reasons (quota, record-transformer) are left alone.
+   *
+   * <p>Promotion means the future-slot pause no longer applies, so the flag is cleared for every
+   * future-slot-paused partition. The consumer is physically resumed immediately — unless a
+   * store-level pause currently owns the subscription (the consumer is unsubscribed), in which case
+   * the physical resume is deferred to the store-level EXIT_PAUSE path, which will resubscribe and,
+   * seeing the now-cleared flag, will not re-apply the future-slot pause. Clearing the flag
+   * unconditionally is what lets EXIT_PAUSE distinguish "still unpromoted" (flag set → re-pause)
+   * from "already promoted" (flag clear → resume).
+   *
+   * <p>The SIT-level {@link #pauseAfterStartOfPush} flag is cleared once at the end so that
+   * partitions subscribed after promotion (the SIT is reused across the future→current swap) are
+   * not re-paused with no reliable resume path, and blob transfer is no longer suppressed.
    */
   public void resumeFromFutureSlotPause() {
     PubSubTopic vt = getVersionTopic();
     for (Map.Entry<Integer, PartitionConsumptionState> entry: getPartitionConsumptionStateMap().entrySet()) {
       int partition = entry.getKey();
       PartitionConsumptionState pcs = entry.getValue();
+      if (!pcs.isFutureSlotPaused()) {
+        continue;
+      }
+      // Promotion happened: clear the flag regardless of store-level pause state so it always
+      // reflects "region not yet promoted".
+      pcs.setFutureSlotPaused(false);
       if (!pcs.isStoreLevelPaused()) {
-        pcs.setFutureSlotPaused(false);
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vt, partition);
         getAggKafkaConsumerService().resumeConsumerFor(vt, topicPartition);
         LOGGER.debug("resumeFromFutureSlotPause: resumed partition {} in {}", partition, vt);
       } else {
+        // Store-level pause owns the (unsubscribed) consumer; defer the physical resume to
+        // EXIT_PAUSE, which will resubscribe and skip re-pausing now that the flag is cleared.
         LOGGER.debug(
-            "resumeFromFutureSlotPause: partition {} in {} is still store-level paused, skipping physical resume",
+            "resumeFromFutureSlotPause: partition {} in {} is still store-level paused, deferring physical resume to EXIT_PAUSE",
             partition,
             vt);
       }
     }
+    // Turn off pause-after-SOP for the life of the SIT once resumed/promoted. Otherwise a partition
+    // subscribed after this point (the SIT is keyed by version topic and reused across the
+    // future→current swap) would be re-paused in processStartOfPush with no resume path, and
+    // shouldStartBlobTransfer would stay short-circuited to false forever.
+    setPauseAfterStartOfPush(false);
   }
 
   /**
    * Returns true if any partition in this SIT is currently paused via the future-slot pause mechanism.
    */
   public boolean isFutureSlotPaused() {
-    return getPartitionConsumptionStateMap().values().stream().anyMatch(PartitionConsumptionState::isFutureSlotPaused);
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+      if (pcs.isFutureSlotPaused()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public boolean isPauseAfterStartOfPush() {

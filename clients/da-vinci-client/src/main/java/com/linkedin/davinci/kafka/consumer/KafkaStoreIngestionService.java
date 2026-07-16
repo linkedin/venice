@@ -873,6 +873,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           return;
         }
         ingestionExecutorService.submit(storeIngestionTask);
+      } else if (createPaused && !storeIngestionTask.isPauseAfterStartOfPush()) {
+        // A SIT already exists for this topic and was NOT created in future-slot-paused mode, so the
+        // createPaused=true request cannot be honored (the flag is only wired in at task creation,
+        // before SOP is processed). Fail loudly rather than silently starting an unpaused task when
+        // the caller expects a paused one, which would let a non-target region complete ingestion
+        // before promotion.
+        throw new VeniceException(
+            "createPaused=true requested for topic " + topic
+                + " but an active ingestion task already exists that is not configured to pause after START_OF_PUSH.");
       }
 
       /**

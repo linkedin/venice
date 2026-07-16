@@ -51,39 +51,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partition,
       Optional<PubSubPosition> pubSubPosition,
       String replicaId) {
-    String storeVersion = storeConfig.getStoreVersionName();
-    LOGGER.info("Retrieving storage engine for replica {}", replicaId);
-    Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
-
-    ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
-
-    if (replicaContext.state == ReplicaIntendedState.RUNNING) {
-      LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
-      return;
-    }
-
-    if (replicaContext.state == ReplicaIntendedState.STOPPED) {
-      LOGGER.info("startConsumption: Waiting for consumption to stop for replica {}.", replicaId);
-      int stopConsumptionTimeout = serverConfig.getStopConsumptionTimeoutInSeconds();
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, stopConsumptionTimeout, false);
-    }
-
-    replicaContext.state = ReplicaIntendedState.RUNNING;
-    LOGGER.info("Replica {} state set to RUNNING.", replicaId);
-
-    StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
-    topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
-      if (storageEngineAtomicReference != null) {
-        storageEngineAtomicReference.set(storageEngine);
-      }
-      return storageEngineAtomicReference;
-    });
-    LOGGER.info("Retrieved storage engine for replica {}. Starting consumption in ingestion service", replicaId);
-    getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
-    LOGGER.info("Completed starting consumption in ingestion service for replica {}", replicaId);
+    startConsumption(storeConfig, partition, pubSubPosition, replicaId, false);
   }
 
-  @Override
   public void startConsumption(
       VeniceStoreVersionConfig storeConfig,
       int partition,

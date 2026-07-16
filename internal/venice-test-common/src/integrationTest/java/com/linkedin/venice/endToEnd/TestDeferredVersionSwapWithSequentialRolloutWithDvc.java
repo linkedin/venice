@@ -202,9 +202,10 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
         }
       }
 
-      // Once targetRegionPromoted=true propagates to REGION2's child controller, the DVC client
-      // in REGION2 picks it up via its metadata refresh, subscribes to v2 as a future version,
-      // and serves v2 data once the sequential rollout completes and v2 becomes current.
+      // client2 already subscribed to v2 as a future version at version creation (created in a
+      // paused state after START_OF_PUSH). Once targetRegionPromoted=true propagates to REGION2's
+      // child controller, the DVC backend resumes the paused future-slot SIT, so ingestion finishes
+      // and v2 data becomes readable once the sequential rollout makes v2 current in REGION2.
       TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
         for (int i = 101; i <= keyCount2; i++) {
           assertNotNull(client2.get(i).get());

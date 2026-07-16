@@ -944,6 +944,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // retries instead of leaving the partition dark.
           resubscribe(pcs);
           pcs.setStoreLevelPaused(false);
+          // resubscribe() physically re-subscribes the consumer. A still-set futureSlotPaused flag
+          // means the region is genuinely not yet promoted (promotion clears the flag even while
+          // store-level paused), so re-apply the physical future-slot pause to keep the partition
+          // held back past SOP until promotion.
+          if (pcs.isFutureSlotPaused()) {
+            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), pcs.getPartition());
+            getAggKafkaConsumerService().pauseConsumerFor(getVersionTopic(), topicPartition);
+            LOGGER.info(
+                "Store-level pause deactivated for replica: {} — re-applied future-slot pause (region not yet promoted)",
+                Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+          }
           pcs.resetConsumptionStartTimeInMs();
           LOGGER.info(
               "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",

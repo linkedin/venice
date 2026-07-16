@@ -1039,8 +1039,12 @@ public class PartitionConsumptionState {
 
   /**
    * True when this partition is paused because the SIT was created in future-slot-paused mode
-   * (non-target region waiting for targetRegionPromoted). Coordinated with storeLevelPaused:
-   * a partition only physically resumes when BOTH flags are false.
+   * (non-target region waiting for targetRegionPromoted). This flag is independent of
+   * {@link #storeLevelPaused}, which pauses via unsubscribe/resubscribe and does not consult it.
+   * The two are coordinated by convention: the future-slot resume helper
+   * ({@link StoreIngestionTask#resumeFromFutureSlotPause()}) skips the physical resume while a
+   * store-level pause is active, leaving it to the store-level EXIT_PAUSE path so the two pause
+   * sources don't race.
    */
   private volatile boolean futureSlotPaused = false;
 

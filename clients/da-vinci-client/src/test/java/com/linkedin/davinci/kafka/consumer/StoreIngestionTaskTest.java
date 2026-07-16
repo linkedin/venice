@@ -7936,10 +7936,12 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(pcs.isFutureSlotPaused(), "PCS futureSlotPaused flag should be set after pause");
 
     task.resumeFromFutureSlotPause();
-    assertTrue(
+    assertFalse(
         pcs.isFutureSlotPaused(),
-        "PCS futureSlotPaused flag should remain true when store-level pause is still active");
-    // Store-level pause is still active: resumeConsumerFor must NOT be called
+        "futureSlotPaused flag must be cleared on promotion even while store-level paused, so EXIT_PAUSE "
+            + "can tell 'promoted' (flag clear, resume) from 'still unpromoted' (flag set, re-pause)");
+    // Store-level pause still owns the (unsubscribed) consumer: resumeConsumerFor must NOT be called;
+    // the physical resume is deferred to the store-level EXIT_PAUSE path.
     verify(aggConsumerService, never()).resumeConsumerFor(any(), any());
   }
 
@@ -7964,6 +7966,57 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(pcs.isFutureSlotPaused(), "futureSlotPaused must remain true after quota resumeConsumption");
     // Physical resume must not have been called
     verify(aggConsumerService, never()).resumeConsumerFor(any(), any());
+  }
+
+  @Test
+  public void testResumeFromFutureSlotPauseSkipsPartitionsNotFutureSlotPaused() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    // pcsPaused is future-slot paused; pcsOther was never future-slot paused (e.g. quota/transformer).
+    PartitionConsumptionState pcsPaused = mockPcsWithFutureSlotFlag(false);
+    PartitionConsumptionState pcsOther = mockPcsWithFutureSlotFlag(false);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcsPaused);
+    pcsMap.put(PARTITION_BAR, pcsOther);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(pcsPaused.isFutureSlotPaused(), "future-slot paused partition should have the flag set");
+    assertFalse(pcsOther.isFutureSlotPaused(), "the other partition was never future-slot paused");
+
+    task.resumeFromFutureSlotPause();
+
+    // Only the future-slot-paused partition is physically resumed; the other is left untouched so we
+    // don't accidentally un-pause a partition held back for another reason.
+    verify(aggConsumerService, times(1)).resumeConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_FOO)));
+    verify(aggConsumerService, never()).resumeConsumerFor(eq(vt), eq(new PubSubTopicPartitionImpl(vt, PARTITION_BAR)));
+    verify(pcsOther, never()).setFutureSlotPaused(false);
+  }
+
+  @Test
+  public void testResumeFromFutureSlotPauseClearsPauseAfterStartOfPush() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+    doCallRealMethod().when(task).isPauseAfterStartOfPush();
+    doCallRealMethod().when(task).setPauseAfterStartOfPush(anyBoolean());
+
+    task.setPauseAfterStartOfPush(true);
+    task.pausePartitionForFutureSlot(PARTITION_FOO);
+    assertTrue(task.isPauseAfterStartOfPush(), "pauseAfterStartOfPush should be set before resume");
+
+    task.resumeFromFutureSlotPause();
+
+    // The SIT-level flag must be cleared so a partition subscribed after promotion (the SIT is reused
+    // across the future->current swap) is not re-paused with no resume path.
+    assertFalse(
+        task.isPauseAfterStartOfPush(),
+        "pauseAfterStartOfPush must be cleared once the future slot is resumed");
   }
 
   @Test
