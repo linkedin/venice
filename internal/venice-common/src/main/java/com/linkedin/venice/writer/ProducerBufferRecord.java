@@ -22,7 +22,6 @@ public class ProducerBufferRecord implements Measurable {
   private final int protocolId;
   private final long timestamp;
   private final PubSubProducerCallback callback;
-  private final List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
   private final List<ProducerBufferRecord> dependentRecordList = new ArrayList<>();
   private CompletableFuture<PubSubProduceResult> produceResultFuture = null;
   private boolean shouldSkipProduce = false;
@@ -80,18 +79,6 @@ public class ProducerBufferRecord implements Measurable {
 
   public MessageType getMessageType() {
     return messageType;
-  }
-
-  public List<PubSubProducerCallback> getDependentCallbackList() {
-    return dependentCallbackList;
-  }
-
-  public void addDependentCallback(PubSubProducerCallback callback) {
-    // Public writer APIs allow a null callback; drop nulls so this list never NPEs when sendRecord() wraps it in a
-    // ChainedPubSubCallback (whose onCompletion invokes each entry without a null check).
-    if (callback != null) {
-      this.dependentCallbackList.add(callback);
-    }
   }
 
   public PubSubProducerCallback getCallback() {
