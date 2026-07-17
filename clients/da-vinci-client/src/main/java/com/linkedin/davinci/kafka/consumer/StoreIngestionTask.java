@@ -514,10 +514,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean daVinciClientCustomLifecycleEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
   /**
-   * When true, this SIT will pause Kafka consumption on each partition immediately after processing
-   * the Start-Of-Push control message. The partition remains paused until
-   * {@link #resumeFromFutureSlotPause()} is called.  Used by the DaVinci paused-SIT feature to
-   * hold a future-version SIT in a ready-but-paused state until the version is promoted.
+   * When true, this SIT is in future-slot-paused mode: partitions are held (Kafka consumption
+   * paused) once START_OF_PUSH has been processed, and stay held until this flag is cleared by
+   * {@link #resumeFromFutureSlotPause()} on region promotion. This is the durable per-SIT intent;
+   * the actual physical pause/resume of each partition is reconciled every tick by
+   * {@link #reconcileFutureSlotPause}. Used by the DaVinci paused-SIT feature to hold a
+   * future-version SIT in a ready-but-paused state until the version is promoted.
    */
   private volatile boolean pauseAfterStartOfPush = false;
 
@@ -3036,23 +3038,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subscribePosition,
         localKafkaServer);
 
-    // Restart durability for the future-slot pause. The physical pause is normally applied when
-    // START_OF_PUSH is processed (processStartOfPush -> pausePartitionForFutureSlot). On a fresh SIT
-    // created after a restart/host-move for a still-unpromoted non-target region (createPaused=true,
-    // so isPauseAfterStartOfPush()==true), the partition resumes from a checkpointed position PAST
-    // SOP, so SOP is never re-delivered and processStartOfPush never runs. Re-apply the pause here so
-    // the partition stays held back until promotion. Skip the fresh-bootstrap case (EARLIEST): there
-    // SOP will be consumed naturally and reportStarted-then-pause runs as usual. Skip the
-    // custom-lifecycle seek path, which reports completion immediately and is unrelated to
-    // paused-SIT.
-    boolean isCustomSeek = consumerAction != null && consumerAction.getPubSubPosition() != null;
-    if (isPauseAfterStartOfPush() && !isCustomSeek && !PubSubSymbolicPosition.EARLIEST.equals(subscribePosition)) {
-      LOGGER.info(
-          "Re-applying future-slot pause on restart for replica: {} (resumed past SOP, region not yet promoted)",
-          newPartitionConsumptionState.getReplicaId());
-      pausePartitionForFutureSlot(partition);
-    }
-
     if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
       try {
         TopicManager topicManager = getTopicManager(localKafkaServer);
@@ -4005,13 +3990,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
 
     getIngestionNotificationDispatcher().reportStarted(partitionConsumptionState);
-    if (isPauseAfterStartOfPush()) {
-      // Soft boundary: pauseConsumerFor only stops *future* polls. Records already polled/buffered
-      // in the same fetch batch as SOP (or already handed to the drainer) will still be processed
-      // before the pause takes effect, so a few post-SOP records may be ingested in a non-target
-      // region. That is acceptable for the "register as reporter but don't complete" goal.
-      pausePartitionForFutureSlot(partitionConsumptionState.getPartition());
-    }
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
@@ -6836,51 +6814,83 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Resume partitions that were paused via the future-slot pause mechanism, called once the region
-   * is promoted. Only partitions currently flagged
-   * {@link PartitionConsumptionState#isFutureSlotPaused()} are touched, so partitions paused for
-   * other reasons (quota, record-transformer) are left alone.
+   * Level-triggered predicate: should {@code pcs} currently be held back by the future-slot pause?
    *
-   * <p>Promotion means the future-slot pause no longer applies, so the flag is cleared for every
-   * future-slot-paused partition. The consumer is physically resumed immediately — unless a
-   * store-level pause currently owns the subscription (the consumer is unsubscribed), in which case
-   * the physical resume is deferred to the store-level EXIT_PAUSE path, which will resubscribe and,
-   * seeing the now-cleared flag, will not re-apply the future-slot pause. Clearing the flag
-   * unconditionally is what lets EXIT_PAUSE distinguish "still unpromoted" (flag set → re-pause)
-   * from "already promoted" (flag clear → resume).
+   * <p>True only when <em>all</em> of the following hold:
+   * <ul>
+   *   <li>this is a DaVinci client ({@link #isDaVinciClient}) — the paused-SIT feature is DVC-only,
+   *       so a server SIT is never held back even if the SIT-level flag were somehow set;</li>
+   *   <li>the partition is actively ingesting — subscribed, not yet completion-reported, and not in
+   *       error — so we never pause a partition that is idle, finished, or failed;</li>
+   *   <li>the SIT is still in "pause after START_OF_PUSH" mode ({@link #isPauseAfterStartOfPush()});
+   *       promotion clears this flag, which is what lets the reconciler resume;</li>
+   *   <li>START_OF_PUSH has already been processed for this partition. Gating on the per-partition
+   *       SOP timestamp (set in {@link #processStartOfPush} on a fresh push and restored from the
+   *       persisted {@code StoreVersionState} in {@link #checkConsumptionStateWhenStart} on restart)
+   *       guarantees the reconciler can never pause a partition <em>before</em> its own SOP is
+   *       processed, so the register-as-reporter step always runs first.</li>
+   * </ul>
+   */
+  boolean shouldHoldForFutureSlot(PartitionConsumptionState pcs) {
+    return isDaVinciClient() && isPauseAfterStartOfPush() && pcs != null && pcs.isSubscribed()
+        && !pcs.isCompletionReported() && !pcs.isErrorReported() && pcs.getStartOfPushTimestamp() != 0L;
+  }
+
+  /**
+   * Level-triggered reconcile of a single partition's future-slot pause against
+   * {@link #shouldHoldForFutureSlot}. Called every SIT loop iteration from
+   * {@link LeaderFollowerStoreIngestionTask#maybeTransitionPauseState()}, after the store-level pause
+   * transition for the same PCS, so the two mechanisms compose without scattered edge patches:
+   * <ul>
+   *   <li>Store-level pause owns the consumer via unsubscribe/resubscribe. While it holds a partition
+   *       (consumer unsubscribed) a physical future-slot pause is moot, so the flag is cleared here;
+   *       once store-level EXIT_PAUSE resubscribes, the next reconcile re-applies the physical pause
+   *       emergently — no special-case is needed in the EXIT_PAUSE path.</li>
+   *   <li>Physical {@code pause}/{@code resume} calls are transition-gated (only on flag flips) to
+   *       avoid acquiring the consumer lock on every tick while a partition sits held.</li>
+   * </ul>
+   */
+  void reconcileFutureSlotPause(PartitionConsumptionState pcs) {
+    if (pcs == null) {
+      return;
+    }
+    if (pcs.isStoreLevelPaused()) {
+      // Store-level pause owns the (unsubscribed) consumer; a physical future-slot pause is moot.
+      // Clear the flag so that when EXIT_PAUSE resubscribes, the next reconcile re-applies it.
+      if (pcs.isFutureSlotPaused()) {
+        pcs.setFutureSlotPaused(false);
+      }
+      return;
+    }
+    boolean desiredHold = shouldHoldForFutureSlot(pcs);
+    if (desiredHold && !pcs.isFutureSlotPaused()) {
+      pausePartitionForFutureSlot(pcs.getPartition());
+    } else if (!desiredHold && pcs.isFutureSlotPaused()) {
+      pcs.setFutureSlotPaused(false);
+      PubSubTopic vt = getVersionTopic();
+      getAggKafkaConsumerService().resumeConsumerFor(vt, new PubSubTopicPartitionImpl(vt, pcs.getPartition()));
+      LOGGER.debug("reconcileFutureSlotPause: resumed partition {} in {}", pcs.getPartition(), vt);
+    }
+  }
+
+  /**
+   * Signal that the region has been promoted, so the future-slot pause no longer applies. Called
+   * once from {@link com.linkedin.davinci.VersionBackend#resume()} when promotion is detected.
    *
-   * <p>The SIT-level {@link #pauseAfterStartOfPush} flag is cleared once at the end so that
-   * partitions subscribed after promotion (the SIT is reused across the future→current swap) are
-   * not re-paused with no reliable resume path, and blob transfer is no longer suppressed.
+   * <p>This only flips the SIT-level intent ({@link #pauseAfterStartOfPush}) to {@code false}; it
+   * performs no physical resume itself. The SIT run loop's reconciler
+   * ({@link LeaderFollowerStoreIngestionTask#maybeTransitionPauseState()} →
+   * {@link #reconcileFutureSlotPause}) observes the cleared intent on the next tick and physically
+   * resumes every held partition and clears its {@link PartitionConsumptionState#isFutureSlotPaused()}
+   * flag. Keeping the physical resume in the reconciler is what lets a single level-triggered owner
+   * handle promotion, store-level-pause overlap, restarts, and host swaps uniformly — this method is
+   * a cross-thread signal (the flag is volatile), safe to call repeatedly (it is idempotent).
+   *
+   * <p>Clearing the intent for the life of the SIT also ensures a partition subscribed after
+   * promotion (the SIT is keyed by version topic and reused across the future→current swap) is not
+   * re-held, and that blob transfer is no longer suppressed.
    */
   public void resumeFromFutureSlotPause() {
-    PubSubTopic vt = getVersionTopic();
-    for (Map.Entry<Integer, PartitionConsumptionState> entry: getPartitionConsumptionStateMap().entrySet()) {
-      int partition = entry.getKey();
-      PartitionConsumptionState pcs = entry.getValue();
-      if (!pcs.isFutureSlotPaused()) {
-        continue;
-      }
-      // Promotion happened: clear the flag regardless of store-level pause state so it always
-      // reflects "region not yet promoted".
-      pcs.setFutureSlotPaused(false);
-      if (!pcs.isStoreLevelPaused()) {
-        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vt, partition);
-        getAggKafkaConsumerService().resumeConsumerFor(vt, topicPartition);
-        LOGGER.debug("resumeFromFutureSlotPause: resumed partition {} in {}", partition, vt);
-      } else {
-        // Store-level pause owns the (unsubscribed) consumer; defer the physical resume to
-        // EXIT_PAUSE, which will resubscribe and skip re-pausing now that the flag is cleared.
-        LOGGER.debug(
-            "resumeFromFutureSlotPause: partition {} in {} is still store-level paused, deferring physical resume to EXIT_PAUSE",
-            partition,
-            vt);
-      }
-    }
-    // Turn off pause-after-SOP for the life of the SIT once resumed/promoted. Otherwise a partition
-    // subscribed after this point (the SIT is keyed by version topic and reused across the
-    // future→current swap) would be re-paused in processStartOfPush with no resume path, and
-    // shouldStartBlobTransfer would stay short-circuited to false forever.
     setPauseAfterStartOfPush(false);
   }
 

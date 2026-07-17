@@ -1038,13 +1038,17 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * True when this partition is paused because the SIT was created in future-slot-paused mode
-   * (non-target region waiting for targetRegionPromoted). This flag is independent of
-   * {@link #storeLevelPaused}, which pauses via unsubscribe/resubscribe and does not consult it.
-   * The two are coordinated by convention: the future-slot resume helper
-   * ({@link StoreIngestionTask#resumeFromFutureSlotPause()}) skips the physical resume while a
-   * store-level pause is active, leaving it to the store-level EXIT_PAUSE path so the two pause
-   * sources don't race.
+   * True while this partition is <em>currently physically held</em> by the future-slot pause
+   * mechanism (consumer paused because the SIT is in future-slot-paused mode and START_OF_PUSH has
+   * been processed for a not-yet-promoted non-target region). This is a reconciled cache of "held
+   * right now", maintained every tick by {@link StoreIngestionTask#reconcileFutureSlotPause}, not a
+   * durable "region unpromoted" intent — the durable intent lives in
+   * {@link StoreIngestionTask#isPauseAfterStartOfPush()}.
+   * <p>
+   * Independent of {@link #storeLevelPaused}, which pauses via unsubscribe/resubscribe. The two are
+   * coordinated inside the reconciler: while a store-level pause owns the (unsubscribed) consumer
+   * this flag is cleared (a physical future-slot pause would be moot), and the reconciler re-applies
+   * the physical pause on the tick after store-level EXIT_PAUSE resubscribes.
    */
   private volatile boolean futureSlotPaused = false;
 

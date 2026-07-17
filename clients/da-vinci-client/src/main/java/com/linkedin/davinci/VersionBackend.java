@@ -498,7 +498,12 @@ public class VersionBackend {
 
   boolean isPaused() {
     StoreIngestionTask task = backend.getIngestionService().getStoreIngestionTask(version.kafkaTopicName());
-    return task != null && task.isFutureSlotPaused();
+    // Gate on the SIT-level intent (pause-after-SOP mode), not the per-partition physical pause flag.
+    // The reconciler sets the physical flag a tick after START_OF_PUSH, so intent is the durable
+    // signal of "this future version is being held until promotion" and covers the pre-SOP window —
+    // ensuring maybeResumeDaVinciFutureVersion() still triggers a resume even if promotion is
+    // observed before the first SOP is processed.
+    return task != null && task.isPauseAfterStartOfPush();
   }
 
   void completePartition(int partition) {

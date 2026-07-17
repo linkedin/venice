@@ -545,7 +545,7 @@ public class StoreBackendTest {
     store.setCurrentVersion(version4.getNumber());
     store.updateVersionStatus(version4.getNumber(), VersionStatus.ONLINE);
     when(ingestionService.getStoreIngestionTask(version4.kafkaTopicName())).thenReturn(pausedTask);
-    when(pausedTask.isFutureSlotPaused()).thenReturn(true);
+    when(pausedTask.isPauseAfterStartOfPush()).thenReturn(true);
     backend.handleStoreChanged(storeBackend);
 
     // Non-target region must subscribe immediately (createPaused=true), not skip.
@@ -559,7 +559,7 @@ public class StoreBackendTest {
     }
 
     // Once targetRegionPromoted flips to true, maybeResumeDaVinciFutureVersion should resume ingestion.
-    // Keep isFutureSlotPaused()=true so isPaused() returns true and resume() is actually invoked.
+    // Keep isPauseAfterStartOfPush()=true so isPaused() returns true and resume() is actually invoked.
     store.setVersionTargetRegionPromoted(version4.getNumber(), true);
     backend.handleStoreChanged(storeBackend);
 
@@ -646,14 +646,14 @@ public class StoreBackendTest {
     store.addVersion(version3);
     store.setCurrentVersion(version3.getNumber());
     when(ingestionService.getStoreIngestionTask(version3.kafkaTopicName())).thenReturn(pausedTask);
-    when(pausedTask.isFutureSlotPaused()).thenReturn(true);
+    when(pausedTask.isPauseAfterStartOfPush()).thenReturn(true);
     backend.handleStoreChanged(storeBackend);
 
     assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Non-target region must subscribe");
     verify(pausedTask, never()).resumeFromFutureSlotPause();
 
     // Flip targetRegionPromoted — maybeResumeDaVinciFutureVersion should resume the task.
-    // Keep isFutureSlotPaused()=true so that isPaused() returns true and resume() is actually invoked.
+    // Keep isPauseAfterStartOfPush()=true so that isPaused() returns true and resume() is actually invoked.
     store.setVersionTargetRegionPromoted(version3.getNumber(), true);
     backend.handleStoreChanged(storeBackend);
 

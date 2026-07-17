@@ -896,6 +896,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * The PCS pause flag is set to its target value <em>before</em> the long-running unsubscribe /
    * resubscribe so the disk-quota no-op guard covers the entire transition window. Each PCS is
    * processed inside a try/catch so a failure on one partition does not abandon the others.
+   * <p>
+   * After the store-level transition, each PCS is also passed through
+   * {@link #reconcileFutureSlotPause} so the DaVinci future-slot pause is driven by the same
+   * level-triggered owner: promotion, restarts/host-swaps, and store-level-pause overlap are all
+   * handled here instead of by scattered edge patches.
    */
   void maybeTransitionPauseState() throws InterruptedException {
     Store store;
@@ -921,9 +926,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean anySubscriptionForSit = shouldPause && consumerHasAnySubscription();
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
       PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, anySubscriptionForSit);
-      if (transition == PauseStateTransition.NO_CHANGE) {
-        continue;
-      }
       try {
         if (transition == PauseStateTransition.ENTER_PAUSE) {
           // Flip the flag BEFORE the long-running unsubscribe so concurrent disk-quota callbacks
@@ -933,34 +935,31 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           LOGGER.info(
               "Store-level pause activated for replica: {} — unsubscribed from Kafka",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+          transitioned = true;
         } else if (transition == PauseStateTransition.RECONCILE_FORCE_UNSUBSCRIBE) {
           consumerUnSubscribeAllTopics(pcs);
           LOGGER.info(
               "Store-level pause re-applied for replica: {} — subscription was reattached, unsubscribed again",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
-        } else { // EXIT_PAUSE
+          transitioned = true;
+        } else if (transition == PauseStateTransition.EXIT_PAUSE) {
           // Resubscribe BEFORE clearing the flag so quota callbacks stay no-op until the consumer
           // is back online; if resubscribe throws we leave the flag set so the next iteration
-          // retries instead of leaving the partition dark.
+          // retries instead of leaving the partition dark. Any future-slot pause that still applies
+          // is re-asserted emergently by the reconcileFutureSlotPause call below (which runs after
+          // this PCS is back to store-level unpaused), so there is no future-slot logic here.
           resubscribe(pcs);
           pcs.setStoreLevelPaused(false);
-          // resubscribe() physically re-subscribes the consumer. A still-set futureSlotPaused flag
-          // means the region is genuinely not yet promoted (promotion clears the flag even while
-          // store-level paused), so re-apply the physical future-slot pause to keep the partition
-          // held back past SOP until promotion.
-          if (pcs.isFutureSlotPaused()) {
-            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), pcs.getPartition());
-            getAggKafkaConsumerService().pauseConsumerFor(getVersionTopic(), topicPartition);
-            LOGGER.info(
-                "Store-level pause deactivated for replica: {} — re-applied future-slot pause (region not yet promoted)",
-                Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
-          }
           pcs.resetConsumptionStartTimeInMs();
           LOGGER.info(
               "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+          transitioned = true;
         }
-        transitioned = true;
+        // Level-triggered reconcile of the future-slot pause runs every tick for every PCS —
+        // including store-level NO_CHANGE — so promotion, restarts/host-swaps, and store-level-pause
+        // overlap are all handled by this single owner instead of scattered edge patches.
+        reconcileFutureSlotPause(pcs);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw e;
