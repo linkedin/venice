@@ -25,6 +25,7 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferHttpException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
@@ -38,6 +39,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferOutcome;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SslUtils;
@@ -224,6 +227,10 @@ public class TestNettyP2PBlobTransferManager {
       Assert.assertNotNull(throwable);
       Assert.assertTrue(throwable instanceof VenicePeersNotFoundException);
     });
+    Mockito.verify(versionedBlobTransferStats, Mockito.never())
+        .recordBlobTransferRequest(anyString(), anyInt(), any(), any());
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferKafkaFallback(eq(TEST_STORE), eq(TEST_VERSION), eq(VeniceBlobTransferOutcome.NO_CANDIDATES));
   }
 
   @Test
@@ -265,6 +272,7 @@ public class TestNettyP2PBlobTransferManager {
     // Preparation:
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
+    response.setServerHostNames(Collections.singleton("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
 
     StoreVersionState storeVersionState = new StoreVersionState();
@@ -300,6 +308,7 @@ public class TestNettyP2PBlobTransferManager {
     // Preparation
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
+    response.setServerHostNames(Collections.singleton("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
 
     StoreVersionState storeVersionState = new StoreVersionState();
@@ -325,6 +334,12 @@ public class TestNettyP2PBlobTransferManager {
 
     // Verification:
     verifyFileTransferSuccess(expectOffsetRecord);
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferRequest(
+            TEST_STORE,
+            TEST_VERSION,
+            VeniceBlobTransferSource.VENICE_SERVER,
+            VeniceBlobTransferOutcome.SUCCESS);
   }
 
   /**
@@ -384,6 +399,7 @@ public class TestNettyP2PBlobTransferManager {
     List<String> hostlist = Arrays.asList("dvc-host", "server-host");
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(hostlist);
+    response.setServerHostNames(Collections.singleton("server-host"));
     doReturn(response).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     doReturn(true).when(finder).shouldPreservePeerOrder();
     doReturn(new HashSet<>(hostlist)).when(client)
@@ -408,6 +424,88 @@ public class TestNettyP2PBlobTransferManager {
         .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     transferOrder.verify(client)
         .get("server-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferRequest(
+            TEST_STORE,
+            TEST_VERSION,
+            VeniceBlobTransferSource.DAVINCI_PEER,
+            VeniceBlobTransferOutcome.NOT_FOUND);
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferRequest(
+            TEST_STORE,
+            TEST_VERSION,
+            VeniceBlobTransferSource.VENICE_SERVER,
+            VeniceBlobTransferOutcome.SUCCESS);
+  }
+
+  @Test
+  public void testFallsBackToServerAfterSynchronousDaVinciRequestFailure() throws Exception {
+    List<String> hostlist = Arrays.asList("dvc-host", "server-host");
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(hostlist);
+    response.setServerHostNames(Collections.singleton("server-host"));
+    doReturn(response).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(true).when(finder).shouldPreservePeerOrder();
+    doReturn(new HashSet<>(hostlist)).when(client)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    Mockito.doThrow(new VenicePeersConnectionException("DVC connection failed"))
+        .when(client)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    InputStream serverResponse = mock(InputStream.class);
+    doReturn(CompletableFuture.completedFuture(serverResponse)).when(client)
+        .get("server-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    InputStream result =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture()
+            .get(10, TimeUnit.SECONDS);
+
+    Assert.assertSame(result, serverResponse);
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferRequest(
+            TEST_STORE,
+            TEST_VERSION,
+            VeniceBlobTransferSource.DAVINCI_PEER,
+            VeniceBlobTransferOutcome.CONNECT_FAILURE);
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferRequest(
+            TEST_STORE,
+            TEST_VERSION,
+            VeniceBlobTransferSource.VENICE_SERVER,
+            VeniceBlobTransferOutcome.SUCCESS);
+  }
+
+  @Test
+  public void testThrottledAttemptRecordsReasonAndKafkaFallback() throws Exception {
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Collections.singletonList("dvc-host"));
+    doReturn(response).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(Collections.singleton("dvc-host")).when(client)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    CompletableFuture<InputStream> throttled = new CompletableFuture<>();
+    throttled.completeExceptionally(new VeniceBlobTransferHttpException(429, "Too Many Requests"));
+    doReturn(throttled).when(client)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    CompletionStage<InputStream> result =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    try {
+      result.toCompletableFuture().get(10, TimeUnit.SECONDS);
+      Assert.fail("Expected Kafka fallback after the only peer was throttled");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof VenicePeersAllFailedException);
+    }
+
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferRequest(
+            TEST_STORE,
+            TEST_VERSION,
+            VeniceBlobTransferSource.DAVINCI_PEER,
+            VeniceBlobTransferOutcome.THROTTLED);
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferKafkaFallback(eq(TEST_STORE), eq(TEST_VERSION), eq(VeniceBlobTransferOutcome.THROTTLED));
   }
 
   /**

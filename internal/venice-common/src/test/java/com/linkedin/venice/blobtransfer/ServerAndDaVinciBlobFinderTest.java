@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -35,6 +36,7 @@ public class ServerAndDaVinciBlobFinderTest {
 
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getDiscoveryResult(), Arrays.asList("dvc-host", "server-host"));
+    Assert.assertEquals(response.getServerHostNames(), Collections.singleton("server-host"));
     verify(daVinciBlobFinder).discoverBlobPeers(STORE_NAME, VERSION, PARTITION);
     verify(serverBlobFinder).discoverBlobPeers(STORE_NAME, VERSION, PARTITION);
   }
@@ -56,6 +58,7 @@ public class ServerAndDaVinciBlobFinderTest {
 
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getDiscoveryResult(), Collections.singletonList("server-host"));
+    Assert.assertEquals(response.getServerHostNames(), Collections.singleton("server-host"));
   }
 
   @Test
@@ -77,6 +80,25 @@ public class ServerAndDaVinciBlobFinderTest {
 
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getDiscoveryResult(), Collections.singletonList("dvc-host"));
+    Assert.assertTrue(response.getServerHostNames().isEmpty());
+  }
+
+  @Test
+  public void testServerHostNamesUseManagerHostNormalization() {
+    BlobFinder daVinciBlobFinder = mock(BlobFinder.class);
+    BlobPeersDiscoveryResponse daVinciResponse = new BlobPeersDiscoveryResponse();
+    daVinciResponse.setDiscoveryResult(Collections.singletonList("dvc-host_1234"));
+    doReturn(daVinciResponse).when(daVinciBlobFinder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    BlobFinder serverBlobFinder = mock(BlobFinder.class);
+    BlobPeersDiscoveryResponse serverResponse = new BlobPeersDiscoveryResponse();
+    serverResponse.setDiscoveryResult(Arrays.asList("server-a_5678", "server-b_5678"));
+    doReturn(serverResponse).when(serverBlobFinder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    BlobPeersDiscoveryResponse response = new ServerAndDaVinciBlobFinder(daVinciBlobFinder, serverBlobFinder)
+        .discoverBlobPeers(STORE_NAME, VERSION, PARTITION);
+
+    Assert.assertEquals(response.getServerHostNames(), new HashSet<>(Arrays.asList("server-a", "server-b")));
   }
 
   @Test
