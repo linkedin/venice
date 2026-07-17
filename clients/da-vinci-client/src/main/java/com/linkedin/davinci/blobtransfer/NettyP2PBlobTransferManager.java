@@ -11,11 +11,14 @@ import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferHttpException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferOutcome;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
@@ -25,6 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,6 +38,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import javax.net.ssl.SSLException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -126,6 +131,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           NO_PEERS_FOUND_ERROR_MSG_FORMAT,
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
       perPartitionTransferFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
+      recordKafkaFallback(storeName, version, VeniceBlobTransferOutcome.NO_CANDIDATES);
       return perPartitionTransferFuture;
     }
 
@@ -133,7 +139,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     List<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
     // 2. Process the discovered peers sequentially in finder-provided priority order.
-    processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, perPartitionTransferFuture);
+    processPeersSequentially(
+        connectablePeers,
+        response.getServerHostNames(),
+        storeName,
+        version,
+        partition,
+        tableFormat,
+        perPartitionTransferFuture);
 
     return perPartitionTransferFuture;
   }
@@ -193,6 +206,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    */
   private void processPeersSequentially(
       List<String> uniqueConnectablePeers,
+      Set<String> serverHostNames,
       String storeName,
       int version,
       int partition,
@@ -200,12 +214,16 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       CompletableFuture<InputStream> perPartitionTransferFuture) {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     Instant startTime = Instant.now();
+    Set<VeniceBlobTransferOutcome> failureOutcomes = EnumSet.noneOf(VeniceBlobTransferOutcome.class);
 
     // Create a CompletableFuture that represents the chain of processing all peers
     CompletableFuture<Void> chainOfPeersFuture = CompletableFuture.completedFuture(null);
 
     // Iterate through each peer and chain the futures
     for (String chosenHost: uniqueConnectablePeers) {
+      VeniceBlobTransferSource source = serverHostNames.contains(chosenHost)
+          ? VeniceBlobTransferSource.VENICE_SERVER
+          : VeniceBlobTransferSource.DAVINCI_PEER;
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
@@ -226,17 +244,29 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
             replicaId,
             tableFormat);
 
-        CompletionStage<InputStream> perHostTransferFuture =
-            nettyClient.get(chosenHost, storeName, version, partition, tableFormat);
+        CompletionStage<InputStream> perHostTransferFuture;
+        try {
+          perHostTransferFuture = nettyClient.get(chosenHost, storeName, version, partition, tableFormat);
+        } catch (RuntimeException e) {
+          VeniceBlobTransferOutcome outcome = classifyOutcome(e);
+          failureOutcomes.add(outcome);
+          recordBlobTransferRequest(storeName, version, source, outcome);
+          handlePeerFetchException(e, chosenHost, storeName, version, partition, replicaId);
+          return CompletableFuture.completedFuture(null);
+        }
 
         return perHostTransferFuture.toCompletableFuture().thenAccept(inputStream -> {
           // Success case: Complete the future with the input stream
           long transferTime = Duration.between(startTime, Instant.now()).getSeconds();
           LOGGER.info(FETCHED_BLOB_SUCCESS_MSG, replicaId, chosenHost, transferTime);
           perPartitionTransferFuture.complete(inputStream);
+          recordBlobTransferRequest(storeName, version, source, VeniceBlobTransferOutcome.SUCCESS);
           // Updating the blob transfer stats with the transfer time and throughput
           updateBlobTransferFileReceiveStats(transferTime, storeName, version, partition);
         }).exceptionally(ex -> {
+          VeniceBlobTransferOutcome outcome = classifyOutcome(ex);
+          failureOutcomes.add(outcome);
+          recordBlobTransferRequest(storeName, version, source, outcome);
           handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
           return null;
         });
@@ -257,6 +287,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       // No usable peers available, fall back to Kafka bootstrapping.
       perPartitionTransferFuture.completeExceptionally(
           new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
+      recordKafkaFallback(storeName, version, aggregateFailureOutcome(failureOutcomes));
     });
   }
 
@@ -270,13 +301,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       int version,
       int partition,
       String replicaId) {
-    if (ex.getCause() instanceof VenicePeersConnectionException) {
+    Throwable cause = unwrap(ex);
+    if (cause instanceof VenicePeersConnectionException) {
       // error case 3: failed to connect to the peer, move to the next possible host
       LOGGER.error(PEER_CONNECTION_EXCEPTION_MSG, replicaId, chosenHost, ex.getMessage());
-    } else if (ex.getCause() instanceof VeniceBlobTransferFileNotFoundException) {
+    } else if (cause instanceof VeniceBlobTransferFileNotFoundException) {
       // error case 4: the connected host does not have the requested file, move to the next available host
       LOGGER.error(PEER_NO_SNAPSHOT_MSG, replicaId, chosenHost, ex.getMessage());
-    } else if (ex.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException) {
+    } else if (cause instanceof VeniceBlobTransferIncompatibleSchemaException) {
       // error case 5: peer rejected the request before any file work because its protocol versions
       // don't match ours. No bytes were written, so skip the partition-dir cleanup.
       LOGGER.error(PEER_SCHEMA_MISMATCH_MSG, replicaId, chosenHost, ex.getMessage());
@@ -328,6 +360,92 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition),
           e);
     }
+  }
+
+  private void recordBlobTransferRequest(
+      String storeName,
+      int version,
+      VeniceBlobTransferSource source,
+      VeniceBlobTransferOutcome outcome) {
+    try {
+      aggVersionedBlobTransferStats.recordBlobTransferRequest(storeName, version, source, outcome);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to record blob transfer request metric for store {} version {} source {} outcome {}",
+          storeName,
+          version,
+          source,
+          outcome,
+          e);
+    }
+  }
+
+  private void recordKafkaFallback(String storeName, int version, VeniceBlobTransferOutcome reason) {
+    try {
+      aggVersionedBlobTransferStats.recordBlobTransferKafkaFallback(storeName, version, reason);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to record blob transfer Kafka fallback metric for store {} version {} reason {}",
+          storeName,
+          version,
+          reason,
+          e);
+    }
+  }
+
+  private static VeniceBlobTransferOutcome aggregateFailureOutcome(Set<VeniceBlobTransferOutcome> outcomes) {
+    if (outcomes.isEmpty()) {
+      return VeniceBlobTransferOutcome.CONNECT_FAILURE;
+    }
+    return outcomes.size() == 1 ? outcomes.iterator().next() : VeniceBlobTransferOutcome.MIXED;
+  }
+
+  private static VeniceBlobTransferOutcome classifyOutcome(Throwable throwable) {
+    Throwable cause = unwrap(throwable);
+    if (hasCause(throwable, OutOfMemoryError.class)) {
+      return VeniceBlobTransferOutcome.OUT_OF_MEMORY;
+    }
+    if (cause instanceof VeniceBlobTransferFileNotFoundException) {
+      return VeniceBlobTransferOutcome.NOT_FOUND;
+    }
+    if (cause instanceof VeniceBlobTransferIncompatibleSchemaException) {
+      return VeniceBlobTransferOutcome.VERSION_MISMATCH;
+    }
+    if (cause instanceof VeniceBlobTransferHttpException) {
+      int statusCode = ((VeniceBlobTransferHttpException) cause).getStatusCode();
+      if (statusCode == 429) {
+        return VeniceBlobTransferOutcome.THROTTLED;
+      }
+      if (statusCode == 403) {
+        return VeniceBlobTransferOutcome.ACL_DENIED;
+      }
+    }
+    if (cause instanceof VenicePeersConnectionException) {
+      return hasCause(cause, SSLException.class)
+          ? VeniceBlobTransferOutcome.SSL_FAILURE
+          : VeniceBlobTransferOutcome.CONNECT_FAILURE;
+    }
+    return VeniceBlobTransferOutcome.OTHER;
+  }
+
+  private static Throwable unwrap(Throwable throwable) {
+    Throwable current = throwable;
+    while (current.getCause() != null && (current instanceof java.util.concurrent.CompletionException
+        || current instanceof java.util.concurrent.ExecutionException)) {
+      current = current.getCause();
+    }
+    return current;
+  }
+
+  private static boolean hasCause(Throwable throwable, Class<? extends Throwable> type) {
+    Throwable current = throwable;
+    while (current != null) {
+      if (type.isInstance(current)) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
   }
 
   /**

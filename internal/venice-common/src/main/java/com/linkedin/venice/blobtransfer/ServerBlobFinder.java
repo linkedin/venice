@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Version;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -34,6 +35,7 @@ public class ServerBlobFinder implements BlobFinder {
           .map(Instance::getHost)
           .collect(Collectors.toList());
       response.setDiscoveryResult(hostNames);
+      response.setServerHostNames(new HashSet<>(hostNames));
     } catch (VeniceException | InterruptedException | ExecutionException e) {
       response.setError(true);
       String errorMsg = String.format(

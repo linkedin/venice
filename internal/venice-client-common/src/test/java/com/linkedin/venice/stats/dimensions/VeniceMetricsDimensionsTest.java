@@ -34,6 +34,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.status_code_category");
           break;
+        case VENICE_BLOB_TRANSFER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.source");
+          break;
+        case VENICE_BLOB_TRANSFER_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.outcome");
+          break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.retry_type");
           break;
@@ -222,6 +228,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.statusCodeCategory");
           break;
+        case VENICE_BLOB_TRANSFER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.source");
+          break;
+        case VENICE_BLOB_TRANSFER_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.outcome");
+          break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.retryType");
           break;
@@ -409,6 +421,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "Venice.Response.StatusCodeCategory");
+          break;
+        case VENICE_BLOB_TRANSFER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.Source");
+          break;
+        case VENICE_BLOB_TRANSFER_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.Outcome");
           break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.RetryType");

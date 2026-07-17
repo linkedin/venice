@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricConfig;
@@ -25,6 +26,14 @@ public class BlobTransferStats {
   protected static final String BLOB_TRANSFER_SUCCESSFUL_NUM_RESPONSES = "blob_transfer_successful_num_responses";
   protected static final String BLOB_TRANSFER_FAILED_NUM_RESPONSES = "blob_transfer_failed_num_responses";
 
+  protected static final String BLOB_TRANSFER_DAVINCI_PEER_SUCCESSFUL_NUM_REQUESTS =
+      "blob_transfer_davinci_peer_successful_num_requests";
+  protected static final String BLOB_TRANSFER_DAVINCI_PEER_FAILED_NUM_REQUESTS =
+      "blob_transfer_davinci_peer_failed_num_requests";
+  protected static final String BLOB_TRANSFER_VENICE_SERVER_SUCCESSFUL_NUM_REQUESTS =
+      "blob_transfer_venice_server_successful_num_requests";
+  protected static final String BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS =
+      "blob_transfer_venice_server_failed_num_requests";
   // The blob file receiving throughput (in MB/sec) and time (in sec)
   protected static final String BLOB_TRANSFER_THROUGHPUT = "blob_transfer_file_receive_throughput";
   protected static final String BLOB_TRANSFER_TIME = "blob_transfer_time";
@@ -39,6 +48,14 @@ public class BlobTransferStats {
   private Sensor blobTransferSuccessNumResponsesSensor;
   private Count blobTransferFailedNumResponsesCount = new Count();
   private Sensor blobTransferFailedNumResponsesSensor;
+  private Count blobTransferDaVinciPeerSuccessfulNumRequestsCount = new Count();
+  private Sensor blobTransferDaVinciPeerSuccessfulNumRequestsSensor;
+  private Count blobTransferDaVinciPeerFailedNumRequestsCount = new Count();
+  private Sensor blobTransferDaVinciPeerFailedNumRequestsSensor;
+  private Count blobTransferVeniceServerSuccessfulNumRequestsCount = new Count();
+  private Sensor blobTransferVeniceServerSuccessfulNumRequestsSensor;
+  private Count blobTransferVeniceServerFailedNumRequestsCount = new Count();
+  private Sensor blobTransferVeniceServerFailedNumRequestsSensor;
   private Gauge blobTransferFileReceiveThroughputGauge = new Gauge();
   private Sensor blobTransferFileReceiveThroughputSensor;
   private Gauge blobTransferTimeGauge = new Gauge();
@@ -65,6 +82,18 @@ public class BlobTransferStats {
     blobTransferFailedNumResponsesSensor = localMetricRepository.sensor(BLOB_TRANSFER_FAILED_NUM_RESPONSES);
     blobTransferFailedNumResponsesSensor.add(BLOB_TRANSFER_FAILED_NUM_RESPONSES, blobTransferFailedNumResponsesCount);
 
+    blobTransferDaVinciPeerSuccessfulNumRequestsSensor = registerCountSensor(
+        BLOB_TRANSFER_DAVINCI_PEER_SUCCESSFUL_NUM_REQUESTS,
+        blobTransferDaVinciPeerSuccessfulNumRequestsCount);
+    blobTransferDaVinciPeerFailedNumRequestsSensor = registerCountSensor(
+        BLOB_TRANSFER_DAVINCI_PEER_FAILED_NUM_REQUESTS,
+        blobTransferDaVinciPeerFailedNumRequestsCount);
+    blobTransferVeniceServerSuccessfulNumRequestsSensor = registerCountSensor(
+        BLOB_TRANSFER_VENICE_SERVER_SUCCESSFUL_NUM_REQUESTS,
+        blobTransferVeniceServerSuccessfulNumRequestsCount);
+    blobTransferVeniceServerFailedNumRequestsSensor = registerCountSensor(
+        BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS,
+        blobTransferVeniceServerFailedNumRequestsCount);
     blobTransferFileReceiveThroughputSensor = localMetricRepository.sensor(BLOB_TRANSFER_THROUGHPUT);
     blobTransferFileReceiveThroughputSensor.add(BLOB_TRANSFER_THROUGHPUT, blobTransferFileReceiveThroughputGauge);
 
@@ -92,6 +121,27 @@ public class BlobTransferStats {
       blobTransferSuccessNumResponsesSensor.record();
     } else {
       blobTransferFailedNumResponsesSensor.record();
+    }
+  }
+
+  public void recordBlobTransferRequest(VeniceBlobTransferSource source, boolean isSuccess) {
+    switch (source) {
+      case DAVINCI_PEER:
+        if (isSuccess) {
+          blobTransferDaVinciPeerSuccessfulNumRequestsSensor.record();
+        } else {
+          blobTransferDaVinciPeerFailedNumRequestsSensor.record();
+        }
+        break;
+      case VENICE_SERVER:
+        if (isSuccess) {
+          blobTransferVeniceServerSuccessfulNumRequestsSensor.record();
+        } else {
+          blobTransferVeniceServerFailedNumRequestsSensor.record();
+        }
+        break;
+      default:
+        throw new IllegalArgumentException("Unsupported blob transfer source: " + source);
     }
   }
 
@@ -139,6 +189,25 @@ public class BlobTransferStats {
     }
   }
 
+  public double getBlobTransferRequestCount(VeniceBlobTransferSource source, boolean isSuccess) {
+    Count count;
+    switch (source) {
+      case DAVINCI_PEER:
+        count = isSuccess
+            ? blobTransferDaVinciPeerSuccessfulNumRequestsCount
+            : blobTransferDaVinciPeerFailedNumRequestsCount;
+        break;
+      case VENICE_SERVER:
+        count = isSuccess
+            ? blobTransferVeniceServerSuccessfulNumRequestsCount
+            : blobTransferVeniceServerFailedNumRequestsCount;
+        break;
+      default:
+        throw new IllegalArgumentException("Unsupported blob transfer source: " + source);
+    }
+    return count.measure(METRIC_CONFIG, System.currentTimeMillis());
+  }
+
   public double getBlobTransferFileReceiveThroughput() {
     if (blobTransferFileReceiveThroughputGauge == null) {
       return 0;
@@ -175,4 +244,11 @@ public class BlobTransferStats {
     Sensor sensor = localMetricRepository.sensor(sensorName);
     sensor.add(sensorName + "_rate", gauge);
   }
+
+  private Sensor registerCountSensor(String sensorName, Count count) {
+    Sensor sensor = localMetricRepository.sensor(sensorName);
+    sensor.add(sensorName, count);
+    return sensor;
+  }
+
 }

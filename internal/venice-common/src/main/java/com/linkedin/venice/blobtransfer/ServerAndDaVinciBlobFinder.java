@@ -4,7 +4,9 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -43,6 +45,7 @@ public class ServerAndDaVinciBlobFinder implements BlobFinder {
     discoveredPeers.addAll(daVinciPeers);
     discoveredPeers.addAll(serverPeers);
     response.setDiscoveryResult(discoveredPeers);
+    response.setServerHostNames(getNormalizedHostNames(serverPeers));
 
     if (discoveredPeers.isEmpty() && hasError(daVinciResponse) && hasError(serverResponse)) {
       response.setError(true);
@@ -75,6 +78,14 @@ public class ServerAndDaVinciBlobFinder implements BlobFinder {
 
   private static boolean hasError(BlobPeersDiscoveryResponse response) {
     return response == null || response.isError();
+  }
+
+  private static Set<String> getNormalizedHostNames(List<String> peers) {
+    Set<String> hostNames = new HashSet<>(peers.size());
+    for (String peer: peers) {
+      hostNames.add(peer.split("_")[0]);
+    }
+    return hostNames;
   }
 
   private static String getErrorMessage(BlobPeersDiscoveryResponse response) {

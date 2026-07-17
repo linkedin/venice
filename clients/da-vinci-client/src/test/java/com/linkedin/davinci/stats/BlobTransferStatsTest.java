@@ -1,5 +1,8 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
+
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
@@ -49,6 +52,21 @@ public class BlobTransferStatsTest {
 
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
     Assert.assertEquals(1.0, stats.getBlobTransferFailedNumResponses());
+  }
+
+  @Test
+  public void testRecordBlobTransferRequestsBySourceAndOutcome() {
+    BlobTransferStats stats = new BlobTransferStats();
+
+    stats.recordBlobTransferRequest(DAVINCI_PEER, true);
+    stats.recordBlobTransferRequest(DAVINCI_PEER, false);
+    stats.recordBlobTransferRequest(VENICE_SERVER, true);
+    stats.recordBlobTransferRequest(VENICE_SERVER, false);
+
+    Assert.assertEquals(stats.getBlobTransferRequestCount(DAVINCI_PEER, true), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(DAVINCI_PEER, false), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(VENICE_SERVER, true), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(VENICE_SERVER, false), 1.0);
   }
 
   @Test
@@ -112,11 +130,31 @@ public class BlobTransferStatsTest {
     Assert.assertEquals(
         reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
         -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_failed_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_failed_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
 
     BlobTransferStats stats = new BlobTransferStats();
     stats.recordBlobTransferResponsesCount();
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(true);
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
+    stats.recordBlobTransferRequest(DAVINCI_PEER, true);
+    stats.recordBlobTransferRequest(DAVINCI_PEER, false);
+    stats.recordBlobTransferRequest(VENICE_SERVER, true);
+    stats.recordBlobTransferRequest(VENICE_SERVER, false);
 
     blobTransferStatsReporter.setStats(stats);
     Assert.assertEquals(
@@ -127,6 +165,22 @@ public class BlobTransferStatsTest {
         1.0);
     Assert.assertEquals(
         reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_failed_num_requests.IngestionStatsGauge")
+            .value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_failed_num_requests.IngestionStatsGauge")
+            .value(),
         1.0);
   }
 }

@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -153,6 +154,7 @@ public class MetadataBasedServerBlobFinder implements BlobFinder {
           partitionId,
           replicas);
       response.setDiscoveryResult(replicas);
+      response.setServerHostNames(new HashSet<>(replicas));
       return response;
     } catch (Exception e) {
       return errorResponse(storeName, version, partitionId, e);

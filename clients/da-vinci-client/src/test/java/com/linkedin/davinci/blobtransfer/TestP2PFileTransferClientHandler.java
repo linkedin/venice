@@ -14,6 +14,7 @@ import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.exceptions.VeniceBlobTransferHttpException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
@@ -136,7 +137,7 @@ public class TestP2PFileTransferClientHandler {
       inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(e.getCause() instanceof VeniceBlobTransferHttpException);
       Assert.assertEquals(
           e.getCause().getMessage(),
           "Failed to fetch file from remote peer. Response: 500 Internal Server Error");
@@ -155,7 +156,7 @@ public class TestP2PFileTransferClientHandler {
       inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(e.getCause() instanceof VeniceBlobTransferHttpException);
       Assert.assertEquals(e.getCause().getMessage(), "Failed to fetch file from remote peer. Response: 999 Unknown");
     }
   }

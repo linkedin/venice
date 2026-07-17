@@ -41,5 +41,6 @@ public class ServerBlobFinderTest {
     Assert.assertNotNull(resultBlobResponse);
     Assert.assertEquals(resultBlobResponse.getDiscoveryResult().size(), 1);
     Assert.assertEquals(resultBlobResponse.getDiscoveryResult().get(0), instance2.getHost());
+    Assert.assertEquals(resultBlobResponse.getServerHostNames(), Collections.singleton(instance2.getHost()));
   }
 }

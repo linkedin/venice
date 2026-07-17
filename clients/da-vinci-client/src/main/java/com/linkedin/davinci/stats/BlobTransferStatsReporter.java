@@ -1,6 +1,8 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -38,6 +40,26 @@ public class BlobTransferStatsReporter extends AbstractVeniceStatsReporter<BlobT
             this,
             () -> getStats().getBlobTransferFailedNumResponses(),
             BlobTransferStats.BLOB_TRANSFER_FAILED_NUM_RESPONSES));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferRequestCount(DAVINCI_PEER, true),
+            BlobTransferStats.BLOB_TRANSFER_DAVINCI_PEER_SUCCESSFUL_NUM_REQUESTS));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferRequestCount(DAVINCI_PEER, false),
+            BlobTransferStats.BLOB_TRANSFER_DAVINCI_PEER_FAILED_NUM_REQUESTS));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferRequestCount(VENICE_SERVER, true),
+            BlobTransferStats.BLOB_TRANSFER_VENICE_SERVER_SUCCESSFUL_NUM_REQUESTS));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferRequestCount(VENICE_SERVER, false),
+            BlobTransferStats.BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS));
     registerSensor(
         new IngestionStatsGauge(
             this,
