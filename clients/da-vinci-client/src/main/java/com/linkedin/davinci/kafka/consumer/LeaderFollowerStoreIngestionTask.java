@@ -897,10 +897,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * resubscribe so the disk-quota no-op guard covers the entire transition window. Each PCS is
    * processed inside a try/catch so a failure on one partition does not abandon the others.
    * <p>
-   * After the store-level transition, each PCS is also passed through
-   * {@link #reconcileFutureSlotPause} so the DaVinci future-slot pause is driven by the same
-   * level-triggered owner: promotion, restarts/host-swaps, and store-level-pause overlap are all
-   * handled here instead of by scattered edge patches.
+   * After the store-level transition, each PCS is passed through {@link #reconcileFutureSlotPause}
+   * so the DaVinci future-slot pause shares the same level-triggered owner — promotion,
+   * restarts/host-swaps, and store-level-pause overlap are all handled here.
    */
   void maybeTransitionPauseState() throws InterruptedException {
     Store store;
@@ -945,9 +944,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } else if (transition == PauseStateTransition.EXIT_PAUSE) {
           // Resubscribe BEFORE clearing the flag so quota callbacks stay no-op until the consumer
           // is back online; if resubscribe throws we leave the flag set so the next iteration
-          // retries instead of leaving the partition dark. Any future-slot pause that still applies
-          // is re-asserted emergently by the reconcileFutureSlotPause call below (which runs after
-          // this PCS is back to store-level unpaused), so there is no future-slot logic here.
+          // retries. Any future-slot pause that still applies is re-asserted by the
+          // reconcileFutureSlotPause call below.
           resubscribe(pcs);
           pcs.setStoreLevelPaused(false);
           pcs.resetConsumptionStartTimeInMs();
@@ -956,9 +954,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
           transitioned = true;
         }
-        // Level-triggered reconcile of the future-slot pause runs every tick for every PCS —
-        // including store-level NO_CHANGE — so promotion, restarts/host-swaps, and store-level-pause
-        // overlap are all handled by this single owner instead of scattered edge patches.
+        // Level-triggered reconcile of the future-slot pause, every tick for every PCS (including
+        // store-level NO_CHANGE), so this single owner handles promotion, restarts/host-swaps, and
+        // store-level-pause overlap.
         reconcileFutureSlotPause(pcs);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
