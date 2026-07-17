@@ -120,7 +120,10 @@ public class VersionBackend {
                 config.getZstdDictCompressionLevel()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
     long daVinciPushStatusCheckIntervalInMs = this.config.getDaVinciPushStatusCheckIntervalInMs();
-    if (daVinciPushStatusCheckIntervalInMs >= 0) {
+    // Only run the version-level push-status batching task when push-status reporting is actually enabled, so the same
+    // reportPushStatus gate (store setting, version-specific/view-store exclusions, and the cluster flag) reliably
+    // disables both the per-partition and batched push-status write paths.
+    if (reportPushStatus && daVinciPushStatusCheckIntervalInMs >= 0) {
       LogContext logContext =
           backend.getConfigLoader() != null ? backend.getConfigLoader().getVeniceServerConfig().getLogContext() : null;
       this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
