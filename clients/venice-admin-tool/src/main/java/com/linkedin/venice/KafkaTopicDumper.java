@@ -595,6 +595,16 @@ public class KafkaTopicDumper implements AutoCloseable {
   }
 
   void processRecord(DefaultPubSubMessage record) {
+    if (record.getKey().isGlobalRtDiv()) {
+      /*
+       * Global RT DIV records carry Global RT DIV state (DIV metadata) rather than user data, and are only meant to be
+       * consumed by the server ingestion pipeline, which persists them to the metadata partition. Only their KafkaKey
+       * header byte marks them as GLOBAL_RT_DIV; their KafkaMessageEnvelope messageType is PUT and their Put schema id
+       * collides with a store value schema id, so routing them through the PUT path would deserialize the DIV payload
+       * with the store value schema and fail or misparse. Skip them here, as with other non-user-data records.
+       */
+      return;
+    }
     if (logTsRecord) {
       logIfTopicSwitchMessage(record, pubSubPositionDeserializer);
     } else if (logDataRecord) {
