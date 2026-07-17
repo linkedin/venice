@@ -54,12 +54,25 @@ import org.apache.logging.log4j.Logger;
  *
  * When the last message is produced, its callback will be completed (either successfully or exceptionally), all the
  * related messages' callbacks will also be completed with the same result.
+ *
+ * Exception: when a merged partial-update (UPDATE) payload for a key would exceed the producer size limit, it cannot be
+ * produced as a single message (UPDATE does not support chunking). In that (rare) case the batch for that key is split
+ * into multiple under-limit UPDATE messages produced in order at strictly increasing timestamps. Each user callback is
+ * then completed when the split segment carrying its record is produced, with that segment's {@link PubSubProduceResult}
+ * (which differs from the final segment's), rather than all together with the final produce's result.
  */
 public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final Logger LOGGER = LogManager.getLogger(BatchingVeniceWriter.class);
 
   private final long batchIntervalInMs;
   private final int maxBatchSizeInBytes;
+  /**
+   * Upper bound (in wall-clock milliseconds, measured with the monotonic {@link System#nanoTime()}) on how long
+   * {@link #produceIntermediateUpdate} waits for {@link System#currentTimeMillis()} to advance between same-key split
+   * produces. This caps the wait so a coarse or backwards wall clock cannot stall batch production under the lock; on a
+   * normal millisecond-resolution clock the wait exits after the first attempt.
+   */
+  private static final long MAX_TIMESTAMP_ADVANCE_WAIT_MS = 100;
   private final ReentrantLock lock = new ReentrantLock();
   private final ExecutorService checkServiceExecutor = Executors.newSingleThreadExecutor();
   private final List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
@@ -268,7 +281,6 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
         if (record.shouldSkipProduce()) {
           ProducerBufferRecord latestRecord = getBufferRecordIndex().get(ByteBuffer.wrap(record.getSerializedKey()));
           if (latestRecord != null) {
-            latestRecord.addDependentCallback(record.getCallback());
             latestRecord.addRecordToDependentRecordList(record);
           }
           continue;
@@ -279,7 +291,11 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
         try {
           sendRecord(record);
         } catch (Exception e) {
-          record.getCallback().onCompletion(null, e);
+          // The record's own callback may be null (public APIs allow it); only notify it if present.
+          PubSubProducerCallback recordCallback = record.getCallback();
+          if (recordCallback != null) {
+            recordCallback.onCompletion(null, e);
+          }
         }
       }
     } finally {
@@ -359,8 +375,9 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   void sendRecord(ProducerBufferRecord record) {
     MessageType messageType = record.getMessageType();
     PubSubProducerCallback finalCallback = record.getCallback();
-    if (!record.getDependentCallbackList().isEmpty()) {
-      finalCallback = new ChainedPubSubCallback(record.getCallback(), record.getDependentCallbackList());
+    List<PubSubProducerCallback> dependentCallbacks = extractNonNullCallbacks(record.getDependentRecordList());
+    if (!dependentCallbacks.isEmpty()) {
+      finalCallback = new ChainedPubSubCallback(record.getCallback(), dependentCallbacks);
     }
     CompletableFuture<PubSubProduceResult> produceFuture = null;
     switch (messageType) {
@@ -451,8 +468,202 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     resultUpdateRecord = getUpdateHandler().mergeUpdateRecord(supersetSchema, resultUpdateRecord, updateRecord);
     /**
      * Re-serialize the payload and update the final to-be-produced record.
+     * If the merged result exceeds the size limit, fall back to incremental merge with splitting.
      */
-    producerBufferRecord.updateSerializedUpdate(serializeMergedValueRecord(resultUpdateRecord));
+    byte[] serializedResult = serializeMergedValueRecord(resultUpdateRecord);
+    if (producerBufferRecord.getSerializedKey().length
+        + serializedResult.length > getMaxSizeForUserPayloadPerMessageInBytes()) {
+      LOGGER.warn(
+          "Merged UPDATE payload size {} exceeds limit {}. Falling back to incremental merge with splitting.",
+          producerBufferRecord.getSerializedKey().length + serializedResult.length,
+          getMaxSizeForUserPayloadPerMessageInBytes());
+      mergeAndProduceWithSizeLimit(producerBufferRecord, idx, supersetSchema, supersetSchemaId);
+      return;
+    }
+    producerBufferRecord.updateSerializedUpdate(serializedResult);
+  }
+
+  /**
+   * Fallback path when the fully merged UPDATE payload exceeds the size limit.
+   * Re-does the merge incrementally, producing intermediate results when the next merge would exceed the limit.
+   */
+  void mergeAndProduceWithSizeLimit(
+      ProducerBufferRecord producerBufferRecord,
+      int anchorIdx,
+      Schema supersetSchema,
+      int supersetSchemaId) {
+    List<ProducerBufferRecord> dependentRecordList = producerBufferRecord.getDependentRecordList();
+    byte[] serializedKey = producerBufferRecord.getSerializedKey();
+    int maxPayloadSize = getMaxSizeForUserPayloadPerMessageInBytes();
+
+    GenericRecord resultUpdateRecord = null;
+    byte[] lastValidSerialized = null;
+    List<ProducerBufferRecord> accumulatedRecords = new ArrayList<>();
+
+    // Include records before/at the anchor: their payloads are overwritten by the anchor, but their callbacks still
+    // need to complete on whichever produce carries this segment.
+    for (int i = 0; i <= anchorIdx; i++) {
+      accumulatedRecords.add(dependentRecordList.get(i));
+    }
+
+    // Convert anchor PUT to UPDATE if present
+    if (anchorIdx >= 0) {
+      ProducerBufferRecord anchorPutRecord = dependentRecordList.get(anchorIdx);
+      if (anchorPutRecord.getMessageType().equals(MessageType.PUT)) {
+        resultUpdateRecord = convertValueRecordToUpdateRecord(
+            getStoreSchemaCache().getUpdateSchema(),
+            getValueDeserializer(anchorPutRecord.getSchemaId(), supersetSchemaId)
+                .deserialize(anchorPutRecord.getSerializedValue()));
+        lastValidSerialized = serializeMergedValueRecord(resultUpdateRecord);
+      }
+    }
+
+    // Incrementally merge dependent UPDATE records with size checks.
+    /**
+     * NOTE: {@link WriteComputeHandlerV1#mergeUpdateRecord} mutates its first argument (the accumulated record) in place
+     * and returns it, so {@code resultUpdateRecord} is not a fresh object after a merge. We therefore capture each
+     * accepted segment eagerly as serialized bytes in {@code lastValidSerialized}, and the produce path emits those
+     * immutable bytes rather than the live (mutable) record. Do not defer this serialization to produce time: a later
+     * in-place merge would otherwise retroactively corrupt an already-accumulated segment.
+     */
+    for (int i = anchorIdx + 1; i < dependentRecordList.size(); i++) {
+      GenericRecord updateRecord = deserializeUpdateBytes(dependentRecordList.get(i).getSerializedUpdate());
+      GenericRecord newMerged = getUpdateHandler().mergeUpdateRecord(supersetSchema, resultUpdateRecord, updateRecord);
+      byte[] newSerialized = serializeMergedValueRecord(newMerged);
+
+      if (serializedKey.length + newSerialized.length > maxPayloadSize) {
+        // Produce accumulated result before it exceeds the limit
+        if (lastValidSerialized != null) {
+          produceIntermediateUpdate(producerBufferRecord, lastValidSerialized, accumulatedRecords);
+          accumulatedRecords = new ArrayList<>();
+        }
+        // Start fresh with this single update, re-serialized through superset schema for consistency
+        resultUpdateRecord = updateRecord;
+        lastValidSerialized = serializeMergedValueRecord(updateRecord);
+      } else {
+        resultUpdateRecord = newMerged;
+        lastValidSerialized = newSerialized;
+      }
+      accumulatedRecords.add(dependentRecordList.get(i));
+    }
+
+    // Merge with the final record's own update
+    GenericRecord finalUpdateRecord = deserializeUpdateBytes(producerBufferRecord.getSerializedUpdate());
+    GenericRecord finalMerged =
+        getUpdateHandler().mergeUpdateRecord(supersetSchema, resultUpdateRecord, finalUpdateRecord);
+    byte[] finalSerialized = serializeMergedValueRecord(finalMerged);
+
+    if (serializedKey.length + finalSerialized.length > maxPayloadSize) {
+      // Final merge would exceed the limit.
+      if (lastValidSerialized != null) {
+        // Flush the accumulated segment as an intermediate UPDATE. Those records' callbacks complete via that produce,
+        // so the final record (produced next by sendRecord with its original payload) carries no dependents.
+        produceIntermediateUpdate(producerBufferRecord, lastValidSerialized, accumulatedRecords);
+        producerBufferRecord.getDependentRecordList().clear();
+      } else {
+        // Nothing valid to flush yet: keep the final record's original payload and carry the accumulated records so
+        // their callbacks still complete when sendRecord produces the final record.
+        replaceDependentRecordList(producerBufferRecord, accumulatedRecords);
+      }
+    } else {
+      // Final merge fits: update the payload and carry the accumulated records as the final record's dependents.
+      producerBufferRecord.updateSerializedUpdate(finalSerialized);
+      replaceDependentRecordList(producerBufferRecord, accumulatedRecords);
+    }
+  }
+
+  /**
+   * Collect the non-null callbacks of {@code records}, preserving order. Public writer APIs allow a null callback.
+   * {@link ChainedPubSubCallback} already skips null entries, so this is not about avoiding an NPE; dropping nulls keeps
+   * the dependent-callback list clean and lets {@link #produceIntermediateUpdate} branch on the real callback count
+   * (none vs. single vs. chained).
+   */
+  private static List<PubSubProducerCallback> extractNonNullCallbacks(List<ProducerBufferRecord> records) {
+    List<PubSubProducerCallback> nonNullCallbacks = new ArrayList<>(records.size());
+    for (ProducerBufferRecord record: records) {
+      PubSubProducerCallback callback = record.getCallback();
+      if (callback != null) {
+        nonNullCallbacks.add(callback);
+      }
+    }
+    return nonNullCallbacks;
+  }
+
+  /**
+   * Replace a record's dependent record list with {@code records} so that {@link #sendRecord} derives exactly these
+   * records' callbacks for the final produce. Used by the split path once earlier dependents have already been
+   * completed via intermediate produces.
+   */
+  private static void replaceDependentRecordList(ProducerBufferRecord record, List<ProducerBufferRecord> records) {
+    List<ProducerBufferRecord> dependentRecordList = record.getDependentRecordList();
+    dependentRecordList.clear();
+    dependentRecordList.addAll(records);
+  }
+
+  /**
+   * Produce an intermediate merged UPDATE result for a key when the batch needs to be split due to size limits.
+   */
+  private void produceIntermediateUpdate(
+      ProducerBufferRecord referenceRecord,
+      byte[] serializedUpdate,
+      List<ProducerBufferRecord> records) {
+    // Reduce to the real (non-null) callbacks so the branching below (no-op vs. single vs. chained) reflects the
+    // actual number of callers to notify. Public writer APIs allow a null callback, and ChainedPubSubCallback already
+    // skips nulls, so this is about correct branching rather than NPE-avoidance.
+    List<PubSubProducerCallback> nonNullCallbacks = extractNonNullCallbacks(records);
+    PubSubProducerCallback callback;
+    if (nonNullCallbacks.isEmpty()) {
+      callback = (result, exception) -> {};
+    } else if (nonNullCallbacks.size() == 1) {
+      callback = nonNullCallbacks.get(0);
+    } else {
+      callback =
+          new ChainedPubSubCallback(nonNullCallbacks.get(0), nonNullCallbacks.subList(1, nonNullCallbacks.size()));
+    }
+    try {
+      CompletableFuture<PubSubProduceResult> intermediateFuture = getVeniceWriter().update(
+          referenceRecord.getSerializedKey(),
+          serializedUpdate,
+          referenceRecord.getSchemaId(),
+          referenceRecord.getProtocolId(),
+          callback,
+          referenceRecord.getTimestamp());
+      /**
+       * Every split message targets the same key, and batched records carry {@link VeniceWriter#APP_DEFAULT_LOGICAL_TS},
+       * so Active/Active DCR falls back to the broker {@code messageTimestamp} for conflict resolution. Wait until the
+       * wall clock strictly advances past this produce so the next same-key message (the next split, or the final record
+       * produced right after via {@link #sendRecord}) is stamped with a greater {@code messageTimestamp}. Otherwise they
+       * would share a timestamp and DCR would break ties by value comparison instead of by recency, which can drop the
+       * latest write for a scalar field that is re-set across a split boundary. Looping on the observed clock value
+       * (instead of sleeping a fixed duration) keeps this correct even where {@link System#currentTimeMillis()} has
+       * coarse resolution. The wait is bounded by {@link #MAX_TIMESTAMP_ADVANCE_WAIT_MS} using the monotonic
+       * {@link System#nanoTime()} so a coarse or backwards wall clock cannot stall production under the lock. There is
+       * always a subsequent same-key produce after an intermediate, so the wait is warranted.
+       */
+      long producedAtMs = System.currentTimeMillis();
+      long waitDeadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MAX_TIMESTAMP_ADVANCE_WAIT_MS);
+      while (System.currentTimeMillis() <= producedAtMs && System.nanoTime() < waitDeadlineNs) {
+        if (!Utils.sleep(1)) {
+          // Interrupted: Utils.sleep already restored the interrupt flag; stop waiting and let the caller react.
+          break;
+        }
+      }
+      // Chain to the shared produce result future so async failures propagate to callers
+      CompletableFuture<PubSubProduceResult> produceResultFuture = referenceRecord.getProduceResultFuture();
+      if (produceResultFuture != null && intermediateFuture != null) {
+        intermediateFuture.whenComplete((result, throwable) -> {
+          if (throwable != null && !produceResultFuture.isDone()) {
+            produceResultFuture.completeExceptionally(throwable);
+          }
+        });
+      }
+    } catch (Exception e) {
+      callback.onCompletion(null, e);
+      CompletableFuture<PubSubProduceResult> produceResultFuture = referenceRecord.getProduceResultFuture();
+      if (produceResultFuture != null && !produceResultFuture.isDone()) {
+        produceResultFuture.completeExceptionally(e);
+      }
+    }
   }
 
   private GenericRecord deserializeUpdateBytes(byte[] updateBytes) {
@@ -565,5 +776,9 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
 
   SchemaFetcherBackedStoreSchemaCache getStoreSchemaCache() {
     return storeSchemaCache;
+  }
+
+  int getMaxSizeForUserPayloadPerMessageInBytes() {
+    return VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
   }
 }
