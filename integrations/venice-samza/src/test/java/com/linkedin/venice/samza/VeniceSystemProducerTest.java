@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VER
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -39,6 +40,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -171,6 +173,9 @@ public class VeniceSystemProducerTest {
     assertNotNull(resultantVeniceWriter);
     assertEquals(resultantVeniceWriter, veniceWriterMock);
     assertEquals(capturedProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS), "venice-kafka.db:2023");
+    assertEquals(
+        capturedProperties.getProperty(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS),
+        Integer.toString(20 * Time.MS_PER_DAY));
     assertEquals(capturedVwo.getTopicName(), "test_store_v1");
     if (pushType != Version.PushType.BATCH && pushType != Version.PushType.STREAM_REPROCESSING) {
       // invoke create venice write without partition count
@@ -179,6 +184,37 @@ public class VeniceSystemProducerTest {
       assertNotNull(capturedVwo.getPartitionCount());
       assertEquals((int) capturedVwo.getPartitionCount(), 2);
     }
+  }
+
+  @Test
+  public void testGetVeniceWriterDoesNotOverrideExplicitDeliveryTimeout() {
+    VeniceSystemProducer producer = new VeniceSystemProducer(
+        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+            .setPushType(Version.PushType.STREAM)
+            .setSamzaJobId("push-job-id-1")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setVeniceChildD2ZkHost("zookeeper.com:2181")
+            .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
+            .setPrimaryControllerD2ServiceName("ChildController")
+            .build());
+
+    VeniceSystemProducer producerSpy = spy(producer);
+    ArgumentCaptor<Properties> propertiesCaptor = ArgumentCaptor.forClass(Properties.class);
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    doReturn(mockWriter).when(producerSpy).constructVeniceWriter(propertiesCaptor.capture(), any());
+
+    VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+    versionCreationResponse.setKafkaBootstrapServers("kafka:9092");
+    versionCreationResponse.setPartitions(1);
+    versionCreationResponse.setKafkaTopic("test_store_v1");
+
+    Properties explicitProps = new Properties();
+    explicitProps.setProperty(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS, "12345");
+
+    producerSpy.getVeniceWriter(versionCreationResponse, explicitProps);
+
+    assertEquals(propertiesCaptor.getValue().getProperty(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS), "12345");
   }
 
   @Test
