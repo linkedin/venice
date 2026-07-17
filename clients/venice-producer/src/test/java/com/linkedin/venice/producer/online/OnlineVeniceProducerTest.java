@@ -67,6 +67,7 @@ import com.linkedin.venice.writer.update.UpdateBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -772,6 +773,44 @@ public class OnlineVeniceProducerTest {
         }
       });
     }
+  }
+
+  @Test
+  public void testResolveSchemaRefreshPeriod() {
+    ClientConfig storeClientConfig = mock(ClientConfig.class);
+
+    // Neither producer config nor a non-zero store-client period is set: falls back to the production default.
+    Mockito.when(storeClientConfig.getSchemaRefreshPeriod()).thenReturn(Duration.ZERO);
+    assertEquals(
+        OnlineVeniceProducer.resolveSchemaRefreshPeriod(VeniceProperties.empty(), storeClientConfig),
+        OnlineVeniceProducer.DEFAULT_SCHEMA_REFRESH_PERIOD);
+
+    // A null store-client period is treated the same as zero: falls back to the default.
+    Mockito.when(storeClientConfig.getSchemaRefreshPeriod()).thenReturn(null);
+    assertEquals(
+        OnlineVeniceProducer.resolveSchemaRefreshPeriod(VeniceProperties.empty(), storeClientConfig),
+        OnlineVeniceProducer.DEFAULT_SCHEMA_REFRESH_PERIOD);
+
+    // An explicit non-zero store-client period wins over the default when no producer config is set.
+    Mockito.when(storeClientConfig.getSchemaRefreshPeriod()).thenReturn(Duration.ofSeconds(45));
+    assertEquals(
+        OnlineVeniceProducer.resolveSchemaRefreshPeriod(VeniceProperties.empty(), storeClientConfig),
+        Duration.ofSeconds(45));
+
+    // An explicit producer config always wins, even over a store-client period.
+    Properties producerProps = new Properties();
+    producerProps.put(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS, 90);
+    assertEquals(
+        OnlineVeniceProducer.resolveSchemaRefreshPeriod(new VeniceProperties(producerProps), storeClientConfig),
+        Duration.ofSeconds(90));
+
+    // A producer config of 0 explicitly disables refresh (escape hatch), overriding the default.
+    Properties disableProps = new Properties();
+    disableProps.put(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS, 0);
+    Mockito.when(storeClientConfig.getSchemaRefreshPeriod()).thenReturn(Duration.ZERO);
+    assertEquals(
+        OnlineVeniceProducer.resolveSchemaRefreshPeriod(new VeniceProperties(disableProps), storeClientConfig),
+        Duration.ZERO);
   }
 
   /**
