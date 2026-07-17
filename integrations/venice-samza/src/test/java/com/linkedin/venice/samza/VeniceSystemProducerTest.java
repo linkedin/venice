@@ -40,7 +40,6 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -175,7 +174,7 @@ public class VeniceSystemProducerTest {
     assertEquals(capturedProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS), "venice-kafka.db:2023");
     assertEquals(
         capturedProperties.getProperty(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS),
-        Integer.toString(20 * Time.MS_PER_DAY));
+        Integer.toString(VeniceSystemProducer.DEFAULT_KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS));
     assertEquals(capturedVwo.getTopicName(), "test_store_v1");
     if (pushType != Version.PushType.BATCH && pushType != Version.PushType.STREAM_REPROCESSING) {
       // invoke create venice write without partition count

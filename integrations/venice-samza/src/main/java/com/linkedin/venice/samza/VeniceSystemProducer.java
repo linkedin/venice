@@ -101,6 +101,14 @@ import org.apache.samza.system.SystemProducer;
 public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
 
+  /**
+   * Default Kafka producer {@code delivery.timeout.ms} applied when a job has not configured its own value.
+   * Set to 20 days so that nearline writes are retried rather than dropped during extended pub-sub unavailability;
+   * the shorter fall-through in {@link com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig}
+   * (5 minutes) can silently drop records once a send cannot complete in time.
+   */
+  static final int DEFAULT_KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS = 20 * Time.MS_PER_DAY;
+
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
   private static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
@@ -289,13 +297,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       VersionCreationResponse store,
       Properties veniceWriterProperties) {
     /**
-     * Default the Kafka producer delivery timeout to 20 days so that nearline writes are retried
-     * rather than dropped during extended pub-sub unavailability. The Kafka client default (and the
-     * shorter fall-through in {@link com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig})
-     * can silently drop records once a send cannot complete in time. This is a default: jobs may
-     * override it via their producer configuration.
+     * Resolve the Kafka producer delivery timeout: use the value the job configured under
+     * {@link com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig#KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS}
+     * if present, otherwise fall back to {@link #DEFAULT_KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS} (20 days). This favors
+     * retrying nearline writes over dropping them during extended pub-sub unavailability.
      */
-    veniceWriterProperties.putIfAbsent(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS, Integer.toString(20 * Time.MS_PER_DAY));
+    if (!veniceWriterProperties.containsKey(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS)) {
+      veniceWriterProperties.setProperty(
+          KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS,
+          Integer.toString(DEFAULT_KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS));
+    }
     Integer partitionCount = pushType.isBatchOrStreamReprocessing()
         ? (store.getPartitions())
         /**
