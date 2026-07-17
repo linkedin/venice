@@ -40,8 +40,9 @@ public class BlobPeersDiscoveryResponse {
   }
 
   public void setServerHostNames(Set<String> serverHostNames) {
-    this.serverHostNames =
-        serverHostNames == null || serverHostNames.isEmpty() ? Collections.emptySet() : new HashSet<>(serverHostNames);
+    this.serverHostNames = serverHostNames == null || serverHostNames.isEmpty()
+        ? Collections.emptySet()
+        : Collections.unmodifiableSet(new HashSet<>(serverHostNames));
   }
 
   public Set<String> getServerHostNames() {

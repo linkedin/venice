@@ -21,7 +21,8 @@ import java.util.Set;
  *
  * <p>Maps blob transfer telemetry into OTel metrics:
  * <ul>
- *   <li>source-specific request outcomes → 1 COUNTER with source and response-status dimensions</li>
+ *   <li>source-specific request outcomes → 1 COUNTER with source and outcome dimensions</li>
+ *   <li>Kafka fallbacks → 1 COUNTER with a bounded outcome/reason dimension</li>
  *   <li>3 count sensors (total/success/fail) → 1 COUNTER with {@code response_status_category} dimension</li>
  *   <li>throughput gauge → dropped (derivable as rate from {@code bytes.received})</li>
  *   <li>time gauge → 1 HISTOGRAM in seconds</li>

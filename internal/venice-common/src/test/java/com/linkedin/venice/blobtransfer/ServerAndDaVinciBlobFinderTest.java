@@ -101,6 +101,14 @@ public class ServerAndDaVinciBlobFinderTest {
     Assert.assertEquals(response.getServerHostNames(), new HashSet<>(Arrays.asList("server-a", "server-b")));
   }
 
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testServerHostNamesAreImmutable() {
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setServerHostNames(Collections.singleton("server-host"));
+
+    response.getServerHostNames().add("other-server");
+  }
+
   @Test
   public void testCloseClosesBothFinders() throws Exception {
     BlobFinder daVinciBlobFinder = mock(BlobFinder.class);
