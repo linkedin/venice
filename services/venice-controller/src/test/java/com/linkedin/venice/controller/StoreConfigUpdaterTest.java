@@ -629,6 +629,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         .setExternalStorageReadMode(ExternalStorageReadMode.VENICE_ONLY)
         .setCompactionEnabled(true)
         .setCompactionThresholdMilliseconds(3600_000L)
+        .setEncryptionEnabled(true)
         .setMinCompactionLagSeconds(1L)
         .setMaxCompactionLagSeconds(2L)
         .setMaxRecordSizeBytes(1024)
@@ -651,7 +652,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    // 23 distinct ifPresent/conditional branches above (added targetRegionPromoted). Allow some
+    // 24 distinct ifPresent/conditional branches above (added encryptionEnabled). Allow some
     // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
     verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
   }

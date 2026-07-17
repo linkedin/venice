@@ -607,6 +607,7 @@ public class VeniceParentHelixAdminSchemaTest {
     testUpdateGlobalRtDivEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
+    testUpdateEncryptionEnabled(parentControllerClient, childControllerClient);
     testUpdateEnumSchemaEvolution(parentControllerClient, childControllerClient);
     testUpdateStoreFlinkVeniceViewsEnable(parentControllerClient, childControllerClient);
   }
@@ -734,6 +735,17 @@ public class VeniceParentHelixAdminSchemaTest {
     };
     Consumer<StoreResponse> responseConsumer = response -> {
       Assert.assertEquals(response.getStore().getCompactionThreshold(), expectedCompactionThreshold);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateEncryptionEnabled(ControllerClient parentClient, ControllerClient childClient) {
+    final boolean expectedEncryptionEnabled = true;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setEncryptionEnabled(expectedEncryptionEnabled);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().isEncryptionEnabled(), expectedEncryptionEnabled);
     };
     testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
   }

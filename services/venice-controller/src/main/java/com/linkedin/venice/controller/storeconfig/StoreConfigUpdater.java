@@ -21,6 +21,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_M
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENCRYPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
@@ -285,6 +286,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThresholdMilliseconds = params.getCompactionThresholdMilliseconds();
+    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -690,6 +692,11 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
+      encryptionEnabled.ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+        store.setEncryptionEnabled(aBoolean);
+        return store;
+      }));
+
       if (minCompactionLagSeconds.isPresent()) {
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
@@ -929,6 +936,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
+    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -1305,6 +1313,9 @@ public final class StoreConfigUpdater {
     setStore.compactionThresholdMilliseconds =
         compactionThreshold.map(admin.addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
             .orElseGet(currStore::getCompactionThresholdMilliseconds);
+    setStore.encryptionEnabled =
+        encryptionEnabled.map(admin.addToUpdatedConfigList(updatedConfigsList, ENCRYPTION_ENABLED))
+            .orElseGet(currStore::isEncryptionEnabled);
     setStore.minCompactionLagSeconds =
         minCompactionLagSeconds.map(admin.addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
             .orElseGet(currStore::getMinCompactionLagSeconds);
