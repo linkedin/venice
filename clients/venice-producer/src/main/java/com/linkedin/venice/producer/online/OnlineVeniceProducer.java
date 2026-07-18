@@ -40,14 +40,6 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(OnlineVeniceProducer.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
-  /**
-   * Default period at which the producer refreshes value and update schemas when neither the producer config
-   * {@link com.linkedin.venice.ConfigKeys#CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS} nor the store client
-   * config sets one. Without a periodic refresh a long-lived producer never picks up schemas registered after it
-   * started, so writes using a newer value or update schema fail. Set the config to {@code 0} to disable refresh.
-   */
-  static final Duration DEFAULT_SCHEMA_REFRESH_PERIOD = Duration.ofSeconds(300);
-
   private final String storeName;
   private final InternalAvroStoreClient<K, V> storeClient;
 
@@ -63,7 +55,17 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
     this.storeName = storeClientConfig.getStoreName();
     this.icProvider = icProvider;
 
-    Duration schemaRefreshPeriod = resolveSchemaRefreshPeriod(producerConfigs, storeClientConfig);
+    Duration schemaRefreshPeriod;
+    if (producerConfigs.containsKey(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS)) {
+      schemaRefreshPeriod =
+          Duration.ofSeconds(producerConfigs.getLong(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS));
+    } else {
+      schemaRefreshPeriod = storeClientConfig.getSchemaRefreshPeriod();
+      if (schemaRefreshPeriod.isZero()) {
+        // Default to refreshing every 5 minutes so a long-lived producer picks up newly registered schemas.
+        schemaRefreshPeriod = Duration.ofSeconds(300);
+      }
+    }
 
     ClientConfig clientConfigForSchemaReader = ClientConfig.cloneConfig(storeClientConfig)
         .setSchemaRefreshPeriod(schemaRefreshPeriod)
@@ -109,22 +111,6 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
         "Created venice online producer for: {}{}",
         storeName,
         needsPartitionRouting ? " with partition routing" : "");
-  }
-
-  /**
-   * Resolves the schema refresh period using, in order of precedence: the producer config
-   * {@link com.linkedin.venice.ConfigKeys#CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS}, a non-zero period set on
-   * the store client config, and finally {@link #DEFAULT_SCHEMA_REFRESH_PERIOD}.
-   */
-  static Duration resolveSchemaRefreshPeriod(VeniceProperties producerConfigs, ClientConfig storeClientConfig) {
-    if (producerConfigs.containsKey(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS)) {
-      return Duration.ofSeconds(producerConfigs.getLong(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS));
-    }
-    Duration storeClientPeriod = storeClientConfig.getSchemaRefreshPeriod();
-    if (storeClientPeriod != null && !storeClientPeriod.isZero()) {
-      return storeClientPeriod;
-    }
-    return DEFAULT_SCHEMA_REFRESH_PERIOD;
   }
 
   @Override
