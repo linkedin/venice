@@ -290,6 +290,102 @@ public class VeniceParentHelixAdminSchemaTest {
     }
   }
 
+  /**
+   * Reproduces the production value-schema registration failure observed when a push tried to register
+   * a value schema that introduced a field absent from the already-registered schema(s) with no default.
+   * Venice registers value schemas with FULL (backward + forward) compatibility
+   * (SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE), so such a schema is rejected in the
+   * BACKWARD direction: a reader on the new schema cannot read data written with the existing schema
+   * (which never wrote the new field) and has no default to fall back on.
+   *
+   * The sequence also documents the distinction that the absence of a {@code "default"} is only a problem
+   * when the field set changes:
+   * <ul>
+   *   <li>stripping {@code "default"} on an identical field set is compatible (v2),</li>
+   *   <li>adding a new field WITH a default is compatible (v3),</li>
+   *   <li>adding a new field WITHOUT a default is NOT compatible (bad) -> the reproduced error.</li>
+   * </ul>
+   */
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
+  public void testAddValueSchemaBackwardIncompatibleNewFieldWithoutDefault() {
+    Properties parentControllerProps = new Properties();
+    // This cluster setup has no server, so disable system-store materialization.
+    parentControllerProps.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
+    parentControllerProps
+        .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
+
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(parentControllerProps);
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
+        ControllerClient parentControllerClient =
+            new ControllerClient(venice.getClusterNames()[0], venice.getControllerConnectString())) {
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          false,
+          true,
+          () -> parentControllerClient.getLeaderControllerUrl());
+
+      String storeName = Utils.getUniqueString("test_backward_incompat_");
+      String owner = "test_owner";
+      String keySchemaStr = "\"long\"";
+
+      // v1 (registered as id=1): single optional field "f1" with an explicit default.
+      String valueSchemaV1 = "{\"type\":\"record\",\"name\":\"Features\",\"namespace\":\"example.avro\",\"fields\":["
+          + "{\"name\":\"f1\",\"type\":[\"null\",\"float\"],\"default\":null}]}";
+      // v2 (id=2): identical field set to v1, but the "default" attribute stripped. Because every field is
+      // present in both schemas, defaults are never consulted during resolution -> FULL-compatible.
+      String valueSchemaV2 = "{\"type\":\"record\",\"name\":\"Features\",\"namespace\":\"example.avro\",\"fields\":["
+          + "{\"name\":\"f1\",\"type\":[\"null\",\"float\"]}]}";
+      // v3 (id=3): adds a NEW field "f2" that carries a default -> backward-safe -> FULL-compatible.
+      String valueSchemaV3 = "{\"type\":\"record\",\"name\":\"Features\",\"namespace\":\"example.avro\",\"fields\":["
+          + "{\"name\":\"f1\",\"type\":[\"null\",\"float\"]},"
+          + "{\"name\":\"f2\",\"type\":[\"null\",\"float\"],\"default\":null}]}";
+      // bad (the failing push): adds a NEW field "f3" with NO default. FULL compatibility fails in the
+      // BACKWARD direction -- a reader on this schema cannot read v1-written data (which never wrote f3)
+      // and has no default to fall back on.
+      String valueSchemaBad = "{\"type\":\"record\",\"name\":\"Features\",\"namespace\":\"example.avro\",\"fields\":["
+          + "{\"name\":\"f1\",\"type\":[\"null\",\"float\"]},"
+          + "{\"name\":\"f3\",\"type\":[\"null\",\"float\"]}]}";
+
+      // Step 1: create the store with v1.
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1);
+      assertFalse(newStoreResponse.isError(), "Failed to create store with v1 schema: " + newStoreResponse.getError());
+
+      // Step 2: stripping the default on an identical field set is compatible.
+      SchemaResponse v2Response = parentControllerClient.addValueSchema(storeName, valueSchemaV2);
+      assertFalse(
+          v2Response.isError(),
+          "Stripping the default on an identical field set should be FULL-compatible, but got: "
+              + v2Response.getError());
+
+      // Step 3: adding a new field WITH a default is compatible.
+      SchemaResponse v3Response = parentControllerClient.addValueSchema(storeName, valueSchemaV3);
+      assertFalse(
+          v3Response.isError(),
+          "Adding a new field with a default should be FULL-compatible, but got: " + v3Response.getError());
+
+      // Step 4 (the reproduction): adding a new field WITHOUT a default breaks BACKWARD compatibility.
+      SchemaResponse badResponse = parentControllerClient.addValueSchema(storeName, valueSchemaBad);
+      assertTrue(
+          badResponse.isError(),
+          "Adding a new field without a default must fail FULL (backward) compatibility, but it succeeded.");
+      assertTrue(
+          badResponse.getError().contains("incompatible with existing schema"),
+          "Expected a schema-incompatibility error, but got: " + badResponse.getError());
+    }
+  }
+
   // testRollbackToBackupVersion moved to VeniceParentHelixAdminSchemaRollbackTest
   // testSupersetSchemaUpdateBehaviorWhenComputeDisabled moved to VeniceParentHelixAdminSchemaRollbackTest
 
