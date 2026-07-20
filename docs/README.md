@@ -15,7 +15,7 @@
             <a href="https://github.com/linkedin/venice"><img src="https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white" alt="GitHub"></a>
             <a href="https://www.linkedin.com/company/venicedb/"><img src="https://img.shields.io/badge/linkedin-%230077B5.svg?logo=linkedin&logoColor=white" alt="LinkedIn"></a>
             <a href="https://twitter.com/VeniceDataBase"><img src="https://img.shields.io/badge/Twitter-%231DA1F2.svg?logo=Twitter&logoColor=white" alt="Twitter"></a>
-            <a href="http://slack.venicedb.org"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white" alt="Slack"></a>
+            <a href="https://discord.gg/6aZZfwswDt"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
         </div>
     </div>
 </html>
@@ -164,9 +164,8 @@ Feel free to engage with the community using our:
 
 <!-- N.B.: The links are duplicated here between the icon and text, otherwise the blue link underline extends into the space, which does not look good. -->
 
-- [<img src="assets/icons/slack-icon.svg" width="15" />](http://slack.venicedb.org)
-  [Slack workspace](http://slack.venicedb.org)
-  - Archived and publicly searchable on [Linen](http://linen.venicedb.org)
+- [<img src="assets/icons/discord-icon.svg" width="15" />](https://discord.gg/6aZZfwswDt)
+  [Discord server](https://discord.gg/6aZZfwswDt)
 - [<img src="assets/icons/linkedin-icon.svg" width="15" />](https://www.linkedin.com/groups/14129519/)
   [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [<img src="assets/icons/github-icon.svg" width="15" />](https://github.com/linkedin/venice/issues)
