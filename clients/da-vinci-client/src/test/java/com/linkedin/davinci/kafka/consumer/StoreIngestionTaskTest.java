@@ -1465,7 +1465,7 @@ public abstract class StoreIngestionTaskTest {
       if (inMemoryRemoteKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
         inMemoryRemoteKafkaConsumer.resume(pubSubTopicPartition);
       }
-      return true;
+      return null;
     }).when(aggKafkaConsumerService).resumeConsumerFor(any(), any());
   }
 
@@ -7880,7 +7880,7 @@ public abstract class StoreIngestionTaskTest {
     // Physical pause/resume "apply" by default (a consumer is assigned); individual tests override
     // to simulate no consumer assigned (retry) as needed.
     doReturn(true).when(agg).pauseConsumerFor(any(), any());
-    doReturn(true).when(agg).resumeConsumerFor(any(), any());
+    doNothing().when(agg).resumeConsumerFor(any(), any());
     doReturn(pubSubTopicRepository).when(task).getPubSubTopicRepository();
     doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
     doCallRealMethod().when(task).resumeFromFutureSlotPause();
@@ -7991,7 +7991,7 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(pcs.isFutureSlotPaused(), "flag must remain set when the physical resume failed");
 
     // Retry succeeds: flag is cleared.
-    doReturn(true).when(aggConsumerService).resumeConsumerFor(any(), any());
+    doNothing().when(aggConsumerService).resumeConsumerFor(any(), any());
     task.reconcileFutureSlotPause(pcs);
     assertFalse(pcs.isFutureSlotPaused(), "flag must clear once the physical resume applies");
   }

@@ -581,21 +581,14 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return applied;
   }
 
-  /**
-   * @return {@code true} if a consumer was assigned for the topic-partition and physically resumed;
-   *         {@code false} if no consumer is currently assigned (nothing to resume).
-   */
-  boolean resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    boolean applied = false;
+  void resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter consumer;
     for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
         consumer.resume(pubSubTopicPartition);
-        applied = true;
       }
     }
-    return applied;
   }
 
   /**

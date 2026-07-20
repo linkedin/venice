@@ -4957,8 +4957,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // has completed. Otherwise, there will be resource contention.
     if (recordTransformer != null && recordTransformer.getCountDownStartConsumptionLatchCount() > 0) {
       LOGGER.info("DaVinciRecordTransformer pausing consumption for: {}", pubSubTopicPartition);
-      aggKafkaConsumerService.pauseConsumerFor(versionTopic, pubSubTopicPartition);
-      LOGGER.info("DaVinciRecordTransformer paused consumption for: {}", pubSubTopicPartition);
+      boolean paused = aggKafkaConsumerService.pauseConsumerFor(versionTopic, pubSubTopicPartition);
+      LOGGER.info("DaVinciRecordTransformer paused consumption for: {} (applied={})", pubSubTopicPartition, paused);
       recordTransformerPausedConsumptionQueue.add(pubSubTopicPartition);
     }
   }
@@ -6870,8 +6870,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pausePartitionForFutureSlot(pcs.getPartition());
     } else if (!desiredHold && pcs.isFutureSlotPaused()) {
       // Physically resume BEFORE clearing the flag: if resumeConsumerFor throws, the flag stays set
-      // and the next reconcile retries rather than stranding a physically-paused consumer. A false
-      // return (no consumer assigned) means nothing is paused, so clearing the flag is still correct.
+      // and the next reconcile retries rather than stranding a physically-paused consumer.
       PubSubTopic vt = getVersionTopic();
       getAggKafkaConsumerService().resumeConsumerFor(vt, new PubSubTopicPartitionImpl(vt, pcs.getPartition()));
       pcs.setFutureSlotPaused(false);
