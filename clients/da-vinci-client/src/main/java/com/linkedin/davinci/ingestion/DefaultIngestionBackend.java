@@ -54,6 +54,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     startConsumption(storeConfig, partition, pubSubPosition, replicaId, false);
   }
 
+  @Override
   public void startConsumption(
       VeniceStoreVersionConfig storeConfig,
       int partition,

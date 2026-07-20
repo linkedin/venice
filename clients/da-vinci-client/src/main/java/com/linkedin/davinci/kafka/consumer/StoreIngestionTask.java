@@ -4974,10 +4974,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId, "store-level paused");
       return false;
     }
-    aggKafkaConsumerService.pauseConsumerFor(
+    // Return whether a consumer was actually paused: pauseConsumerFor no-ops (returns false) when no
+    // consumer is assigned, and the quota manager must not record the partition as paused in that case.
+    return aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
-    return true;
   }
 
   private boolean resumeConsumption(String topic, int partitionId) {
