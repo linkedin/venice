@@ -4253,4 +4253,113 @@ public class LeaderFollowerStoreIngestionTaskTest {
           "lcs must not propagate: " + description);
     }
   }
+
+  /**
+   * Regression test for local VT offset corruption (reverted PR #2809 / #2840).
+   *
+   * <p>When a leader's {@code consumeRemotely} flag flips false (the EOP leader-to-local switch or an L->S
+   * transition) after a record has been leader-produced but before the drainer processes it, that record is
+   * handled by the local ({@code !shouldProduceToVersionTopic}) branch of
+   * {@link LeaderFollowerStoreIngestionTask#updateOffsetsFromConsumerRecord} even though it was consumed from an
+   * upstream/remote source. In that branch the local VT position must be advanced from the record's own
+   * provenance, never from {@code consumerRecord.getPosition()} which is the foreign upstream/remote-VT position
+   * (a different topicId/shard) that later crashes the local-VT subscribe with an IllegalStateException.
+   */
+  @Test
+  public void testUpdateOffsetsFromConsumerRecordLocalVtUsesProvenanceNotUpstreamPosition()
+      throws InterruptedException {
+    setUp();
+
+    // Post-flip leader state: LEADER, leaderTopic == local VT, consumeRemotely == false, so
+    // shouldProduceToVersionTopic is false and records are handled by the local (non-produce) branch.
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic versionTopicRef = leaderFollowerStoreIngestionTask.getVersionTopic();
+    doReturn(versionTopicRef).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    doReturn(false).when(mockPartitionConsumptionState).consumeRemotely();
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldProduceToVersionTopic(mockPartitionConsumptionState),
+        "Precondition: with leaderTopic == local VT and consumeRemotely == false the record must reach the local branch");
+
+    // A record consumed from a foreign upstream/remote source; its own position is NOT a local VT position. No
+    // leaderMetadataFooter (a batch record that raced past the flag flip), so no upstream position is filed either.
+    PubSubPosition upstreamRecordPosition = mock(PubSubPosition.class);
+    PubSubTopicPartition sourceTopicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic sourceTopic = mock(PubSubTopic.class);
+    doReturn(false).when(sourceTopic).isRealTime();
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(sourceTopicPartition).when(consumerRecord).getTopicPartition();
+    doReturn(sourceTopic).when(sourceTopicPartition).getPubSubTopic();
+    doReturn(upstreamRecordPosition).when(consumerRecord).getPosition();
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.producerMetadata = new ProducerMetadata();
+    kafkaValue.leaderMetadataFooter = null;
+    doReturn(kafkaValue).when(consumerRecord).getValue();
+
+    LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset upstreamOffsetUpdate =
+        mock(LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset.class);
+    LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset lastKnownUpstream =
+        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class);
+
+    // Case 1: leader-produced record that has a corresponding upstream message. The local VT slot must advance
+    // with the local-VT producedPosition, never the foreign consumerRecord position; and no upstream position is
+    // misfiled for a record without a leaderMetadataFooter.
+    PubSubPosition producedPosition = mock(PubSubPosition.class);
+    LeaderProducedRecordContext lprcWithUpstream = mock(LeaderProducedRecordContext.class);
+    doReturn(true).when(lprcWithUpstream).hasCorrespondingUpstreamMessage();
+    doReturn(producedPosition).when(lprcWithUpstream).getProducedPosition();
+    LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset vtUpdateWithUpstream =
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class);
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        consumerRecord,
+        lprcWithUpstream,
+        vtUpdateWithUpstream,
+        upstreamOffsetUpdate,
+        lastKnownUpstream,
+        () -> "remote-broker-url",
+        false);
+    verify(vtUpdateWithUpstream, times(1)).apply(producedPosition);
+    verify(vtUpdateWithUpstream, never()).apply(upstreamRecordPosition);
+    verify(upstreamOffsetUpdate, never()).apply(any(), any(), any());
+
+    // Case 2: a leader-generated record with no corresponding upstream message (e.g. a chunk) must not advance the
+    // local VT position at all.
+    LeaderProducedRecordContext lprcChunk = mock(LeaderProducedRecordContext.class);
+    doReturn(false).when(lprcChunk).hasCorrespondingUpstreamMessage();
+    doReturn(mock(PubSubPosition.class)).when(lprcChunk).getProducedPosition();
+    LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset vtUpdateChunk =
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class);
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        consumerRecord,
+        lprcChunk,
+        vtUpdateChunk,
+        upstreamOffsetUpdate,
+        lastKnownUpstream,
+        () -> "remote-broker-url",
+        false);
+    verify(vtUpdateChunk, never()).apply(any());
+
+    // Case 3: a record directly consumed from the local VT (no leader-produced context) advances the local VT slot
+    // with its own position, which is a valid local VT position.
+    PubSubPosition localVtPosition = mock(PubSubPosition.class);
+    DefaultPubSubMessage localVtRecord = mock(DefaultPubSubMessage.class);
+    doReturn(sourceTopicPartition).when(localVtRecord).getTopicPartition();
+    doReturn(localVtPosition).when(localVtRecord).getPosition();
+    doReturn(kafkaValue).when(localVtRecord).getValue();
+    LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset vtUpdateLocal =
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class);
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        localVtRecord,
+        null,
+        vtUpdateLocal,
+        upstreamOffsetUpdate,
+        lastKnownUpstream,
+        () -> "remote-broker-url",
+        false);
+    verify(vtUpdateLocal, times(1)).apply(localVtPosition);
+  }
 }

@@ -1912,7 +1912,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // would leave the position pointing at a record that has not been durably written yet; if the write then fails,
       // a shutdown checkpoint could persist that position and the record would be skipped on restart (data loss).
       if (!dryRun) {
-        updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
+        /*
+         * This record could be from RT / remote VT if setConsumeRemotely(false) was called during a leader-to-local
+         * transition, so check hasUpstream() to ensure that the local VT slot only holds local-VT positions.
+         */
+        if (leaderProducedRecordContext == null) {
+          updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
+        } else if (leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
+          updateVersionTopicOffsetFunction.apply(leaderProducedRecordContext.getProducedPosition());
+        }
       }
 
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
