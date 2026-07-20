@@ -1247,6 +1247,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int largestUsedRTVersionNumber) {
     newStore.setNativeReplicationEnabled(config.isMultiRegion());
 
+    if (config.isEncryptionCluster() && !newStore.isSystemStore()) {
+      newStore.setEncryptionEnabled(true);
+    }
+
     /**
      * Initialize default NR source fabric base on default config for different store types.
      */
@@ -1846,6 +1850,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .accept(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName));
     }
 
+    boolean enforceEncryptionEnabled = getControllerConfig(destClusterName).isEncryptionCluster();
+    if (enforceEncryptionEnabled && !srcStore.isEncryptionEnabled()) {
+      LOGGER.info(
+          "Destination cluster {} is an encryption cluster; enabling encryption for migrated store {}.",
+          destClusterName,
+          storeName);
+    }
+
     StoreMigrationHelper.cloneDestinationStoreAndSyncConfigs(
         destControllerClient,
         srcStore,
@@ -1855,6 +1867,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         destClusterName,
         storeName,
         multiClusterConfigs.getRegionName(),
+        enforceEncryptionEnabled,
         LOGGER);
 
     Consumer<String> versionMigrationConsumer = migratingStoreName -> {

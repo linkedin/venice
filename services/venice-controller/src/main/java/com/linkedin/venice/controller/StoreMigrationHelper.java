@@ -32,6 +32,7 @@ final class StoreMigrationHelper {
       String destClusterName,
       String storeName,
       String localRegion,
+      boolean enforceEncryptionEnabled,
       Logger logger) {
     NewStoreResponse newStoreResponse = destControllerClient
         .createNewStore(storeName, srcStore.getOwner(), keySchema, valueSchemaEntries.get(0).getSchema().toString());
@@ -52,10 +53,16 @@ final class StoreMigrationHelper {
     }
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore, true);
+    if (enforceEncryptionEnabled) {
+      params.setEncryptionEnabled(true);
+    }
     Set<String> remainingRegions = new HashSet<>();
     remainingRegions.add(localRegion);
     for (Map.Entry<String, StoreInfo> entry: srcStoresInChildColos.get(storeName).entrySet()) {
       UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue(), true);
+      if (enforceEncryptionEnabled) {
+        paramsInChildColo.setEncryptionEnabled(true);
+      }
       if (params.isDifferent(paramsInChildColo)) {
         paramsInChildColo.setRegionsFilter(entry.getKey());
         logger.info("Sending update-store request {} to store {} in {}", paramsInChildColo, storeName, entry.getKey());
