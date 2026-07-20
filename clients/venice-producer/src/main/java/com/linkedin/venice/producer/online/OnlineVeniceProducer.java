@@ -61,6 +61,10 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
           Duration.ofSeconds(producerConfigs.getLong(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS));
     } else {
       schemaRefreshPeriod = storeClientConfig.getSchemaRefreshPeriod();
+      if (schemaRefreshPeriod.isZero()) {
+        // Default to refreshing every 5 minutes so a long-lived producer picks up newly registered schemas.
+        schemaRefreshPeriod = Duration.ofMinutes(5);
+      }
     }
 
     ClientConfig clientConfigForSchemaReader = ClientConfig.cloneConfig(storeClientConfig)
