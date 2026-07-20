@@ -1440,13 +1440,16 @@ public abstract class StoreIngestionTaskTest {
 
     doAnswer(invocation -> {
       PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
+      boolean applied = false;
       if (inMemoryLocalKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
         inMemoryLocalKafkaConsumer.pause(pubSubTopicPartition);
+        applied = true;
       }
       if (inMemoryRemoteKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
         inMemoryRemoteKafkaConsumer.pause(pubSubTopicPartition);
+        applied = true;
       }
-      return true;
+      return applied;
     }).when(aggKafkaConsumerService).pauseConsumerFor(any(), any());
 
     doAnswer(invocation -> {
