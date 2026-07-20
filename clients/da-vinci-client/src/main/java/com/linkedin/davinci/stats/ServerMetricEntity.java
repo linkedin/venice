@@ -52,7 +52,8 @@ public final class ServerMetricEntity {
         BackupVersionOptimizationOtelMetricEntity.class,
         ParticipantStateTransitionOtelMetricEntity.class,
         DaVinciRecordTransformerOtelMetricEntity.class,
-        StuckConsumerRepairOtelMetricEntity.class);
+        StuckConsumerRepairOtelMetricEntity.class,
+        PubSubHealthOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
