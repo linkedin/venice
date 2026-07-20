@@ -38,9 +38,6 @@ public class StoragePersonaRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
         AdminSparkServer.validateParams(request, CREATE_STORAGE_PERSONA.getParams(), admin);
 
         Map<String, String> params = Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
@@ -69,9 +66,6 @@ public class StoragePersonaRoutes extends AbstractRoute {
     return new VeniceRouteHandler<StoragePersonaResponse>(StoragePersonaResponse.class) {
       @Override
       public void internalHandle(Request request, StoragePersonaResponse veniceResponse) {
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
         AdminSparkServer.validateParams(request, GET_STORAGE_PERSONA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String personaName = request.queryParams(PERSONA_NAME);
@@ -92,9 +86,6 @@ public class StoragePersonaRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
         AdminSparkServer.validateParams(request, DELETE_STORAGE_PERSONA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String personaName = request.queryParams(PERSONA_NAME);
@@ -114,9 +105,6 @@ public class StoragePersonaRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
         AdminSparkServer.validateParams(request, UPDATE_STORAGE_PERSONA.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String personaName = request.queryParams(PERSONA_NAME);
@@ -137,9 +125,6 @@ public class StoragePersonaRoutes extends AbstractRoute {
     return new VeniceRouteHandler<StoragePersonaResponse>(StoragePersonaResponse.class) {
       @Override
       public void internalHandle(Request request, StoragePersonaResponse veniceResponse) {
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
         AdminSparkServer.validateParams(request, GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -163,9 +148,6 @@ public class StoragePersonaRoutes extends AbstractRoute {
     return new VeniceRouteHandler<MultiStoragePersonaResponse>(MultiStoragePersonaResponse.class) {
       @Override
       public void internalHandle(Request request, MultiStoragePersonaResponse veniceResponse) {
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
         AdminSparkServer.validateParams(request, GET_CLUSTER_STORAGE_PERSONAS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         try {
