@@ -564,24 +564,38 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     versionTopicStoreIngestionTaskMapping.remove(versionTopic.getName());
   }
 
-  void pauseConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  /**
+   * @return {@code true} if a consumer was assigned for the topic-partition and physically paused;
+   *         {@code false} if no consumer is currently assigned (nothing to pause).
+   */
+  boolean pauseConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+    boolean applied = false;
     PubSubConsumerAdapter consumer;
     for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
         consumer.pause(pubSubTopicPartition);
+        applied = true;
       }
     }
+    return applied;
   }
 
-  void resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  /**
+   * @return {@code true} if a consumer was assigned for the topic-partition and physically resumed;
+   *         {@code false} if no consumer is currently assigned (nothing to resume).
+   */
+  boolean resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+    boolean applied = false;
     PubSubConsumerAdapter consumer;
     for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
         consumer.resume(pubSubTopicPartition);
+        applied = true;
       }
     }
+    return applied;
   }
 
   /**

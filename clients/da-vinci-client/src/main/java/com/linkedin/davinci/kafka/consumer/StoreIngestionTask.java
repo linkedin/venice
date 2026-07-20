@@ -1167,6 +1167,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return returnStatus;
   }
 
+  @VisibleForTesting
   void beginBatchWrite(boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(sorted, partitionConsumptionState);
@@ -3895,6 +3896,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     });
   }
 
+  @VisibleForTesting
   void processStartOfPush(
       KafkaMessageEnvelope startOfPushKME,
       ControlMessage controlMessage,
@@ -6793,9 +6795,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Physically pause consumption for {@code partition}: set the
-   * {@link PartitionConsumptionState#setFutureSlotPaused} flag and pause the consumer assignment.
-   * No-ops if the partition has no PCS (never subscribed or already unsubscribed).
+   * Physically pause consumption for {@code partition} as part of the future-slot hold, and set the
+   * {@link PartitionConsumptionState#setFutureSlotPaused} flag to reflect the real physical state.
+   * The flag is only set to {@code true} if a consumer was assigned and actually paused; if no
+   * consumer is assigned yet, the flag is left {@code false} so {@link #reconcileFutureSlotPause}
+   * retries on the next tick. No-ops if the partition has no PCS.
    */
   public void pausePartitionForFutureSlot(int partition) {
     PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
@@ -6804,10 +6808,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.debug("pausePartitionForFutureSlot: no PCS for partition {} in {}, skipping", partition, vt);
       return;
     }
-    pcs.setFutureSlotPaused(true);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vt, partition);
-    getAggKafkaConsumerService().pauseConsumerFor(vt, topicPartition);
-    LOGGER.debug("pausePartitionForFutureSlot: paused partition {} in {}", partition, vt);
+    boolean paused = getAggKafkaConsumerService().pauseConsumerFor(vt, topicPartition);
+    pcs.setFutureSlotPaused(paused);
+    if (paused) {
+      LOGGER.debug("pausePartitionForFutureSlot: paused partition {} in {}", partition, vt);
+    } else {
+      LOGGER.debug(
+          "pausePartitionForFutureSlot: no consumer assigned for partition {} in {} yet, will retry",
+          partition,
+          vt);
+    }
   }
 
   /**
@@ -6857,9 +6868,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (desiredHold && !pcs.isFutureSlotPaused()) {
       pausePartitionForFutureSlot(pcs.getPartition());
     } else if (!desiredHold && pcs.isFutureSlotPaused()) {
-      pcs.setFutureSlotPaused(false);
+      // Physically resume BEFORE clearing the flag: if resumeConsumerFor throws, the flag stays set
+      // and the next reconcile retries rather than stranding a physically-paused consumer. A false
+      // return (no consumer assigned) means nothing is paused, so clearing the flag is still correct.
       PubSubTopic vt = getVersionTopic();
       getAggKafkaConsumerService().resumeConsumerFor(vt, new PubSubTopicPartitionImpl(vt, pcs.getPartition()));
+      pcs.setFutureSlotPaused(false);
       LOGGER.debug("reconcileFutureSlotPause: resumed partition {} in {}", pcs.getPartition(), vt);
     }
   }

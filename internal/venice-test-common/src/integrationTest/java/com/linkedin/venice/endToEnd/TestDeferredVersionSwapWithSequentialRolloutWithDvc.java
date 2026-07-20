@@ -139,11 +139,10 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
 
     client1.close();
 
-    // Create a DVC client in the non-target region (REGION2) up front, alongside client1 and
-    // before the target-region push even starts. This guarantees client2's backend is fully
-    // bootstrapped by the time v2 is created, so it will observe v2 as a future version (and
-    // get created in a paused state) rather than racing the sequential rollout and picking up
-    // v2 as an already-current version.
+    // Create a DVC client in the non-target region (REGION2) up front, before the target-region
+    // push (v2) even starts. This guarantees client2's backend is fully bootstrapped by the time
+    // v2 is created, so it will observe v2 as a future version (and get created in a paused state)
+    // rather than racing the sequential rollout and picking up v2 as an already-current version.
     VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
     VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())

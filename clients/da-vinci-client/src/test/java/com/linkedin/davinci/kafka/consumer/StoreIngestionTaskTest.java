@@ -1446,7 +1446,7 @@ public abstract class StoreIngestionTaskTest {
       if (inMemoryRemoteKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
         inMemoryRemoteKafkaConsumer.pause(pubSubTopicPartition);
       }
-      return null;
+      return true;
     }).when(aggKafkaConsumerService).pauseConsumerFor(any(), any());
 
     doAnswer(invocation -> {
@@ -1465,7 +1465,7 @@ public abstract class StoreIngestionTaskTest {
       if (inMemoryRemoteKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
         inMemoryRemoteKafkaConsumer.resume(pubSubTopicPartition);
       }
-      return null;
+      return true;
     }).when(aggKafkaConsumerService).resumeConsumerFor(any(), any());
   }
 
@@ -7877,6 +7877,10 @@ public abstract class StoreIngestionTaskTest {
     doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
     doReturn(vt).when(task).getVersionTopic();
     doReturn(agg).when(task).getAggKafkaConsumerService();
+    // Physical pause/resume "apply" by default (a consumer is assigned); individual tests override
+    // to simulate no consumer assigned (retry) as needed.
+    doReturn(true).when(agg).pauseConsumerFor(any(), any());
+    doReturn(true).when(agg).resumeConsumerFor(any(), any());
     doReturn(pubSubTopicRepository).when(task).getPubSubTopicRepository();
     doCallRealMethod().when(task).pausePartitionForFutureSlot(anyInt());
     doCallRealMethod().when(task).resumeFromFutureSlotPause();
@@ -7934,6 +7938,62 @@ public abstract class StoreIngestionTaskTest {
     // Idempotent: a second reconcile while already held must not re-issue the physical pause.
     task.reconcileFutureSlotPause(pcs);
     verify(aggConsumerService, times(1)).pauseConsumerFor(any(), any());
+  }
+
+  @Test
+  public void testReconcileRetriesPauseWhenNoConsumerAssignedYet() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+    // First reconcile: no consumer is assigned yet, so the physical pause is a no-op and the flag
+    // must NOT be set — otherwise the reconciler would never retry and the partition would keep
+    // consuming while appearing "held".
+    doReturn(false).when(aggConsumerService).pauseConsumerFor(any(), any());
+    task.reconcileFutureSlotPause(pcs);
+    assertFalse(pcs.isFutureSlotPaused(), "flag must stay unset when the physical pause did not apply");
+    verify(aggConsumerService, times(1)).pauseConsumerFor(any(), any());
+
+    // Next tick: the consumer is now assigned; the reconciler retries and the pause applies.
+    doReturn(true).when(aggConsumerService).pauseConsumerFor(any(), any());
+    task.reconcileFutureSlotPause(pcs);
+    assertTrue(pcs.isFutureSlotPaused(), "flag must be set once the physical pause applies");
+    verify(aggConsumerService, times(2)).pauseConsumerFor(any(), any());
+  }
+
+  @Test
+  public void testReconcileKeepsFlagSetWhenResumeThrows() {
+    PubSubTopic vt = pubSubTopicRepository.getTopic(topic);
+    AggKafkaConsumerService aggConsumerService = mock(AggKafkaConsumerService.class);
+    PartitionConsumptionState pcs = mockPcsWithFutureSlotFlag(false);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    StoreIngestionTask task = buildMinimalSitForFutureSlotTests(pcsMap, vt, aggConsumerService);
+
+    // Hold first.
+    task.reconcileFutureSlotPause(pcs);
+    assertTrue(pcs.isFutureSlotPaused(), "partition should be held before promotion");
+
+    // Promotion clears the intent, but the physical resume throws: the flag must stay set so the
+    // next reconcile retries instead of leaving a physically-paused consumer marked as not held.
+    task.resumeFromFutureSlotPause();
+    doThrow(new RuntimeException("resume failed")).when(aggConsumerService).resumeConsumerFor(any(), any());
+    try {
+      task.reconcileFutureSlotPause(pcs);
+      fail("expected the resume exception to propagate");
+    } catch (RuntimeException e) {
+      // expected
+    }
+    assertTrue(pcs.isFutureSlotPaused(), "flag must remain set when the physical resume failed");
+
+    // Retry succeeds: flag is cleared.
+    doReturn(true).when(aggConsumerService).resumeConsumerFor(any(), any());
+    task.reconcileFutureSlotPause(pcs);
+    assertFalse(pcs.isFutureSlotPaused(), "flag must clear once the physical resume applies");
   }
 
   @Test

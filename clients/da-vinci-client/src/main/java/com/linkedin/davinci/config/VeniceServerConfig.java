@@ -1222,7 +1222,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     daVinciCurrentVersionBootstrappingSpeedupEnabled =
-    daVinciCurrentVersionBootstrappingSpeedupEnabled =
         serverProperties.getBoolean(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true);
     daVinciPausedSitEnabled = serverProperties.getBoolean(DAVINCI_PAUSED_SIT_ENABLED, false);
     daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond =
