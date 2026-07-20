@@ -371,7 +371,8 @@ public class CreateStoreTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
 
     Route route = createStoreRouteWithAccessControl().updateAclForStore(mockAdmin, requestHandler);
-    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+    AclResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
 
     verify(mockAdmin, never()).updateAclForStore(anyString(), anyString(), anyString());
     verify(response).status(HttpStatus.SC_FORBIDDEN);
@@ -385,7 +386,8 @@ public class CreateStoreTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
 
     Route route = createStoreRouteWithAccessControl().getAclForStore(mockAdmin, requestHandler);
-    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+    AclResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
 
     verify(mockAdmin, never()).getAclForStore(anyString(), anyString());
     verify(response).status(HttpStatus.SC_FORBIDDEN);
@@ -399,7 +401,8 @@ public class CreateStoreTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
 
     Route route = createStoreRouteWithAccessControl().deleteAclForStore(mockAdmin, requestHandler);
-    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+    AclResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
 
     verify(mockAdmin, never()).deleteAclForStore(anyString(), anyString());
     verify(response).status(HttpStatus.SC_FORBIDDEN);
@@ -418,7 +421,8 @@ public class CreateStoreTest {
     CreateStore route = createStoreRouteWithAccessControl();
     route.createStore(mockAdmin, requestHandler).handle(request, response);
 
-    String attackerControlledAcl = "{\"AccessPermissions\":{\"Read\":[\"urn:attacker\"],\"Write\":[\"urn:attacker\"]}}";
+    String attackerControlledAcl =
+        "{\"AccessPermissions\":{\"Read\":[\"urn:attacker\"],\"Write\":[\"urn:attacker\"]}}";
     when(request.queryParams(ACCESS_PERMISSION)).thenReturn(attackerControlledAcl);
     route.updateAclForStore(mockAdmin, requestHandler).handle(request, response);
 
