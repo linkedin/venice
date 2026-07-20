@@ -64,6 +64,12 @@ public class CreateStoreTest {
     request = mock(Request.class);
     response = mock(Response.class);
     mockAdmin = mock(VeniceParentHelixAdmin.class);
+    when(request.queryParamOrDefault(anyString(), anyString())).thenAnswer(invocation -> {
+      String paramName = invocation.getArgument(0);
+      String defaultValue = invocation.getArgument(1);
+      String paramValue = request.queryParams(paramName);
+      return paramValue != null ? paramValue : defaultValue;
+    });
     doReturn(true).when(mockAdmin).isLeaderControllerFor(CLUSTER_NAME);
     ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
     doReturn(mockAdmin).when(dependencies).getAdmin();
@@ -418,8 +424,7 @@ public class CreateStoreTest {
     CreateStore route = createStoreRouteWithAccessControl();
     route.createStore(mockAdmin, requestHandler).handle(request, response);
 
-    String attackerControlledAcl =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:attacker\"],\"Write\":[\"urn:attacker\"]}}";
+    String attackerControlledAcl = "{\"AccessPermissions\":{\"Read\":[\"urn:attacker\"],\"Write\":[\"urn:attacker\"]}}";
     when(request.queryParams(ACCESS_PERMISSION)).thenReturn(attackerControlledAcl);
     route.updateAclForStore(mockAdmin, requestHandler).handle(request, response);
 
