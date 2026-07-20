@@ -78,7 +78,7 @@ public final class VenicePushJobConstants {
    *  <br><br>
    */
   public static final String COMPRESSION_METRIC_COLLECTION_ENABLED = "compression.metric.collection.enabled";
-  public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = false;
+  public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = true;
 
   /**
    * Known <a href="https://github.com/luben/zstd-jni/issues/253">zstd lib issue</a> which
