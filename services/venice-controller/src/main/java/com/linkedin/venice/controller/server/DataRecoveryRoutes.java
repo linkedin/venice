@@ -42,6 +42,9 @@ public class DataRecoveryRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
         AdminSparkServer.validateParams(request, DATA_RECOVERY.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -84,6 +87,9 @@ public class DataRecoveryRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
         AdminSparkServer.validateParams(request, PREPARE_DATA_RECOVERY.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -115,6 +121,9 @@ public class DataRecoveryRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ReadyForDataRecoveryResponse>(ReadyForDataRecoveryResponse.class) {
       @Override
       public void internalHandle(Request request, ReadyForDataRecoveryResponse veniceResponse) {
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
         AdminSparkServer.validateParams(request, IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);

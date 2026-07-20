@@ -85,11 +85,12 @@ public class CreateStore extends AbstractRoute {
    * @see Admin#updateAclForStore(String, String, String)
    */
   public Route updateAclForStore(Admin admin, StoreRequestHandler requestHandler) {
-    return (request, response) -> {
-      AclResponse responseObject = new AclResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        // TODO need security validation here?
+    return new VeniceRouteHandler<AclResponse>(AclResponse.class) {
+      @Override
+      public void internalHandle(Request request, AclResponse responseObject) {
+        if (!checkIsAllowListUser(request, responseObject, () -> isAllowListUser(request))) {
+          return;
+        }
         AdminSparkServer.validateParams(request, UPDATE_ACL.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -104,11 +105,7 @@ public class CreateStore extends AbstractRoute {
         requestHandler.updateAclForStore(requestBuilder.build());
         responseObject.setCluster(cluster);
         responseObject.setName(storeName);
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -116,11 +113,12 @@ public class CreateStore extends AbstractRoute {
    * @see Admin#getAclForStore(String, String)
    */
   public Route getAclForStore(Admin admin, StoreRequestHandler requestHandler) {
-    return (request, response) -> {
-      AclResponse responseObject = new AclResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        // TODO need security validation here?
+    return new VeniceRouteHandler<AclResponse>(AclResponse.class) {
+      @Override
+      public void internalHandle(Request request, AclResponse responseObject) {
+        if (!checkIsAllowListUser(request, responseObject, () -> isAllowListUser(request))) {
+          return;
+        }
         AdminSparkServer.validateParams(request, GET_ACL.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -132,11 +130,7 @@ public class CreateStore extends AbstractRoute {
             GetAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
         GetAclForStoreGrpcResponse internalResponse = requestHandler.getAclForStore(internalRequest);
         responseObject.setAccessPermissions(internalResponse.getAccessPermissions());
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -144,11 +138,12 @@ public class CreateStore extends AbstractRoute {
    * @see Admin#deleteAclForStore(String, String)
    */
   public Route deleteAclForStore(Admin admin, StoreRequestHandler requestHandler) {
-    return (request, response) -> {
-      AclResponse responseObject = new AclResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        // TODO need security validation here?
+    return new VeniceRouteHandler<AclResponse>(AclResponse.class) {
+      @Override
+      public void internalHandle(Request request, AclResponse responseObject) {
+        if (!checkIsAllowListUser(request, responseObject, () -> isAllowListUser(request))) {
+          return;
+        }
         AdminSparkServer.validateParams(request, DELETE_ACL.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -157,11 +152,7 @@ public class CreateStore extends AbstractRoute {
         ClusterStoreGrpcInfo storeInfo =
             ClusterStoreGrpcInfo.newBuilder().setClusterName(cluster).setStoreName(storeName).build();
         requestHandler.deleteAclForStore(DeleteAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build());
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 

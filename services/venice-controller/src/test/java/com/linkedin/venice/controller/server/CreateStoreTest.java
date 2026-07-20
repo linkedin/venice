@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
@@ -27,6 +28,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
@@ -36,6 +38,8 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Optional;
+import java.security.cert.X509Certificate;
+import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -343,5 +347,75 @@ public class CreateStoreTest {
     controllerResponse = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), ControllerResponse.class);
     assertTrue(controllerResponse.isError());
     assertTrue(controllerResponse.getError().contains("Lingering resources found"));
+  }
+
+  @Test
+  public void testCreateStoreUnauthorizedForNonAllowListUser() throws Exception {
+    setupNonAllowListUser();
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+
+    Route route = createStoreRouteWithAccessControl().createStore(mockAdmin, requestHandler);
+    ControllerResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), ControllerResponse.class);
+
+    verify(mockAdmin, never()).createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(response).status(HttpStatus.SC_FORBIDDEN);
+    assertTrue(responseObject.getError().contains("Only admin users are allowed"));
+  }
+
+  @Test
+  public void testUpdateAclForStoreUnauthorizedForNonAllowListUser() throws Exception {
+    setupNonAllowListUser();
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+
+    Route route = createStoreRouteWithAccessControl().updateAclForStore(mockAdmin, requestHandler);
+    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+
+    verify(mockAdmin, never()).updateAclForStore(anyString(), anyString(), anyString());
+    verify(response).status(HttpStatus.SC_FORBIDDEN);
+    assertTrue(responseObject.getError().contains("Only admin users are allowed"));
+  }
+
+  @Test
+  public void testGetAclForStoreUnauthorizedForNonAllowListUser() throws Exception {
+    setupNonAllowListUser();
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+
+    Route route = createStoreRouteWithAccessControl().getAclForStore(mockAdmin, requestHandler);
+    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+
+    verify(mockAdmin, never()).getAclForStore(anyString(), anyString());
+    verify(response).status(HttpStatus.SC_FORBIDDEN);
+    assertTrue(responseObject.getError().contains("Only admin users are allowed"));
+  }
+
+  @Test
+  public void testDeleteAclForStoreUnauthorizedForNonAllowListUser() throws Exception {
+    setupNonAllowListUser();
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+
+    Route route = createStoreRouteWithAccessControl().deleteAclForStore(mockAdmin, requestHandler);
+    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+
+    verify(mockAdmin, never()).deleteAclForStore(anyString(), anyString());
+    verify(response).status(HttpStatus.SC_FORBIDDEN);
+    assertTrue(responseObject.getError().contains("Only admin users are allowed"));
+  }
+
+  private CreateStore createStoreRouteWithAccessControl() {
+    DynamicAccessController accessController = mock(DynamicAccessController.class);
+    when(accessController.isAllowlistUsers(any(), any(), any())).thenReturn(false);
+    return new CreateStore(true, Optional.of(accessController));
+  }
+
+  private void setupNonAllowListUser() {
+    HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
+    X509Certificate[] certificates = new X509Certificate[] { mock(X509Certificate.class) };
+    when(httpServletRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME)).thenReturn(certificates);
+    when(request.raw()).thenReturn(httpServletRequest);
   }
 }

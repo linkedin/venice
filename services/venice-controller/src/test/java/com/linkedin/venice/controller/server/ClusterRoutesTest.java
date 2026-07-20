@@ -1,15 +1,19 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -26,6 +30,8 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.security.cert.X509Certificate;
+import javax.servlet.http.HttpServletRequest;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
@@ -65,6 +71,35 @@ public class ClusterRoutesTest {
         updateDarkClusterConfigRoute.handle(request, mock(Response.class)).toString(),
         ControllerResponse.class);
     assertFalse(response.isError());
+  }
+
+  @Test
+  public void testUpdateDarkClusterConfigUnauthorized() throws Exception {
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    DynamicAccessController accessController = mock(DynamicAccessController.class);
+    when(accessController.isAllowlistUsers(any(), any(), any())).thenReturn(false);
+    doReturn(true).when(mockVeniceHelixAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    when(request.queryMap()).thenReturn(queryParamsMap);
+    Map<String, String[]> queryMapData = new HashMap<>();
+    queryMapData.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
+    when(queryParamsMap.toMap()).thenReturn(queryMapData);
+    when(request.queryParams(ControllerApiConstants.CLUSTER)).thenReturn(TEST_CLUSTER);
+
+    HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
+    X509Certificate[] certificates = new X509Certificate[] { mock(X509Certificate.class) };
+    when(httpServletRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME)).thenReturn(certificates);
+    when(request.raw()).thenReturn(httpServletRequest);
+
+    Route route = new ClusterRoutes(false, Optional.of(accessController)).updateDarkClusterConfig(mockVeniceHelixAdmin);
+    ControllerResponse response =
+        OBJECT_MAPPER.readValue(route.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().contains("Only admin users are allowed"));
+    verify(mockVeniceHelixAdmin, never()).updateDarkClusterConfig(anyString(), any());
   }
 
   @Test

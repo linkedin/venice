@@ -77,9 +77,18 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       UpdateAclForStoreGrpcRequest request,
       StreamObserver<UpdateAclForStoreGrpcResponse> responseObserver) {
     LOGGER.debug("Received updateAclForStore with args: {}", request);
+    String storeName = request.getStoreInfo().getStoreName();
     ControllerGrpcServerUtils.handleRequest(
         StoreGrpcServiceGrpc.getUpdateAclForStoreMethod(),
-        () -> storeRequestHandler.updateAclForStore(request),
+        () -> {
+          if (!isAllowListUser(accessManager, storeName, Context.current())) {
+            throw new VeniceUnauthorizedAccessException(
+                ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX
+                    + StoreGrpcServiceGrpc.getUpdateAclForStoreMethod().getFullMethodName() + " on resource: "
+                    + storeName);
+          }
+          return storeRequestHandler.updateAclForStore(request);
+        },
         responseObserver,
         request.getStoreInfo());
   }
@@ -89,9 +98,17 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       GetAclForStoreGrpcRequest request,
       StreamObserver<GetAclForStoreGrpcResponse> responseObserver) {
     LOGGER.debug("Received getAclForStore with args: {}", request);
+    String storeName = request.getStoreInfo().getStoreName();
     ControllerGrpcServerUtils.handleRequest(
         StoreGrpcServiceGrpc.getGetAclForStoreMethod(),
-        () -> storeRequestHandler.getAclForStore(request),
+        () -> {
+          if (!isAllowListUser(accessManager, storeName, Context.current())) {
+            throw new VeniceUnauthorizedAccessException(
+                ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + StoreGrpcServiceGrpc.getGetAclForStoreMethod().getFullMethodName()
+                    + " on resource: " + storeName);
+          }
+          return storeRequestHandler.getAclForStore(request);
+        },
         responseObserver,
         request.getStoreInfo());
   }
@@ -101,9 +118,18 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       DeleteAclForStoreGrpcRequest request,
       StreamObserver<DeleteAclForStoreGrpcResponse> responseObserver) {
     LOGGER.debug("Received deleteAclForStore with args: {}", request);
+    String storeName = request.getStoreInfo().getStoreName();
     ControllerGrpcServerUtils.handleRequest(
         StoreGrpcServiceGrpc.getDeleteAclForStoreMethod(),
-        () -> storeRequestHandler.deleteAclForStore(request),
+        () -> {
+          if (!isAllowListUser(accessManager, storeName, Context.current())) {
+            throw new VeniceUnauthorizedAccessException(
+                ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX
+                    + StoreGrpcServiceGrpc.getDeleteAclForStoreMethod().getFullMethodName() + " on resource: "
+                    + storeName);
+          }
+          return storeRequestHandler.deleteAclForStore(request);
+        },
         responseObserver,
         request.getStoreInfo());
   }

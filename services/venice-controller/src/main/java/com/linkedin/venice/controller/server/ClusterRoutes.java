@@ -93,6 +93,9 @@ public class ClusterRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
         AdminSparkServer.validateParams(request, UPDATE_DARK_CLUSTER_CONFIG.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
