@@ -1913,8 +1913,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // a shutdown checkpoint could persist that position and the record would be skipped on restart (data loss).
       if (!dryRun) {
         /*
-         * This record could be from RT / remote VT if setConsumeRemotely(false) was called during a leader-to-local
-         * transition, so check hasUpstream() to ensure that the local VT slot only holds local-VT positions.
+         * This record may have been leader-produced to the local VT while the partition was still consuming remotely,
+         * but then drained after consumeRemotely was flipped to false. Use the immutable LeaderProducedRecordContext
+         * so the local VT slot only ever advances with a local-VT produced position.
          */
         if (leaderProducedRecordContext == null) {
           updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
