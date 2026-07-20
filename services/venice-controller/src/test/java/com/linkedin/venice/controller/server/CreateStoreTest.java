@@ -406,6 +406,63 @@ public class CreateStoreTest {
     assertTrue(responseObject.getError().contains("Only admin users are allowed"));
   }
 
+  @Test
+  public void testSameNonAllowListCallerDeniedForCreateStoreAndAclUpdate() throws Exception {
+    setupNonAllowListUser();
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(OWNER)).thenReturn("attacker");
+    when(request.queryParams(KEY_SCHEMA)).thenReturn("\"long\"");
+    when(request.queryParams(VALUE_SCHEMA)).thenReturn("\"string\"");
+
+    CreateStore route = createStoreRouteWithAccessControl();
+    route.createStore(mockAdmin, requestHandler).handle(request, response);
+
+    String attackerControlledAcl = "{\"AccessPermissions\":{\"Read\":[\"urn:attacker\"],\"Write\":[\"urn:attacker\"]}}";
+    when(request.queryParams(ACCESS_PERMISSION)).thenReturn(attackerControlledAcl);
+    route.updateAclForStore(mockAdmin, requestHandler).handle(request, response);
+
+    verify(mockAdmin, never()).createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(mockAdmin, never()).updateAclForStore(anyString(), anyString(), anyString());
+    verify(response, times(2)).status(HttpStatus.SC_FORBIDDEN);
+  }
+
+  @Test
+  public void testSameNonAllowListCallerDeniedForCreateStoreAndAclGet() throws Exception {
+    setupNonAllowListUser();
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(OWNER)).thenReturn("attacker");
+    when(request.queryParams(KEY_SCHEMA)).thenReturn("\"long\"");
+    when(request.queryParams(VALUE_SCHEMA)).thenReturn("\"string\"");
+
+    CreateStore route = createStoreRouteWithAccessControl();
+    route.createStore(mockAdmin, requestHandler).handle(request, response);
+    route.getAclForStore(mockAdmin, requestHandler).handle(request, response);
+
+    verify(mockAdmin, never()).createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(mockAdmin, never()).getAclForStore(anyString(), anyString());
+    verify(response, times(2)).status(HttpStatus.SC_FORBIDDEN);
+  }
+
+  @Test
+  public void testSameNonAllowListCallerDeniedForCreateStoreAndAclDelete() throws Exception {
+    setupNonAllowListUser();
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(OWNER)).thenReturn("attacker");
+    when(request.queryParams(KEY_SCHEMA)).thenReturn("\"long\"");
+    when(request.queryParams(VALUE_SCHEMA)).thenReturn("\"string\"");
+
+    CreateStore route = createStoreRouteWithAccessControl();
+    route.createStore(mockAdmin, requestHandler).handle(request, response);
+    route.deleteAclForStore(mockAdmin, requestHandler).handle(request, response);
+
+    verify(mockAdmin, never()).createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(mockAdmin, never()).deleteAclForStore(anyString(), anyString());
+    verify(response, times(2)).status(HttpStatus.SC_FORBIDDEN);
+  }
+
   private CreateStore createStoreRouteWithAccessControl() {
     DynamicAccessController accessController = mock(DynamicAccessController.class);
     when(accessController.isAllowlistUsers(any(), any(), any())).thenReturn(false);
