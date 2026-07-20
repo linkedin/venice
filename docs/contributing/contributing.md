@@ -47,8 +47,8 @@ Please follow [Venice Workspace Setup](development/workspace-setup.md) and
 Venice holds virtual meetings for the community to come together to syncup.
 
 1. Meeting Frequency: Bi-weekly on Monday at 9 AM Pacific, 12 PM Eastern, 6 PM Central Europe
-2. Meeting Co-ordination: Please join the #community-syncup channel in the
-   [public Venice Slack](http://slack.venicedb.org/)
+2. Meeting Co-ordination: Please join the #community-syncup channel on the
+   [public Venice Discord server](https://discord.gg/6aZZfwswDt)
 3. Meeting Length: One hour
 4. Agenda:
    1. Discuss Venice Improvement Proposals.
@@ -59,4 +59,4 @@ Venice holds virtual meetings for the community to come together to syncup.
 
 This project and everyone who participates in it is governed by the [Venice Code of Conduct](code-of-conduct.md). By
 participating, you are expected to uphold this code. Please report unacceptable behavior on
-[Slack](https://venicedb.slack.com/archives/C03SLQWRSLF).
+[Discord](https://discord.gg/6aZZfwswDt).

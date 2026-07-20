@@ -80,8 +80,8 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/linkedin/venice
-    - icon: fontawesome/brands/slack
-      link: http://slack.venicedb.org
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/6aZZfwswDt
     - icon: fontawesome/brands/linkedin
       link: https://www.linkedin.com/company/venicedb/
     - icon: fontawesome/brands/x-twitter
