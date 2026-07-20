@@ -82,8 +82,7 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       if (!isAllowListUser(accessManager, storeName, Context.current())) {
         throw new VeniceUnauthorizedAccessException(
             ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX
-                + StoreGrpcServiceGrpc.getUpdateAclForStoreMethod().getFullMethodName() + " on resource: "
-                + storeName);
+                + StoreGrpcServiceGrpc.getUpdateAclForStoreMethod().getFullMethodName() + " on resource: " + storeName);
       }
       return storeRequestHandler.updateAclForStore(request);
     }, responseObserver, request.getStoreInfo());
@@ -115,8 +114,7 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       if (!isAllowListUser(accessManager, storeName, Context.current())) {
         throw new VeniceUnauthorizedAccessException(
             ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX
-                + StoreGrpcServiceGrpc.getDeleteAclForStoreMethod().getFullMethodName() + " on resource: "
-                + storeName);
+                + StoreGrpcServiceGrpc.getDeleteAclForStoreMethod().getFullMethodName() + " on resource: " + storeName);
       }
       return storeRequestHandler.deleteAclForStore(request);
     }, responseObserver, request.getStoreInfo());

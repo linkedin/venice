@@ -36,9 +36,9 @@ import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
+import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Optional;
-import java.security.cert.X509Certificate;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.annotations.BeforeMethod;
@@ -371,8 +371,7 @@ public class CreateStoreTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
 
     Route route = createStoreRouteWithAccessControl().updateAclForStore(mockAdmin, requestHandler);
-    AclResponse responseObject =
-        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
 
     verify(mockAdmin, never()).updateAclForStore(anyString(), anyString(), anyString());
     verify(response).status(HttpStatus.SC_FORBIDDEN);
@@ -386,8 +385,7 @@ public class CreateStoreTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
 
     Route route = createStoreRouteWithAccessControl().getAclForStore(mockAdmin, requestHandler);
-    AclResponse responseObject =
-        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
 
     verify(mockAdmin, never()).getAclForStore(anyString(), anyString());
     verify(response).status(HttpStatus.SC_FORBIDDEN);
@@ -401,8 +399,7 @@ public class CreateStoreTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
 
     Route route = createStoreRouteWithAccessControl().deleteAclForStore(mockAdmin, requestHandler);
-    AclResponse responseObject =
-        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
+    AclResponse responseObject = OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AclResponse.class);
 
     verify(mockAdmin, never()).deleteAclForStore(anyString(), anyString());
     verify(response).status(HttpStatus.SC_FORBIDDEN);
