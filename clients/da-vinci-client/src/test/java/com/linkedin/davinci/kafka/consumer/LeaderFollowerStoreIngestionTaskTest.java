@@ -3849,6 +3849,30 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testCompleteBlobTransferStopsRecoveryWhenStoragePartitionAdjustmentFails() throws Exception {
+    setUpWithBlobTransfer(false);
+    setUpCompleteBlobTransferMocks();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getPartition()).thenReturn(0);
+    when(pcs.getReplicaId()).thenReturn(versionTopic.getName() + "-0");
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    when(pcs.getPendingBlobTransfer()).thenReturn(CompletableFuture.completedFuture(null));
+
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    doThrow(new VeniceException("Failed to open RocksDB")).when(storageEngine)
+        .adjustStoragePartition(eq(0), any(), any());
+
+    leaderFollowerStoreIngestionTask.completeBlobTransferAndSubscribe(pcs);
+
+    verify(storageEngine).dropPartition(0, false);
+    verify(leaderFollowerStoreIngestionTask, never()).completePostTransferPSCUpdated(pcs);
+    verify(leaderFollowerStoreIngestionTask).reportError(anyString(), eq(0), any(VeniceException.class));
+  }
+
+  @Test
   public void testTrackRecordReceivedSkipsBeforeEOP() throws Exception {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
