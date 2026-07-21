@@ -72,7 +72,7 @@ public final class VersionLifecyclePolicy {
    * to 1 because {@link AbstractStore#computeVersionsToDelete} rejects values below 1.
    *
    * <p>The parent drives this from LIVE child snapshots (see
-   * {@code VeniceParentHelixAdmin.checkBackupVersionCleanupCapacityFromChildren}), not its own
+   * {@code VeniceParentHelixAdmin.checkNewPushCapacityFromChildren}), not its own
    * metadata which can go stale. It runs only on the parent — a throw during child admin-message
    * consumption ({@code VeniceHelixAdmin.addVersion}) would wedge the admin channel.
    *
@@ -129,7 +129,7 @@ public final class VersionLifecyclePolicy {
    * {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs} elapses.
    *
    * <p>The parent drives this from LIVE child snapshots, not its own metadata (see
-   * {@code VeniceParentHelixAdmin.checkRollbackOriginVersionCapacityFromChildren}), which can go
+   * {@code VeniceParentHelixAdmin.checkNewPushCapacityFromChildren}), which can go
    * stale and falsely block for the whole window. It runs only on the parent — a throw during child
    * admin-message consumption would wedge the admin channel.
    *

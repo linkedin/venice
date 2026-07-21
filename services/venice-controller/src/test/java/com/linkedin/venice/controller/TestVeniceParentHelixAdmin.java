@@ -2763,175 +2763,101 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void checkRollbackOriginFromChildrenBlocksWhenChildRolledBackWithinRetention() {
-    String store = "rb_from_children_block";
+  public void checkNewPushCapacityFromChildrenBlocksWhenChildRolledBackWithinRetention() {
+    String store = "npc_from_children_rollback_block";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
 
     // Child dc-0 still holds a ROLLED_BACK version within retention -> the parent must block the push.
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", childClient(rolledBackOriginStore(store)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
-    assertThrows(
-        VeniceException.class,
-        () -> mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store));
+    assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
   }
 
   @Test
-  public void checkRollbackOriginFromChildrenAllowsWhenChildrenNotRolledBack() {
-    // The core fix: LIVE child status shows no rolled-back version, so the push must be allowed
-    // rather than blocked on (potentially stale) parent metadata.
-    String store = "rb_from_children_allow";
+  public void checkNewPushCapacityFromChildrenBlocksWhenChildHasPendingBackupWithinDelay() {
+    String store = "npc_from_children_backup_block";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
 
-    Map<String, ControllerClient> map = new HashMap<>();
-    map.put("dc-0", childClient(onlineOnlyStore(store)));
-    map.put("dc-1", childClient(onlineOnlyStore(store)));
-    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
-
-    // Should not throw — all children are clean.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
-  }
-
-  @Test
-  public void checkRollbackOriginFromChildrenSkipsErroredRegion() {
-    // A transient child-query failure must not wedge pushes: the errored region is skipped, and
-    // with no reachable rolled-back child the push is allowed.
-    String store = "rb_from_children_error";
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
-
-    ControllerClient errorClient = mock(ControllerClient.class);
-    StoreResponse errorResponse = new StoreResponse();
-    errorResponse.setError("Simulated error fetching store for rollback-origin retention check.");
-    doReturn(errorResponse).when(errorClient).getStore(anyString(), anyInt());
-    Map<String, ControllerClient> map = new HashMap<>();
-    map.put("dc-0", errorClient);
-    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
-
-    // Should not throw.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
-  }
-
-  @Test
-  public void checkRollbackOriginFromChildrenSkipsWhenNoChildClients() {
-    // No children to verify against. Parent metadata can be stale, so we must NOT fall back to
-    // enforcing against it (that is the false-block this check exists to avoid) -> allow the push.
-    String store = "rb_from_children_no_clients";
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
-    doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
-
-    // Should not throw.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
-  }
-
-  @Test
-  public void checkRollbackOriginFromChildrenSkipsRegionWhenGetStoreThrows() {
-    // ControllerClient#getStore can throw (e.g. VeniceHttpException/leader-discovery); a throw must
-    // be treated as a skipped region, not abort push-start.
-    String store = "rb_from_children_throws";
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
-    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
-
-    ControllerClient throwingClient = mock(ControllerClient.class);
-    doThrow(new VeniceException("Simulated getStore failure")).when(throwingClient).getStore(anyString(), anyInt());
-    Map<String, ControllerClient> map = new HashMap<>();
-    map.put("dc-0", throwingClient);
-    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
-
-    // Should not throw — the region is skipped.
-    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
-  }
-
-  @Test
-  public void checkBackupCleanupFromChildrenBlocksWhenChildHasPendingBackupWithinDelay() {
-    String store = "backup_from_children_block";
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
-    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
-
-    // Child dc-0 still has a KILLED backup pending deletion, promoted just now -> parent must block.
+    // Child dc-0 has a KILLED backup pending deletion, promoted just now -> parent must block.
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", childClient(backupPendingStore(store)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
-    assertThrows(
-        VeniceException.class,
-        () -> mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store));
+    assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
   }
 
   @Test
-  public void checkBackupCleanupFromChildrenAllowsWhenChildrenHaveNoPendingBackup() {
-    String store = "backup_from_children_allow";
+  public void checkNewPushCapacityFromChildrenAllowsWhenChildrenClean() {
+    // LIVE child status shows neither a rolled-back version nor a backup pending deletion, so the
+    // push must be allowed rather than blocked on (potentially stale) parent metadata.
+    String store = "npc_from_children_allow";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
-    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
 
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", childClient(noBackupPendingStore(store)));
     map.put("dc-1", childClient(noBackupPendingStore(store)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
-    // Should not throw — no child has a backup pending deletion.
-    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+    // Should not throw — all children are clean for both guards.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
   }
 
   @Test
-  public void checkBackupCleanupFromChildrenSkipsErroredRegion() {
-    String store = "backup_from_children_error";
+  public void checkNewPushCapacityFromChildrenSkipsErroredRegion() {
+    // A transient child-query failure must not wedge pushes: the errored region is skipped.
+    String store = "npc_from_children_error";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
-    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
 
     ControllerClient errorClient = mock(ControllerClient.class);
     StoreResponse errorResponse = new StoreResponse();
-    errorResponse.setError("Simulated error fetching store for backup-version cleanup check.");
+    errorResponse.setError("Simulated error fetching store for new-push capacity checks.");
     doReturn(errorResponse).when(errorClient).getStore(anyString(), anyInt());
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", errorClient);
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     // Should not throw — the errored region is skipped.
-    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
   }
 
   @Test
-  public void checkBackupCleanupFromChildrenSkipsWhenNoChildClients() {
-    String store = "backup_from_children_no_clients";
+  public void checkNewPushCapacityFromChildrenSkipsWhenNoChildClients() {
+    // No children to verify against. Parent metadata can be stale, so we must NOT fall back to
+    // enforcing against it (that is the false-block this check exists to avoid) -> allow the push.
+    String store = "npc_from_children_no_clients";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
-    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
     doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
 
-    // Should not throw — no children to verify against.
-    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+    // Should not throw.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
   }
 
   @Test
-  public void checkBackupCleanupFromChildrenSkipsRegionWhenGetStoreThrows() {
-    // Same contract as the rollback gate: a getStore throw is a skipped region, not a push abort.
-    String store = "backup_from_children_throws";
+  public void checkNewPushCapacityFromChildrenSkipsRegionWhenGetStoreThrows() {
+    // ControllerClient#getStore can throw (e.g. VeniceHttpException/leader-discovery); a throw must
+    // be treated as a skipped region, not abort push-start.
+    String store = "npc_from_children_throws";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
-    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
 
     ControllerClient throwingClient = mock(ControllerClient.class);
     doThrow(new VeniceException("Simulated getStore failure")).when(throwingClient).getStore(anyString(), anyInt());
@@ -2940,11 +2866,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     // Should not throw — the region is skipped.
-    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
   }
 
-  private void mockBackupCleanupConfig(VeniceParentHelixAdmin admin, int minVersions, long cleanupDelayMs) {
+  @Test
+  public void checkNewPushCapacityFromChildrenSkipsRegionWhenChildVersionsNull() {
+    // StoreInfo defaults versions to null; a null-versions payload must be skipped, not NPE and
+    // abort push-start.
+    String store = "npc_from_children_null_versions";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+
+    ControllerClient nullVersionsClient = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(new StoreInfo()); // versions default to null
+    doReturn(response).when(nullVersionsClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", nullVersionsClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — the region is skipped.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
+  }
+
+  private void mockNewPushCapacityConfig(
+      VeniceParentHelixAdmin admin,
+      long retentionMs,
+      int minVersions,
+      long cleanupDelayMs) {
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(retentionMs).when(clusterConfig).getRolledBackVersionRetentionMs();
     doReturn(cleanupDelayMs).when(clusterConfig).getBackupVersionMinCleanupDelayMs();
     VeniceControllerMultiClusterConfig multiConfig = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(clusterConfig).when(multiConfig).getControllerConfig(anyString());
@@ -2974,14 +2927,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     return store;
   }
 
-  private void mockRolledBackRetentionConfig(VeniceParentHelixAdmin admin, long retentionMs) {
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(retentionMs).when(clusterConfig).getRolledBackVersionRetentionMs();
-    VeniceControllerMultiClusterConfig multiConfig = mock(VeniceControllerMultiClusterConfig.class);
-    doReturn(clusterConfig).when(multiConfig).getControllerConfig(anyString());
-    doReturn(multiConfig).when(admin).getMultiClusterConfigs();
-  }
-
   private static ControllerClient childClient(Store store) {
     ControllerClient client = mock(ControllerClient.class);
     StoreResponse response = new StoreResponse();
@@ -2997,17 +2942,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.updateVersionStatus(1, VersionStatus.ONLINE);
     store.updateVersionStatus(2, VersionStatus.ROLLED_BACK);
     store.setCurrentVersion(1);
-    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
-    return store;
-  }
-
-  private static Store onlineOnlyStore(String storeName) {
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    store.addVersion(new VersionImpl(storeName, 1, "push1"));
-    store.addVersion(new VersionImpl(storeName, 2, "push2"));
-    store.updateVersionStatus(1, VersionStatus.ONLINE);
-    store.updateVersionStatus(2, VersionStatus.ONLINE);
-    store.setCurrentVersion(2);
     store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
     return store;
   }

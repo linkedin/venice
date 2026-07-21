@@ -1783,10 +1783,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
       // Block on the parent if a child still has a ROLLED_BACK version within retention, or backup
       // versions pending deletion within the min cleanup delay — verified from LIVE child status,
-      // not stale parent metadata. See each method's javadoc for rationale.
+      // not stale parent metadata. See the method javadoc for rationale.
       if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
-        checkRollbackOriginVersionCapacityFromChildren(clusterName, storeName);
-        checkBackupVersionCleanupCapacityFromChildren(clusterName, storeName);
+        checkNewPushCapacityFromChildren(clusterName, storeName);
       }
     }
 
@@ -2433,30 +2432,34 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Blocks a new push if any reachable child region still has a {@code ROLLED_BACK} version within
-   * its retention window, using LIVE child status. We do NOT consult parent metadata, which can go
-   * stale and either falsely block or falsely allow. This runs once per new-push start, so querying
-   * every child is negligible. It runs only on the parent — a throw during child admin-message
-   * consumption ({@code VeniceHelixAdmin.addVersion}) would wedge the admin channel.
+   * Parent-only push-start gate: for each reachable child region, fetch its LIVE {@code StoreInfo}
+   * once and apply both capacity guards — rollback-origin retention and backup-version cleanup
+   * delay — to that single snapshot. We use live child status, not parent metadata, which can go
+   * stale and either falsely block or falsely allow. It runs only on the parent: a throw during
+   * child admin-message consumption ({@code VeniceHelixAdmin.addVersion}) would wedge the admin
+   * channel.
    *
-   * <p>Matches {@code ROLLED_BACK} only: a per-region rollback is binary, so a child is never
-   * rollback-{@code PARTIALLY_ONLINE} (that is a parent-only aggregate); a child
+   * <p>Rollback matches {@code ROLLED_BACK} only: a per-region rollback is binary, so a child is
+   * never rollback-{@code PARTIALLY_ONLINE} (that is a parent-only aggregate); a child
    * {@code PARTIALLY_ONLINE} is a degraded-mode forward push and must not block. A partial rollback
    * is still caught because its rolled-back region reports {@code ROLLED_BACK}.
    *
-   * <p>Unreachable/errored regions are skipped (and logged); with no reachable rolled-back child the
-   * push is allowed.
+   * <p>Unreachable/errored/malformed regions are skipped (and logged); with no reachable child that
+   * violates either guard the push is allowed. A genuine violation throws to reject the push.
    */
-  void checkRollbackOriginVersionCapacityFromChildren(String clusterName, String storeName) {
+  void checkNewPushCapacityFromChildren(String clusterName, String storeName) {
     long rolledBackVersionRetentionMs =
         getMultiClusterConfigs().getControllerConfig(clusterName).getRolledBackVersionRetentionMs();
+    int minNumberOfStoreVersionsToPreserve = getMultiClusterConfigs().getMinNumberOfStoreVersionsToPreserve();
+    long minBackupVersionCleanupDelayMs =
+        getMultiClusterConfigs().getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
     long currentTimeMs = System.currentTimeMillis();
 
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (controllerClients.isEmpty()) {
       // No children to verify against; parent metadata can be stale, so skip rather than block.
       LOGGER.warn(
-          "No child controller clients for cluster {}; skipping rollback-origin retention check for store {}",
+          "No child controller clients for cluster {}; skipping new-push capacity checks for store {}",
           clusterName,
           storeName);
       return;
@@ -2468,7 +2471,7 @@ public class VeniceParentHelixAdmin implements Admin {
         storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
       } catch (Exception e) {
         LOGGER.warn(
-            "Could not get store {} from region {} for rollback-origin retention check; skipping region",
+            "Could not get store {} from region {} for new-push capacity checks; skipping region",
             storeName,
             region,
             e);
@@ -2476,16 +2479,17 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       if (storeResponse == null || storeResponse.isError()) {
         LOGGER.warn(
-            "Could not get store {} from region {} for rollback-origin retention check ({}); skipping region",
+            "Could not get store {} from region {} for new-push capacity checks ({}); skipping region",
             storeName,
             region,
             storeResponse == null ? "null response" : storeResponse.getError());
         continue;
       }
       StoreInfo childStore = storeResponse.getStore();
-      if (childStore == null) {
+      if (childStore == null || childStore.getVersions() == null) {
+        // StoreInfo defaults versions to null; treat a missing snapshot like any other bad response.
         LOGGER.warn(
-            "Null store payload for {} from region {} during rollback-origin retention check; skipping region",
+            "Missing store/version payload for {} from region {} during new-push capacity checks; skipping region",
             storeName,
             region);
         continue;
@@ -2499,61 +2503,6 @@ public class VeniceParentHelixAdmin implements Admin {
           childStore.getLatestVersionPromoteToCurrentTimestamp(),
           rolledBackVersionRetentionMs,
           currentTimeMs);
-    }
-  }
-
-  /**
-   * Blocks a new push if any reachable child region still has backup versions pending deletion but
-   * within the min cleanup delay, using LIVE child status. Mirrors
-   * {@link #checkRollbackOriginVersionCapacityFromChildren} — it runs once per new-push start on the
-   * parent only, because a throw during child admin-message consumption
-   * ({@code VeniceHelixAdmin.addVersion}) would wedge the admin channel. Unreachable/errored regions
-   * are skipped (and logged).
-   */
-  void checkBackupVersionCleanupCapacityFromChildren(String clusterName, String storeName) {
-    int minNumberOfStoreVersionsToPreserve = getMultiClusterConfigs().getMinNumberOfStoreVersionsToPreserve();
-    long minBackupVersionCleanupDelayMs =
-        getMultiClusterConfigs().getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
-    long currentTimeMs = System.currentTimeMillis();
-
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    if (controllerClients.isEmpty()) {
-      // No children to verify against; parent metadata can be stale, so skip rather than block.
-      LOGGER.warn(
-          "No child controller clients for cluster {}; skipping backup-version cleanup check for store {}",
-          clusterName,
-          storeName);
-      return;
-    }
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      StoreResponse storeResponse;
-      try {
-        storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
-      } catch (Exception e) {
-        LOGGER.warn(
-            "Could not get store {} from region {} for backup-version cleanup check; skipping region",
-            storeName,
-            region,
-            e);
-        continue;
-      }
-      if (storeResponse == null || storeResponse.isError()) {
-        LOGGER.warn(
-            "Could not get store {} from region {} for backup-version cleanup check ({}); skipping region",
-            storeName,
-            region,
-            storeResponse == null ? "null response" : storeResponse.getError());
-        continue;
-      }
-      StoreInfo childStore = storeResponse.getStore();
-      if (childStore == null) {
-        LOGGER.warn(
-            "Null store payload for {} from region {} during backup-version cleanup check; skipping region",
-            storeName,
-            region);
-        continue;
-      }
       VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
           clusterName,
           storeName,
