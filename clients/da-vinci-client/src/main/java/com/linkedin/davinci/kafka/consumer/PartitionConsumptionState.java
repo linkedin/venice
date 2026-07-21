@@ -1037,6 +1037,26 @@ public class PartitionConsumptionState {
     this.storeLevelPaused = storeLevelPaused;
   }
 
+  /**
+   * True while this partition is <em>physically held right now</em> by the future-slot pause — a
+   * reconciled cache maintained every tick by {@link StoreIngestionTask#reconcileFutureSlotPause},
+   * not the durable "region unpromoted" intent (that lives in
+   * {@link StoreIngestionTask#isPauseAfterStartOfPush()}).
+   * <p>
+   * Independent of {@link #storeLevelPaused} (which pauses via unsubscribe/resubscribe). The
+   * reconciler coordinates the two: while store-level pause owns the unsubscribed consumer this flag
+   * is cleared, and the physical pause is re-applied the tick after store-level EXIT_PAUSE resubscribes.
+   */
+  private volatile boolean futureSlotPaused = false;
+
+  public boolean isFutureSlotPaused() {
+    return futureSlotPaused;
+  }
+
+  public void setFutureSlotPaused(boolean futureSlotPaused) {
+    this.futureSlotPaused = futureSlotPaused;
+  }
+
   public void setTransientRecord(
       int kafkaClusterId,
       PubSubPosition consumedPosition,

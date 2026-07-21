@@ -57,7 +57,7 @@ public class TestVeniceRouteHandler {
     ControllerResponse veniceResponse =
         ObjectMapperFactory.getInstance().readValue(veniceResponseStr, ControllerResponse.class);
     verify(response).status(HttpStatus.SC_FORBIDDEN);
-    Assert.assertEquals(veniceResponse.getErrorType(), ErrorType.BAD_REQUEST);
+    Assert.assertEquals(veniceResponse.getErrorType(), ErrorType.ACL_ERROR);
     Assert.assertEquals(veniceResponse.getExceptionType(), ExceptionType.BAD_REQUEST);
   }
 }

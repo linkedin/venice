@@ -51,6 +51,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partition,
       Optional<PubSubPosition> pubSubPosition,
       String replicaId) {
+    startConsumption(storeConfig, partition, pubSubPosition, replicaId, false);
+  }
+
+  @Override
+  public void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<PubSubPosition> pubSubPosition,
+      String replicaId,
+      boolean createPaused) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for replica {}", replicaId);
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
@@ -79,7 +89,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return storageEngineAtomicReference;
     });
     LOGGER.info("Retrieved storage engine for replica {}. Starting consumption in ingestion service", replicaId);
-    getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
+    getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition, createPaused);
     LOGGER.info("Completed starting consumption in ingestion service for replica {}", replicaId);
   }
 

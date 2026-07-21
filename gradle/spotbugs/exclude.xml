@@ -489,6 +489,15 @@
     </Or>
   </Match>
   <Match>
+    <!-- StoreIngestionTask's constructor calls overridable field-getter accessors (e.g. getVersionTopic,
+         getPubSubTopicRepository) that are intentionally left non-final because they are widely mocked in
+         unit tests (see reason #2 above). Scope the suppression to the constructor only, rather than the
+         whole class, so MC_OVERRIDABLE regressions elsewhere in the class are still surfaced. -->
+    <Bug pattern="MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR"/>
+    <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTask"/>
+    <Method name="&lt;init&gt;"/>
+  </Match>
+  <Match>
     <Bug pattern="MS_MUTABLE_ARRAY"/>
     <Or>
       <!--Fields are being used for print-->

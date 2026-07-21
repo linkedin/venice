@@ -896,6 +896,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * The PCS pause flag is set to its target value <em>before</em> the long-running unsubscribe /
    * resubscribe so the disk-quota no-op guard covers the entire transition window. Each PCS is
    * processed inside a try/catch so a failure on one partition does not abandon the others.
+   * <p>
+   * After the store-level transition, each PCS is passed through {@link #reconcileFutureSlotPause}
+   * so the DaVinci future-slot pause shares the same level-triggered owner — promotion,
+   * restarts/host-swaps, and store-level-pause overlap are all handled here.
    */
   void maybeTransitionPauseState() throws InterruptedException {
     Store store;
@@ -921,9 +925,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean anySubscriptionForSit = shouldPause && consumerHasAnySubscription();
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
       PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, anySubscriptionForSit);
-      if (transition == PauseStateTransition.NO_CHANGE) {
-        continue;
-      }
       try {
         if (transition == PauseStateTransition.ENTER_PAUSE) {
           // Flip the flag BEFORE the long-running unsubscribe so concurrent disk-quota callbacks
@@ -933,23 +934,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           LOGGER.info(
               "Store-level pause activated for replica: {} — unsubscribed from Kafka",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+          transitioned = true;
         } else if (transition == PauseStateTransition.RECONCILE_FORCE_UNSUBSCRIBE) {
           consumerUnSubscribeAllTopics(pcs);
           LOGGER.info(
               "Store-level pause re-applied for replica: {} — subscription was reattached, unsubscribed again",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
-        } else { // EXIT_PAUSE
+          transitioned = true;
+        } else if (transition == PauseStateTransition.EXIT_PAUSE) {
           // Resubscribe BEFORE clearing the flag so quota callbacks stay no-op until the consumer
           // is back online; if resubscribe throws we leave the flag set so the next iteration
-          // retries instead of leaving the partition dark.
+          // retries. Any future-slot pause that still applies is re-asserted by the
+          // reconcileFutureSlotPause call below.
           resubscribe(pcs);
           pcs.setStoreLevelPaused(false);
           pcs.resetConsumptionStartTimeInMs();
           LOGGER.info(
               "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+          transitioned = true;
         }
-        transitioned = true;
+        // Level-triggered reconcile of the future-slot pause, every tick for every PCS (including
+        // store-level NO_CHANGE), so this single owner handles promotion, restarts/host-swaps, and
+        // store-level-pause overlap.
+        reconcileFutureSlotPause(pcs);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw e;
