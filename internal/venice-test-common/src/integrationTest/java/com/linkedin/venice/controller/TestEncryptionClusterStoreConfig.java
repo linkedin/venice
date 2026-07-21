@@ -56,7 +56,7 @@ public class TestEncryptionClusterStoreConfig {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testEncryptionDefaultedOnCreateAndCannotBeDisabled() {
+  public void testStoreEncryptionMirrorsClusterPolicy() {
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
       String storeName = Utils.getUniqueString("encryption-cluster-store");
@@ -70,16 +70,48 @@ public class TestEncryptionClusterStoreConfig {
           storeResponse.getStore().isEncryptionEnabled(),
           "A newly created store in an encryption cluster must default to encryptionEnabled=true");
 
-      // Encryption cannot be disabled once enabled: the update-store request must be rejected.
-      ControllerResponse updateResponse =
+      ControllerResponse matchingUpdate =
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
+      Assert.assertFalse(matchingUpdate.isError(), "A value matching cluster policy must be accepted");
+
+      ControllerResponse conflictingUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
-      Assert.assertTrue(updateResponse.isError(), "Disabling encryption in an encryption cluster must be rejected");
+      Assert.assertTrue(conflictingUpdate.isError(), "A value conflicting with cluster policy must be rejected");
+
+      ControllerResponse omittedUpdate =
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
+      Assert.assertFalse(omittedUpdate.isError(), "Updates that omit encryptionEnabled must succeed");
 
       StoreResponse storeAfterUpdate = controllerClient.getStore(storeName);
       Assert.assertFalse(storeAfterUpdate.isError());
       Assert.assertTrue(
           storeAfterUpdate.getStore().isEncryptionEnabled(),
-          "encryptionEnabled must remain true after a rejected attempt to disable it");
+          "Omitting encryptionEnabled must not make metadata inconsistent with cluster policy");
+
+      venice.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setEncryptionEnabled(false);
+            return store;
+          });
+      Assert.assertFalse(
+          controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
+          "The test setup must simulate an existing store with stale metadata");
+
+      ControllerResponse staleMetadataUpdate =
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner("reconciled-owner"));
+      Assert.assertTrue(
+          staleMetadataUpdate.isError(),
+          "An omitted encryption value must not silently repair stale metadata");
+
+      ControllerResponse reconciliationUpdate =
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
+      Assert.assertFalse(
+          reconciliationUpdate.isError(),
+          "An explicit value matching cluster policy must repair metadata");
+      Assert.assertTrue(
+          controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
+          "The explicit matching value must reconcile stale encryption metadata");
     }
   }
 }

@@ -1247,8 +1247,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int largestUsedRTVersionNumber) {
     newStore.setNativeReplicationEnabled(config.isMultiRegion());
 
-    if (config.isEncryptionCluster() && !newStore.isSystemStore()) {
-      newStore.setEncryptionEnabled(true);
+    if (!newStore.isSystemStore()) {
+      newStore.setEncryptionEnabled(config.isEncryptionCluster());
     }
 
     /**

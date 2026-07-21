@@ -140,6 +140,10 @@ public class UpdateStoreQueryParamsTest {
     assertEquals(params.getStoreMigration(), Optional.of(Boolean.TRUE));
     assertEquals(params.getMigrationDuplicateStore(), Optional.of(Boolean.TRUE));
     assertEquals(params.getLargestUsedVersionNumber(), Optional.of(0));
+    assertEquals(
+        params.getEncryptionEnabled(),
+        Optional.empty(),
+        "Migration must not copy the source encryption value over destination cluster policy.");
   }
 
   /**
@@ -164,5 +168,6 @@ public class UpdateStoreQueryParamsTest {
     // Migration-specific flags must NOT be set on this path
     assertEquals(params.getStoreMigration(), Optional.empty());
     assertEquals(params.getMigrationDuplicateStore(), Optional.empty());
+    assertEquals(params.getEncryptionEnabled(), Optional.of(false));
   }
 }

@@ -184,7 +184,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
             .setCompactionEnabled(srcStore.isCompactionEnabled())
             .setCompactionThresholdMilliseconds(srcStore.getCompactionThreshold())
-            .setEncryptionEnabled(srcStore.isEncryptionEnabled())
             .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
@@ -213,7 +212,8 @@ public class UpdateStoreQueryParams extends QueryParams {
       // topology (e.g. number of Helix fault zones / groups under HELIX_ASSISTED_ROUTING, which requires
       // RF = num_groups) may require a different RF than the source cluster.
     } else {
-      updateStoreQueryParams.setReplicationFactor(srcStore.getReplicationFactor());
+      updateStoreQueryParams.setReplicationFactor(srcStore.getReplicationFactor())
+          .setEncryptionEnabled(srcStore.isEncryptionEnabled());
     }
 
     ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();

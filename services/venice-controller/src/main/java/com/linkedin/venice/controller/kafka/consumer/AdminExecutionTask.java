@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENCRYPTION_ENABLED;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -659,7 +660,11 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
     params.setCompactionEnabled(message.compactionEnabled);
     params.setCompactionThresholdMilliseconds(message.compactionThresholdMilliseconds);
-    params.setEncryptionEnabled(message.encryptionEnabled);
+    boolean encryptionEnabledExplicitlyUpdated = message.updatedConfigsList != null
+        && message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals);
+    if (!message.replicateAllConfigs || encryptionEnabledExplicitlyUpdated) {
+      params.setEncryptionEnabled(message.encryptionEnabled);
+    }
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
     params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);

@@ -576,6 +576,69 @@ public class AdminExecutionTaskTest {
         "updateStore must not be called with targetRegionPromoted=true when message.targetRegionPromoted=false");
   }
 
+  @Test
+  public void testHandleSetStore_PreservesEncryptionPresenceForReplicateAllConfigs() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
+    UpdateStore message = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
+    message.encryptionEnabled = true;
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(wrapper);
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        /* isParentController= */ false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.empty());
+  }
+
+  @Test
+  public void testHandleSetStore_ReplicatesExplicitEncryptionForReplicateAllConfigs() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
+    UpdateStore message = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
+    message.encryptionEnabled = true;
+    message.updatedConfigsList.add("encryption_enabled");
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(wrapper);
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        /* isParentController= */ false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.of(true));
+  }
+
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {
     AdminOperation adminOperation = new AdminOperation();
     adminOperation.operationType = AdminMessageType.UPDATE_STORE.getValue();

@@ -218,15 +218,8 @@ public final class StoreConfigUpdater {
     }
 
     Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
-    if (!params.getStoreMigration().orElse(false)) {
-      encryptionEnabled.ifPresent(
-          aBoolean -> validateEncryptionEnabledUpdate(
-              originalStore,
-              admin.getHelixVeniceClusterResources(clusterName).getConfig().isEncryptionCluster(),
-              aBoolean,
-              clusterName,
-              storeName));
-    }
+    boolean isEncryptionCluster = admin.getHelixVeniceClusterResources(clusterName).getConfig().isEncryptionCluster();
+    validateEncryptionEnabledUpdate(originalStore, isEncryptionCluster, encryptionEnabled, clusterName, storeName);
 
     if (originalStore.isHybrid() && !admin.getMultiClusterConfigs()
         .getControllerConfig(clusterName)
@@ -702,10 +695,12 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
-      encryptionEnabled.ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setEncryptionEnabled(aBoolean);
-        return store;
-      }));
+      if (!originalStore.isSystemStore() && encryptionEnabled.isPresent()) {
+        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          store.setEncryptionEnabled(isEncryptionCluster);
+          return store;
+        });
+      }
 
       if (minCompactionLagSeconds.isPresent()) {
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -865,34 +860,30 @@ public final class StoreConfigUpdater {
   }
 
   /**
-   * Encryption enable/disable policy:
-   * <ul>
-   *   <li>Once a store has encryption enabled, it cannot be disabled.</li>
-   *   <li>Encryption can only be enabled for a store that lives in an encryption cluster.</li>
-   * </ul>
-   * System stores are exempt.
+   * The store-level encryption flag mirrors cluster policy for non-system stores. System stores are exempt.
    */
   static void validateEncryptionEnabledUpdate(
       Store currStore,
       boolean isEncryptionCluster,
-      boolean requestedEncryptionEnabled,
+      Optional<Boolean> requestedEncryptionEnabled,
       String clusterName,
       String storeName) {
     if (currStore.isSystemStore()) {
       return;
     }
-    if (!requestedEncryptionEnabled && currStore.isEncryptionEnabled()) {
+    if (requestedEncryptionEnabled.isPresent() && requestedEncryptionEnabled.get() != isEncryptionCluster) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
-          "Cannot disable encryption for store " + storeName + " in cluster " + clusterName
-              + " once it has been enabled.",
+          "encryptionEnabled for store " + storeName + " in cluster " + clusterName + " must match cluster policy: "
+              + isEncryptionCluster + ".",
           ErrorType.BAD_REQUEST);
     }
-    if (requestedEncryptionEnabled && !isEncryptionCluster) {
+    if (!requestedEncryptionEnabled.isPresent() && currStore.isEncryptionEnabled() != isEncryptionCluster) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
-          "Cannot enable encryption for store " + storeName + " because cluster " + clusterName
-              + " is not an encryption cluster.",
+          "Store " + storeName
+              + " has encryptionEnabled metadata that does not match cluster policy. Set it explicitly to "
+              + isEncryptionCluster + " before updating other store settings.",
           ErrorType.BAD_REQUEST);
     }
   }
@@ -993,15 +984,8 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    if (!storeMigration.orElse(false)) {
-      encryptionEnabled.ifPresent(
-          aBoolean -> validateEncryptionEnabledUpdate(
-              currStore,
-              admin.getControllerConfig(clusterName).isEncryptionCluster(),
-              aBoolean,
-              clusterName,
-              storeName));
-    }
+    boolean isEncryptionCluster = admin.getControllerConfig(clusterName).isEncryptionCluster();
+    validateEncryptionEnabledUpdate(currStore, isEncryptionCluster, encryptionEnabled, clusterName, storeName);
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
@@ -1365,9 +1349,12 @@ public final class StoreConfigUpdater {
     setStore.compactionThresholdMilliseconds =
         compactionThreshold.map(admin.addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
             .orElseGet(currStore::getCompactionThresholdMilliseconds);
-    setStore.encryptionEnabled =
-        encryptionEnabled.map(admin.addToUpdatedConfigList(updatedConfigsList, ENCRYPTION_ENABLED))
-            .orElseGet(currStore::isEncryptionEnabled);
+    setStore.encryptionEnabled = !currStore.isSystemStore() && encryptionEnabled.isPresent()
+        ? isEncryptionCluster
+        : currStore.isEncryptionEnabled();
+    if (!currStore.isSystemStore() && encryptionEnabled.isPresent()) {
+      updatedConfigsList.add(ENCRYPTION_ENABLED);
+    }
     setStore.minCompactionLagSeconds =
         minCompactionLagSeconds.map(admin.addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
             .orElseGet(currStore::getMinCompactionLagSeconds);
@@ -1523,10 +1510,8 @@ public final class StoreConfigUpdater {
         LOGGER.error(errMsg);
         throw new VeniceException(errMsg);
       }
-      setStore.updatedConfigsList = new ArrayList<>(updatedConfigsList);
-    } else {
-      setStore.updatedConfigsList = Collections.emptyList();
     }
+    setStore.updatedConfigsList = new ArrayList<>(updatedConfigsList);
 
     final boolean readComputeJustEnabled =
         readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
