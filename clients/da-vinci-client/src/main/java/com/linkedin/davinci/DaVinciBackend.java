@@ -613,6 +613,9 @@ public class DaVinciBackend implements Closeable {
      * to current.
      */
     storeBackend.trySwapDaVinciCurrentVersion(null);
+    // If the future version was created paused (non-target region SIT), check whether it should
+    // now be resumed (e.g. targetRegionPromoted just flipped to true).
+    storeBackend.maybeResumeDaVinciFutureVersion();
     storeBackend.trySubscribeDaVinciFutureVersion();
   }
 

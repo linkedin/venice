@@ -513,6 +513,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private boolean daVinciClientCustomLifecycleEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
+  /**
+   * Durable per-SIT intent for the DaVinci paused-SIT feature: while true, partitions are held
+   * (consumption paused) once START_OF_PUSH is processed, until region promotion clears it via
+   * {@link #resumeFromFutureSlotPause()}. Physical pause/resume is reconciled every tick by
+   * {@link #reconcileFutureSlotPause}.
+   */
+  private volatile boolean pauseAfterStartOfPush = false;
 
   // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.
   protected final BlobTransferIngestionHelper blobTransferHelper;
@@ -1160,7 +1167,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return returnStatus;
   }
 
-  private void beginBatchWrite(boolean sorted, PartitionConsumptionState partitionConsumptionState) {
+  @VisibleForTesting
+  void beginBatchWrite(boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(sorted, partitionConsumptionState);
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
@@ -3054,6 +3062,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Returns true if blob transfer is configured and the replica is lagged enough to benefit from it.
    */
   protected boolean shouldStartBlobTransfer(int partition, String replicaId, ConsumerAction consumerAction) {
+    if (pauseAfterStartOfPush) {
+      return false; // future-slot paused SIT: skip blob transfer, will ingest via Kafka after resume
+    }
     if (blobTransferHelper == null) {
       return false;
     }
@@ -3885,7 +3896,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     });
   }
 
-  private void processStartOfPush(
+  @VisibleForTesting
+  void processStartOfPush(
       KafkaMessageEnvelope startOfPushKME,
       ControlMessage controlMessage,
       PartitionConsumptionState partitionConsumptionState) {
@@ -3906,7 +3918,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Notify the underlying store engine about starting batch push.
      */
     final boolean sorted;
-    if (serverConfig.getRocksDBServerConfig().isBlobFilesEnabled() && isHybridMode()) {
+    if (getServerConfig().getRocksDBServerConfig().isBlobFilesEnabled() && isHybridMode()) {
       /**
        * We would like to skip {@link RocksDBSstFileWriter} for hybrid stores
        * when RocksDB blob mode is enabled and here are the reasons:
@@ -3933,7 +3945,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     StoreVersionState persistedStoreVersionState =
-        storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+        getStorageMetadataService().computeStoreVersionState(getKafkaVersionTopic(), previousStoreVersionState -> {
           if (previousStoreVersionState == null) {
             // No other partition of the same topic has started yet, let's initialize the StoreVersionState
             StoreVersionState newStoreVersionState =
@@ -3970,14 +3982,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
              */
             LOGGER.warn(
                 "Store version state for topic {} has already been initialized with a different value of 'sorted': {}",
-                kafkaVersionTopic,
+                getKafkaVersionTopic(),
                 previousStoreVersionState.sorted);
           }
           // No need to mutate it, so we return it as is
           return previousStoreVersionState;
         });
 
-    ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
+    getIngestionNotificationDispatcher().reportStarted(partitionConsumptionState);
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
@@ -4945,8 +4957,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // has completed. Otherwise, there will be resource contention.
     if (recordTransformer != null && recordTransformer.getCountDownStartConsumptionLatchCount() > 0) {
       LOGGER.info("DaVinciRecordTransformer pausing consumption for: {}", pubSubTopicPartition);
-      aggKafkaConsumerService.pauseConsumerFor(versionTopic, pubSubTopicPartition);
-      LOGGER.info("DaVinciRecordTransformer paused consumption for: {}", pubSubTopicPartition);
+      boolean paused = aggKafkaConsumerService.pauseConsumerFor(versionTopic, pubSubTopicPartition);
+      LOGGER.info("DaVinciRecordTransformer paused consumption for: {} (applied={})", pubSubTopicPartition, paused);
       recordTransformerPausedConsumptionQueue.add(pubSubTopicPartition);
     }
   }
@@ -4959,35 +4971,48 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean pauseConsumption(String topic, int partitionId) {
     // Store-level pause takes precedence; no-op here so the two pause sources don't race.
     if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
-      logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId);
+      logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId, "store-level paused");
       return false;
     }
-    aggKafkaConsumerService.pauseConsumerFor(
+    // Return whether a consumer was actually paused: pauseConsumerFor no-ops (returns false) when no
+    // consumer is assigned, and the quota manager must not record the partition as paused in that case.
+    return aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
-    return true;
   }
 
   private boolean resumeConsumption(String topic, int partitionId) {
-    // Store-level pause takes precedence; no-op here so a quota resume doesn't un-pause us.
-    if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
-      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId);
+    // Store-level pause and future-slot pause both take precedence; no-op here so a quota resume
+    // doesn't physically un-pause a partition that is intentionally held back.
+    PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partitionId);
+    if (shouldSkipQuotaCallbackForStoreLevelPause(pcs)) {
+      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId, "store-level paused");
       return false;
     }
-    aggKafkaConsumerService.resumeConsumerFor(
-        versionTopic,
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    if (pcs != null && pcs.isFutureSlotPaused()) {
+      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId, "future-slot paused");
+      return false;
+    }
+    getAggKafkaConsumerService().resumeConsumerFor(
+        getVersionTopic(),
+        new PubSubTopicPartitionImpl(getPubSubTopicRepository().getTopic(topic), partitionId));
     return true;
   }
 
-  private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId) {
-    String key = storeName + "-" + callbackName + "-storeLevelPauseSuppressed";
+  @VisibleForTesting
+  final boolean resumeConsumptionForTest(String topic, int partitionId) {
+    return resumeConsumption(topic, partitionId);
+  }
+
+  private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId, String reason) {
+    String key = storeName + "-" + callbackName + "-" + reason + "-Suppressed";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(key)) {
       LOGGER.info(
-          "Disk-quota {} suppressed for {}-{} because partition is store-level paused.",
+          "Disk-quota {} suppressed for {}-{} because partition is {}.",
           callbackName,
           topic,
-          partitionId);
+          partitionId,
+          reason);
     }
   }
 
@@ -6315,6 +6340,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return partitionConsumptionStateMap;
   }
 
+  @VisibleForTesting
+  AggKafkaConsumerService getAggKafkaConsumerService() {
+    return aggKafkaConsumerService;
+  }
+
+  @VisibleForTesting
+  StorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
+  }
+
   boolean isDaVinciClient() {
     return isDaVinciClient;
   }
@@ -6758,5 +6793,122 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp() > 0
             ? kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()
             : 0L;
+  }
+
+  /**
+   * Physically pause consumption for {@code partition} as part of the future-slot hold, and set the
+   * {@link PartitionConsumptionState#setFutureSlotPaused} flag to reflect the real physical state.
+   * The flag is only set to {@code true} if a consumer was assigned and actually paused; if no
+   * consumer is assigned yet, the flag is left {@code false} so {@link #reconcileFutureSlotPause}
+   * retries on the next tick. No-ops if the partition has no PCS.
+   */
+  public void pausePartitionForFutureSlot(int partition) {
+    PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+    PubSubTopic vt = getVersionTopic();
+    if (pcs == null) {
+      LOGGER.debug("pausePartitionForFutureSlot: no PCS for partition {} in {}, skipping", partition, vt);
+      return;
+    }
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vt, partition);
+    boolean paused = getAggKafkaConsumerService().pauseConsumerFor(vt, topicPartition);
+    pcs.setFutureSlotPaused(paused);
+    if (paused) {
+      LOGGER.debug("pausePartitionForFutureSlot: paused partition {} in {}", partition, vt);
+    } else {
+      LOGGER.debug(
+          "pausePartitionForFutureSlot: no consumer assigned for partition {} in {} yet, will retry",
+          partition,
+          vt);
+    }
+  }
+
+  /**
+   * Level-triggered predicate: should {@code pcs} be held by the future-slot pause right now? True
+   * only when all hold:
+   * <ul>
+   *   <li>this is a DaVinci client — the feature is DVC-only;</li>
+   *   <li>the partition is actively ingesting (subscribed, not completion-reported, not errored);</li>
+   *   <li>the SIT is still in pause-after-SOP intent ({@link #isPauseAfterStartOfPush()}); promotion
+   *       clears it, which is what lets the reconciler resume;</li>
+   *   <li>START_OF_PUSH has been processed for this partition (per-partition SOP timestamp, set in
+   *       {@link #processStartOfPush} and restored on restart in {@link #checkConsumptionStateWhenStart}),
+   *       so we can never pause before SOP and the register-as-reporter step always runs first.</li>
+   * </ul>
+   */
+  boolean shouldHoldForFutureSlot(PartitionConsumptionState pcs) {
+    return isDaVinciClient() && isPauseAfterStartOfPush() && pcs != null && pcs.isSubscribed()
+        && !pcs.isCompletionReported() && !pcs.isErrorReported() && pcs.getStartOfPushTimestamp() != 0L;
+  }
+
+  /**
+   * Level-triggered reconcile of one partition's physical future-slot pause against
+   * {@link #shouldHoldForFutureSlot}. Called every SIT loop iteration from
+   * {@link LeaderFollowerStoreIngestionTask#maybeTransitionPauseState()}, after the store-level
+   * transition for the same PCS:
+   * <ul>
+   *   <li>while store-level pause owns the (unsubscribed) consumer, a physical future-slot pause is
+   *       moot, so the flag is cleared; after EXIT_PAUSE resubscribes, the next tick re-applies it
+   *       emergently — no special case needed in EXIT_PAUSE;</li>
+   *   <li>pause/resume calls are transition-gated (only on flag flips) to avoid taking the consumer
+   *       lock every tick while a partition sits held.</li>
+   * </ul>
+   */
+  void reconcileFutureSlotPause(PartitionConsumptionState pcs) {
+    if (pcs == null) {
+      return;
+    }
+    if (pcs.isStoreLevelPaused()) {
+      // Store-level pause owns the (unsubscribed) consumer; a physical future-slot pause is moot.
+      // Clear the flag so the next reconcile re-applies it once EXIT_PAUSE resubscribes.
+      if (pcs.isFutureSlotPaused()) {
+        pcs.setFutureSlotPaused(false);
+      }
+      return;
+    }
+    boolean desiredHold = shouldHoldForFutureSlot(pcs);
+    if (desiredHold && !pcs.isFutureSlotPaused()) {
+      pausePartitionForFutureSlot(pcs.getPartition());
+    } else if (!desiredHold && pcs.isFutureSlotPaused()) {
+      // Physically resume BEFORE clearing the flag: if resumeConsumerFor throws, the flag stays set
+      // and the next reconcile retries rather than stranding a physically-paused consumer.
+      PubSubTopic vt = getVersionTopic();
+      getAggKafkaConsumerService().resumeConsumerFor(vt, new PubSubTopicPartitionImpl(vt, pcs.getPartition()));
+      pcs.setFutureSlotPaused(false);
+      LOGGER.debug("reconcileFutureSlotPause: resumed partition {} in {}", pcs.getPartition(), vt);
+    }
+  }
+
+  /**
+   * Signal region promotion: clear the SIT-level intent ({@link #pauseAfterStartOfPush}) so the
+   * future-slot pause no longer applies. Called from {@link com.linkedin.davinci.VersionBackend#resume()}.
+   *
+   * <p>Performs no physical resume itself — the reconciler ({@link #reconcileFutureSlotPause})
+   * observes the cleared intent next tick and resumes every held partition. Idempotent and safe to
+   * call cross-thread (the flag is volatile). Clearing it for the life of the SIT also avoids
+   * re-holding partitions subscribed after promotion (the SIT is reused across the future→current
+   * swap) and stops suppressing blob transfer.
+   */
+  public void resumeFromFutureSlotPause() {
+    setPauseAfterStartOfPush(false);
+  }
+
+  /**
+   * Returns true if any partition in this SIT is currently paused via the future-slot pause mechanism.
+   */
+  public boolean isFutureSlotPaused() {
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+      if (pcs.isFutureSlotPaused()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public boolean isPauseAfterStartOfPush() {
+    return pauseAfterStartOfPush;
+  }
+
+  public void setPauseAfterStartOfPush(boolean pauseAfterStartOfPush) {
+    this.pauseAfterStartOfPush = pauseAfterStartOfPush;
   }
 }

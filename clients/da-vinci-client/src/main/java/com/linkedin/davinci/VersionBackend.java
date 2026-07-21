@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_
 
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
@@ -370,7 +371,8 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Map<Integer, Long> timestampsMap,
-      Map<Integer, PubSubPosition> positionMap) {
+      Map<Integer, PubSubPosition> positionMap,
+      boolean createPaused) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
@@ -420,7 +422,7 @@ public class VersionBackend {
       Optional<PubSubPosition> pubSubPosition = (timestampsMap == null && positionMap == null)
           ? Optional.empty()
           : backend.getIngestionService().getPubSubPosition(config, partition, timestampsMap, positionMap);
-      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId);
+      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId, createPaused);
       tryStartHeartbeat();
     }
 
@@ -485,6 +487,22 @@ public class VersionBackend {
       partitionToBatchReportEOIPEnabled.remove(partition);
     }
     tryStopHeartbeat();
+  }
+
+  void resume() {
+    StoreIngestionTask task = backend.getIngestionService().getStoreIngestionTask(version.kafkaTopicName());
+    if (task != null) {
+      task.resumeFromFutureSlotPause();
+    }
+  }
+
+  boolean isPaused() {
+    StoreIngestionTask task = backend.getIngestionService().getStoreIngestionTask(version.kafkaTopicName());
+    // Gate on the SIT-level intent (pause-after-SOP), not the per-partition physical flag which the
+    // reconciler only sets a tick after SOP. Intent is the durable "held until promotion" signal and
+    // covers the pre-SOP window, so maybeResumeDaVinciFutureVersion() still resumes even if promotion
+    // is observed before the first SOP is processed.
+    return task != null && task.isPauseAfterStartOfPush();
   }
 
   void completePartition(int partition) {

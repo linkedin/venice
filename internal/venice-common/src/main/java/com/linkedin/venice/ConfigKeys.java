@@ -2336,6 +2336,16 @@ public class ConfigKeys {
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
   public static final String DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT = "davinci.p2p.blob.transfer.client.port";
+
+  /**
+   * When true, DVC clients in non-target regions subscribe to a future version immediately at version
+   * creation (paused after Start-Of-Push) and resume once targetRegionPromoted=true arrives, so VPJ
+   * naturally waits for all DVCs everywhere before completing. When false (default), non-target-region
+   * DVC clients use the legacy behavior: subscribe only when the version reaches VersionStatus.ONLINE.
+   * Only has an effect for stores with targetSwapRegion configured.
+   */
+  public static final String DAVINCI_PAUSED_SIT_ENABLED = "davinci.paused.sit.enabled";
+
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 
