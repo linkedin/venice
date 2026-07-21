@@ -2763,6 +2763,190 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void checkNewPushCapacityFromChildrenBlocksWhenChildRolledBackWithinRetention() {
+    String store = "npc_from_children_rollback_block";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+
+    // Child dc-0 still holds a ROLLED_BACK version within retention -> the parent must block the push.
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", childClient(rolledBackOriginStore(store)));
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenBlocksWhenChildHasPendingBackupWithinDelay() {
+    String store = "npc_from_children_backup_block";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+
+    // Child dc-0 has a KILLED backup pending deletion, promoted just now -> parent must block.
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", childClient(backupPendingStore(store)));
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenAllowsWhenChildrenClean() {
+    // LIVE child status shows neither a rolled-back version nor a backup pending deletion, so the
+    // push must be allowed rather than blocked on (potentially stale) parent metadata.
+    String store = "npc_from_children_allow";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", childClient(noBackupPendingStore(store)));
+    map.put("dc-1", childClient(noBackupPendingStore(store)));
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — all children are clean for both guards.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenSkipsErroredRegion() {
+    // A transient child-query failure must not wedge pushes: the errored region is skipped.
+    String store = "npc_from_children_error";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+
+    ControllerClient errorClient = mock(ControllerClient.class);
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("Simulated error fetching store for new-push capacity checks.");
+    doReturn(errorResponse).when(errorClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", errorClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — the errored region is skipped.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenSkipsWhenNoChildClients() {
+    // No children to verify against. Parent metadata can be stale, so we must NOT fall back to
+    // enforcing against it (that is the false-block this check exists to avoid) -> allow the push.
+    String store = "npc_from_children_no_clients";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+    doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenSkipsRegionWhenGetStoreThrows() {
+    // ControllerClient#getStore can throw (e.g. VeniceHttpException/leader-discovery); a throw must
+    // be treated as a skipped region, not abort push-start.
+    String store = "npc_from_children_throws";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+
+    ControllerClient throwingClient = mock(ControllerClient.class);
+    doThrow(new VeniceException("Simulated getStore failure")).when(throwingClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", throwingClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — the region is skipped.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenSkipsRegionWhenChildVersionsNull() {
+    // StoreInfo defaults versions to null; a null-versions payload must be skipped, not NPE and
+    // abort push-start.
+    String store = "npc_from_children_null_versions";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+
+    ControllerClient nullVersionsClient = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(new StoreInfo()); // versions default to null
+    doReturn(response).when(nullVersionsClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", nullVersionsClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — the region is skipped.
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
+  }
+
+  private void mockNewPushCapacityConfig(
+      VeniceParentHelixAdmin admin,
+      long retentionMs,
+      int minVersions,
+      long cleanupDelayMs) {
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(retentionMs).when(clusterConfig).getRolledBackVersionRetentionMs();
+    doReturn(cleanupDelayMs).when(clusterConfig).getBackupVersionMinCleanupDelayMs();
+    VeniceControllerMultiClusterConfig multiConfig = mock(VeniceControllerMultiClusterConfig.class);
+    doReturn(clusterConfig).when(multiConfig).getControllerConfig(anyString());
+    doReturn(minVersions).when(multiConfig).getMinNumberOfStoreVersionsToPreserve();
+    doReturn(multiConfig).when(admin).getMultiClusterConfigs();
+  }
+
+  private static Store backupPendingStore(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push1"));
+    store.addVersion(new VersionImpl(storeName, 2, "push2"));
+    // v1 KILLED is always pending deletion (canDelete); v2 was just promoted -> within cleanup delay.
+    store.updateVersionStatus(1, VersionStatus.KILLED);
+    store.updateVersionStatus(2, VersionStatus.ONLINE);
+    store.setCurrentVersion(2);
+    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    return store;
+  }
+
+  private static Store noBackupPendingStore(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push1"));
+    // Only the current version exists, so nothing is pending deletion.
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.setCurrentVersion(1);
+    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    return store;
+  }
+
+  private static ControllerClient childClient(Store store) {
+    ControllerClient client = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(StoreInfo.fromStore(store));
+    doReturn(response).when(client).getStore(anyString(), anyInt());
+    return client;
+  }
+
+  private static Store rolledBackOriginStore(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push1"));
+    store.addVersion(new VersionImpl(storeName, 2, "push2"));
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.updateVersionStatus(2, VersionStatus.ROLLED_BACK);
+    store.setCurrentVersion(1);
+    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    return store;
+  }
+
+  @Test
   public void testGetCurrentVersionForMultiRegionsWithError() {
     int regionCount = 4;
     Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(regionCount - 1);
@@ -2858,53 +3042,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new StoreVersionInfo(store, store.getVersion(1))).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
-    String latestTopic = storeName + "_v1";
-
-    // When there is a regular topic and the job status is terminal
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    doReturn(false).when(mockParentAdmin).isTopicTruncated(latestTopic);
+    // Latest version ONLINE: the push already completed, so the parent allows the next push through
+    // (returns empty) WITHOUT polling offline push status. This is the fix that unblocks a stuck
+    // deferred-swap ONLINE version whose push-status resource no longer exists.
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
-    // When there is a regular topic and the job status is not terminal
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
+    verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
 
-    // When there is a regular topic and the job status is 'UNKNOWN' in some region,
-    // but overall status is 'COMPLETED'
-    Map<String, String> extraInfo = new HashMap<>();
-    extraInfo.put("cluster1", ExecutionStatus.UNKNOWN.toString());
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    doCallRealMethod().when(mockParentAdmin).setTimer(any());
-    mockParentAdmin.setTimer(new TestMockTime());
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertFalse(currentPush.isPresent());
-    verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
-
-    // When there is a regular topic and the job status is 'UNKNOWN' in some region,
-    // but overall status is 'PROGRESS'
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
-
-    // When there is a regular topic and the job status is 'UNKNOWN' in some region for the first time,
-    // but overall status is 'PROGRESS'
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    when(mockParentAdmin.getOffLinePushStatus(clusterName, latestTopic))
-        .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
-        .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS));
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
+    Optional<String> currentPush;
 
     version = new VersionImpl(storeName, 2, "test_push_id");
     version.setStatus(VersionStatus.KILLED);
@@ -2953,6 +3097,77 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     partiallyOnlineStore.addVersion(partiallyOnlineVersion);
     doReturn(partiallyOnlineStore).when(mockParentAdmin).getStore(clusterName, storeName);
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
+  }
+
+  @Test
+  public void testGetTopicForCurrentPushJobBlocksInProgressVersion() {
+    // Regression coverage for the in-progress/polling branch of
+    // getTopicForCurrentPushJobParentVersionStatusBasedTracking. Terminal statuses early-exit (see
+    // testGetTopicForCurrentPushJob); a non-terminal latest version must instead block the next push -
+    // either immediately (STARTED/PUSHED/CREATED) or by polling getOffLinePushStatus until the offline
+    // job status is terminal. This guards the stuck-push prevention behavior.
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
+    ControllerClient client = mock(ControllerClient.class);
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", client);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
+    HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
+    doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
+    doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    doCallRealMethod().when(mockParentAdmin)
+        .getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
+    doCallRealMethod().when(mockParentAdmin).setTimer(any());
+    mockParentAdmin.setTimer(new TestMockTime());
+
+    String latestTopic = storeName + "_v1";
+
+    // STARTED: push still running -> blocked immediately, without polling offline push status.
+    doReturn(inProgressStore(storeName, VersionStatus.STARTED)).when(mockParentAdmin).getStore(clusterName, storeName);
+    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(currentPush.isPresent());
+    assertEquals(currentPush.get(), latestTopic);
+    verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
+
+    // Non-terminal latest version reaches the polling branch. PROGRESS offline status is non-terminal,
+    // so the parent blocks the next push and returns the in-flight topic.
+    doReturn(inProgressStore(storeName, VersionStatus.NOT_CREATED)).when(mockParentAdmin)
+        .getStore(clusterName, storeName);
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(currentPush.isPresent());
+    assertEquals(currentPush.get(), latestTopic);
+    verify(mockParentAdmin, atLeast(1)).getOffLinePushStatus(clusterName, latestTopic);
+
+    // UNKNOWN in a region triggers retries; once the overall status is terminal (COMPLETED) the parent
+    // stops blocking and allows the next push (returns empty).
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.UNKNOWN.toString());
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
+  }
+
+  private Store inProgressStore(String storeName, VersionStatus status) {
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl version = new VersionImpl(storeName, 1, "test_push_id");
+    version.setStatus(status);
+    store.addVersion(version);
+    return store;
   }
 
   @Test

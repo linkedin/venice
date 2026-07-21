@@ -1490,22 +1490,23 @@ public class VeniceParentHelixAdmin implements Admin {
       return Optional.empty();
     }
 
-    // Terminal statuses for the latest version mean there is no in-flight push to wait on, so
-    // the next push may proceed:
-    // - KILLED / ERROR: failed/aborted push, version not serving.
-    // - ROLLED_BACK: operator rolled back to a previous version; this version is preserved by
-    // the rolled-back retention window, enforced separately by
-    // checkRollbackOriginVersionCapacityForNewPush.
-    // - PARTIALLY_ONLINE: parent-only terminal state from a region-filtered rollback (some
-    // regions rolled back, some didn't); same retention window applies via the same guard.
-    // Non-terminal statuses fall through to the polling branch below to wait on the in-flight push.
+    // Terminal statuses for the latest version — no in-flight push to wait on, so the next push may
+    // proceed:
+    // - KILLED / ERROR: failed/aborted push, not serving.
+    // - ROLLED_BACK / PARTIALLY_ONLINE: rollback (PARTIALLY_ONLINE = region-filtered); the
+    // rolled-back retention window is enforced separately by checkRollbackOriginVersionCapacityForNewPush.
+    // - ONLINE: push already completed; any pending deferred-swap roll-forward is orchestrated by
+    // DeferredVersionSwapService and a subsequent push simply supersedes it. Keys off ZK version
+    // status alone (not the parent VT, which may never exist under PARENT_VERSION_STATUS_ONLY).
+    // Non-terminal statuses fall through to the polling branch below.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
       case ROLLED_BACK:
       case PARTIALLY_ONLINE:
+      case ONLINE:
         LOGGER.info(
-            "Store {} version {} is in terminal status {} (no ongoing push); allowing the next push to proceed",
+            "Store {} version {} is in status {} (no ongoing push); allowing the next push to proceed",
             storeName,
             lastVersionNum,
             lastVersion.getStatus());
@@ -1520,8 +1521,6 @@ public class VeniceParentHelixAdmin implements Admin {
         storeName,
         lastVersionNum);
     Optional<String> latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
-    boolean onlyDeferredSwap =
-        lastVersion.isVersionSwapDeferred() && StringUtils.isEmpty(lastVersion.getTargetSwapRegion());
 
     if ((lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
         || lastVersion.getStatus() == CREATED)) {
@@ -1530,12 +1529,6 @@ public class VeniceParentHelixAdmin implements Admin {
           lastVersionNum,
           storeName);
       return latestTopic;
-    } else if (onlyDeferredSwap && lastVersion.getStatus() == ONLINE) {
-      // for only deferred swap, users need to rollforward to mark it current for online status
-      boolean validateChildCurrentVersions = validateChildCurrentVersions(clusterName, storeName, lastVersionNum);
-      if (!validateChildCurrentVersions) {
-        return latestTopic;
-      }
     }
 
     /**
@@ -1788,17 +1781,11 @@ public class VeniceParentHelixAdmin implements Admin {
             ErrorType.BAD_REQUEST);
       }
 
-      // Block the push on the parent if any rollback-origin version (ROLLED_BACK, or rollback-origin
-      // PARTIALLY_ONLINE on the parent) is still within its retention window. The same check runs on
-      // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
-      // job synchronously instead of only failing the child admin-consumption asynchronously.
+      // Block on the parent if a child still has a ROLLED_BACK version within retention, or backup
+      // versions pending deletion within the min cleanup delay — verified from LIVE child status,
+      // not stale parent metadata. See the method javadoc for rationale.
       if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
-        VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-            clusterName,
-            storeName,
-            store,
-            getMultiClusterConfigs().getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
-            System.currentTimeMillis());
+        checkNewPushCapacityFromChildren(clusterName, storeName);
       }
     }
 
@@ -2441,6 +2428,94 @@ public class VeniceParentHelixAdmin implements Admin {
     // admin operations during the exponential-backoff polling of child regions.
     if (rolledBackVersionNum != NON_EXISTING_VERSION) {
       updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
+    }
+  }
+
+  /**
+   * Parent-only push-start gate: for each reachable child region, fetch its LIVE {@code StoreInfo}
+   * once and apply both capacity guards — rollback-origin retention and backup-version cleanup
+   * delay — to that single snapshot. We use live child status, not parent metadata, which can go
+   * stale and either falsely block or falsely allow. It runs only on the parent: a throw during
+   * child admin-message consumption ({@code VeniceHelixAdmin.addVersion}) would wedge the admin
+   * channel.
+   *
+   * <p>Rollback matches {@code ROLLED_BACK} only: a per-region rollback is binary, so a child is
+   * never rollback-{@code PARTIALLY_ONLINE} (that is a parent-only aggregate); a child
+   * {@code PARTIALLY_ONLINE} is a degraded-mode forward push and must not block. A partial rollback
+   * is still caught because its rolled-back region reports {@code ROLLED_BACK}.
+   *
+   * <p>Unreachable/errored/malformed regions are skipped (and logged); with no reachable child that
+   * violates either guard the push is allowed. A genuine violation throws to reject the push.
+   */
+  void checkNewPushCapacityFromChildren(String clusterName, String storeName) {
+    long rolledBackVersionRetentionMs =
+        getMultiClusterConfigs().getControllerConfig(clusterName).getRolledBackVersionRetentionMs();
+    int minNumberOfStoreVersionsToPreserve = getMultiClusterConfigs().getMinNumberOfStoreVersionsToPreserve();
+    long minBackupVersionCleanupDelayMs =
+        getMultiClusterConfigs().getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
+    long currentTimeMs = System.currentTimeMillis();
+
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClients.isEmpty()) {
+      // No children to verify against; parent metadata can be stale, so skip rather than block.
+      LOGGER.warn(
+          "No child controller clients for cluster {}; skipping new-push capacity checks for store {}",
+          clusterName,
+          storeName);
+      return;
+    }
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      StoreResponse storeResponse;
+      try {
+        storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Could not get store {} from region {} for new-push capacity checks; skipping region",
+            storeName,
+            region,
+            e);
+        continue;
+      }
+      if (storeResponse == null || storeResponse.isError()) {
+        LOGGER.warn(
+            "Could not get store {} from region {} for new-push capacity checks ({}); skipping region",
+            storeName,
+            region,
+            storeResponse == null ? "null response" : storeResponse.getError());
+        continue;
+      }
+      StoreInfo childStore = storeResponse.getStore();
+      if (childStore == null || childStore.getVersions() == null) {
+        // StoreInfo defaults versions to null; treat a missing snapshot like any other bad response.
+        LOGGER.warn(
+            "Missing store/version payload for {} from region {} during new-push capacity checks; skipping region",
+            storeName,
+            region);
+        continue;
+      }
+      VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
+          clusterName,
+          storeName,
+          region,
+          childStore.getVersions(),
+          childStore.getCurrentVersion(),
+          childStore.getLatestVersionPromoteToCurrentTimestamp(),
+          rolledBackVersionRetentionMs,
+          currentTimeMs);
+      VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
+          clusterName,
+          storeName,
+          region,
+          childStore.getVersions(),
+          childStore.getCurrentVersion(),
+          childStore.getNumVersionsToPreserve(),
+          childStore.isMigrating(),
+          childStore.getBackupStrategy(),
+          minNumberOfStoreVersionsToPreserve,
+          childStore.getLatestVersionPromoteToCurrentTimestamp(),
+          minBackupVersionCleanupDelayMs,
+          currentTimeMs);
     }
   }
 

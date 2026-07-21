@@ -3047,25 +3047,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return new Pair<>(false, null);
           }
 
-          // Block the push if backup versions are pending deletion but still within the min cleanup delay.
-          VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-              clusterName,
-              storeName,
-              store,
-              store.getBackupStrategy(),
-              minNumberOfStoreVersionsToPreserve,
-              multiClusterConfigs.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs(),
-              System.currentTimeMillis());
-
-          // Block the push if any rollback-origin version (ROLLED_BACK, or rollback-origin
-          // PARTIALLY_ONLINE on the parent) is still within its retention window. Gives fat clients time
-          // to switch to the new version.
-          VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
-              clusterName,
-              storeName,
-              store,
-              multiClusterConfigs.getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
-              System.currentTimeMillis());
           backupStrategy = store.getBackupStrategy();
           offlinePushStrategy = store.getOffLinePushStrategy();
 
