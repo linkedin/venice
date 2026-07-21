@@ -44,6 +44,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -135,6 +136,82 @@ public class RocksDBStoragePartitionTest {
     if (file.exists() && !file.delete()) {
       throw new VeniceException("Failed to remove path: " + path);
     }
+  }
+
+  @Test
+  public void testOpenDatabaseWithReplicationMetadataColumnFamily() throws RocksDBException {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, 0);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory =
+        new RocksDBStorageEngineFactory(new VeniceServerConfig(veniceServerProperties));
+
+    byte[] key = "key".getBytes(StandardCharsets.UTF_8);
+    byte[] value = "value".getBytes(StandardCharsets.UTF_8);
+    ReplicationMetadataRocksDBStoragePartition serverPartition = new ReplicationMetadataRocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+    serverPartition.putWithReplicationMetadata(key, value, "replication-metadata".getBytes(StandardCharsets.UTF_8));
+    serverPartition.close();
+
+    RocksDBStoragePartition daVinciPartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+    Assert.assertEquals(daVinciPartition.get(key), value);
+    Assert.assertEquals(daVinciPartition.getColumnFamilyHandleList().size(), 2);
+    Assert.assertEquals(
+        daVinciPartition.getColumnFamilyHandleList().get(1).getName(),
+        RocksDBStoragePartition.REPLICATION_METADATA_COLUMN_FAMILY);
+
+    daVinciPartition.drop();
+    removeDir(storeDir);
+  }
+
+  @Test
+  public void testRejectDatabaseWithUnknownColumnFamily() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, 0);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory =
+        new RocksDBStorageEngineFactory(new VeniceServerConfig(veniceServerProperties));
+    byte[] unknownColumnFamily = "unknown".getBytes(StandardCharsets.UTF_8);
+
+    RocksDBStoragePartition sourcePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, unknownColumnFamily));
+    sourcePartition.close();
+
+    VeniceException exception = Assert.expectThrows(
+        VeniceException.class,
+        () -> new RocksDBStoragePartition(
+            partitionConfig,
+            factory,
+            DATA_BASE_DIR,
+            null,
+            ROCKSDB_THROTTLER,
+            rocksDBServerConfig));
+    Assert.assertTrue(exception.getMessage().contains("Unsupported RocksDB column family"));
+    Assert.assertTrue(exception.getMessage().contains("unknown"));
+
+    sourcePartition.drop();
+    removeDir(storeDir);
   }
 
   @Test

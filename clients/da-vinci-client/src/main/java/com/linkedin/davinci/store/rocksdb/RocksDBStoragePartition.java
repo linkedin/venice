@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -191,6 +192,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.storeVersion = Version.parseVersionFromVersionTopicPartition(storeNameAndVersion);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.replicaId = Utils.getReplicaId(storagePartitionConfig.getStoreName(), partitionId);
+    this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeNameAndVersion, partitionId);
+    List<byte[]> columnFamilyNamesToOpen = getColumnFamilyNamesToOpen(columnFamilyNameList);
     this.aggStatistics = factory.getAggStatistics();
 
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
@@ -219,11 +222,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
          */
         .setBackgroundPurgeOnIteratorCleanup(true);
 
-    // For multiple column family enable atomic flush
-    if (columnFamilyNameList.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
-      options.setAtomicFlush(true);
-    }
-
     if (options.tableFormatConfig() instanceof PlainTableConfig) {
       this.deferredWrite = false;
     } else {
@@ -235,7 +233,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.readWriteLeaderForDefaultCF = storagePartitionConfig.isReadWriteLeaderForDefaultCF();
     this.readWriteLeaderForRMDCF = storagePartitionConfig.isReadWriteLeaderForRMDCF();
     this.blobDbEnabled = storagePartitionConfig.getBlobDbEnabled();
-    this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeNameAndVersion, partitionId);
     this.options = options;
     /**
      * TODO: check whether we should tune any config with {@link EnvOptions}.
@@ -248,6 +245,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeNameAndVersion, partitionId);
     this.fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId);
+
+    if (columnFamilyNamesToOpen.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
+      options.setAtomicFlush(true);
+    }
 
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
@@ -266,7 +267,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * may be applied if we are sure replicationMetadata column family is smaller in size.
      */
     ColumnFamilyOptions columnFamilyOptions;
-    for (byte[] name: columnFamilyNameList) {
+    for (byte[] name: columnFamilyNamesToOpen) {
       if (name == REPLICATION_METADATA_COLUMN_FAMILY && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
         columnFamilyOptions = new ColumnFamilyOptions(getStoreOptions(storagePartitionConfig, true));
       } else {
@@ -303,6 +304,54 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         replicaId,
         this.readOnly ? "read-only" : "read-write",
         this.deferredWrite ? "deferred write" : "non-deferred write");
+  }
+
+  private List<byte[]> getColumnFamilyNamesToOpen(List<byte[]> configuredColumnFamilyNames) {
+    if (!new File(fullPathForPartitionDB, "CURRENT").exists()) {
+      return configuredColumnFamilyNames;
+    }
+
+    List<byte[]> existingColumnFamilyNames;
+    try (Options columnFamilyListingOptions = new Options().setEnv(factory.getEnv())) {
+      existingColumnFamilyNames = RocksDB.listColumnFamilies(columnFamilyListingOptions, fullPathForPartitionDB);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to list RocksDB column families for replica: " + replicaId, e);
+    }
+
+    boolean hasDefaultColumnFamily = false;
+    boolean hasReplicationMetadataColumnFamily = false;
+    for (byte[] columnFamilyName: existingColumnFamilyNames) {
+      if (Arrays.equals(columnFamilyName, RocksDB.DEFAULT_COLUMN_FAMILY)) {
+        hasDefaultColumnFamily = true;
+      } else if (Arrays.equals(columnFamilyName, REPLICATION_METADATA_COLUMN_FAMILY)) {
+        hasReplicationMetadataColumnFamily = true;
+      } else {
+        throw new VeniceException(
+            "Unsupported RocksDB column family for replica " + replicaId + ": "
+                + new String(columnFamilyName, StandardCharsets.UTF_8));
+      }
+    }
+
+    if (!hasDefaultColumnFamily) {
+      throw new VeniceException("RocksDB default column family is missing for replica: " + replicaId);
+    }
+    if (!hasReplicationMetadataColumnFamily
+        || containsColumnFamily(configuredColumnFamilyNames, REPLICATION_METADATA_COLUMN_FAMILY)) {
+      return configuredColumnFamilyNames;
+    }
+
+    List<byte[]> columnFamilyNamesToOpen = new ArrayList<>(configuredColumnFamilyNames);
+    columnFamilyNamesToOpen.add(REPLICATION_METADATA_COLUMN_FAMILY);
+    return columnFamilyNamesToOpen;
+  }
+
+  private boolean containsColumnFamily(List<byte[]> columnFamilyNames, byte[] expectedColumnFamilyName) {
+    for (byte[] columnFamilyName: columnFamilyNames) {
+      if (Arrays.equals(columnFamilyName, expectedColumnFamilyName)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public RocksDBStoragePartition(
