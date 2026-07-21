@@ -246,6 +246,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeNameAndVersion, partitionId);
     this.fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId);
 
+    // For multiple column family enable atomic flush
     if (columnFamilyNamesToOpen.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
       options.setAtomicFlush(true);
     }
