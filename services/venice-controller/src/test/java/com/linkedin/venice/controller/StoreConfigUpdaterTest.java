@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENCRYPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
@@ -657,6 +658,37 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     // 24 distinct ifPresent/conditional branches above (added encryptionEnabled). Allow some
     // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
     verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  @Test
+  public void testApplyOnChildStoreMigrationSkipsEncryptionValidation() {
+    String storeName = Utils.getUniqueString("migration-encryption");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    StoreConfigUpdater.applyOnChild(
+        admin,
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setStoreMigration(true).setEncryptionEnabled(true));
+
+    verify(admin).setStoreMigration(clusterName, storeName, true);
+  }
+
+  @Test
+  public void testApplyOnParentStoreMigrationSkipsEncryptionValidation() {
+    String storeName = Utils.getUniqueString("migration-encryption");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setStoreMigration(true).setEncryptionEnabled(true));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertTrue(message.encryptionEnabled);
+    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals));
   }
 
   /**

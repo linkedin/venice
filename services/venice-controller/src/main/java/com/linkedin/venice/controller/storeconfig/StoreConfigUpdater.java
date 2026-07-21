@@ -218,13 +218,15 @@ public final class StoreConfigUpdater {
     }
 
     Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
-    encryptionEnabled.ifPresent(
-        aBoolean -> validateEncryptionEnabledUpdate(
-            originalStore,
-            admin.getHelixVeniceClusterResources(clusterName).getConfig().isEncryptionCluster(),
-            aBoolean,
-            clusterName,
-            storeName));
+    if (!params.getStoreMigration().orElse(false)) {
+      encryptionEnabled.ifPresent(
+          aBoolean -> validateEncryptionEnabledUpdate(
+              originalStore,
+              admin.getHelixVeniceClusterResources(clusterName).getConfig().isEncryptionCluster(),
+              aBoolean,
+              clusterName,
+              storeName));
+    }
 
     if (originalStore.isHybrid() && !admin.getMultiClusterConfigs()
         .getControllerConfig(clusterName)
@@ -991,13 +993,15 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    encryptionEnabled.ifPresent(
-        aBoolean -> validateEncryptionEnabledUpdate(
-            currStore,
-            admin.getControllerConfig(clusterName).isEncryptionCluster(),
-            aBoolean,
-            clusterName,
-            storeName));
+    if (!storeMigration.orElse(false)) {
+      encryptionEnabled.ifPresent(
+          aBoolean -> validateEncryptionEnabledUpdate(
+              currStore,
+              admin.getControllerConfig(clusterName).isEncryptionCluster(),
+              aBoolean,
+              clusterName,
+              storeName));
+    }
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
