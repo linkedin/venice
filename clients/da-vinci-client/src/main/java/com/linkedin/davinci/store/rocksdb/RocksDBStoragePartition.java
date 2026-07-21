@@ -319,23 +319,17 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException("Failed to list RocksDB column families for replica: " + replicaId, e);
     }
 
-    boolean hasDefaultColumnFamily = false;
     boolean hasReplicationMetadataColumnFamily = false;
     for (byte[] columnFamilyName: existingColumnFamilyNames) {
-      if (Arrays.equals(columnFamilyName, RocksDB.DEFAULT_COLUMN_FAMILY)) {
-        hasDefaultColumnFamily = true;
-      } else if (Arrays.equals(columnFamilyName, REPLICATION_METADATA_COLUMN_FAMILY)) {
+      if (Arrays.equals(columnFamilyName, REPLICATION_METADATA_COLUMN_FAMILY)) {
         hasReplicationMetadataColumnFamily = true;
-      } else {
+      } else if (!Arrays.equals(columnFamilyName, RocksDB.DEFAULT_COLUMN_FAMILY)) {
         throw new VeniceException(
             "Unsupported RocksDB column family for replica " + replicaId + ": "
                 + new String(columnFamilyName, StandardCharsets.UTF_8));
       }
     }
 
-    if (!hasDefaultColumnFamily) {
-      throw new VeniceException("RocksDB default column family is missing for replica: " + replicaId);
-    }
     if (!hasReplicationMetadataColumnFamily
         || containsColumnFamily(configuredColumnFamilyNames, REPLICATION_METADATA_COLUMN_FAMILY)) {
       return configuredColumnFamilyNames;
