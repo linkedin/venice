@@ -136,16 +136,15 @@ def discover_test_classes(repo_root: str) -> set[str]:
             has_test = bool(re.search(r"@Test\b", content))
             is_abstract = bool(re.search(r"\babstract\s+class\b", content))
 
-            # Extract parent class from "class Foo extends ParentClass"
+            # Extract parent class from "class Foo extends ParentClass".
+            # Search the whole file rather than line by line so that a long class
+            # declaration whose `extends` clause wraps onto the following line is
+            # still detected (otherwise such a subclass is treated as having no
+            # test methods in its chain and silently falls into the catch-all shard).
             parent_simple = None
-            for line in content.splitlines():
-                parent_match = re.search(
-                    r"\bclass\s+\w+\s+extends\s+(\w+)",
-                    line,
-                )
-                if parent_match:
-                    parent_simple = parent_match.group(1)
-                    break
+            parent_match = re.search(r"\bclass\s+\w+\s+extends\s+(\w+)", content)
+            if parent_match:
+                parent_simple = parent_match.group(1)
 
             class_info[class_name] = {
                 "has_test": has_test,
