@@ -7,6 +7,7 @@ import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -66,36 +67,55 @@ public final class VersionLifecyclePolicy {
 
   /**
    * Throws if starting a new push would exceed the store's version budget because existing backup
-   * versions are pending deletion but still within the min cleanup delay (e.g., after a rollback).
-   * Preserve count is {@code N-1} for {@code DELETE_ON_NEW_PUSH_START}, {@code N} otherwise.
-   * Clamps to 1 because {@link Store#retrieveVersionsToDelete(int)} rejects values below 1.
+   * versions are pending deletion but still within the min cleanup delay (e.g. after a killed push).
+   * Preserve count is {@code N-1} for {@code DELETE_ON_NEW_PUSH_START}, {@code N} otherwise, clamped
+   * to 1 because {@link AbstractStore#computeVersionsToDelete} rejects values below 1.
+   *
+   * <p>The parent drives this from LIVE child snapshots (see
+   * {@code VeniceParentHelixAdmin.checkBackupVersionCleanupCapacityFromChildren}), not its own
+   * metadata which can go stale. It runs only on the parent — a throw during child admin-message
+   * consumption ({@code VeniceHelixAdmin.addVersion}) would wedge the admin channel.
+   *
+   * <p>Takes raw fields so callers can pass a child {@code StoreInfo} (not a {@link Store}) directly.
+   * {@code regionName} enriches the rejection message; pass {@code null} to omit it.
    */
   public static void checkBackupVersionCleanupCapacityForNewPush(
       String clusterName,
       String storeName,
-      Store store,
+      String regionName,
+      List<Version> versions,
+      int currentVersion,
+      int storeNumVersionsToPreserve,
+      boolean isMigrating,
       BackupStrategy backupStrategy,
       int minNumberOfStoreVersionsToPreserve,
+      long latestVersionPromoteToCurrentTimestamp,
       long minBackupVersionCleanupDelay,
       long currentTimeMs) {
-    int numVersionToPreserve = Math.max(
+    int clusterNumVersionsToPreserve = Math.max(
         1,
         backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
             ? minNumberOfStoreVersionsToPreserve - 1
             : minNumberOfStoreVersionsToPreserve);
-    List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
+    List<Version> versionsToDelete = AbstractStore.computeVersionsToDelete(
+        versions,
+        currentVersion,
+        clusterNumVersionsToPreserve,
+        storeNumVersionsToPreserve,
+        isMigrating);
     if (versionsToDelete.isEmpty()) {
       return;
     }
-    long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
+    long minRetentionThreshold = latestVersionPromoteToCurrentTimestamp + minBackupVersionCleanupDelay;
     if (currentTimeMs <= minRetentionThreshold) {
       throw new VeniceException(
           String.format(
-              "Cannot start new push for store %s in cluster %s: %d backup version(s) pending deletion "
+              "Cannot start new push for store %s in cluster %s%s: %d backup version(s) pending deletion "
                   + "but still within min cleanup delay (%dms) of latest version promotion. "
                   + "Retry after min delay has elapsed.",
               storeName,
               clusterName,
+              regionName == null ? "" : " (region " + regionName + ")",
               versionsToDelete.size(),
               minBackupVersionCleanupDelay));
     }

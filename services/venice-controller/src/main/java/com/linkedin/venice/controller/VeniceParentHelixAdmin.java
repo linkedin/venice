@@ -1781,10 +1781,12 @@ public class VeniceParentHelixAdmin implements Admin {
             ErrorType.BAD_REQUEST);
       }
 
-      // Block on the parent if a child still has a ROLLED_BACK version within retention (verified
-      // from LIVE child status, not stale parent metadata). See the method javadoc for rationale.
+      // Block on the parent if a child still has a ROLLED_BACK version within retention, or backup
+      // versions pending deletion within the min cleanup delay — verified from LIVE child status,
+      // not stale parent metadata. See each method's javadoc for rationale.
       if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
         checkRollbackOriginVersionCapacityFromChildren(clusterName, storeName);
+        checkBackupVersionCleanupCapacityFromChildren(clusterName, storeName);
       }
     }
 
@@ -2486,6 +2488,64 @@ public class VeniceParentHelixAdmin implements Admin {
           childStore.getCurrentVersion(),
           childStore.getLatestVersionPromoteToCurrentTimestamp(),
           rolledBackVersionRetentionMs,
+          currentTimeMs);
+    }
+  }
+
+  /**
+   * Blocks a new push if any reachable child region still has backup versions pending deletion but
+   * within the min cleanup delay, using LIVE child status. Mirrors
+   * {@link #checkRollbackOriginVersionCapacityFromChildren} — it runs once per new-push start on the
+   * parent only, because a throw during child admin-message consumption
+   * ({@code VeniceHelixAdmin.addVersion}) would wedge the admin channel. Unreachable/errored regions
+   * are skipped (and logged).
+   */
+  void checkBackupVersionCleanupCapacityFromChildren(String clusterName, String storeName) {
+    int minNumberOfStoreVersionsToPreserve = getMultiClusterConfigs().getMinNumberOfStoreVersionsToPreserve();
+    long minBackupVersionCleanupDelayMs =
+        getMultiClusterConfigs().getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
+    long currentTimeMs = System.currentTimeMillis();
+
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClients.isEmpty()) {
+      // No children to verify against; parent metadata can be stale, so skip rather than block.
+      LOGGER.warn(
+          "No child controller clients for cluster {}; skipping backup-version cleanup check for store {}",
+          clusterName,
+          storeName);
+      return;
+    }
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      StoreResponse storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      if (storeResponse == null || storeResponse.isError()) {
+        LOGGER.warn(
+            "Could not get store {} from region {} for backup-version cleanup check ({}); skipping region",
+            storeName,
+            region,
+            storeResponse == null ? "null response" : storeResponse.getError());
+        continue;
+      }
+      StoreInfo childStore = storeResponse.getStore();
+      if (childStore == null) {
+        LOGGER.warn(
+            "Null store payload for {} from region {} during backup-version cleanup check; skipping region",
+            storeName,
+            region);
+        continue;
+      }
+      VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
+          clusterName,
+          storeName,
+          region,
+          childStore.getVersions(),
+          childStore.getCurrentVersion(),
+          childStore.getNumVersionsToPreserve(),
+          childStore.isMigrating(),
+          childStore.getBackupStrategy(),
+          minNumberOfStoreVersionsToPreserve,
+          childStore.getLatestVersionPromoteToCurrentTimestamp(),
+          minBackupVersionCleanupDelayMs,
           currentTimeMs);
     }
   }

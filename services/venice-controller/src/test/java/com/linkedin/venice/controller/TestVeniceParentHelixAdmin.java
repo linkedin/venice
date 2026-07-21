@@ -2836,6 +2836,105 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
   }
 
+  @Test
+  public void checkBackupCleanupFromChildrenBlocksWhenChildHasPendingBackupWithinDelay() {
+    String store = "backup_from_children_block";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+
+    // Child dc-0 still has a KILLED backup pending deletion, promoted just now -> parent must block.
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", childClient(backupPendingStore(store)));
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    assertThrows(
+        VeniceException.class,
+        () -> mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store));
+  }
+
+  @Test
+  public void checkBackupCleanupFromChildrenAllowsWhenChildrenHaveNoPendingBackup() {
+    String store = "backup_from_children_allow";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", childClient(noBackupPendingStore(store)));
+    map.put("dc-1", childClient(noBackupPendingStore(store)));
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — no child has a backup pending deletion.
+    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
+  public void checkBackupCleanupFromChildrenSkipsErroredRegion() {
+    String store = "backup_from_children_error";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+
+    ControllerClient errorClient = mock(ControllerClient.class);
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("Simulated error fetching store for backup-version cleanup check.");
+    doReturn(errorResponse).when(errorClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", errorClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — the errored region is skipped.
+    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
+  public void checkBackupCleanupFromChildrenSkipsWhenNoChildClients() {
+    String store = "backup_from_children_no_clients";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+    doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — no children to verify against.
+    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+  }
+
+  private void mockBackupCleanupConfig(VeniceParentHelixAdmin admin, int minVersions, long cleanupDelayMs) {
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(cleanupDelayMs).when(clusterConfig).getBackupVersionMinCleanupDelayMs();
+    VeniceControllerMultiClusterConfig multiConfig = mock(VeniceControllerMultiClusterConfig.class);
+    doReturn(clusterConfig).when(multiConfig).getControllerConfig(anyString());
+    doReturn(minVersions).when(multiConfig).getMinNumberOfStoreVersionsToPreserve();
+    doReturn(multiConfig).when(admin).getMultiClusterConfigs();
+  }
+
+  private static Store backupPendingStore(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push1"));
+    store.addVersion(new VersionImpl(storeName, 2, "push2"));
+    // v1 KILLED is always pending deletion (canDelete); v2 was just promoted -> within cleanup delay.
+    store.updateVersionStatus(1, VersionStatus.KILLED);
+    store.updateVersionStatus(2, VersionStatus.ONLINE);
+    store.setCurrentVersion(2);
+    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    return store;
+  }
+
+  private static Store noBackupPendingStore(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push1"));
+    // Only the current version exists, so nothing is pending deletion.
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.setCurrentVersion(1);
+    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    return store;
+  }
+
   private void mockRolledBackRetentionConfig(VeniceParentHelixAdmin admin, long retentionMs) {
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(retentionMs).when(clusterConfig).getRolledBackVersionRetentionMs();

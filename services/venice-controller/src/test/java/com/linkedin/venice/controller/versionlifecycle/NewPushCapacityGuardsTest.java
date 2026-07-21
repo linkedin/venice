@@ -8,10 +8,6 @@ import static com.linkedin.venice.controller.versionlifecycle.VersionLifecycleTe
 import static com.linkedin.venice.controller.versionlifecycle.VersionLifecycleTestSupport.mockStoreWithPromoteTimestamp;
 import static com.linkedin.venice.controller.versionlifecycle.VersionLifecycleTestSupport.mockStoreWithVersions;
 import static com.linkedin.venice.controller.versionlifecycle.VersionLifecycleTestSupport.mockVersion;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -19,10 +15,8 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -34,85 +28,54 @@ import org.testng.annotations.Test;
  */
 public class NewPushCapacityGuardsTest {
   // ---------- checkBackupVersionCleanupCapacityForNewPush ----------
-  @Test
-  public void deleteOnNewPushStartUsesNMinusOnePreserveCountAndPassesWhenNoVersionsPending() {
-    // DELETE_ON_NEW_PUSH_START: after SOP cleanup we expect only current + new push.
-    // Preserve count passed to retrieveVersionsToDelete should be N-1 (= 1).
-    Store store = mock(Store.class);
-    doReturn(Collections.emptyList()).when(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
 
+  // Unpacks a Store snapshot into the field overload, as the parent does for a child StoreInfo.
+  private static void checkBackupCleanup(
+      Store store,
+      BackupStrategy backupStrategy,
+      int minVersionsToPreserve,
+      long minCleanupDelayMs,
+      long currentTimeMs) {
     VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
         CLUSTER_NAME,
         STORE_NAME,
+        null,
+        store.getVersions(),
+        store.getCurrentVersion(),
+        store.getNumVersionsToPreserve(),
+        store.isMigrating(),
+        backupStrategy,
+        minVersionsToPreserve,
+        store.getLatestVersionPromoteToCurrentTimestamp(),
+        minCleanupDelayMs,
+        currentTimeMs);
+  }
+
+  @Test
+  public void backupCleanupPassesWhenNoDeletableVersions() {
+    // Only the current version exists, so nothing is pending deletion regardless of the delay.
+    Store store = mockStoreWithVersions(2, /* promotedMsAgo */ 0, mockVersion(2, VersionStatus.ONLINE));
+    checkBackupCleanup(
         store,
         BackupStrategy.DELETE_ON_NEW_PUSH_START,
         MIN_VERSIONS_TO_PRESERVE,
         MIN_CLEANUP_DELAY_MS,
         System.currentTimeMillis());
-
-    verify(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
-    verify(store, never()).getLatestVersionPromoteToCurrentTimestamp();
   }
 
   @Test
-  public void keepMinVersionsUsesNPreserveCountAndPassesWhenNoVersionsPending() {
-    // KEEP_MIN_VERSIONS: preserve N at steady state, N+1 during push.
-    // Preserve count passed to retrieveVersionsToDelete should be N (= 2), not N-1.
-    Store store = mock(Store.class);
-    doReturn(Collections.emptyList()).when(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE);
-
-    VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-        CLUSTER_NAME,
-        STORE_NAME,
-        store,
-        BackupStrategy.KEEP_MIN_VERSIONS,
-        MIN_VERSIONS_TO_PRESERVE,
-        MIN_CLEANUP_DELAY_MS,
-        System.currentTimeMillis());
-
-    verify(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE);
-    verify(store, never()).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
-    verify(store, never()).getLatestVersionPromoteToCurrentTimestamp();
-  }
-
-  @Test
-  public void backupCleanupPassesWhenPastMinCleanupDelayEvenWithPendingVersions() {
-    Store store = mock(Store.class);
-    Version pendingVersion = mock(Version.class);
-    doReturn(Collections.singletonList(pendingVersion)).when(store)
-        .retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
+  public void deleteOnNewPushStartBlocksWhenKilledBackupWithinMinCleanupDelay() {
+    // v1 KILLED is pending deletion (canDelete) and v2 was just promoted, so the push is blocked.
     long now = System.currentTimeMillis();
-    long promotionTime = now - MIN_CLEANUP_DELAY_MS - 1;
-    doReturn(promotionTime).when(store).getLatestVersionPromoteToCurrentTimestamp();
-
-    VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-        CLUSTER_NAME,
-        STORE_NAME,
-        store,
-        BackupStrategy.DELETE_ON_NEW_PUSH_START,
-        MIN_VERSIONS_TO_PRESERVE,
-        MIN_CLEANUP_DELAY_MS,
-        now);
-
-    verify(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
-    verify(store).getLatestVersionPromoteToCurrentTimestamp();
-  }
-
-  @Test
-  public void deleteOnNewPushStartBlocksPushWhenWithinMinCleanupDelay() {
-    // Rollback scenario: versions pending AND promotion was 30min ago (< 1h min delay).
-    Store store = mock(Store.class);
-    Version pendingVersion = mock(Version.class);
-    doReturn(Collections.singletonList(pendingVersion)).when(store)
-        .retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
-    long now = System.currentTimeMillis();
-    doReturn(now - TimeUnit.MINUTES.toMillis(30)).when(store).getLatestVersionPromoteToCurrentTimestamp();
+    Store store = mockStoreWithVersions(
+        2,
+        /* promotedMsAgo */ TimeUnit.MINUTES.toMillis(30),
+        mockVersion(1, VersionStatus.KILLED),
+        mockVersion(2, VersionStatus.ONLINE));
 
     VeniceException e = expectThrows(
         VeniceException.class,
-        () -> VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-            CLUSTER_NAME,
-            STORE_NAME,
+        () -> checkBackupCleanup(
             store,
             BackupStrategy.DELETE_ON_NEW_PUSH_START,
             MIN_VERSIONS_TO_PRESERVE,
@@ -120,55 +83,44 @@ public class NewPushCapacityGuardsTest {
             now));
     assertTrue(e.getMessage().contains(STORE_NAME), "Error should include store name: " + e.getMessage());
     assertTrue(e.getMessage().contains(CLUSTER_NAME), "Error should include cluster name: " + e.getMessage());
-    // Anchor on "1 backup version(s)" to avoid matching the digit 1 that could appear elsewhere in the message.
+    assertTrue(e.getMessage().contains("1 backup version(s)"), "Error should include pending count: " + e.getMessage());
+    assertTrue(e.getMessage().contains("pending deletion"), "Error should mention pending deletion: " + e.getMessage());
     assertTrue(
-        e.getMessage().contains("1 backup version(s)"),
-        "Error should include pending version count: " + e.getMessage());
+        e.getMessage().contains("min cleanup delay"),
+        "Error should mention min cleanup delay: " + e.getMessage());
     assertTrue(
         e.getMessage().contains(String.valueOf(MIN_CLEANUP_DELAY_MS)),
         "Error should include the min cleanup delay value: " + e.getMessage());
   }
 
   @Test
-  public void keepMinVersionsBlocksPushWhenWithinMinCleanupDelay() {
-    Store store = mock(Store.class);
-    Version v1 = mock(Version.class);
-    Version v2 = mock(Version.class);
-    doReturn(Arrays.asList(v1, v2)).when(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE);
+  public void backupCleanupPassesWhenPastMinCleanupDelayEvenWithPendingVersions() {
     long now = System.currentTimeMillis();
-    doReturn(now - TimeUnit.MINUTES.toMillis(30)).when(store).getLatestVersionPromoteToCurrentTimestamp();
-
-    VeniceException e = expectThrows(
-        VeniceException.class,
-        () -> VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-            CLUSTER_NAME,
-            STORE_NAME,
-            store,
-            BackupStrategy.KEEP_MIN_VERSIONS,
-            MIN_VERSIONS_TO_PRESERVE,
-            MIN_CLEANUP_DELAY_MS,
-            now));
-    assertTrue(e.getMessage().contains(STORE_NAME));
-    assertTrue(
-        e.getMessage().contains("2 backup version(s)"),
-        "Error should report the 2 pending versions: " + e.getMessage());
+    Store store = mockStoreWithPromoteTimestamp(
+        2,
+        now - MIN_CLEANUP_DELAY_MS - 1,
+        mockVersion(1, VersionStatus.KILLED),
+        mockVersion(2, VersionStatus.ONLINE));
+    checkBackupCleanup(
+        store,
+        BackupStrategy.DELETE_ON_NEW_PUSH_START,
+        MIN_VERSIONS_TO_PRESERVE,
+        MIN_CLEANUP_DELAY_MS,
+        now);
   }
 
   @Test
   public void backupCleanupBlocksExactlyAtMinCleanupDelayBoundary() {
-    // At the boundary (currentTime == promotionTime + minDelay), the check is <= so it blocks.
-    Store store = mock(Store.class);
-    Version pendingVersion = mock(Version.class);
-    doReturn(Collections.singletonList(pendingVersion)).when(store)
-        .retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
+    // At the boundary (currentTime == promotionTime + minDelay) the check is <=, so it blocks.
     long now = System.currentTimeMillis();
-    doReturn(now - MIN_CLEANUP_DELAY_MS).when(store).getLatestVersionPromoteToCurrentTimestamp();
-
+    Store store = mockStoreWithPromoteTimestamp(
+        2,
+        now - MIN_CLEANUP_DELAY_MS,
+        mockVersion(1, VersionStatus.KILLED),
+        mockVersion(2, VersionStatus.ONLINE));
     assertThrows(
         VeniceException.class,
-        () -> VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-            CLUSTER_NAME,
-            STORE_NAME,
+        () -> checkBackupCleanup(
             store,
             BackupStrategy.DELETE_ON_NEW_PUSH_START,
             MIN_VERSIONS_TO_PRESERVE,
@@ -177,51 +129,77 @@ public class NewPushCapacityGuardsTest {
   }
 
   @Test
-  public void backupCleanupJustPastBoundaryAllowsPush() {
-    Store store = mock(Store.class);
-    Version pendingVersion = mock(Version.class);
-    doReturn(Collections.singletonList(pendingVersion)).when(store)
-        .retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
+  public void preserveCountDiffersBetweenBackupStrategies() {
+    // An ONLINE backup (v1) below current (v2), just promoted. DELETE_ON_NEW_PUSH_START preserves
+    // N-1 (= 1: just the current), so v1 is deletable -> blocked. KEEP_MIN_VERSIONS preserves N
+    // (= 2), so v1 is kept -> allowed.
     long now = System.currentTimeMillis();
-    doReturn(now - MIN_CLEANUP_DELAY_MS - 1).when(store).getLatestVersionPromoteToCurrentTimestamp();
+    Store store = mockStoreWithVersions(
+        2,
+        /* promotedMsAgo */ TimeUnit.MINUTES.toMillis(30),
+        mockVersion(1, VersionStatus.ONLINE),
+        mockVersion(2, VersionStatus.ONLINE));
 
-    VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-        CLUSTER_NAME,
-        STORE_NAME,
-        store,
-        BackupStrategy.DELETE_ON_NEW_PUSH_START,
-        MIN_VERSIONS_TO_PRESERVE,
-        MIN_CLEANUP_DELAY_MS,
-        now);
-    verify(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
-    verify(store).getLatestVersionPromoteToCurrentTimestamp();
+    assertThrows(
+        VeniceException.class,
+        () -> checkBackupCleanup(
+            store,
+            BackupStrategy.DELETE_ON_NEW_PUSH_START,
+            MIN_VERSIONS_TO_PRESERVE,
+            MIN_CLEANUP_DELAY_MS,
+            now));
+    checkBackupCleanup(store, BackupStrategy.KEEP_MIN_VERSIONS, MIN_VERSIONS_TO_PRESERVE, MIN_CLEANUP_DELAY_MS, now);
   }
 
   @Test
   public void deleteOnNewPushStartClampsPreserveCountToAtLeastOneWhenMinIsOne() {
-    // If cluster config sets minNumberOfStoreVersionsToPreserve == 1, the DELETE_ON_NEW_PUSH_START branch
-    // would compute N-1 = 0, which Store.retrieveVersionsToDelete rejects with IllegalArgumentException.
-    // Verify the check clamps to 1 so the push path doesn't break.
-    Store store = mock(Store.class);
-    doReturn(Collections.emptyList()).when(store).retrieveVersionsToDelete(1);
+    // min == 1 would compute N-1 = 0, which computeVersionsToDelete rejects with
+    // IllegalArgumentException. The clamp to 1 keeps it a normal VeniceException capacity block.
+    long now = System.currentTimeMillis();
+    Store store = mockStoreWithVersions(
+        2,
+        /* promotedMsAgo */ TimeUnit.MINUTES.toMillis(30),
+        mockVersion(1, VersionStatus.ONLINE),
+        mockVersion(2, VersionStatus.ONLINE));
+    assertThrows(
+        VeniceException.class,
+        () -> checkBackupCleanup(
+            store,
+            BackupStrategy.DELETE_ON_NEW_PUSH_START,
+            /* min */ 1,
+            MIN_CLEANUP_DELAY_MS,
+            now));
+  }
 
-    VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
-        CLUSTER_NAME,
-        STORE_NAME,
-        store,
-        BackupStrategy.DELETE_ON_NEW_PUSH_START,
-        1, // cluster config edge case
-        MIN_CLEANUP_DELAY_MS,
-        System.currentTimeMillis());
-
-    verify(store).retrieveVersionsToDelete(1);
-    verify(store, never()).retrieveVersionsToDelete(0);
+  @Test
+  public void backupCleanupIncludesRegionNameInMessage() {
+    long now = System.currentTimeMillis();
+    Store store = mockStoreWithVersions(
+        2,
+        /* promotedMsAgo */ TimeUnit.MINUTES.toMillis(30),
+        mockVersion(1, VersionStatus.KILLED),
+        mockVersion(2, VersionStatus.ONLINE));
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
+            CLUSTER_NAME,
+            STORE_NAME,
+            "dc-1",
+            store.getVersions(),
+            store.getCurrentVersion(),
+            store.getNumVersionsToPreserve(),
+            store.isMigrating(),
+            BackupStrategy.DELETE_ON_NEW_PUSH_START,
+            MIN_VERSIONS_TO_PRESERVE,
+            store.getLatestVersionPromoteToCurrentTimestamp(),
+            MIN_CLEANUP_DELAY_MS,
+            now));
+    assertTrue(e.getMessage().contains("region dc-1"), "Error should include region name: " + e.getMessage());
   }
 
   // ---------- checkRollbackOriginVersionCapacityForNewPush ----------
 
-  // Repoints the Store-based scenarios at the field overload (the only surviving signature),
-  // unpacking the Store snapshot exactly as the parent does for a child StoreInfo.
+  // Unpacks a Store snapshot into the field overload, as the parent does for a child StoreInfo.
   private static void checkRollbackOrigin(Store store, long rolledBackVersionRetentionMs, long currentTimeMs) {
     VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
         CLUSTER_NAME,
