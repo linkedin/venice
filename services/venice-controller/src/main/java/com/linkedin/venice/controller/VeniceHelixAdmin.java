@@ -1791,6 +1791,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
+    StoreMigrationHelper.validateEncryptionClusterMigration(
+        getControllerConfig(srcClusterName).isEncryptionCluster(),
+        getControllerConfig(destClusterName).isEncryptionCluster(),
+        srcClusterName,
+        destClusterName,
+        storeName);
+
     // Get original store properties
     StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
     if (srcStore == null) {

@@ -4407,6 +4407,13 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
+    StoreMigrationHelper.validateEncryptionClusterMigration(
+        getControllerConfig(srcClusterName).isEncryptionCluster(),
+        getControllerConfig(destClusterName).isEncryptionCluster(),
+        srcClusterName,
+        destClusterName,
+        storeName);
+
     MigrateStore migrateStore = (MigrateStore) AdminMessageType.MIGRATE_STORE.getNewInstance();
     migrateStore.srcClusterName = srcClusterName;
     migrateStore.destClusterName = destClusterName;

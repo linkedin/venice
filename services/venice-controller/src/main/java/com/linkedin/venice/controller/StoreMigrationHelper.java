@@ -23,6 +23,19 @@ final class StoreMigrationHelper {
   private StoreMigrationHelper() {
   }
 
+  static void validateEncryptionClusterMigration(
+      boolean srcEncryptionCluster,
+      boolean destEncryptionCluster,
+      String srcClusterName,
+      String destClusterName,
+      String storeName) {
+    if (srcEncryptionCluster || destEncryptionCluster) {
+      throw new VeniceException(
+          "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
+              + " because migration from or to an encryption cluster is not allowed.");
+    }
+  }
+
   static void cloneDestinationStoreAndSyncConfigs(
       ControllerClient destControllerClient,
       StoreInfo srcStore,

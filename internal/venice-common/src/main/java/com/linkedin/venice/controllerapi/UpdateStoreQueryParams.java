@@ -184,6 +184,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
             .setCompactionEnabled(srcStore.isCompactionEnabled())
             .setCompactionThresholdMilliseconds(srcStore.getCompactionThreshold())
+            .setEncryptionEnabled(srcStore.isEncryptionEnabled())
             .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
@@ -207,13 +208,24 @@ public class UpdateStoreQueryParams extends QueryParams {
                                                             // bootstrap in dest cluster
           .setStoreMigration(true)
           .setMigrationDuplicateStore(true); // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
+    } else {
       // Replication factor is intentionally NOT carried over during cross-cluster migration: the destination
       // cluster's createNewStore has already applied its own default RF, and the destination cluster's
       // topology (e.g. number of Helix fault zones / groups under HELIX_ASSISTED_ROUTING, which requires
       // RF = num_groups) may require a different RF than the source cluster.
-    } else {
-      updateStoreQueryParams.setReplicationFactor(srcStore.getReplicationFactor())
-          .setEncryptionEnabled(srcStore.isEncryptionEnabled());
+      updateStoreQueryParams.setReplicationFactor(srcStore.getReplicationFactor()); // EncryptionEnabled is
+                                                                                    // intentionally carried over during
+                                                                                    // cross-cluster migration, because
+                                                                                    // the destination cluster's
+                                                                                    // createNewStore has already
+                                                                                    // applied its own default
+                                                                                    // encryptionEnabled, and the
+                                                                                    // destination cluster's policy
+                                                                                    // (e.g. whether the destination
+                                                                                    // cluster is an encryption cluster)
+                                                                                    // may require a different
+                                                                                    // encryptionEnabled than the source
+                                                                                    // cluster.
     }
 
     ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
