@@ -624,6 +624,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   public void testApplyOnChild_ChildOnlyMetadataFields_TriggerStoreMetadataUpdates() {
     String storeName = Utils.getUniqueString("child-meta-sweep");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
+    doReturn(true).when(clusterConfig).isEncryptionCluster();
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageMode(StorageMode.INTERNAL)
         .setExternalStorageReadMode(ExternalStorageReadMode.VENICE_ONLY)

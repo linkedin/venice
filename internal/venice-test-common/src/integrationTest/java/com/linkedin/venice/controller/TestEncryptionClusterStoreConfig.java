@@ -22,10 +22,8 @@ import org.testng.annotations.Test;
 
 /**
  * Verifies encryption-cluster ({@code cluster.encryption.enabled=true}) store behavior: a newly
- * created store defaults to {@code encryptionEnabled=true} (via {@code configureNewStore}), but the
- * flag is overridable — an explicit update-store request to disable it is honored. Migration-driven
- * enforcement (forcing encryption on stores cloned into an encryption cluster) is covered separately
- * by {@code StoreMigrationHelperTest}.
+ * created store defaults to {@code encryptionEnabled=true} (via {@code configureNewStore}), and
+ * encryption cannot be disabled once enabled.
  */
 public class TestEncryptionClusterStoreConfig {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
@@ -58,7 +56,7 @@ public class TestEncryptionClusterStoreConfig {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testEncryptionDefaultedOnCreateAndOverridableOnUpdate() {
+  public void testEncryptionDefaultedOnCreateAndCannotBeDisabled() {
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
       String storeName = Utils.getUniqueString("encryption-cluster-store");
@@ -72,16 +70,16 @@ public class TestEncryptionClusterStoreConfig {
           storeResponse.getStore().isEncryptionEnabled(),
           "A newly created store in an encryption cluster must default to encryptionEnabled=true");
 
-      // Encryption is overridable: an explicit request to disable it must be honored.
+      // Encryption cannot be disabled once enabled: the update-store request must be rejected.
       ControllerResponse updateResponse =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
-      Assert.assertFalse(updateResponse.isError(), "Update store should succeed: " + updateResponse.getError());
+      Assert.assertTrue(updateResponse.isError(), "Disabling encryption in an encryption cluster must be rejected");
 
       StoreResponse storeAfterUpdate = controllerClient.getStore(storeName);
       Assert.assertFalse(storeAfterUpdate.isError());
-      Assert.assertFalse(
+      Assert.assertTrue(
           storeAfterUpdate.getStore().isEncryptionEnabled(),
-          "encryptionEnabled must be overridable: disabling it via update-store should take effect");
+          "encryptionEnabled must remain true after a rejected attempt to disable it");
     }
   }
 }

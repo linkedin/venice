@@ -740,14 +740,20 @@ public class VeniceParentHelixAdminSchemaTest {
   }
 
   private void testUpdateEncryptionEnabled(ControllerClient parentClient, ControllerClient childClient) {
-    final boolean expectedEncryptionEnabled = true;
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
-      params.setEncryptionEnabled(expectedEncryptionEnabled);
-    };
-    Consumer<StoreResponse> responseConsumer = response -> {
-      Assert.assertEquals(response.getStore().isEncryptionEnabled(), expectedEncryptionEnabled);
-    };
-    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+    String storeName = Utils.getUniqueString("test_store");
+    NewStoreResponse newStoreResponse =
+        parentClient.createNewStore(storeName, "test_owner", "\"long\"", generateSchema(false).toString());
+    Assert.assertFalse(newStoreResponse.isError(), newStoreResponse.getError());
+
+    ControllerResponse updateResponse =
+        parentClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
+    Assert.assertTrue(updateResponse.isError());
+
+    Assert.assertFalse(parentClient.getStore(storeName).getStore().isEncryptionEnabled());
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert.assertFalse(childClient.getStore(storeName).getStore().isEncryptionEnabled()));
   }
 
   private void testUpdateEnumSchemaEvolution(ControllerClient parentClient, ControllerClient childClient) {

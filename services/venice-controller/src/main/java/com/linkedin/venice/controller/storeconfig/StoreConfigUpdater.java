@@ -217,6 +217,15 @@ public final class StoreConfigUpdater {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
 
+    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
+    encryptionEnabled.ifPresent(
+        aBoolean -> validateEncryptionEnabledUpdate(
+            originalStore,
+            admin.getHelixVeniceClusterResources(clusterName).getConfig().isEncryptionCluster(),
+            aBoolean,
+            clusterName,
+            storeName));
+
     if (originalStore.isHybrid() && !admin.getMultiClusterConfigs()
         .getControllerConfig(clusterName)
         .isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled()) {
@@ -286,7 +295,6 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThresholdMilliseconds = params.getCompactionThresholdMilliseconds();
-    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -855,6 +863,39 @@ public final class StoreConfigUpdater {
   }
 
   /**
+   * Encryption enable/disable policy:
+   * <ul>
+   *   <li>Once a store has encryption enabled, it cannot be disabled.</li>
+   *   <li>Encryption can only be enabled for a store that lives in an encryption cluster.</li>
+   * </ul>
+   * System stores are exempt.
+   */
+  static void validateEncryptionEnabledUpdate(
+      Store currStore,
+      boolean isEncryptionCluster,
+      boolean requestedEncryptionEnabled,
+      String clusterName,
+      String storeName) {
+    if (currStore.isSystemStore()) {
+      return;
+    }
+    if (!requestedEncryptionEnabled && currStore.isEncryptionEnabled()) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "Cannot disable encryption for store " + storeName + " in cluster " + clusterName
+              + " once it has been enabled.",
+          ErrorType.BAD_REQUEST);
+    }
+    if (requestedEncryptionEnabled && !isEncryptionCluster) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "Cannot enable encryption for store " + storeName + " because cluster " + clusterName
+              + " is not an encryption cluster.",
+          ErrorType.BAD_REQUEST);
+    }
+  }
+
+  /**
    * Parent-side update-store: builds an UPDATE_STORE admin message that gets written to the admin
    * channel for child controllers to consume. Lifted from the body inside
    * {@code VeniceParentHelixAdmin.updateStore}'s {@code acquireAdminMessageLock} try-finally; the
@@ -950,6 +991,13 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
+    encryptionEnabled.ifPresent(
+        aBoolean -> validateEncryptionEnabledUpdate(
+            currStore,
+            admin.getControllerConfig(clusterName).isEncryptionCluster(),
+            aBoolean,
+            clusterName,
+            storeName));
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
