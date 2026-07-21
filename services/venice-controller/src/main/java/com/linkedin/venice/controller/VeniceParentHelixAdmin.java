@@ -2463,7 +2463,17 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
-      StoreResponse storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      StoreResponse storeResponse;
+      try {
+        storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Could not get store {} from region {} for rollback-origin retention check; skipping region",
+            storeName,
+            region,
+            e);
+        continue;
+      }
       if (storeResponse == null || storeResponse.isError()) {
         LOGGER.warn(
             "Could not get store {} from region {} for rollback-origin retention check ({}); skipping region",
@@ -2517,7 +2527,17 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
-      StoreResponse storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      StoreResponse storeResponse;
+      try {
+        storeResponse = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Could not get store {} from region {} for backup-version cleanup check; skipping region",
+            storeName,
+            region,
+            e);
+        continue;
+      }
       if (storeResponse == null || storeResponse.isError()) {
         LOGGER.warn(
             "Could not get store {} from region {} for backup-version cleanup check ({}); skipping region",

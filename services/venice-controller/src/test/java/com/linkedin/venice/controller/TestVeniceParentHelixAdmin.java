@@ -2837,6 +2837,26 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void checkRollbackOriginFromChildrenSkipsRegionWhenGetStoreThrows() {
+    // ControllerClient#getStore can throw (e.g. VeniceHttpException/leader-discovery); a throw must
+    // be treated as a skipped region, not abort push-start.
+    String store = "rb_from_children_throws";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockRolledBackRetentionConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24));
+    doCallRealMethod().when(mockParentAdmin).checkRollbackOriginVersionCapacityFromChildren(any(), any());
+
+    ControllerClient throwingClient = mock(ControllerClient.class);
+    doThrow(new VeniceException("Simulated getStore failure")).when(throwingClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", throwingClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — the region is skipped.
+    mockParentAdmin.checkRollbackOriginVersionCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
   public void checkBackupCleanupFromChildrenBlocksWhenChildHasPendingBackupWithinDelay() {
     String store = "backup_from_children_block";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
@@ -2901,6 +2921,25 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new HashMap<String, ControllerClient>()).when(internalAdmin).getControllerClientMap(anyString());
 
     // Should not throw — no children to verify against.
+    mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
+  }
+
+  @Test
+  public void checkBackupCleanupFromChildrenSkipsRegionWhenGetStoreThrows() {
+    // Same contract as the rollback gate: a getStore throw is a skipped region, not a push abort.
+    String store = "backup_from_children_throws";
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockBackupCleanupConfig(mockParentAdmin, 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkBackupVersionCleanupCapacityFromChildren(any(), any());
+
+    ControllerClient throwingClient = mock(ControllerClient.class);
+    doThrow(new VeniceException("Simulated getStore failure")).when(throwingClient).getStore(anyString(), anyInt());
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", throwingClient);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+
+    // Should not throw — the region is skipped.
     mockParentAdmin.checkBackupVersionCleanupCapacityFromChildren(clusterName, store);
   }
 
