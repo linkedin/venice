@@ -5,6 +5,7 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INIT
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INTERVAL_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -45,7 +46,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       Optional<Properties> sslProperties) {
     Validate.notNull(controllerClient);
     final String heartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
-    int retryAttempts = properties.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 3);
+    int retryAttempts = properties.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS);
     StoreResponse heartBeatStoreResponse =
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getStore(heartbeatStoreName));
     if (heartBeatStoreResponse.isError()) {
