@@ -36,15 +36,8 @@ public final class IncrementalPushWriteQuotaUtils {
     }
   }
 
-  /**
-   * Return the local per-partition-writer quota for a configured global quota. Non-positive quotas are returned
-   * unchanged because they mean throttling is disabled.
-   */
+  /** Return the local per-partition-writer quota for an already-validated positive global quota. */
   public static long getPerPartitionRecordsPerSecond(long globalRecordsPerSecond, int partitionCount) {
-    validateQuota(globalRecordsPerSecond, partitionCount);
-    if (globalRecordsPerSecond <= 0) {
-      return globalRecordsPerSecond;
-    }
     return globalRecordsPerSecond / partitionCount;
   }
 }

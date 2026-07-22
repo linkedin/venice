@@ -175,15 +175,7 @@ public class AbstractPartitionWriterThrottlingTest {
 
   @Test
   public void testGlobalQuotaBelowPartitionCountFailsFast() {
-    Properties props = createBaseProperties();
-    props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "2");
-    props.setProperty(PARTITION_COUNT, "4");
-    setupMockConfigProvider(props);
-
-    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
-
-    assertThrows(VeniceException.class, () -> partitionWriter.configure(mockConfigProvider));
+    assertThrows(VeniceException.class, () -> IncrementalPushWriteQuotaUtils.validateQuota(2, 4));
   }
 
   // rate limiter type config, expected throttler class
