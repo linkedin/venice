@@ -85,8 +85,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
       Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
   private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE);
+  private static final Set<VersionStatus> ABANDONED_VERSION_STATUSES =
+      Utils.setOf(ERROR, PARTIALLY_ONLINE, VersionStatus.ROLLED_BACK);
   private Cache<String, Long> storeWaitTimeCacheForSequentialRollout =
       Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
+  private final Cache<String, Boolean> terminalVersionReconciliationCache =
+      Caffeine.newBuilder().maximumSize(100_000).expireAfterWrite(1, TimeUnit.DAYS).build();
   private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 1 * Time.MS_PER_SECOND;
   private static final int LOG_LATENCY_THRESHOLD = 5 * Time.MS_PER_SECOND;
   private final Map<String, ThreadPoolExecutor> clusterToExecutorMap = new ConcurrentHashMap<>();
@@ -421,6 +425,20 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           logMessageIfNotRedundant(message);
           return true;
         }
+        break;
+      case ERROR:
+      case PARTIALLY_ONLINE:
+      case ROLLED_BACK:
+        String reconciliationKey = getVersionProcessingKey(clusterName, storeName, targetVersionNum);
+        if (terminalVersionReconciliationCache.getIfPresent(reconciliationKey) == null
+            && reconcileAbandonedVersionInChildRegions(
+                clusterName,
+                storeName,
+                targetVersionNum,
+                targetVersion.getStatus())) {
+          terminalVersionReconciliationCache.put(reconciliationKey, true);
+        }
+        return false;
     }
 
     logMessageIfNotRedundant(
@@ -899,7 +917,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return v + 1;
     });
 
-    if (attemptedRetries == MAX_ROLL_FORWARD_RETRY_LIMIT) {
+    if (attemptedRetries >= MAX_ROLL_FORWARD_RETRY_LIMIT) {
       deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardMetric(clusterName, parentStore.getName());
       updateStore(clusterName, parentStore.getName(), PARTIALLY_ONLINE, targetVersionNum);
       failedRollforwardRetryCountMap.remove(kafkaTopicName);
@@ -948,6 +966,55 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     storesBeingProcessed.remove(kafkaTopicName);
   }
 
+  private static String getVersionProcessingKey(String clusterName, String storeName, int versionNumber) {
+    return clusterName + ":" + Version.composeKafkaTopic(storeName, versionNumber);
+  }
+
+  private static boolean isAbandonedDeferredVersion(Version version) {
+    return version != null && version.isVersionSwapDeferred() && ABANDONED_VERSION_STATUSES.contains(version.getStatus());
+  }
+
+  private void submitTerminalVersionReconciliationTasks(
+      String clusterName,
+      Store parentStore,
+      ThreadPoolExecutor clusterExecutorService) {
+    for (Version version: parentStore.getVersions()) {
+      if (!isAbandonedDeferredVersion(version)) {
+        continue;
+      }
+
+      int versionNumber = version.getNumber();
+      VersionStatus parentStatus = version.getStatus();
+      String processingKey = getVersionProcessingKey(clusterName, parentStore.getName(), versionNumber);
+      if (terminalVersionReconciliationCache.getIfPresent(processingKey) != null
+          || !tryStartProcessingStore(processingKey)) {
+        continue;
+      }
+
+      clusterExecutorService.submit(() -> {
+        try {
+          if (reconcileAbandonedVersionInChildRegions(
+              clusterName,
+              parentStore.getName(),
+              versionNumber,
+              parentStatus)) {
+            terminalVersionReconciliationCache.put(processingKey, true);
+          }
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Caught exception while reconciling terminal version: {} for store: {} in cluster: {}",
+              versionNumber,
+              parentStore.getName(),
+              clusterName,
+              e);
+          deferredVersionSwapStats.recordDeferredVersionSwapExceptionMetric(clusterName);
+        } finally {
+          finishProcessingStore(processingKey);
+        }
+      });
+    }
+  }
+
   private Runnable getRunnableForDeferredVersionSwap() {
     return () -> {
       LogContext.setLogContext(veniceControllerMultiClusterConfig.getLogContext());
@@ -982,6 +1049,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           // Filter out stores that aren't doing a target region push w/ deferred swap
           List<Store> eligibleStoresToProcess = new ArrayList<>();
           for (Store parentStore: parentStores) {
+            submitTerminalVersionReconciliationTasks(cluster, parentStore, clusterExecutorService);
+            Version latestVersion = parentStore.getVersion(parentStore.getLargestUsedVersionNumber());
+            if (isAbandonedDeferredVersion(latestVersion)) {
+              continue;
+            }
             if (!isTargetRegionPushWithDeferredSwapEnabled(parentStore)) {
               continue;
             }
@@ -994,9 +1066,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             Version targetVersion = parentStore.getVersion(parentStore.getLargestUsedVersionNumber());
 
             // Check if store is already being processed
-            String kafkaTopicName =
-                Version.composeKafkaTopic(parentStore.getName(), parentStore.getLargestUsedVersionNumber());
-            if (!tryStartProcessingStore(kafkaTopicName)) {
+            String processingKey =
+                getVersionProcessingKey(cluster, parentStore.getName(), parentStore.getLargestUsedVersionNumber());
+            if (!tryStartProcessingStore(processingKey)) {
               String message = "Skipping store " + parentStore.getName() + " as it's already being processed";
               logMessageIfNotRedundant(message);
               continue;
@@ -1015,8 +1087,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 } else {
                   performParallelRollForward(cluster, parentStore, childControllerClientMap, targetVersion);
                 }
+              } catch (Exception e) {
+                LOGGER.warn(
+                    "Caught exception while processing deferred version swap for store: {} in cluster: {}",
+                    parentStore.getName(),
+                    cluster,
+                    e);
+                deferredVersionSwapStats.recordDeferredVersionSwapExceptionMetric(cluster);
               } finally {
-                finishProcessingStore(Version.composeKafkaTopic(parentStore.getName(), targetVersion.getNumber()));
+                finishProcessingStore(
+                    getVersionProcessingKey(cluster, parentStore.getName(), targetVersion.getNumber()));
               }
             });
           }
@@ -1251,34 +1331,103 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   public void updateStore(String clusterName, String storeName, VersionStatus status, int targetVersionNum) {
     HelixVeniceClusterResources resources =
         veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
-    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-      Store store = repository.getStore(storeName);
-      LOGGER.info(
-          "Updating store: {} version: {} from status {} to status {}",
-          storeName,
-          targetVersionNum,
-          store.getVersionStatus(targetVersionNum),
-          status);
-      store.updateVersionStatus(targetVersionNum, status);
-      if (status == ONLINE || status == PARTIALLY_ONLINE) {
-        store.setCurrentVersion(targetVersionNum);
+    try {
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store store = repository.getStore(storeName);
+        LOGGER.info(
+            "Updating store: {} version: {} from status {} to status {}",
+            storeName,
+            targetVersionNum,
+            store.getVersionStatus(targetVersionNum),
+            status);
+        store.updateVersionStatus(targetVersionNum, status);
+        if (status == ONLINE || status == PARTIALLY_ONLINE) {
+          store.setCurrentVersion(targetVersionNum);
 
-        // For jobs that stop polling early or for pushes that don't poll (empty push), we need to truncate the parent
-        // VT here to unblock the next push
-        String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-        ConcurrentPushDetectionStrategy strategy =
-            veniceControllerMultiClusterConfig.getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
-        // skip truncating if the topic was not created based on ConcurrentPushDetectionStrategy
-        if (strategy.isTopicWriteNeeded() && !veniceParentHelixAdmin.isTopicTruncated(kafkaTopicName)) {
-          LOGGER.info("Truncating parent VT for {}", kafkaTopicName);
-          veniceParentHelixAdmin.truncateKafkaTopic(Version.composeKafkaTopic(storeName, targetVersionNum));
+          // For jobs that stop polling early or for pushes that don't poll (empty push), we need to truncate the parent
+          // VT here to unblock the next push
+          String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
+          ConcurrentPushDetectionStrategy strategy =
+              veniceControllerMultiClusterConfig.getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
+          // skip truncating if the topic was not created based on ConcurrentPushDetectionStrategy
+          if (strategy.isTopicWriteNeeded() && !veniceParentHelixAdmin.isTopicTruncated(kafkaTopicName)) {
+            LOGGER.info("Truncating parent VT for {}", kafkaTopicName);
+            veniceParentHelixAdmin.truncateKafkaTopic(Version.composeKafkaTopic(storeName, targetVersionNum));
+          }
+        }
+        repository.updateStore(store);
+      }
+
+      if (status == ERROR || status == PARTIALLY_ONLINE || status == VersionStatus.ROLLED_BACK) {
+        String reconciliationKey = getVersionProcessingKey(clusterName, storeName, targetVersionNum);
+        if (reconcileAbandonedVersionInChildRegions(clusterName, storeName, targetVersionNum, status)) {
+          terminalVersionReconciliationCache.put(reconciliationKey, true);
         }
       }
-      repository.updateStore(store);
     } catch (Exception e) {
       LOGGER.warn("Failed to execute updateStore for store: {} in cluster: {}", storeName, clusterName, e);
     }
+  }
+
+  private boolean reconcileAbandonedVersionInChildRegions(
+      String clusterName,
+      String storeName,
+      int targetVersionNum,
+      VersionStatus parentStatus) {
+    Map<String, ControllerClient> controllerClientMap =
+        veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClientMap == null || controllerClientMap.isEmpty()) {
+      throw new VeniceException(
+          "Cannot reconcile abandoned version " + targetVersionNum + " for store " + storeName + " in cluster "
+              + clusterName + ": no child regions are configured");
+    }
+
+    Set<String> regionsToReconcile = new HashSet<>();
+    boolean allRegionsTerminal = true;
+    for (String region: controllerClientMap.keySet()) {
+      StoreResponse storeResponse = getStoreForRegion(clusterName, region, storeName);
+      if (storeResponse == null || storeResponse.getStore() == null) {
+        allRegionsTerminal = false;
+        continue;
+      }
+
+      StoreInfo childStore = storeResponse.getStore();
+      Version childVersion =
+          getVersionFromStoreInRegion(region, storeName, targetVersionNum, storeResponse);
+      if (childVersion == null) {
+        allRegionsTerminal = false;
+        continue;
+      }
+      if (VersionStatus.isVersionRolledBack(childVersion.getStatus())
+          || VersionStatus.canDelete(childVersion.getStatus())) {
+        continue;
+      }
+      if (childStore.getCurrentVersion() == targetVersionNum) {
+        if (parentStatus != PARTIALLY_ONLINE) {
+          allRegionsTerminal = false;
+        }
+        continue;
+      }
+
+      if (VersionStatus.isBootstrapCompleted(childVersion.getStatus())) {
+        regionsToReconcile.add(region);
+      } else {
+        allRegionsTerminal = false;
+      }
+    }
+
+    if (!regionsToReconcile.isEmpty()) {
+      String regionsFilter = RegionUtils.composeRegionList(regionsToReconcile);
+      veniceParentHelixAdmin.markVersionRolledBack(clusterName, storeName, targetVersionNum, regionsFilter);
+      LOGGER.info(
+          "Reconciled version: {} for store: {} as ROLLED_BACK in child regions: {} after parent status: {}",
+          targetVersionNum,
+          storeName,
+          regionsFilter,
+          parentStatus);
+    }
+    return allRegionsTerminal;
   }
 
   private void markTargetRegionPromoted(String clusterName, String storeName, int targetVersionNum) {

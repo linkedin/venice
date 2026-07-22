@@ -4,10 +4,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyDouble;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -39,6 +42,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -48,8 +52,11 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -438,6 +445,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify error recording was called due to the failure
       verify(store, atLeastOnce()).updateVersionStatus(2, VersionStatus.PARTIALLY_ONLINE);
+      verify(admin, atLeastOnce()).markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), anyString());
       verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName, region3);
       verify(admin, never()).truncateKafkaTopic(anyString());
     });
@@ -511,6 +519,317 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Verify error was not recorded since this is an expected validation failure
     verify(stats, never()).recordDeferredVersionSwapExceptionMetric(anyString());
+  }
+
+  /**
+   * When post-version-swap validation returns ROLLBACK, the target region(s) are rolled back and
+   * bootstrap-complete non-current child copies are reconciled. A child that still reports the failed
+   * version as current remains protected and keeps the reconciliation retriable.
+   */
+  @Test
+  public void testSequentialRolloutPostSwapValidationRollbackMarksNonTargetRegions() throws Exception {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+
+    // Lifecycle hook that returns ROLLBACK during post-version-swap validation.
+    List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
+    Map<String, String> params = new HashMap<>();
+    params.put("outcome", StoreVersionLifecycleEventOutcome.ROLLBACK.toString());
+    lifecycleHooks.add(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), params));
+    doReturn(lifecycleHooks).when(store).getStoreLifecycleHooks();
+
+    // Wire the hooks cache to instantiate the mock hook.
+    StoreLifecycleHooksCache hooksCache = mock(StoreLifecycleHooksCache.class);
+    doReturn(new MockStoreLifecycleHooks(new VeniceProperties(new Properties()))).when(hooksCache)
+        .getOrInstantiateHook(MockStoreLifecycleHooks.class.getName());
+    doReturn(hooksCache).when(veniceHelixAdmin).getStoreLifecycleHooksCache();
+
+    List<Store> storeList = new ArrayList<>();
+    storeList.add(store);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version versionOneImpl = new VersionImpl(storeName, versionOne);
+    Version versionTwoImpl = new VersionImpl(storeName, versionTwo);
+    versionTwoImpl.setStatus(VersionStatus.PUSHED);
+    List<Version> versionList = new ArrayList<>();
+    versionList.add(versionOneImpl);
+    versionList.add(versionTwoImpl);
+    StoreResponse storeResponse = getStoreResponse(versionList);
+
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      doReturn(storeResponse).when(entry.getValue()).getStore(anyString(), anyInt());
+    }
+
+    doReturn(store).when(repository).getStore(storeName);
+
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    Admin.OfflinePushStatusInfo completedPush = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+    doReturn(completedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.startInner();
+
+    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      // Target region (region1, the prior rolled-forward region) is rolled back.
+      verify(admin, atLeastOnce()).rollbackToBackupVersion(clusterName, storeName, region1);
+      // Non-current child regions reconcile the abandoned version.
+      verify(admin, atLeastOnce())
+          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
+      // No roll forward should happen for region2 after a ROLLBACK.
+      verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName, region2);
+    });
+
+    Set<String> reconciledRegions = new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(",")));
+    Assert.assertEquals(reconciledRegions, new HashSet<>(Arrays.asList(region2, region3)));
+  }
+
+  @DataProvider(name = "abandonedParentStatuses")
+  public Object[][] abandonedParentStatuses() {
+    return new Object[][] {
+        { VersionStatus.ERROR },
+        { VersionStatus.PARTIALLY_ONLINE },
+        { VersionStatus.ROLLED_BACK } };
+  }
+
+  @Test(dataProvider = "abandonedParentStatuses")
+  public void testAbandonedParentStatusReconcilesEligibleChildren(VersionStatus parentStatus) {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+    doReturn(store).when(repository).getStore(storeName);
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(clusterConfig)
+        .getConcurrentPushDetectionStrategy();
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.updateStore(clusterName, storeName, parentStatus, versionTwo);
+
+    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
+    InOrder inOrder = inOrder(admin, store);
+    inOrder.verify(store).updateVersionStatus(versionTwo, parentStatus);
+    inOrder.verify(admin)
+        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
+    Assert.assertEquals(
+        new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(","))),
+        new HashSet<>(Arrays.asList(region2, region3)));
+  }
+
+  @Test
+  public void testAbandonedParentStatusPersistsWhenChildReconciliationFails() {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+    doReturn(store).when(repository).getStore(storeName);
+    doThrow(new VeniceException("child reconciliation failed")).when(admin)
+        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), anyString());
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.updateStore(clusterName, storeName, VersionStatus.ERROR, versionTwo);
+
+    verify(store).updateVersionStatus(versionTwo, VersionStatus.ERROR);
+    verify(admin).markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), anyString());
+  }
+
+  @Test
+  public void testTerminalParentStatusRepairsStrandedChildVersions() throws Exception {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+    Version targetVersion = store.getVersion(versionTwo);
+    doReturn(VersionStatus.ERROR).when(targetVersion).getStatus();
+    doReturn(VersionStatus.ERROR).when(store).getVersionStatus(versionTwo);
+    doReturn(Arrays.asList(targetVersion)).when(store).getVersions();
+    doReturn(Arrays.asList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.startInner();
+
+    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> verify(admin, atLeastOnce())
+        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture()));
+    Assert.assertEquals(
+        new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(","))),
+        new HashSet<>(Arrays.asList(region2, region3)));
+  }
+
+  @Test
+  public void testTerminalParentStatusRetriesUntilInProgressChildCompletes() throws Exception {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+    Version targetVersion = store.getVersion(versionTwo);
+    doReturn(VersionStatus.ERROR).when(targetVersion).getStatus();
+    doReturn(VersionStatus.ERROR).when(store).getVersionStatus(versionTwo);
+    doReturn(Arrays.asList(targetVersion)).when(store).getVersions();
+    doReturn(Arrays.asList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version startedVersion = new VersionImpl(storeName, versionTwo);
+    startedVersion.setStatus(VersionStatus.STARTED);
+    Version pushedVersion = new VersionImpl(storeName, versionTwo);
+    pushedVersion.setStatus(VersionStatus.PUSHED);
+    Store regionStore = mockRegionalStore(versionOne, versionTwo, storeName);
+    StoreInfo startedStoreInfo = StoreInfo.fromStore(regionStore);
+    startedStoreInfo.setVersions(Arrays.asList(startedVersion));
+    StoreResponse startedResponse = new StoreResponse();
+    startedResponse.setStore(startedStoreInfo);
+    StoreInfo pushedStoreInfo = StoreInfo.fromStore(regionStore);
+    pushedStoreInfo.setVersions(Arrays.asList(pushedVersion));
+    StoreResponse pushedResponse = new StoreResponse();
+    pushedResponse.setStore(pushedStoreInfo);
+
+    Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+    doReturn(startedResponse, pushedResponse).when(childControllers.get(region2))
+        .getStore(storeName, controllerTimeout);
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.startInner();
+
+    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(childControllers.get(region2), atLeastOnce()).getStore(storeName, controllerTimeout);
+      verify(admin, atLeastOnce())
+          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
+      Assert.assertTrue(
+          regionFilterCaptor.getAllValues()
+              .stream()
+              .map(filter -> new HashSet<>(Arrays.asList(filter.split(","))))
+              .anyMatch(regions -> regions.contains(region2)));
+    });
+  }
+
+  @Test
+  public void testTerminalParentStatusRetriesWhenChildVersionAppearsLater() throws Exception {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+    Version targetVersion = store.getVersion(versionTwo);
+    doReturn(VersionStatus.ERROR).when(targetVersion).getStatus();
+    doReturn(VersionStatus.ERROR).when(store).getVersionStatus(versionTwo);
+    doReturn(Arrays.asList(targetVersion)).when(store).getVersions();
+    doReturn(Arrays.asList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Store regionStore = mockRegionalStore(versionOne, versionTwo, storeName);
+    StoreInfo missingStoreInfo = StoreInfo.fromStore(regionStore);
+    missingStoreInfo.setVersions(Collections.emptyList());
+    StoreResponse missingResponse = new StoreResponse();
+    missingResponse.setStore(missingStoreInfo);
+    Version pushedVersion = new VersionImpl(storeName, versionTwo);
+    pushedVersion.setStatus(VersionStatus.PUSHED);
+    StoreInfo pushedStoreInfo = StoreInfo.fromStore(regionStore);
+    pushedStoreInfo.setVersions(Arrays.asList(pushedVersion));
+    StoreResponse pushedResponse = new StoreResponse();
+    pushedResponse.setStore(pushedStoreInfo);
+
+    Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+    doReturn(missingResponse, pushedResponse).when(childControllers.get(region2))
+        .getStore(storeName, controllerTimeout);
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.startInner();
+
+    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(childControllers.get(region2), atLeast(2)).getStore(storeName, controllerTimeout);
+      verify(admin, atLeastOnce())
+          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
+      Assert.assertTrue(
+          regionFilterCaptor.getAllValues()
+              .stream()
+              .map(filter -> new HashSet<>(Arrays.asList(filter.split(","))))
+              .anyMatch(regions -> regions.contains(region2)));
+    });
+  }
+
+  @Test
+  public void testTerminalParentStatusRetriesCurrentTargetAfterItBecomesNonCurrent() throws Exception {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+    Version targetVersion = store.getVersion(versionTwo);
+    doReturn(VersionStatus.ERROR).when(targetVersion).getStatus();
+    doReturn(VersionStatus.ERROR).when(store).getVersionStatus(versionTwo);
+    doReturn(Arrays.asList(targetVersion)).when(store).getVersions();
+    doReturn(Arrays.asList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version pushedVersion = new VersionImpl(storeName, versionTwo);
+    pushedVersion.setStatus(VersionStatus.PUSHED);
+    StoreInfo currentTargetStoreInfo = StoreInfo.fromStore(mockRegionalStore(versionTwo, versionTwo, storeName));
+    currentTargetStoreInfo.setVersions(Arrays.asList(pushedVersion));
+    StoreResponse currentTargetResponse = new StoreResponse();
+    currentTargetResponse.setStore(currentTargetStoreInfo);
+    StoreInfo nonCurrentTargetStoreInfo = StoreInfo.fromStore(mockRegionalStore(versionOne, versionTwo, storeName));
+    nonCurrentTargetStoreInfo.setVersions(Arrays.asList(pushedVersion));
+    StoreResponse nonCurrentTargetResponse = new StoreResponse();
+    nonCurrentTargetResponse.setStore(nonCurrentTargetStoreInfo);
+
+    Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+    doReturn(currentTargetResponse, nonCurrentTargetResponse).when(childControllers.get(region1))
+        .getStore(storeName, controllerTimeout);
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.startInner();
+
+    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(childControllers.get(region1), atLeast(2)).getStore(storeName, controllerTimeout);
+      verify(admin, atLeastOnce())
+          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
+      Assert.assertTrue(
+          regionFilterCaptor.getAllValues()
+              .stream()
+              .map(filter -> new HashSet<>(Arrays.asList(filter.split(","))))
+              .anyMatch(regions -> regions.containsAll(Arrays.asList(region1, region2, region3))));
+    });
+  }
+
+  @Test
+  public void testTerminalReconciliationIncludesSupersededParentVersions() throws Exception {
+    String storeName = "testStore";
+    int latestVersionNumber = 3;
+    Store store = mockStore(versionOne, latestVersionNumber, storeName);
+    Version latestVersion = store.getVersion(latestVersionNumber);
+    Version supersededVersion = mock(Version.class);
+    doReturn(versionTwo).when(supersededVersion).getNumber();
+    doReturn(VersionStatus.ERROR).when(supersededVersion).getStatus();
+    doReturn(true).when(supersededVersion).isVersionSwapDeferred();
+    doReturn(Arrays.asList(supersededVersion, latestVersion)).when(store).getVersions();
+    doReturn(Arrays.asList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version pushedVersion = new VersionImpl(storeName, versionTwo);
+    pushedVersion.setStatus(VersionStatus.PUSHED);
+    StoreInfo childStoreInfo = StoreInfo.fromStore(mockRegionalStore(versionOne, versionTwo, storeName));
+    childStoreInfo.setVersions(Arrays.asList(pushedVersion));
+    StoreResponse childStoreResponse = new StoreResponse();
+    childStoreResponse.setStore(childStoreInfo);
+    for (ControllerClient childController: veniceHelixAdmin.getControllerClientMap(clusterName).values()) {
+      doReturn(childStoreResponse).when(childController).getStore(storeName, controllerTimeout);
+    }
+
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    deferredVersionSwapService.startInner();
+
+    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> verify(admin, atLeastOnce())
+        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture()));
+    Assert.assertEquals(
+        new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(","))),
+        new HashSet<>(Arrays.asList(region1, region2, region3)));
   }
 
   /**

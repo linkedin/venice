@@ -20,6 +20,7 @@ import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverO
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
+import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -82,6 +83,23 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
     for (DimensionEnum1 v: DimensionEnum1.values()) {
       assertNotNull(metricState.getAttributesByEnum().get(v));
     }
+  }
+
+  @Test
+  public void testCloseUnregistersObservableGauge() {
+    ObservableLongGauge gauge = mock(ObservableLongGauge.class);
+    when(mockOtelRepository.registerObservableLongGauge(eq(mockMetricEntity), any())).thenReturn(gauge);
+    AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        e -> e,
+        (state, e) -> 1L);
+
+    metricState.close();
+
+    verify(gauge).close();
   }
 
   @Test

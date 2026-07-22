@@ -93,6 +93,24 @@ public class AggVersionedStorageEngineStats extends
     }
   }
 
+  public void unsetStorageEngine(String topicName) {
+    if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
+      LOGGER.warn("Invalid topic name: {}", topicName);
+      return;
+    }
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    int version = Version.parseVersionFromKafkaTopicName(topicName);
+    try {
+      getStats(storeName, version).setStorageEngine(null);
+      otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
+        stats.onVersionRemoved(version);
+        return stats;
+      });
+    } catch (Exception e) {
+      LOGGER.warn("Failed to unset StorageEngine for store: {}, version: {}", storeName, version, e);
+    }
+  }
+
   public void recordRocksDBOpenFailure(String topicName) {
     if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
       LOGGER.warn("Invalid topic name: {}", topicName);

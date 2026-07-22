@@ -690,4 +690,78 @@ public class AdminExecutionTaskTest {
         System.currentTimeMillis(),
         System.currentTimeMillis());
   }
+
+  @Test
+  public void testHandleMarkVersionRolledBackWithRegionFilter() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createMarkVersionRolledBackWrapper(1L, 42, "prod-lva1,prod-ltx1"));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        isParentController,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+    task.call();
+
+    verify(mockAdmin).markVersionRolledBack(eq(clusterName), eq(storeName), eq(42), eq("prod-lva1,prod-ltx1"));
+  }
+
+  @Test
+  public void testHandleMarkVersionRolledBackWithNullRegionFilter() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createMarkVersionRolledBackWrapper(1L, 7, null));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        isParentController,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+    task.call();
+
+    // A null regionsFilter must not NPE and must be passed through as null.
+    verify(mockAdmin).markVersionRolledBack(eq(clusterName), eq(storeName), eq(7), eq(null));
+  }
+
+  private AdminOperationWrapper createMarkVersionRolledBackWrapper(long executionId, int versionNum, String regionFilter) {
+    AdminOperation adminOperation = new AdminOperation();
+    adminOperation.operationType = AdminMessageType.MARK_VERSION_ROLLED_BACK.getValue();
+    adminOperation.executionId = executionId;
+
+    com.linkedin.venice.controller.kafka.protocol.admin.MarkVersionRolledBack markVersionRolledBack =
+        new com.linkedin.venice.controller.kafka.protocol.admin.MarkVersionRolledBack();
+    markVersionRolledBack.clusterName = clusterName;
+    markVersionRolledBack.storeName = storeName;
+    markVersionRolledBack.versionNum = versionNum;
+    markVersionRolledBack.regionsFilter = regionFilter;
+    adminOperation.payloadUnion = markVersionRolledBack;
+
+    PubSubPosition position = InMemoryPubSubPosition.of(1L);
+    return new AdminOperationWrapper(
+        adminOperation,
+        position,
+        executionId,
+        System.currentTimeMillis(),
+        System.currentTimeMillis(),
+        System.currentTimeMillis());
+  }
 }
