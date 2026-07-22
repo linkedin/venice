@@ -4,7 +4,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
@@ -627,11 +626,9 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     doReturn(store).when(repository).getStore(storeName);
 
     Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
-    doThrow(new VeniceException("child reconciliation failed"))
-        .when(childControllers.get(region2))
+    doThrow(new VeniceException("child reconciliation failed")).when(childControllers.get(region2))
         .deleteOldVersion(anyString(), anyInt());
-    doThrow(new VeniceException("child reconciliation failed"))
-        .when(childControllers.get(region3))
+    doThrow(new VeniceException("child reconciliation failed")).when(childControllers.get(region3))
         .deleteOldVersion(anyString(), anyInt());
 
     DeferredVersionSwapService deferredVersionSwapService =
