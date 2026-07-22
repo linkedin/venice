@@ -383,11 +383,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   public void testStartAndSeekRejectedAfterCloseAndDuplicateStopIsHarmless() throws Exception {
     veniceChangelogConsumer.stop();
 
-    VeniceClientException exception = expectThrows(VeniceClientException.class, veniceChangelogConsumer::start);
-    assertTrue(exception.getMessage().contains(TEST_STORE_NAME), "Closed-consumer error should identify the store");
-    assertThrows(
+    String freshConsumerInstruction = "Create a new consumer from VeniceChangelogConsumerClientFactory";
+    VeniceClientException startException = expectThrows(VeniceClientException.class, veniceChangelogConsumer::start);
+    assertTrue(
+        startException.getMessage().contains(TEST_STORE_NAME),
+        "Closed-consumer error should identify the store");
+    assertTrue(
+        startException.getMessage().contains(freshConsumerInstruction),
+        "Closed-consumer error should explain how to create a fresh consumer");
+    VeniceClientException seekException = expectThrows(
         VeniceClientException.class,
         () -> veniceChangelogConsumer.seekToBeginningOfPush(Collections.singleton(0)));
+    assertTrue(seekException.getMessage().contains(TEST_STORE_NAME), "Closed-consumer error should identify the store");
+    assertTrue(
+        seekException.getMessage().contains(freshConsumerInstruction),
+        "Closed-consumer error should explain how to create a fresh consumer");
 
     veniceChangelogConsumer.stop();
 

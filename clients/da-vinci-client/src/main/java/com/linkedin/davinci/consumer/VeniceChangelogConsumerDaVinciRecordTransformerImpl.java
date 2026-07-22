@@ -210,7 +210,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private void throwIfClosed() {
     if (isClosed.get()) {
       throw new VeniceClientException(
-          "Cannot start or seek a closed VeniceChangelogConsumer for store: " + storeName + ", consumer name: "
+          "This VeniceChangelogConsumer instance is closed and cannot be restarted. Create a new consumer from "
+              + "VeniceChangelogConsumerClientFactory for store: " + storeName + ", consumer name: "
               + changelogClientConfig.getConsumerName());
     }
   }
