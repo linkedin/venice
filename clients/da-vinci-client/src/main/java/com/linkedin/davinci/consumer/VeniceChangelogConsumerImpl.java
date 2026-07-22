@@ -829,6 +829,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           List<DefaultPubSubMessage> messageList = entry.getValue();
           for (DefaultPubSubMessage message: messageList) {
             maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
+            if (message.getKey().isGlobalRtDiv()) {
+              /*
+               * Global RT DIV messages carry a GlobalRtDivState payload (DIV metadata) rather than user data. Only
+               * their KafkaKey header byte marks them as GLOBAL_RT_DIV; their KafkaMessageEnvelope messageType is
+               * PUT. They must be skipped here, otherwise the DIV payload would be routed through the PUT path and
+               * deserialized with the store value schema, whose id collides with the GlobalRtDivState protocol
+               * version, corrupting the change event or failing deserialization.
+               */
+              continue;
+            }
             if (message.getKey().isControlMessage()) {
               ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
               if (handleControlMessage(
