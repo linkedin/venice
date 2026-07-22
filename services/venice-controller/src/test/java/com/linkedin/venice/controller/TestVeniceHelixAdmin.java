@@ -1293,66 +1293,9 @@ public class TestVeniceHelixAdmin {
     verify(mockVeniceHelixAdmin, never()).storeMetadataUpdate(any(), any(), any());
   }
 
-  @DataProvider(name = "markVersionRolledBackStatuses")
-  public Object[][] markVersionRolledBackStatuses() {
-    return new Object[][] {
-        { VersionStatus.PUSHED, 1, true },
-        { VersionStatus.ONLINE, 1, true },
-        { VersionStatus.STARTED, 1, false },
-        { VersionStatus.CREATED, 1, false },
-        { VersionStatus.NOT_CREATED, 1, false },
-        { VersionStatus.ERROR, 1, false },
-        { VersionStatus.KILLED, 1, false },
-        { VersionStatus.ROLLED_BACK, 1, false },
-        { VersionStatus.PUSHED, 2, false } };
-  }
-
-  @Test(dataProvider = "markVersionRolledBackStatuses")
-  public void testMarkVersionRolledBackOnlyUpdatesCompletedNonCurrentVersions(
-      VersionStatus initialStatus,
-      int currentVersion,
-      boolean expectUpdate) {
-    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    Store mockStore = mock(Store.class);
-    HelixVeniceClusterResources mockClusterResources = mock(HelixVeniceClusterResources.class);
-    doReturn("region1").when(mockVeniceHelixAdmin).getRegionName();
-    doReturn(true).when(mockStore).containsVersion(2);
-    doReturn(currentVersion).when(mockStore).getCurrentVersion();
-    doReturn(initialStatus).when(mockStore).getVersionStatus(2);
-    doAnswer(invocation -> {
-      VeniceHelixAdmin.StoreMetadataOperation updater = invocation.getArgument(2);
-      updater.update(mockStore, mockClusterResources);
-      return null;
-    }).when(mockVeniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
-    doCallRealMethod().when(mockVeniceHelixAdmin)
-        .markVersionRolledBack(anyString(), anyString(), anyInt(), anyString());
-
-    mockVeniceHelixAdmin.markVersionRolledBack(clusterName, storeName, 2, "region1");
-
-    if (expectUpdate) {
-      verify(mockStore).updateVersionStatus(2, VersionStatus.ROLLED_BACK);
-      verify(mockStore).setLatestVersionPromoteToCurrentTimestamp(anyLong());
-    } else {
-      verify(mockStore, never()).updateVersionStatus(anyInt(), any());
-      verify(mockStore, never()).setLatestVersionPromoteToCurrentTimestamp(anyLong());
-    }
-  }
-
-  @Test
-  public void testMarkVersionRolledBackHonorsRegionFilter() {
-    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doReturn("region1").when(mockVeniceHelixAdmin).getRegionName();
-    doCallRealMethod().when(mockVeniceHelixAdmin)
-        .markVersionRolledBack(anyString(), anyString(), anyInt(), anyString());
-
-    mockVeniceHelixAdmin.markVersionRolledBack(clusterName, storeName, 2, "region2");
-
-    verify(mockVeniceHelixAdmin, never()).storeMetadataUpdate(anyString(), anyString(), any());
-  }
-
   /**
   * isPartitionReadyToServe=>true: Future version exists and partitions are ready → success
-  * isPartitionReadyToServe=>false: Future version exists but partitions aren’t ready → exception
+  * isPartitionReadyToServe=>false: Future version exists but partitions aren't ready → exception
   */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) throws Exception {

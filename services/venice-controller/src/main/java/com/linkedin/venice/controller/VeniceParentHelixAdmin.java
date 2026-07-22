@@ -63,7 +63,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.RollbackCurrentVersion;
-import com.linkedin.venice.controller.kafka.protocol.admin.MarkVersionRolledBack;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
@@ -2517,34 +2516,6 @@ public class VeniceParentHelixAdmin implements Admin {
           childStore.getLatestVersionPromoteToCurrentTimestamp(),
           minBackupVersionCleanupDelayMs,
           currentTimeMs);
-    }
-  }
-
-  /**
-   * Mark {@code versionNum} as ROLLED_BACK in the child regions selected by {@code regionFilter},
-   * WITHOUT changing the current version. Used to reconcile the non-target regions after a deferred
-   * version swap rollback: those regions bootstrapped the target version but never swapped to it, so
-   * their copy is stranded in PUSHED status above their unchanged current version and leaks disk.
-   * Marking it ROLLED_BACK makes it visible to {@code StoreBackupVersionCleanupService}.
-   */
-  public void markVersionRolledBack(String clusterName, String storeName, int versionNum, String regionFilter) {
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
-
-      MarkVersionRolledBack markVersionRolledBack =
-          (MarkVersionRolledBack) AdminMessageType.MARK_VERSION_ROLLED_BACK.getNewInstance();
-      markVersionRolledBack.clusterName = clusterName;
-      markVersionRolledBack.storeName = storeName;
-      markVersionRolledBack.versionNum = versionNum;
-      markVersionRolledBack.regionsFilter = regionFilter;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.MARK_VERSION_ROLLED_BACK.getValue();
-      message.payloadUnion = markVersionRolledBack;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    } finally {
-      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 

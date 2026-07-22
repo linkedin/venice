@@ -15,7 +15,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
-import com.linkedin.venice.controller.kafka.protocol.admin.MarkVersionRolledBack;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetaSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
@@ -66,8 +65,7 @@ public enum AdminMessageType implements VeniceDimensionInterface {
   CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(22, true), META_SYSTEM_STORE_AUTO_CREATION_VALIDATION(23, false),
   PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION(24, false), CREATE_STORAGE_PERSONA(25, false),
   DELETE_STORAGE_PERSONA(26, false), UPDATE_STORAGE_PERSONA(27, false), DELETE_UNUSED_VALUE_SCHEMA(28, false),
-  ROLLBACK_CURRENT_VERSION(29, false), ROLLFORWARD_CURRENT_VERSION(30, false),
-  MARK_VERSION_ROLLED_BACK(31, false);
+  ROLLBACK_CURRENT_VERSION(29, false), ROLLFORWARD_CURRENT_VERSION(30, false);
 
   private final int value;
   private final boolean batchUpdate;
@@ -140,8 +138,6 @@ public enum AdminMessageType implements VeniceDimensionInterface {
         return new RollForwardCurrentVersion();
       case ROLLBACK_CURRENT_VERSION:
         return new RollbackCurrentVersion();
-      case MARK_VERSION_ROLLED_BACK:
-        return new MarkVersionRolledBack();
       default:
         throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }

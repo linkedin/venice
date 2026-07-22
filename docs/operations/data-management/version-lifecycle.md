@@ -8,9 +8,9 @@ backup, within configured retention, or part of a store migration.
 ## Deletion decision table
 
 The count-based sweep is implemented by `Store.retrieveVersionsToDelete`. The time-based sweep is
-implemented by `StoreBackupVersionCleanupService`. Deferred version swap terminal transitions first
-reconcile bootstrap-complete, non-current child copies to `ROLLED_BACK`, so they cannot remain
-invisible to both sweeps.
+implemented by `StoreBackupVersionCleanupService`. Deferred version swap terminal transitions
+directly delete bootstrap-complete, non-current child copies via `ControllerClient.deleteOldVersion`,
+so they cannot remain invisible to both sweeps.
 
 | Initial status | Role / initial condition | Count retention | Time / safety gate | Trigger | Deletion decision |
 | --- | --- | --- | --- | --- | --- |
@@ -26,7 +26,7 @@ invisible to both sweeps.
 | `PUSHED` | Non-current version without a terminal parent decision | Excluded because it may be an active deferred or concurrent swap candidate | Not eligible | Count or time cleanup | **KEEP** |
 | `PUSHED` or `ONLINE` | Still current in a child after parent `ERROR` or `ROLLED_BACK` | Protected while serving; reconciliation remains incomplete | Not eligible | Parent terminal reconciliation | **DEFER: keep and retry** |
 | `PUSHED` or `ONLINE` | Still current in a child after parent `PARTIALLY_ONLINE` | Serving the intentional partial state | Not eligible | Parent terminal reconciliation | **KEEP** |
-| `PUSHED` or non-current `ONLINE` | Parent deferred swap becomes `ERROR`, `PARTIALLY_ONLINE`, or `ROLLED_BACK` | Removed from count sweep | Rolled-back retention gate applies | Parent terminal transition | **DEFER: mark `ROLLED_BACK`** |
+| `PUSHED` or non-current `ONLINE` | Parent deferred swap becomes `ERROR`, `PARTIALLY_ONLINE`, or `ROLLED_BACK` | Removed from count sweep | None — immediately deleted | Parent terminal transition | **DELETE** |
 | `ONLINE` | Backup within the configured preserved count | Within limit | Not considered | Count sweep | **KEEP** |
 | `ONLINE` | Backup beyond the configured preserved count | Exceeds limit | Not considered | Count sweep | **DELETE** |
 | `ONLINE` | Backup considered by retention cleanup | Not considered | Before minimum retention | Time sweep | **DEFER** |
@@ -39,15 +39,11 @@ invisible to both sweeps.
 Count-based and time-based cleanup are independent triggers. The first applicable trigger may delete
 an eligible backup, but neither trigger may delete the current version. `PUSHED` versions are never
 deleted from status and version number alone because multiple deferred or concurrent swaps can be
-active. A terminal parent decision explicitly converts bootstrap-complete non-current child copies
-to `ROLLED_BACK`. The controller scans every deferred terminal parent version, including versions
-superseded by a newer push, and retries while a child is unreachable, missing the target metadata,
-in progress, or unexpectedly still current after parent `ERROR` or `ROLLED_BACK`.
-
-When a child copy becomes `ROLLED_BACK`, the controller resets the store-level latest-promotion
-timestamp to start the rollback retention window. A subsequent promotion can reset that shared clock
-again, so a rolled-back version may be retained longer than the configured duration; it cannot be
-deleted immediately because the current version was promoted long before the rollback.
+active. A terminal parent decision explicitly deletes bootstrap-complete non-current child copies
+via per-region `ControllerClient.deleteOldVersion`. The controller scans every deferred terminal
+parent version, including versions superseded by a newer push, and retries while a child is
+unreachable, missing the target metadata, in progress, or unexpectedly still current after parent
+`ERROR` or `ROLLED_BACK`.
 
 ## State machine
 
@@ -60,7 +56,7 @@ stateDiagram-v2
     STARTED --> ERROR: push fails
     STARTED --> KILLED: push is killed
     PUSHED --> ONLINE: version swap succeeds
-    PUSHED --> ROLLED_BACK: deferred swap terminates while non-current
+    PUSHED --> DELETED: deferred swap terminates while non-current (parent terminal sweep)
     ONLINE --> ROLLED_BACK: rollback or abandoned non-current copy
 
     NOT_CREATED --> DELETED: stale below-current metadata after time gate
@@ -81,7 +77,7 @@ stateDiagram-v2
       Before terminal parent decision: KEEP
       Current after ERROR/ROLLED_BACK: retry
       Current after PARTIALLY_ONLINE: KEEP
-      Parent terminal + non-current: ROLLED_BACK
+      Parent terminal + non-current: DELETE immediately
     end note
 
     note right of ONLINE

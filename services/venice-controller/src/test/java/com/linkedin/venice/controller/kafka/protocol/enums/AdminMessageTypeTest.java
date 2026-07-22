@@ -46,7 +46,6 @@ public class AdminMessageTypeTest {
         .put(AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA, "delete_unused_value_schema")
         .put(AdminMessageType.ROLLBACK_CURRENT_VERSION, "rollback_current_version")
         .put(AdminMessageType.ROLLFORWARD_CURRENT_VERSION, "rollforward_current_version")
-        .put(AdminMessageType.MARK_VERSION_ROLLED_BACK, "mark_version_rolled_back")
         .build();
     new VeniceDimensionTestFixture<>(
         AdminMessageType.class,

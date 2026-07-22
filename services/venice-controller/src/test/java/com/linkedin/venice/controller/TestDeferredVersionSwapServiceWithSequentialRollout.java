@@ -52,7 +52,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -445,7 +444,9 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify error recording was called due to the failure
       verify(store, atLeastOnce()).updateVersionStatus(2, VersionStatus.PARTIALLY_ONLINE);
-      verify(admin, atLeastOnce()).markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), anyString());
+      Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+      verify(childControllers.get(region2), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+      verify(childControllers.get(region3), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
       verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName, region3);
       verify(admin, never()).truncateKafkaTopic(anyString());
     });
@@ -579,19 +580,16 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.startInner();
 
-    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Target region (region1, the prior rolled-forward region) is rolled back.
       verify(admin, atLeastOnce()).rollbackToBackupVersion(clusterName, storeName, region1);
-      // Non-current child regions reconcile the abandoned version.
-      verify(admin, atLeastOnce())
-          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
+      // Non-current child regions have their orphaned version deleted.
+      Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+      verify(childControllers.get(region2), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+      verify(childControllers.get(region3), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
       // No roll forward should happen for region2 after a ROLLBACK.
       verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName, region2);
     });
-
-    Set<String> reconciledRegions = new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(",")));
-    Assert.assertEquals(reconciledRegions, new HashSet<>(Arrays.asList(region2, region3)));
   }
 
   @DataProvider(name = "abandonedParentStatuses")
@@ -614,14 +612,12 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.updateStore(clusterName, storeName, parentStatus, versionTwo);
 
-    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
-    InOrder inOrder = inOrder(admin, store);
+    Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+    InOrder inOrder = inOrder(store, childControllers.get(region2));
     inOrder.verify(store).updateVersionStatus(versionTwo, parentStatus);
-    inOrder.verify(admin)
-        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
-    Assert.assertEquals(
-        new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(","))),
-        new HashSet<>(Arrays.asList(region2, region3)));
+    inOrder.verify(childControllers.get(region2)).deleteOldVersion(storeName, versionTwo);
+    verify(childControllers.get(region3)).deleteOldVersion(storeName, versionTwo);
+    verify(childControllers.get(region1), never()).deleteOldVersion(anyString(), anyInt());
   }
 
   @Test
@@ -629,15 +625,21 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     String storeName = "testStore";
     Store store = mockStore(versionOne, versionTwo, storeName);
     doReturn(store).when(repository).getStore(storeName);
-    doThrow(new VeniceException("child reconciliation failed")).when(admin)
-        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), anyString());
+
+    Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+    doThrow(new VeniceException("child reconciliation failed"))
+        .when(childControllers.get(region2))
+        .deleteOldVersion(anyString(), anyInt());
+    doThrow(new VeniceException("child reconciliation failed"))
+        .when(childControllers.get(region3))
+        .deleteOldVersion(anyString(), anyInt());
 
     DeferredVersionSwapService deferredVersionSwapService =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.updateStore(clusterName, storeName, VersionStatus.ERROR, versionTwo);
 
     verify(store).updateVersionStatus(versionTwo, VersionStatus.ERROR);
-    verify(admin).markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), anyString());
+    verify(childControllers.get(region2)).deleteOldVersion(storeName, versionTwo);
   }
 
   @Test
@@ -655,12 +657,11 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.startInner();
 
-    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> verify(admin, atLeastOnce())
-        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture()));
-    Assert.assertEquals(
-        new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(","))),
-        new HashSet<>(Arrays.asList(region2, region3)));
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+      verify(childControllers.get(region2), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+      verify(childControllers.get(region3), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+    });
   }
 
   @Test
@@ -696,16 +697,9 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.startInner();
 
-    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(childControllers.get(region2), atLeastOnce()).getStore(storeName, controllerTimeout);
-      verify(admin, atLeastOnce())
-          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
-      Assert.assertTrue(
-          regionFilterCaptor.getAllValues()
-              .stream()
-              .map(filter -> new HashSet<>(Arrays.asList(filter.split(","))))
-              .anyMatch(regions -> regions.contains(region2)));
+      verify(childControllers.get(region2), atLeast(2)).getStore(storeName, controllerTimeout);
+      verify(childControllers.get(region2), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
     });
   }
 
@@ -740,16 +734,9 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.startInner();
 
-    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(childControllers.get(region2), atLeast(2)).getStore(storeName, controllerTimeout);
-      verify(admin, atLeastOnce())
-          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
-      Assert.assertTrue(
-          regionFilterCaptor.getAllValues()
-              .stream()
-              .map(filter -> new HashSet<>(Arrays.asList(filter.split(","))))
-              .anyMatch(regions -> regions.contains(region2)));
+      verify(childControllers.get(region2), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
     });
   }
 
@@ -783,16 +770,12 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.startInner();
 
-    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(childControllers.get(region1), atLeast(2)).getStore(storeName, controllerTimeout);
-      verify(admin, atLeastOnce())
-          .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture());
-      Assert.assertTrue(
-          regionFilterCaptor.getAllValues()
-              .stream()
-              .map(filter -> new HashSet<>(Arrays.asList(filter.split(","))))
-              .anyMatch(regions -> regions.containsAll(Arrays.asList(region1, region2, region3))));
+      // After region1 becomes non-current, all 3 regions should have deleteOldVersion called.
+      verify(childControllers.get(region1), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+      verify(childControllers.get(region2), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+      verify(childControllers.get(region3), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
     });
   }
 
@@ -824,12 +807,12 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     deferredVersionSwapService.startInner();
 
-    ArgumentCaptor<String> regionFilterCaptor = ArgumentCaptor.forClass(String.class);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> verify(admin, atLeastOnce())
-        .markVersionRolledBack(eq(clusterName), eq(storeName), eq(versionTwo), regionFilterCaptor.capture()));
-    Assert.assertEquals(
-        new HashSet<>(Arrays.asList(regionFilterCaptor.getValue().split(","))),
-        new HashSet<>(Arrays.asList(region1, region2, region3)));
+    Map<String, ControllerClient> childControllers = veniceHelixAdmin.getControllerClientMap(clusterName);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(childControllers.get(region1), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+      verify(childControllers.get(region2), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+      verify(childControllers.get(region3), atLeastOnce()).deleteOldVersion(storeName, versionTwo);
+    });
   }
 
   /**

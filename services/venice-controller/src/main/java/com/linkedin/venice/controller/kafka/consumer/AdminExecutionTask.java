@@ -30,7 +30,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStore
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.RollbackCurrentVersion;
-import com.linkedin.venice.controller.kafka.protocol.admin.MarkVersionRolledBack;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
@@ -344,9 +343,6 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case ROLLFORWARD_CURRENT_VERSION:
           handleRollForwardToFutureVersion((RollForwardCurrentVersion) adminOperation.payloadUnion);
-          break;
-        case MARK_VERSION_ROLLED_BACK:
-          handleMarkVersionRolledBack((MarkVersionRolledBack) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -937,15 +933,6 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.getStoreName().toString();
     String regionFilter = message.getRegionsFilter().toString();
     admin.rollbackToBackupVersion(clusterName, storeName, regionFilter);
-  }
-
-  private void handleMarkVersionRolledBack(MarkVersionRolledBack message) {
-    String clusterName = message.getClusterName().toString();
-    String storeName = message.getStoreName().toString();
-    int versionNum = message.getVersionNum();
-    CharSequence regionsFilter = message.getRegionsFilter();
-    String regionFilter = regionsFilter == null ? null : regionsFilter.toString();
-    admin.markVersionRolledBack(clusterName, storeName, versionNum, regionFilter);
   }
 
   private void handleDeleteUnusedValueSchema(DeleteUnusedValueSchemas message) {

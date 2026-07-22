@@ -1418,14 +1418,26 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     if (!regionsToReconcile.isEmpty()) {
-      String regionsFilter = RegionUtils.composeRegionList(regionsToReconcile);
-      veniceParentHelixAdmin.markVersionRolledBack(clusterName, storeName, targetVersionNum, regionsFilter);
-      LOGGER.info(
-          "Reconciled version: {} for store: {} as ROLLED_BACK in child regions: {} after parent status: {}",
-          targetVersionNum,
-          storeName,
-          regionsFilter,
-          parentStatus);
+      for (String region: regionsToReconcile) {
+        try {
+          controllerClientMap.get(region).deleteOldVersion(storeName, targetVersionNum);
+          LOGGER.info(
+              "Deleted abandoned deferred version {} for store {} in region {} (parent status: {})",
+              targetVersionNum,
+              storeName,
+              region,
+              parentStatus);
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Failed to delete abandoned deferred version {} for store {} in region {} (parent status: {})",
+              targetVersionNum,
+              storeName,
+              region,
+              parentStatus,
+              e);
+          allRegionsTerminal = false;
+        }
+      }
     }
     return allRegionsTerminal;
   }
