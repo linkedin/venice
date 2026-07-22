@@ -394,12 +394,13 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
           TimeUnit.SECONDS);
 
       // Run incremental push with throttling enabled (writing to regular RT topic).
-      // Quota of 1 rec/s ensures the throttler blocks ~1s between each record.
+      // The driver splits the global quota across partition writers, so use the actual partition count as the global
+      // quota to give each partition 1 rec/s. This keeps the test throttled while satisfying per-partition validation.
       Properties vpjProperties =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
       vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
       vpjProperties.put(INCREMENTAL_PUSH, true);
-      vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
+      vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, response.getPartitions());
       if (useSparkCompute) {
         vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
         vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));

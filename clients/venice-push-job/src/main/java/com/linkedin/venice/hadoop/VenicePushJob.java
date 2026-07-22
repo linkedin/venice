@@ -891,13 +891,14 @@ public class VenicePushJob implements AutoCloseable {
           props,
           optionalCompressionDictionary);
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
-      // Fail fast here (driver-side, before the data-writer job launches) if external-storage dual-write
-      // throttling is misconfigured for the partition count just assigned to this version.
-      validateExternalStorageDualWriteQuota(pushJobSetting);
-
       // Fetch the version config for separateRealTimeTopicEnabled after version creation,
       Version createdVersion = getStoreVersion(pushJobSetting.storeName, pushJobSetting.version);
       pushJobSetting.versionSeparateRealTimeTopicEnabled = createdVersion.isSeparateRealTimeTopicEnabled();
+
+      // Fail fast here (driver-side, before the data-writer job launches) if external-storage dual-write
+      // throttling is misconfigured for the partition count just assigned to this version. Incremental-push write
+      // quota is validated later, when the data-writer job config is assembled (also driver-side, pre-launch).
+      validateExternalStorageDualWriteQuota(pushJobSetting);
 
       // Update and send push job details with new info to the controller
       pushJobDetails.partitionCount = pushJobSetting.partitionCount;
