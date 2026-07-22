@@ -13,7 +13,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EX
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
@@ -297,8 +296,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private final Lazy<CompressorFactory> compressorFactory = Lazy.of(CompressorFactory::new);
   private Lazy<VeniceCompressor> compressor;
 
-  // Incremental push write quota throttlers
-  private boolean isIncrementalPush = false;
+  // Incremental push write quota throttler
   private VeniceRateLimiter recordsThrottler = null;
   /**
    * Accumulated throttle time across all calls. Only accessed from the single-threaded
@@ -540,7 +538,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   @VisibleForTesting
   boolean isIncrementalPushThrottlingEnabled() {
-    return isIncrementalPush && recordsThrottler != null;
+    return recordsThrottler != null;
   }
 
   @VisibleForTesting
@@ -1043,7 +1041,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
    * throttling and this method is a no-op.
    */
   private void initIncrementalPushThrottlers(VeniceProperties props) {
-    this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     long perPartitionRecordsPerSecond =
         props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, -1);
     if (perPartitionRecordsPerSecond <= 0) {
