@@ -184,6 +184,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     RmdSchemaEntry rmdSchemaEntry = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
     HelixSchemaAccessor schemaAccessor = mock(HelixSchemaAccessor.class);
     when(schemaRepository.getAccessor()).thenReturn(schemaAccessor);
+    when(schemaAccessor.getAllValueSchemas(storeName)).thenReturn(Collections.emptyList());
     when(schemaAccessor.getAllReplicationMetadataSchemas(storeName))
         .thenReturn(Collections.singletonList(rmdSchemaEntry));
     SchemaData schemaData = new SchemaData(storeName, null);
@@ -219,6 +220,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
 
     RmdSchemaEntry rmdSchemaEntry = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
+    when(accessor.getAllValueSchemas(storeName)).thenReturn(Collections.emptyList());
     when(accessor.getAllReplicationMetadataSchemas(storeName)).thenReturn(Collections.singletonList(rmdSchemaEntry));
 
     verify(accessor, never()).subscribeReplicationMetadataSchemaCreationChange(anyString(), any());
