@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -158,11 +159,36 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    * @return true if the subscription was established (only if AA is enabled)
    */
   boolean maybeRegisterAndPopulateRmdSchema(Store store, SchemaData schemaData) {
-    if (store.isActiveActiveReplicationEnabled()) {
+    if (isActiveActiveReplicationEnabled(store)) {
       String storeName = store.getName();
       getAccessor().subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
       getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * Determine whether RMD (replication metadata) schemas should be subscribed/fetched/served for a store.
+   *
+   * The store-level {@link Store#isActiveActiveReplicationEnabled()} flag alone is not sufficient: it is possible
+   * for a store to have A/A replication disabled at the store level while one or more retained {@link Version}s
+   * (e.g. the current serving version, or a retained backup version) still have A/A replication enabled. This can
+   * happen, for instance, when A/A is disabled on a store after a version with A/A enabled has already been
+   * created/retained. If we only checked the store-level flag, a cold server bootstrap could skip subscribing to
+   * and populating RMD schemas entirely, which would then cause ingestion (SITs) to fail for any retained
+   * A/A-enabled version once it needs to deserialize/produce RMD records.
+   *
+   * @return true if the store itself has A/A replication enabled, or if any of its retained versions do.
+   */
+  static boolean isActiveActiveReplicationEnabled(Store store) {
+    if (store.isActiveActiveReplicationEnabled()) {
+      return true;
+    }
+    for (Version version: store.getVersions()) {
+      if (version.isActiveActiveReplicationEnabled()) {
+        return true;
+      }
     }
     return false;
   }
@@ -222,7 +248,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
           store.getName());
       return false;
     }
-    if (store.isActiveActiveReplicationEnabled() && !schemaData.hasRmdSchema(supersetSchemaId)) {
+    if (isActiveActiveReplicationEnabled(store) && !schemaData.hasRmdSchema(supersetSchemaId)) {
       logger.warn(
           "RMD schema of superset schema ID: {} for store: {} not found in schema cache.",
           supersetSchemaId,
@@ -238,7 +264,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     if (store.isWriteComputationEnabled()) {
       getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
     }
-    if (store.isActiveActiveReplicationEnabled()) {
+    if (isActiveActiveReplicationEnabled(store)) {
       getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
     }
   }
