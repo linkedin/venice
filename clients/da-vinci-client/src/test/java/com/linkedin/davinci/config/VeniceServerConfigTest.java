@@ -17,6 +17,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_HEALTH_MONITOR_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_HEALTH_PROBE_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_HEALTH_PROBE_TOPIC;
+import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_PARTITION_PAUSE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_READ_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -293,5 +297,34 @@ public class VeniceServerConfigTest {
     config = new VeniceServerConfig(new VeniceProperties(props));
     assertFalse(config.isReadOtelStatsEnabled());
     assertFalse(config.isIngestionOtelStatsEnabled());
+  }
+
+  @Test
+  public void testPubSubHealthConfigs() {
+    // Defaults: everything off, probe interval 30s, empty probe topic.
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isPubSubHealthMonitorEnabled());
+    assertFalse(config.isPubSubPartitionPauseEnabled());
+    assertEquals(config.getPubSubHealthProbeIntervalSeconds(), 30);
+    assertEquals(config.getPubSubHealthProbeTopic(), "");
+
+    // Monitor enabled + pause enabled: pause honored because monitor is on.
+    props.put(SERVER_PUBSUB_HEALTH_MONITOR_ENABLED, "true");
+    props.put(SERVER_PUBSUB_PARTITION_PAUSE_ENABLED, "true");
+    props.put(SERVER_PUBSUB_HEALTH_PROBE_INTERVAL_SECONDS, "45");
+    props.put(SERVER_PUBSUB_HEALTH_PROBE_TOPIC, "health_probe_topic");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isPubSubHealthMonitorEnabled());
+    assertTrue(config.isPubSubPartitionPauseEnabled());
+    assertEquals(config.getPubSubHealthProbeIntervalSeconds(), 45);
+    assertEquals(config.getPubSubHealthProbeTopic(), "health_probe_topic");
+
+    // Monitor disabled but pause requested: pause stays off (monitor gates it).
+    props.put(SERVER_PUBSUB_HEALTH_MONITOR_ENABLED, "false");
+    props.put(SERVER_PUBSUB_PARTITION_PAUSE_ENABLED, "true");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isPubSubHealthMonitorEnabled());
+    assertFalse(config.isPubSubPartitionPauseEnabled());
   }
 }
