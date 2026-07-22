@@ -137,6 +137,55 @@ public class AbstractPartitionWriterThrottlingTest {
     }
   }
 
+  @Test
+  public void testGlobalQuotaSplitAcrossPartitionWriters() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(PARTITION_COUNT, "4");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    assertNotNull(partitionWriter.getRecordsThrottler(), "Throttler should be initialized");
+    assertEquals(
+        partitionWriter.getRecordsThrottler().getQuota(),
+        250L,
+        "1000 records/sec global quota should be split across 4 partition-writer tasks");
+  }
+
+  @Test
+  public void testGlobalQuotaSplitUsesFloorDivisionToStayUnderGlobalQuota() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(PARTITION_COUNT, "3");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    assertNotNull(partitionWriter.getRecordsThrottler(), "Throttler should be initialized");
+    assertEquals(
+        partitionWriter.getRecordsThrottler().getQuota(),
+        333L,
+        "Non-divisible global quotas should be rounded down per task so aggregate rate does not exceed the quota");
+  }
+
+  @Test
+  public void testGlobalQuotaBelowPartitionCountFailsFast() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "2");
+    props.setProperty(PARTITION_COUNT, "4");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+
+    assertThrows(VeniceException.class, () -> partitionWriter.configure(mockConfigProvider));
+  }
+
   // rate limiter type config, expected throttler class
   @DataProvider(name = "rateLimiterTypes")
   public Object[][] rateLimiterTypes() {

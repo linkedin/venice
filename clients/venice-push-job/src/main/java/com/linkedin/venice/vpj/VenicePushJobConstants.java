@@ -620,11 +620,11 @@ public final class VenicePushJobConstants {
   public static final String NEWER_KME_SCHEMAS_PREFIX = "newer.kme.schemas.prefix.";
 
   /**
-   * Write quota in records per second for incremental pushes.
+   * Global write quota in records per second for incremental pushes.
    * Any value {@code <= 0} disables throttling (unlimited writes). The recommended sentinel for
    * explicitly configuring "unlimited" is {@code -1}.
-   * This quota is enforced per partition-writer task. The effective aggregate write rate across the entire
-   * job is {@code recordsPerSecond * numberOfTasks}.
+   * This quota is split evenly across partition-writer tasks for local enforcement, so the effective aggregate
+   * write rate across the job/store is at or below the configured value.
    */
   public static final String INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND =
       "incremental.push.write.quota.records.per.second";

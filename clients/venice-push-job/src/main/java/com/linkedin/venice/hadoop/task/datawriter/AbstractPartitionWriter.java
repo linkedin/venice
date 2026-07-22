@@ -1039,9 +1039,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   }
 
   /**
-   * Initialize throttlers for incremental push write quota enforcement.
-   * Throttlers are only created if this is an incremental push writing to the regular RT topic
-   * (not a separate real-time topic) and write quota is enabled.
+   * Initialize throttlers for incremental push write quota enforcement. Throttlers are only created if this is an
+   * incremental push writing to the regular RT topic (not a separate real-time topic) and write quota is enabled. The
+   * configured quota is the global job/store quota and is split evenly across partition-writer tasks for local
+   * enforcement.
    */
   private void initIncrementalPushThrottlers(VeniceProperties props) {
     this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
@@ -1059,10 +1060,12 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       return;
     }
 
-    long recordsPerSecond = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1);
-    if (recordsPerSecond <= 0) {
+    long globalRecordsPerSecond = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1);
+    if (globalRecordsPerSecond <= 0) {
       return;
     }
+    long perPartitionRecordsPerSecond =
+        IncrementalPushWriteQuotaUtils.getPerPartitionRecordsPerSecond(globalRecordsPerSecond, getPartitionCount());
 
     String storeName = Version.parseStoreFromKafkaTopicName(props.getString(TOPIC_PROP));
     String rateLimiterTypeStr = props
@@ -1082,7 +1085,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     switch (rateLimiterType) {
       case EVENT_THROTTLER_WITH_SILENT_REJECTION:
         this.recordsThrottler = new EventThrottler(
-            recordsPerSecond,
+            perPartitionRecordsPerSecond,
             storeName + "_incremental_push_records_throttler",
             true,
             EventThrottler.REJECT_STRATEGY);
@@ -1098,18 +1101,25 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           timeWindowMs = 1000;
         }
         int capacityMultiple = rateLimiterType == VeniceRateLimiter.RateLimiterType.TOKEN_BUCKET_GREEDY_REFILL ? 5 : 2;
-        this.recordsThrottler = TokenBucket
-            .tokenBucketFromRcuPerSecond(recordsPerSecond, 1.0, timeWindowMs, capacityMultiple, Clock.systemUTC());
+        this.recordsThrottler = TokenBucket.tokenBucketFromRcuPerSecond(
+            perPartitionRecordsPerSecond,
+            1.0,
+            timeWindowMs,
+            capacityMultiple,
+            Clock.systemUTC());
         break;
       case GUAVA_RATE_LIMITER:
       default:
-        this.recordsThrottler = new GuavaRateLimiter(recordsPerSecond);
+        this.recordsThrottler = new GuavaRateLimiter(perPartitionRecordsPerSecond);
         break;
     }
     LOGGER.info(
-        "Initialized incremental push records throttler for store {}: {} records/sec, type: {}",
+        "Initialized incremental push records throttler for store {}: {} records/sec global split across {} "
+            + "partition-writer tasks => {} records/sec per task, type: {}",
         storeName,
-        recordsPerSecond,
+        globalRecordsPerSecond,
+        getPartitionCount(),
+        perPartitionRecordsPerSecond,
         rateLimiterType);
   }
 
