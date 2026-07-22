@@ -7,6 +7,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferHttpException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -133,7 +134,9 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
               response.status(),
               response.decoderResult(),
               response.headers());
-          throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
+          throw new VeniceBlobTransferHttpException(
+              response.status().code(),
+              "Failed to fetch file from remote peer. Response: " + response.status());
         }
       }
 
@@ -313,7 +316,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       cleanupResources();
       inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     }
-
   }
 
   private String getFileNameFromHeader(HttpResponse response) {

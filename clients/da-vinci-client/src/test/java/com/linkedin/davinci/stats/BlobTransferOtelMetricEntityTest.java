@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_OUTCOME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -23,6 +25,27 @@ public class BlobTransferOtelMetricEntityTest {
 
   private static Map<BlobTransferOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<BlobTransferOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
+    map.put(
+        BlobTransferOtelMetricEntity.REQUEST_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.blob_transfer.request.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of remote blob transfer requests by source and outcome",
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_VERSION_ROLE,
+                VENICE_BLOB_TRANSFER_SOURCE,
+                VENICE_BLOB_TRANSFER_OUTCOME)));
+    map.put(
+        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.blob_transfer.kafka_fallback.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of blob transfers abandoned in favor of Kafka bootstrap by reason",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_BLOB_TRANSFER_OUTCOME)));
     map.put(
         BlobTransferOtelMetricEntity.RESPONSE_COUNT,
         new MetricEntityExpectation(

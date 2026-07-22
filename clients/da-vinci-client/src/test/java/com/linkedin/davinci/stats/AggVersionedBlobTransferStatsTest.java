@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.CLUSTER_NAME;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.METRIC_PREFIX;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildRequestCountAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildResponseCountAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildVersionRoleAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.createMockMetaRepository;
@@ -17,6 +18,8 @@ import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferOutcome;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
@@ -174,6 +177,7 @@ public class AggVersionedBlobTransferStatsTest {
       storeName = mockStore.getName();
 
       String otelResponseCount = BlobTransferOtelMetricEntity.RESPONSE_COUNT.getMetricEntity().getMetricName();
+      String otelRequestCount = BlobTransferOtelMetricEntity.REQUEST_COUNT.getMetricEntity().getMetricName();
       String otelTime = BlobTransferOtelMetricEntity.TIME.getMetricEntity().getMetricName();
       String otelBytesReceived = BlobTransferOtelMetricEntity.BYTES_RECEIVED.getMetricEntity().getMetricName();
       String otelBytesSent = BlobTransferOtelMetricEntity.BYTES_SENT.getMetricEntity().getMetricName();
@@ -205,6 +209,31 @@ public class AggVersionedBlobTransferStatsTest {
           buildResponseCountAttributes(storeName, CLUSTER_NAME, VersionRole.BACKUP, VeniceResponseStatusCategory.FAIL);
       OpenTelemetryDataTestUtils
           .validateLongPointDataFromCounter(inMemoryMetricReader, 1, failAttrs, otelResponseCount, METRIC_PREFIX);
+
+      // --- recordBlobTransferRequest ---
+      stats.recordBlobTransferRequest(
+          storeName,
+          1,
+          VeniceBlobTransferSource.VENICE_SERVER,
+          VeniceBlobTransferOutcome.SUCCESS);
+      Assert.assertEquals(
+          reporter
+              .query(
+                  "." + storeName + "_total--blob_transfer_venice_server_successful_num_requests.IngestionStatsGauge")
+              .value(),
+          1.0);
+      Attributes serverSuccessAttrs = buildRequestCountAttributes(
+          storeName,
+          CLUSTER_NAME,
+          VersionRole.BACKUP,
+          VeniceBlobTransferSource.VENICE_SERVER,
+          VeniceBlobTransferOutcome.SUCCESS);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+          inMemoryMetricReader,
+          1,
+          serverSuccessAttrs,
+          otelRequestCount,
+          METRIC_PREFIX);
 
       // --- recordBlobTransferTimeInSec ---
       stats.recordBlobTransferTimeInSec(storeName, 1, 20.0);
