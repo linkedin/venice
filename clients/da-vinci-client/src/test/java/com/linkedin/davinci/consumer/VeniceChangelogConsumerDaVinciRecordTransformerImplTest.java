@@ -594,17 +594,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testMaxBufferSize() throws NoSuchFieldException, IllegalAccessException, InterruptedException {
-    ReentrantLock bufferLock = spy(new ReentrantLock());
-    Condition bufferIsFullCondition = spy(bufferLock.newCondition());
+    ReentrantLock pubSubMessagesStateLock = spy(new ReentrantLock());
+    Condition pubSubMessagesFullCondition = spy(pubSubMessagesStateLock.newCondition());
 
-    Field bufferLockField = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferLock");
-    bufferLockField.setAccessible(true);
-    bufferLockField.set(veniceChangelogConsumer, bufferLock);
+    Field pubSubMessagesStateLockField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("pubSubMessagesStateLock");
+    pubSubMessagesStateLockField.setAccessible(true);
+    pubSubMessagesStateLockField.set(veniceChangelogConsumer, pubSubMessagesStateLock);
 
-    Field bufferIsFullConditionField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferIsFullCondition");
-    bufferIsFullConditionField.setAccessible(true);
-    bufferIsFullConditionField.set(veniceChangelogConsumer, bufferIsFullCondition);
+    Field pubSubMessagesFullConditionField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("pubSubMessagesFullCondition");
+    pubSubMessagesFullConditionField.setAccessible(true);
+    pubSubMessagesFullConditionField.set(veniceChangelogConsumer, pubSubMessagesFullCondition);
 
     assertEquals(changelogClientConfig.getMaxBufferSize(), MAX_BUFFER_SIZE);
 
@@ -622,9 +623,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     }
 
     // Buffer is full signal should be hit
-    verify(bufferLock, timeout(1000).atLeastOnce()).lock();
-    verify(bufferLock, timeout(1000L).atLeastOnce()).unlock();
-    verify(bufferIsFullCondition, atLeastOnce()).signal();
+    verify(pubSubMessagesStateLock, timeout(1000).atLeastOnce()).lock();
+    verify(pubSubMessagesStateLock, timeout(1000L).atLeastOnce()).unlock();
+    verify(pubSubMessagesFullCondition, atLeastOnce()).signal();
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       // Verify every CompletableFuture in completableFutureList is completed besides one
@@ -641,30 +642,30 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
       assertEquals(uncompletedFutures, 1);
     });
 
-    reset(bufferLock);
-    reset(bufferIsFullCondition);
+    reset(pubSubMessagesStateLock);
+    reset(pubSubMessagesFullCondition);
 
     // Buffer is full, so poll shouldn't await on the buffer full condition
     int timeoutInMs = 100;
     veniceChangelogConsumer.poll(timeoutInMs);
-    verify(bufferIsFullCondition, never()).await(timeoutInMs, TimeUnit.MILLISECONDS);
+    verify(pubSubMessagesFullCondition, never()).await(timeoutInMs, TimeUnit.MILLISECONDS);
 
-    reset(bufferLock);
-    reset(bufferIsFullCondition);
+    reset(pubSubMessagesStateLock);
+    reset(pubSubMessagesFullCondition);
 
     // Empty the buffer and verify that all CompletableFutures are done
     veniceChangelogConsumer.poll(timeoutInMs);
-    verify(bufferLock).lock();
-    verify(bufferLock).unlock();
+    verify(pubSubMessagesStateLock).lock();
+    verify(pubSubMessagesStateLock).unlock();
     // Buffer isn't full, so poll should await on the buffer is full condition and timeout
-    verify(bufferIsFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
+    verify(pubSubMessagesFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
 
     for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
       assertTrue(completableFutureList.get(i).isDone());
     }
 
-    reset(bufferLock);
-    reset(bufferIsFullCondition);
+    reset(pubSubMessagesStateLock);
+    reset(pubSubMessagesFullCondition);
 
     /*
      * Test the case where the buffer isn't full initially, so poll awaits on the condition and doesn't hit the timeout
@@ -676,7 +677,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     });
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(bufferIsFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
+      verify(pubSubMessagesFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
     });
 
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
@@ -687,7 +688,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(bufferIsFullCondition, atLeastOnce()).signal();
+      verify(pubSubMessagesFullCondition, atLeastOnce()).signal();
     });
   }
 

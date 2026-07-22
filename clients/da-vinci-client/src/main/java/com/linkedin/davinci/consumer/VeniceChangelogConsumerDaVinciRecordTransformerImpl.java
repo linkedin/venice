@@ -89,8 +89,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final Set<Integer> eopReceivedPartitions = VeniceConcurrentHashMap.newKeySet();
-  private final ReentrantLock bufferLock = new ReentrantLock();
-  private final Condition bufferIsFullCondition = bufferLock.newCondition();
+  // Coordinates poll waiting/draining with shutdown. ArrayBlockingQueue manages insertion locking.
+  private final ReentrantLock pubSubMessagesStateLock = new ReentrantLock();
+  private final Condition pubSubMessagesFullCondition = pubSubMessagesStateLock.newCondition();
   private volatile BackgroundReporterThread backgroundReporterThread;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
@@ -333,14 +334,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   @Override
   public synchronized void stop() throws Exception {
-    if (!isClosed.compareAndSet(false, true)) {
+    if (isClosed.get()) {
       return;
     }
 
     LOGGER.info("Closing VeniceChangelogConsumer with name: {}", changelogClientConfig.getConsumerName());
-    isStarted.set(false);
-    partitionToVersionToServe.clear();
-    pubSubMessages.clear();
+    pubSubMessagesStateLock.lock();
+    try {
+      isClosed.set(true);
+      isStarted.set(false);
+      partitionToVersionToServe.clear();
+      pubSubMessages.clear();
+      pubSubMessagesFullCondition.signalAll();
+    } finally {
+      pubSubMessagesStateLock.unlock();
+    }
     try {
       if (backgroundReporterThread != null) {
         backgroundReporterThread.interrupt();
@@ -472,34 +480,26 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
-      if (isClosed.get()) {
-        return Collections.emptyList();
-      }
-
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
       try {
-        bufferLock.lock();
+        pubSubMessagesStateLock.lock();
 
         // Wait until pubSubMessages becomes full, or until the timeout is reached
-        if (pubSubMessages.remainingCapacity() > 0) {
-          bufferIsFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
+        if (!isClosed.get() && pubSubMessages.remainingCapacity() > 0) {
+          pubSubMessagesFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
         }
+        if (isClosed.get()) {
+          return Collections.emptyList();
+        }
+        pubSubMessages.drainTo(drainedPubSubMessages);
       } catch (InterruptedException exception) {
         LOGGER.info("Thread was interrupted", exception);
         // Restore the interrupt status
         Thread.currentThread().interrupt();
       } finally {
-        bufferLock.unlock();
+        pubSubMessagesStateLock.unlock();
       }
 
-      if (isClosed.get()) {
-        return Collections.emptyList();
-      }
-
-      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
-      pubSubMessages.drainTo(drainedPubSubMessages);
-      if (isClosed.get()) {
-        return Collections.emptyList();
-      }
       int messagesPolled = drainedPubSubMessages.size();
 
       if (changelogClientConfig.shouldCompactMessages()) {
@@ -835,11 +835,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          * beginning of this comment block.
          */
         if (pubSubMessages.remainingCapacity() == 0) {
-          bufferLock.lock();
+          pubSubMessagesStateLock.lock();
           try {
-            bufferIsFullCondition.signal();
+            pubSubMessagesFullCondition.signal();
           } finally {
-            bufferLock.unlock();
+            pubSubMessagesStateLock.unlock();
           }
         }
 
