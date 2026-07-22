@@ -19,6 +19,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.ObservableDoubleGauge;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
@@ -103,8 +104,39 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   }
 
   @Test
+  public void testCloseUnregistersObservableDoubleGauge() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
+    ObservableDoubleGauge gauge = mock(ObservableDoubleGauge.class);
+    when(mockOtelRepository.registerObservableDoubleGauge(eq(mockMetricEntity), any())).thenReturn(gauge);
+    AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        e -> e,
+        (state, e) -> 1L);
+
+    metricState.close();
+
+    verify(gauge).close();
+  }
+
+  @Test
+  public void testCloseOnDisabledInstanceIsNoOp() {
+    AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        null /* OTel disabled */,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        e -> e,
+        (state, e) -> 1L);
+
+    // Must not throw when instrument is null.
+    metricState.close();
+  }
+
+  @Test
   public void testCallbackEmitsOnlyWhenLiveStateResolverReturnsNonNull() {
-    // liveStateResolver returns state for DIMENSION_ONE only; DIMENSION_TWO is dormant.
     LiveStateResolverOneEnum<DimensionEnum1, Object> liveStateResolver =
         e -> e == DimensionEnum1.DIMENSION_ONE ? "live" : null;
     ValueResolverOneEnum<Object, DimensionEnum1> valueResolver = (state, e) -> 42L;

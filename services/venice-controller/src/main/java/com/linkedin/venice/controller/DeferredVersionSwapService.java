@@ -971,7 +971,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   private static boolean isAbandonedDeferredVersion(Version version) {
-    return version != null && version.isVersionSwapDeferred() && ABANDONED_VERSION_STATUSES.contains(version.getStatus());
+    return version != null && version.isVersionSwapDeferred()
+        && ABANDONED_VERSION_STATUSES.contains(version.getStatus());
   }
 
   private void submitTerminalVersionReconciliationTasks(
@@ -1393,8 +1394,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
 
       StoreInfo childStore = storeResponse.getStore();
-      Version childVersion =
-          getVersionFromStoreInRegion(region, storeName, targetVersionNum, storeResponse);
+      Version childVersion = getVersionFromStoreInRegion(region, storeName, targetVersionNum, storeResponse);
       if (childVersion == null) {
         allRegionsTerminal = false;
         continue;

@@ -593,9 +593,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
   @DataProvider(name = "abandonedParentStatuses")
   public Object[][] abandonedParentStatuses() {
-    return new Object[][] {
-        { VersionStatus.ERROR },
-        { VersionStatus.PARTIALLY_ONLINE },
+    return new Object[][] { { VersionStatus.ERROR }, { VersionStatus.PARTIALLY_ONLINE },
         { VersionStatus.ROLLED_BACK } };
   }
 
