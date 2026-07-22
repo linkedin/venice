@@ -15,7 +15,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
@@ -23,12 +23,10 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_S
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
@@ -1039,33 +1037,18 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   }
 
   /**
-   * Initialize throttlers for incremental push write quota enforcement. Throttlers are only created if this is an
-   * incremental push writing to the regular RT topic (not a separate real-time topic) and write quota is enabled. The
-   * configured quota is the global job/store quota and is split evenly across partition-writer tasks for local
-   * enforcement.
+   * Initialize the incremental-push write-quota throttler from the driver-computed per-partition quota. The driver
+   * already folded in the incremental-push / separate-real-time-topic / disabled decision and the global-quota split
+   * (see {@link IncrementalPushWriteQuotaUtils#perPartitionQuotaForPush}), so a forwarded value {@code <= 0} means no
+   * throttling and this method is a no-op.
    */
   private void initIncrementalPushThrottlers(VeniceProperties props) {
     this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
-    if (!isIncrementalPush) {
-      return;
-    }
-
-    // Skip throttling for incremental pushes writing to a separate real-time topic.
-    // Both the push job config and the store config must be true for the push to actually use
-    // the separate RT topic (see CreateVersion.determineResponseTopic).
-    boolean pushToSeparateRealtimeTopic = props.getBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, false);
-    boolean storeSeparateRealTimeTopicEnabled = props.getBoolean(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, false);
-    if (pushToSeparateRealtimeTopic && storeSeparateRealTimeTopicEnabled) {
-      LOGGER.info("Incremental push write quota throttling is skipped for separate real-time topic pushes");
-      return;
-    }
-
-    long globalRecordsPerSecond = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1);
-    if (globalRecordsPerSecond <= 0) {
-      return;
-    }
     long perPartitionRecordsPerSecond =
-        IncrementalPushWriteQuotaUtils.getPerPartitionRecordsPerSecond(globalRecordsPerSecond, getPartitionCount());
+        props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, -1);
+    if (perPartitionRecordsPerSecond <= 0) {
+      return;
+    }
 
     String storeName = Version.parseStoreFromKafkaTopicName(props.getString(TOPIC_PROP));
     String rateLimiterTypeStr = props
@@ -1114,11 +1097,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         break;
     }
     LOGGER.info(
-        "Initialized incremental push records throttler for store {}: {} records/sec global split across {} "
-            + "partition-writer tasks => {} records/sec per task, type: {}",
+        "Initialized incremental push records throttler for store {}: {} records/sec per partition-writer task, type: {}",
         storeName,
-        globalRecordsPerSecond,
-        getPartitionCount(),
         perPartitionRecordsPerSecond,
         rateLimiterType);
   }

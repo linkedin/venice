@@ -2,11 +2,9 @@ package com.linkedin.venice.hadoop.task.datawriter;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
@@ -54,7 +52,8 @@ public class AbstractPartitionWriterThrottlingTest {
   }
 
   @Test
-  public void testThrottlingDisabledForBatchPush() {
+  public void testThrottlingDisabledWhenNoPerPartitionQuotaForwarded() {
+    // Batch pushes and separate-RT pushes lead the driver to forward a disabled (<= 0) per-partition quota.
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "false");
     setupMockConfigProvider(props);
@@ -65,58 +64,21 @@ public class AbstractPartitionWriterThrottlingTest {
     assertEquals(
         partitionWriter.isIncrementalPushThrottlingEnabled(),
         false,
-        "Throttling should not be enabled for batch push");
-    assertNull(partitionWriter.getRecordsThrottler(), "Records throttler should not be initialized for batch push");
+        "Throttling should not be enabled when no per-partition quota is forwarded");
+    assertNull(partitionWriter.getRecordsThrottler(), "Records throttler should not be initialized");
   }
 
-  // pushToSeparateRT, storeSeparateRTEnabled, expectedThrottlingEnabled
-  @DataProvider(name = "separateRealTimeTopicCombinations")
-  public Object[][] separateRealTimeTopicCombinations() {
-    return new Object[][] { { true, true, false }, // both true: skip throttling
-        { true, false, true }, // only push config: still throttle
-        { false, true, true }, // only store config: still throttle
-        { false, false, true } // neither: still throttle
-    };
+  // forwarded per-partition quota, expected throttling enabled
+  @DataProvider(name = "perPartitionQuotaValues")
+  public Object[][] perPartitionQuotaValues() {
+    return new Object[][] { { "-1", false }, { "0", false }, { "1", true }, { "250", true }, { "1000", true } };
   }
 
-  @Test(dataProvider = "separateRealTimeTopicCombinations")
-  public void testThrottlingForSeparateRealtimeTopicCombinations(
-      boolean pushToSeparateRT,
-      boolean storeSeparateRTEnabled,
-      boolean expectedThrottlingEnabled) {
+  @Test(dataProvider = "perPartitionQuotaValues")
+  public void testThrottlingByPerPartitionQuota(String perPartitionQuota, boolean expectedEnabled) {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
-    props.setProperty(PUSH_TO_SEPARATE_REALTIME_TOPIC, String.valueOf(pushToSeparateRT));
-    props.setProperty(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, String.valueOf(storeSeparateRTEnabled));
-    setupMockConfigProvider(props);
-
-    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
-    partitionWriter.configure(mockConfigProvider);
-
-    assertEquals(
-        partitionWriter.isIncrementalPushThrottlingEnabled(),
-        expectedThrottlingEnabled,
-        "Throttling mismatch for pushToSeparateRT=" + pushToSeparateRT + ", storeSeparateRTEnabled="
-            + storeSeparateRTEnabled);
-    if (expectedThrottlingEnabled) {
-      assertNotNull(partitionWriter.getRecordsThrottler(), "Throttler should be initialized");
-    } else {
-      assertNull(partitionWriter.getRecordsThrottler(), "Throttler should not be initialized");
-    }
-  }
-
-  // quota value, expected throttling enabled
-  @DataProvider(name = "quotaValues")
-  public Object[][] quotaValues() {
-    return new Object[][] { { "-1", false }, { "0", false }, { "1", true }, { "1000", true }, { "5000", true } };
-  }
-
-  @Test(dataProvider = "quotaValues")
-  public void testThrottlingByQuotaValue(String recordsPerSecond, boolean expectedEnabled) {
-    Properties props = createBaseProperties();
-    props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, recordsPerSecond);
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, perPartitionQuota);
     setupMockConfigProvider(props);
 
     partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
@@ -125,57 +87,20 @@ public class AbstractPartitionWriterThrottlingTest {
     assertEquals(
         partitionWriter.isIncrementalPushThrottlingEnabled(),
         expectedEnabled,
-        "Throttling enabled mismatch for recordsPerSecond=" + recordsPerSecond);
+        "Throttling enabled mismatch for perPartitionQuota=" + perPartitionQuota);
     if (expectedEnabled) {
       assertNotNull(
           partitionWriter.getRecordsThrottler(),
-          "Throttler should be initialized for quota " + recordsPerSecond);
+          "Throttler should be initialized for quota " + perPartitionQuota);
+      assertEquals(
+          partitionWriter.getRecordsThrottler().getQuota(),
+          Long.parseLong(perPartitionQuota),
+          "Throttler should enforce the forwarded per-partition quota directly (no re-derivation)");
     } else {
       assertNull(
           partitionWriter.getRecordsThrottler(),
-          "Throttler should not be initialized for quota " + recordsPerSecond);
+          "Throttler should not be initialized for quota " + perPartitionQuota);
     }
-  }
-
-  @Test
-  public void testGlobalQuotaSplitAcrossPartitionWriters() {
-    Properties props = createBaseProperties();
-    props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
-    props.setProperty(PARTITION_COUNT, "4");
-    setupMockConfigProvider(props);
-
-    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
-    partitionWriter.configure(mockConfigProvider);
-
-    assertNotNull(partitionWriter.getRecordsThrottler(), "Throttler should be initialized");
-    assertEquals(
-        partitionWriter.getRecordsThrottler().getQuota(),
-        250L,
-        "1000 records/sec global quota should be split across 4 partition-writer tasks");
-  }
-
-  @Test
-  public void testGlobalQuotaSplitUsesFloorDivisionToStayUnderGlobalQuota() {
-    Properties props = createBaseProperties();
-    props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
-    props.setProperty(PARTITION_COUNT, "3");
-    setupMockConfigProvider(props);
-
-    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
-    partitionWriter.configure(mockConfigProvider);
-
-    assertNotNull(partitionWriter.getRecordsThrottler(), "Throttler should be initialized");
-    assertEquals(
-        partitionWriter.getRecordsThrottler().getQuota(),
-        333L,
-        "Non-divisible global quotas should be rounded down per task so aggregate rate does not exceed the quota");
-  }
-
-  @Test
-  public void testGlobalQuotaBelowPartitionCountFailsFast() {
-    assertThrows(VeniceException.class, () -> IncrementalPushWriteQuotaUtils.validateQuota(2, 4));
   }
 
   // rate limiter type config, expected throttler class
@@ -192,7 +117,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testRateLimiterTypeSelection(String rateLimiterType, Class<?> expectedClass) {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "1000");
     if (rateLimiterType != null) {
       props.setProperty(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, rateLimiterType);
     }
@@ -213,7 +138,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testThrottlingDoesNotBlockBelowQuota() {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "100000"); // Very high quota
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "100000"); // Very high quota
     setupMockConfigProvider(props);
 
     partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
@@ -239,7 +164,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testTokenBucketWithSubSecondTimeWindow() {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "1000");
     props.setProperty(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, "TOKEN_BUCKET_INCREMENTAL_REFILL");
     props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, "100");
     setupMockConfigProvider(props);
@@ -263,7 +188,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testThrottlingDisabledForZeroQuota() {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "0");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "0");
     setupMockConfigProvider(props);
 
     partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
@@ -276,7 +201,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testThrottlingDisabledForNegativeQuota() {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "-1");
     setupMockConfigProvider(props);
 
     partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
@@ -289,7 +214,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testMinimumValidQuota() {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "1");
     setupMockConfigProvider(props);
 
     partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
@@ -303,7 +228,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testInvalidRateLimiterTypeFallsBackToGuava() {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "1000");
     props.setProperty(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, "COMPLETELY_BOGUS_TYPE");
     setupMockConfigProvider(props);
 
@@ -321,7 +246,7 @@ public class AbstractPartitionWriterThrottlingTest {
   public void testTokenBucketWithInvalidTimeWindowFallsBackToDefault() {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
-    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION, "1000");
     props.setProperty(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, "TOKEN_BUCKET_INCREMENTAL_REFILL");
     props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, "0");
     setupMockConfigProvider(props);

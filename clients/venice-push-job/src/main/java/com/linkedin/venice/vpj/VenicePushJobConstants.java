@@ -630,6 +630,16 @@ public final class VenicePushJobConstants {
       "incremental.push.write.quota.records.per.second";
 
   /**
+   * Internal, driver-computed per-partition-writer slice of {@link #INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND}.
+   * The driver computes {@code globalQuota / partitionCount} once (after validating splittability) and forwards this
+   * value to the data-writer tasks, so each partition writer enforces it directly without re-deriving the split. A
+   * value {@code <= 0} means throttling does not apply (batch push, separate real-time topic push, or disabled quota).
+   * This is not a user-facing config; it is set by {@link VenicePushJob}.
+   */
+  public static final String INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION =
+      "incremental.push.write.quota.records.per.second.per.partition";
+
+  /**
    * Time window in milliseconds over which throttling is measured. Defaults to 1 second.
    * This parameter is only applicable when using TOKEN_BUCKET_INCREMENTAL_REFILL or
    * TOKEN_BUCKET_GREEDY_REFILL rate limiter types.

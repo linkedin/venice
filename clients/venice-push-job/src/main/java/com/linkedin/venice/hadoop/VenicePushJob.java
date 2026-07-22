@@ -129,7 +129,6 @@ import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageWriteThrottler;
-import com.linkedin.venice.hadoop.task.datawriter.IncrementalPushWriteQuotaUtils;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.hadoop.validation.NoOpValidator;
@@ -896,10 +895,10 @@ public class VenicePushJob implements AutoCloseable {
       Version createdVersion = getStoreVersion(pushJobSetting.storeName, pushJobSetting.version);
       pushJobSetting.versionSeparateRealTimeTopicEnabled = createdVersion.isSeparateRealTimeTopicEnabled();
 
-      // Fail fast here (driver-side, before the data-writer job launches) if throttling is misconfigured for the
-      // partition count just assigned to this version.
+      // Fail fast here (driver-side, before the data-writer job launches) if external-storage dual-write
+      // throttling is misconfigured for the partition count just assigned to this version. Incremental-push write
+      // quota is validated later, when the data-writer job config is assembled (also driver-side, pre-launch).
       validateExternalStorageDualWriteQuota(pushJobSetting);
-      validateIncrementalPushWriteQuota(pushJobSetting);
 
       // Update and send push job details with new info to the controller
       pushJobDetails.partitionCount = pushJobSetting.partitionCount;
@@ -2675,20 +2674,6 @@ public class VenicePushJob implements AutoCloseable {
         props.getLong(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND, -1),
         props.getLong(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND, -1),
         setting.partitionCount);
-  }
-
-  /**
-   * Fail fast on the driver — before launching the data-writer job and allocating its cluster resources — when
-   * incremental-push throttling is misconfigured for the partition count assigned to this version. Separate real-time
-   * topic incremental pushes skip this throttling in the executor path, so they skip this validation too.
-   */
-  private void validateIncrementalPushWriteQuota(PushJobSetting setting) {
-    if (!setting.isIncrementalPush
-        || (setting.pushToSeparateRealtimeTopicEnabled && setting.versionSeparateRealTimeTopicEnabled)) {
-      return;
-    }
-    IncrementalPushWriteQuotaUtils
-        .validateQuota(props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1), setting.partitionCount);
   }
 
   /**
