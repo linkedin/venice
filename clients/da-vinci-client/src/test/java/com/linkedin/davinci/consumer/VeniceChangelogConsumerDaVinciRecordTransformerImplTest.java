@@ -30,6 +30,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -382,7 +383,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   public void testStartAndSeekRejectedAfterCloseAndDuplicateStopIsHarmless() throws Exception {
     veniceChangelogConsumer.stop();
 
-    assertThrows(VeniceClientException.class, veniceChangelogConsumer::start);
+    VeniceClientException exception = expectThrows(VeniceClientException.class, veniceChangelogConsumer::start);
+    assertTrue(exception.getMessage().contains(TEST_STORE_NAME), "Closed-consumer error should identify the store");
     assertThrows(
         VeniceClientException.class,
         () -> veniceChangelogConsumer.seekToBeginningOfPush(Collections.singleton(0)));

@@ -209,7 +209,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private void throwIfClosed() {
     if (isClosed.get()) {
       throw new VeniceClientException(
-          "Cannot start or seek a closed VeniceChangelogConsumer: " + changelogClientConfig.getConsumerName());
+          "Cannot start or seek a closed VeniceChangelogConsumer for store: " + storeName + ", consumer name: "
+              + changelogClientConfig.getConsumerName());
     }
   }
 
@@ -336,10 +337,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       return;
     }
 
+    LOGGER.info("Closing VeniceChangelogConsumer with name: {}", changelogClientConfig.getConsumerName());
     isStarted.set(false);
     partitionToVersionToServe.clear();
     pubSubMessages.clear();
-    LOGGER.info("Closing Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     try {
       if (backgroundReporterThread != null) {
         backgroundReporterThread.interrupt();
@@ -350,7 +351,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       pubSubMessages.clear();
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
       clearPartitionState(Collections.emptySet());
-      LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
+      LOGGER.info("Closed VeniceChangelogConsumer with name: {}", changelogClientConfig.getConsumerName());
     }
   }
 
