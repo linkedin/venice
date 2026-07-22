@@ -11,8 +11,10 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -54,9 +56,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -231,10 +241,178 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     veniceChangelogConsumer.stop();
     assertFalse(veniceChangelogConsumer.isStarted(), "isStarted should be false");
+    assertTrue(veniceChangelogConsumer.isClosed(), "isClosed should be true");
 
     verify(mockDaVinciClient).close();
     verify(veniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
+  }
+
+  @Test
+  public void testStopReleasesAllBlockedProducersWithoutPoller() throws Exception {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+
+    int blockedProducerCount = MAX_BUFFER_SIZE + 3;
+    CountDownLatch blockedPutAttempts = new CountDownLatch(blockedProducerCount);
+    BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue =
+        new ArrayBlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>>(MAX_BUFFER_SIZE) {
+          @Override
+          public void put(PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message)
+              throws InterruptedException {
+            if (remainingCapacity() == 0) {
+              blockedPutAttempts.countDown();
+            }
+            super.put(message);
+          }
+        };
+    setOutputQueue(outputQueue);
+
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
+      int key = i;
+      recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata);
+    }
+    assertEquals(outputQueue.size(), MAX_BUFFER_SIZE, "Output queue should be full before producers block");
+
+    ExecutorService producerExecutor = Executors.newFixedThreadPool(blockedProducerCount);
+    List<Future<?>> producerFutures = new ArrayList<>();
+    try {
+      for (int i = 0; i < blockedProducerCount; i++) {
+        int key = MAX_BUFFER_SIZE + i;
+        producerFutures.add(
+            producerExecutor
+                .submit(() -> recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata)));
+      }
+
+      assertTrue(blockedPutAttempts.await(5, TimeUnit.SECONDS), "Every producer should reach the full output queue");
+      for (Future<?> producerFuture: producerFutures) {
+        assertFalse(producerFuture.isDone(), "Producer should remain blocked until stop clears the queue");
+      }
+
+      veniceChangelogConsumer.stop();
+
+      for (Future<?> producerFuture: producerFutures) {
+        producerFuture.get(5, TimeUnit.SECONDS);
+      }
+      assertTrue(outputQueue.isEmpty(), "Stop should release blocked producers without leaving shutdown output");
+      assertTrue(veniceChangelogConsumer.isClosed(), "Stop should leave the consumer terminally closed");
+    } finally {
+      producerExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  public void testLatePutRemovesOnlyInsertedMessage() throws Exception {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+
+    AtomicBoolean closedFlag = getAtomicBooleanField("isClosed");
+    AtomicBoolean startedFlag = getAtomicBooleanField("isStarted");
+    AtomicReference<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> insertedMessage =
+        new AtomicReference<>();
+    PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> sentinelMessage = mock(PubSubMessage.class);
+    BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue =
+        new ArrayBlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>>(2) {
+          @Override
+          public void put(PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message)
+              throws InterruptedException {
+            super.put(message);
+            insertedMessage.set(message);
+            super.put(sentinelMessage);
+            startedFlag.set(false);
+            closedFlag.set(true);
+          }
+        };
+    setOutputQueue(outputQueue);
+
+    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+
+    assertNotNull(insertedMessage.get(), "The test producer should insert its message before observing close");
+    assertFalse(
+        outputQueue.stream().anyMatch(message -> message == insertedMessage.get()),
+        "The exact message inserted across the shutdown boundary should be removed");
+    assertEquals(outputQueue.size(), 1, "Removal should not purge unrelated queue entries");
+    assertSame(outputQueue.peek(), sentinelMessage, "Only the exact late message should be removed");
+  }
+
+  @Test
+  public void testPollDuringCloseReturnsNoShutdownWindowOutput() throws Exception {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+
+    CountDownLatch daVinciCloseStarted = new CountDownLatch(1);
+    CountDownLatch allowDaVinciClose = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      daVinciCloseStarted.countDown();
+      assertTrue(allowDaVinciClose.await(5, TimeUnit.SECONDS), "Test should release DaVinci close");
+      return null;
+    }).when(mockDaVinciClient).close();
+
+    CompletableFuture<Void> closeFuture = CompletableFuture.runAsync(() -> {
+      try {
+        veniceChangelogConsumer.stop();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
+
+    try {
+      assertTrue(daVinciCloseStarted.await(5, TimeUnit.SECONDS), "Close should reach the DaVinci client");
+      BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue =
+          getOutputQueue();
+      PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> shutdownWindowMessage =
+          mock(PubSubMessage.class);
+      outputQueue.add(shutdownWindowMessage);
+
+      assertTrue(
+          veniceChangelogConsumer.poll(POLL_TIMEOUT).isEmpty(),
+          "Poll must not emit a message inserted after close begins");
+      assertTrue(
+          outputQueue.contains(shutdownWindowMessage),
+          "Poll should return before draining once the consumer is closed");
+    } finally {
+      allowDaVinciClose.countDown();
+    }
+
+    closeFuture.get(5, TimeUnit.SECONDS);
+    assertTrue(getOutputQueue().isEmpty(), "Final close cleanup should empty the output queue");
+  }
+
+  @Test
+  public void testStartAndSeekRejectedAfterCloseAndDuplicateStopIsHarmless() throws Exception {
+    veniceChangelogConsumer.stop();
+
+    assertThrows(VeniceClientException.class, veniceChangelogConsumer::start);
+    assertThrows(
+        VeniceClientException.class,
+        () -> veniceChangelogConsumer.seekToBeginningOfPush(Collections.singleton(0)));
+
+    veniceChangelogConsumer.stop();
+
+    assertTrue(veniceChangelogConsumer.isClosed(), "A stopped consumer must remain terminally closed");
+    verify(mockDaVinciClient).close();
+    verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
+  }
+
+  @Test
+  public void testCloseFailureStillLeavesTerminalStateAndCleansFactory() throws Exception {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+    assertFalse(getOutputQueue().isEmpty(), "Test setup should buffer a message before close");
+    doThrow(new VeniceException("close failure")).when(mockDaVinciClient).close();
+
+    assertThrows(VeniceException.class, veniceChangelogConsumer::stop);
+
+    assertTrue(veniceChangelogConsumer.isClosed(), "A failed close must still be terminal");
+    assertFalse(veniceChangelogConsumer.isStarted(), "A failed close must not leave the consumer started");
+    assertTrue(getOutputQueue().isEmpty(), "A failed close must still clear buffered output");
+    assertTrue(veniceChangelogConsumer.getSubscribedPartitions().isEmpty(), "Partition state should be cleared");
+    verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
+    verify(veniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
+
+    veniceChangelogConsumer.stop();
+    verify(mockDaVinciClient).close();
   }
 
   @Test
@@ -712,6 +890,31 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         () -> assertFalse(
             veniceChangelogConsumer.getSubscribedPartitions().contains(1),
             "Partition 1 should be removed from subscribedPartitions after failure"));
+  }
+
+  @SuppressWarnings("unchecked")
+  private BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> getOutputQueue()
+      throws NoSuchFieldException, IllegalAccessException {
+    Field outputQueueField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("pubSubMessages");
+    outputQueueField.setAccessible(true);
+    return (BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>>) outputQueueField
+        .get(veniceChangelogConsumer);
+  }
+
+  private void setOutputQueue(
+      BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue)
+      throws NoSuchFieldException, IllegalAccessException {
+    Field outputQueueField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("pubSubMessages");
+    outputQueueField.setAccessible(true);
+    outputQueueField.set(veniceChangelogConsumer, outputQueue);
+  }
+
+  private AtomicBoolean getAtomicBooleanField(String fieldName) throws NoSuchFieldException, IllegalAccessException {
+    Field field = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    return (AtomicBoolean) field.get(veniceChangelogConsumer);
   }
 
   private void onStartVersionIngestionHelper(boolean currentRecordTransformer, boolean isCurrentVersion) {

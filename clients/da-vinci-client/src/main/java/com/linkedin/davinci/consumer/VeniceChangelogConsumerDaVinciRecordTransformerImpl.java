@@ -81,6 +81,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final SeekableDaVinciClient<K, V> daVinciClient;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
+  private final AtomicBoolean isClosed = new AtomicBoolean(false);
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
@@ -197,10 +198,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   private synchronized void startDaVinciClient() {
+    throwIfClosed();
     // Start daVinci client if not already started
     if (!isStarted.get()) {
       daVinciClient.start();
       isStarted.set(true);
+    }
+  }
+
+  private void throwIfClosed() {
+    if (isClosed.get()) {
+      throw new VeniceClientException(
+          "Cannot start or seek a closed VeniceChangelogConsumer: " + changelogClientConfig.getConsumerName());
     }
   }
 
@@ -215,6 +224,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private synchronized CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
+    throwIfClosed();
     Set<Integer> targetPartitions = new HashSet<>();
     boolean partitionsAdded = false;
     try {
@@ -321,7 +331,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   @Override
-  public void stop() throws Exception {
+  public synchronized void stop() throws Exception {
+    if (!isClosed.compareAndSet(false, true)) {
+      return;
+    }
+
+    isStarted.set(false);
+    partitionToVersionToServe.clear();
+    pubSubMessages.clear();
     LOGGER.info("Closing Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     try {
       if (backgroundReporterThread != null) {
@@ -330,6 +347,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       daVinciClient.close();
     } finally {
       isStarted.set(false);
+      pubSubMessages.clear();
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
       clearPartitionState(Collections.emptySet());
       LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
@@ -453,6 +471,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
+      if (isClosed.get()) {
+        return Collections.emptyList();
+      }
+
       try {
         bufferLock.lock();
 
@@ -468,8 +490,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         bufferLock.unlock();
       }
 
+      if (isClosed.get()) {
+        return Collections.emptyList();
+      }
+
       Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
       pubSubMessages.drainTo(drainedPubSubMessages);
+      if (isClosed.get()) {
+        return Collections.emptyList();
+      }
       int messagesPolled = drainedPubSubMessages.size();
 
       if (changelogClientConfig.shouldCompactMessages()) {
@@ -784,12 +813,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     private void internalAddMessageToBuffer(
         int partitionId,
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage) {
-      if (!isServedByThisVersion(partitionId)) {
+      if (isClosed.get() || !isStarted.get() || !isServedByThisVersion(partitionId)) {
         return;
       }
 
       try {
         pubSubMessages.put(pubSubMessage);
+        if (isClosed.get() || !isStarted.get()) {
+          pubSubMessages.remove(pubSubMessage);
+          return;
+        }
         /*
          * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
          * Not signaling to all threads, because if multiple poll threads try to read pubSubMessages at
@@ -968,6 +1001,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @VisibleForTesting
   public boolean isStarted() {
     return isStarted.get();
+  }
+
+  @VisibleForTesting
+  public boolean isClosed() {
+    return isClosed.get();
   }
 
   @VisibleForTesting
