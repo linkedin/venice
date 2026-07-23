@@ -651,8 +651,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    // 22 distinct ifPresent/conditional branches above. Allow some
-    // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
+    // 23 fields are configured above; targetRegionPromoted skips its metadata write because this store has no
+    // promotable future version.
     verify(admin, atLeast(22)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
   }
 

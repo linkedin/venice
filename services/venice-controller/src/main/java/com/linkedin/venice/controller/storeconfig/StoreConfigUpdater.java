@@ -1482,8 +1482,10 @@ public final class StoreConfigUpdater {
         LOGGER.error(errMsg);
         throw new VeniceException(errMsg);
       }
+      setStore.updatedConfigsList = new ArrayList<>(updatedConfigsList);
+    } else {
+      setStore.updatedConfigsList = Collections.emptyList();
     }
-    setStore.updatedConfigsList = new ArrayList<>(updatedConfigsList);
 
     final boolean readComputeJustEnabled =
         readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
