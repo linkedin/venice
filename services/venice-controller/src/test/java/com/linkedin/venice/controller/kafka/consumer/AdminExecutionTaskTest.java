@@ -577,7 +577,7 @@ public class AdminExecutionTaskTest {
   }
 
   @Test
-  public void testHandleSetStore_IgnoresEncryptionForReplicateAllConfigs() {
+  public void testHandleSetStoreIgnoresEncryptionForReplicateAllConfigs() {
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
 
     AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
