@@ -1019,6 +1019,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   @VisibleForTesting
+  public BlockingQueue<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> getPubSubMessages() {
+    return pubSubMessages;
+  }
+
+  @VisibleForTesting
   public Set<Integer> getSubscribedPartitions() {
     return subscribedPartitions;
   }

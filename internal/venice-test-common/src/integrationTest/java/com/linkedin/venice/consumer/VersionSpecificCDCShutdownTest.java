@@ -5,9 +5,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
-import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.ConfigKeys.STORE_WRITER_NUMBER;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -31,6 +29,7 @@ import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -52,7 +51,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.view.TestView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -304,22 +302,8 @@ public class VersionSpecificCDCShutdownTest {
     }
   }
 
-  private BlockingQueue<?> getOutputQueue(VeniceChangelogConsumer<?, ?> consumer) throws ReflectiveOperationException {
-    return (BlockingQueue<?>) readField(consumer, "pubSubMessages");
-  }
-
-  private Object readField(Object target, String fieldName) throws ReflectiveOperationException {
-    Class<?> currentClass = target.getClass();
-    while (currentClass != null) {
-      try {
-        Field field = currentClass.getDeclaredField(fieldName);
-        field.setAccessible(true);
-        return field.get(target);
-      } catch (NoSuchFieldException e) {
-        currentClass = currentClass.getSuperclass();
-      }
-    }
-    throw new NoSuchFieldException(target.getClass().getName() + "." + fieldName);
+  private BlockingQueue<?> getOutputQueue(VeniceChangelogConsumer<?, ?> consumer) {
+    return ((VeniceChangelogConsumerDaVinciRecordTransformerImpl<?, ?>) consumer).getPubSubMessages();
   }
 
   private void pollAndVerifyNearlineRecords(
@@ -433,9 +417,7 @@ public class VersionSpecificCDCShutdownTest {
 
   private VeniceChangelogConsumerClientFactory createFactory(String inputDirRef, int outputBufferSize) {
     Properties consumerProps = ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirRef);
-    consumerProps.put(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, true);
-    consumerProps.put(SORTED_INPUT_DRAINER_SIZE, 1);
-    consumerProps.put(UNSORTED_INPUT_DRAINER_SIZE, 1);
+    consumerProps.put(STORE_WRITER_NUMBER, 1);
     ChangelogClientConfig globalConfig = new ChangelogClientConfig().setConsumerProperties(consumerProps)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
