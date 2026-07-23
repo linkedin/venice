@@ -100,9 +100,10 @@ public class TestEncryptionClusterStoreConfig {
 
       ControllerResponse staleMetadataUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner("reconciled-owner"));
-      Assert.assertTrue(
-          staleMetadataUpdate.isError(),
-          "An omitted encryption value must not silently repair stale metadata");
+      Assert.assertFalse(staleMetadataUpdate.isError(), "Updates that omit encryptionEnabled must skip validation");
+      Assert.assertFalse(
+          controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
+          "An omitted encryption value must leave existing metadata unchanged");
 
       ControllerResponse reconciliationUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));

@@ -689,14 +689,17 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
   }
 
-  @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnChildRejectsOmittedEncryptionValueWhenMetadataIsStale() {
+  @Test
+  public void testApplyOnChildAcceptsOmittedEncryptionValueWhenMetadataIsStale() {
     String storeName = Utils.getUniqueString("omitted-encryption");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
     VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
     doReturn(true).when(clusterConfig).isEncryptionCluster();
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
+
+    verify(admin).setStoreOwner(clusterName, storeName, "new-owner");
+    assertFalse(admin.getStore(clusterName, storeName).isEncryptionEnabled());
   }
 
   @Test
@@ -739,8 +742,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
   }
 
-  @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnParentRejectsOmittedEncryptionValueWhenMetadataIsStale() {
+  @Test
+  public void testApplyOnParentAcceptsOmittedEncryptionValueWhenMetadataIsStale() {
     String storeName = Utils.getUniqueString("omitted-encryption");
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -748,6 +751,10 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     parentAdmin.initStorageCluster(clusterName);
 
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertFalse(message.encryptionEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals));
   }
 
   @Test

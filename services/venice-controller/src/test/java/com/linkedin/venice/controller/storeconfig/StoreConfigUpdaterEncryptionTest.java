@@ -5,7 +5,6 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.Store;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 
@@ -22,36 +21,26 @@ public class StoreConfigUpdaterEncryptionTest {
 
   @Test
   public void testMatchingEnabledValueAllowedInEncryptionCluster() {
-    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, false), true, Optional.of(true), CLUSTER, STORE);
+    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, false), true, true, CLUSTER, STORE);
   }
 
   @Test
   public void testMatchingDisabledValueAllowedOutsideEncryptionCluster() {
-    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, true), false, Optional.of(false), CLUSTER, STORE);
+    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, true), false, false, CLUSTER, STORE);
   }
 
   @Test(expectedExceptions = VeniceHttpException.class)
   public void testDisabledValueRejectedInEncryptionCluster() {
-    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, true), true, Optional.of(false), CLUSTER, STORE);
+    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, true), true, false, CLUSTER, STORE);
   }
 
   @Test(expectedExceptions = VeniceHttpException.class)
   public void testEnabledValueRejectedOutsideEncryptionCluster() {
-    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, false), false, Optional.of(true), CLUSTER, STORE);
-  }
-
-  @Test
-  public void testOmittedValueAllowedWhenMetadataMatchesPolicy() {
-    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, true), true, Optional.empty(), CLUSTER, STORE);
-  }
-
-  @Test(expectedExceptions = VeniceHttpException.class)
-  public void testOmittedValueRejectedWhenMetadataConflictsWithPolicy() {
-    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, false), true, Optional.empty(), CLUSTER, STORE);
+    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(false, false), false, true, CLUSTER, STORE);
   }
 
   @Test
   public void testSystemStoreExemptFromValidation() {
-    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(true, true), true, Optional.of(false), CLUSTER, STORE);
+    StoreConfigUpdater.validateEncryptionEnabledUpdate(store(true, true), true, false, CLUSTER, STORE);
   }
 }
