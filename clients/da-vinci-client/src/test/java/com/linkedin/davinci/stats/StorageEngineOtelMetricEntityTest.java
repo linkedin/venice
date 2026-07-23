@@ -29,8 +29,16 @@ public class StorageEngineOtelMetricEntityTest {
             "ingestion.disk.used",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
-            "Disk usage in bytes by record type (data or replication metadata)",
+            "Total disk usage in bytes across all versions with each role, by record type",
             setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE)));
+    map.put(
+        StorageEngineOtelMetricEntity.VERSION_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.disk.version_count",
+            MetricType.ASYNC_GAUGE,
+            MetricUnit.NUMBER,
+            "Number of locally loaded storage-engine versions by role",
+            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_VERSION_ROLE)));
     map.put(
         StorageEngineOtelMetricEntity.ROCKSDB_OPEN_FAILURE_COUNT,
         new MetricEntityExpectation(

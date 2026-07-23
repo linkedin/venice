@@ -822,6 +822,55 @@ public class TestStoreBackupVersionCleanupService {
     verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeExpired.getName(), 10);
   }
 
+  @Test
+  public void testPushedVersionIsNotDeletedAfterDefaultRetention() {
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.PUSHED);
+    versions.put(2, VersionStatus.ONLINE);
+    long expiredRetention = mockTime.getMilliseconds() - DEFAULT_RETENTION_MS - 1;
+    Store store = mockStore(-1, expiredRetention, versions, 2);
+    Version currentVersion = store.getVersion(2);
+    doReturn(-1).when(currentVersion).getRepushSourceVersion();
+    doReturn(currentVersion).when(store).getVersionOrThrow(2);
+
+    Assert.assertFalse(service.cleanupBackupVersion(store, CLUSTER_NAME));
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 1);
+  }
+
+  @Test
+  public void testPushedVersionIsNotDeletedAsRepushSource() {
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(2, VersionStatus.PUSHED);
+    versions.put(3, VersionStatus.ONLINE);
+    long pastMinimumRetention = mockTime.getMilliseconds() - TimeUnit.HOURS.toMillis(2);
+    Store store = mockStore(-1, pastMinimumRetention, versions, 3);
+    Version pushedVersion = store.getVersion(2);
+    doReturn(1).when(pushedVersion).getRepushSourceVersion();
+    Version currentVersion = store.getVersion(3);
+    doReturn(2).when(currentVersion).getRepushSourceVersion();
+    doReturn(currentVersion).when(store).getVersionOrThrow(3);
+
+    Assert.assertFalse(service.cleanupBackupVersion(store, CLUSTER_NAME));
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+  }
+
+  @Test
+  public void testPushedVersionDoesNotMakeOnlineBackupEligibleEarly() {
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.PUSHED);
+    versions.put(3, VersionStatus.ONLINE);
+    long pastMinimumRetention = mockTime.getMilliseconds() - TimeUnit.HOURS.toMillis(2);
+    Store store = mockStore(-1, pastMinimumRetention, versions, 3);
+    Version currentVersion = store.getVersion(3);
+    doReturn(-1).when(currentVersion).getRepushSourceVersion();
+    doReturn(currentVersion).when(store).getVersionOrThrow(3);
+
+    Assert.assertFalse(service.cleanupBackupVersion(store, CLUSTER_NAME));
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 1);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+  }
+
   @org.testng.annotations.DataProvider(name = "rolledBackVersionCleanupParams")
   public Object[][] rolledBackVersionCleanupParams() {
     // { hoursElapsed, extraVersions (status map beyond v1 ONLINE + v2 ROLLED_BACK), expectCleanup,

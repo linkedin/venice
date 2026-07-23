@@ -20,7 +20,9 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverTwoEnums;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverTwoEnums;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.ObservableDoubleGauge;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
+import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,6 +94,58 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
       }
     }
     assertEquals(leafCount, DimensionEnum1.values().length * DimensionEnum2.values().length);
+  }
+
+  @Test
+  public void testCloseUnregistersObservableGauge() {
+    ObservableLongGauge gauge = mock(ObservableLongGauge.class);
+    when(mockOtelRepository.registerObservableLongGauge(eq(mockMetricEntity), any())).thenReturn(gauge);
+    AsyncMetricEntityStateTwoEnums<DimensionEnum1, DimensionEnum2> metricState = AsyncMetricEntityStateTwoEnums.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        DimensionEnum2.class,
+        (e1, e2) -> e1,
+        (state, e1, e2) -> 1L);
+
+    metricState.close();
+
+    verify(gauge).close();
+  }
+
+  @Test
+  public void testCloseUnregistersObservableDoubleGauge() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
+    ObservableDoubleGauge gauge = mock(ObservableDoubleGauge.class);
+    when(mockOtelRepository.registerObservableDoubleGauge(eq(mockMetricEntity), any())).thenReturn(gauge);
+    AsyncMetricEntityStateTwoEnums<DimensionEnum1, DimensionEnum2> metricState = AsyncMetricEntityStateTwoEnums.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        DimensionEnum2.class,
+        (e1, e2) -> e1,
+        (state, e1, e2) -> 1L);
+
+    metricState.close();
+
+    verify(gauge).close();
+  }
+
+  @Test
+  public void testCloseOnDisabledInstanceIsNoOp() {
+    AsyncMetricEntityStateTwoEnums<DimensionEnum1, DimensionEnum2> metricState = AsyncMetricEntityStateTwoEnums.create(
+        mockMetricEntity,
+        null /* OTel disabled */,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        DimensionEnum2.class,
+        (e1, e2) -> e1,
+        (state, e1, e2) -> 1L);
+
+    // Must not throw when instrument is null.
+    metricState.close();
   }
 
   @Test

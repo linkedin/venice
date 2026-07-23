@@ -156,10 +156,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       long minCleanupDelayMs) {
     List<Version> versions = store.getVersions();
 
-    // Regardless of retention, if there are more than 1 non-rolled-back versions strictly below the current version,
-    // we should clean up. ROLLED_BACK versions are excluded since they have their own retention-based cleanup path.
+    // Regardless of retention, clean up when more than one standard-cleanup-eligible version is below current.
+    // PUSHED versions remain protected until an explicit terminal decision, and ROLLED_BACK has its own retention path.
     if (versions.stream()
-        .filter(v -> v.getNumber() < currentVersion && !VersionStatus.isVersionRolledBack(v.getStatus()))
+        .filter(v -> v.getNumber() < currentVersion && isEligibleForStandardBackupCleanup(v))
         .count() > 1) {
       return true;
     }
@@ -333,7 +333,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
 
       readyToBeRemovedVersions = versions.stream()
-          .filter(v -> !VersionStatus.isVersionRolledBack(v.getStatus())) // rolled-back handled separately
+          .filter(StoreBackupVersionCleanupService::isEligibleForStandardBackupCleanup)
           .sorted((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber())) // sort in descending order
           .filter(v -> {
             // always delete past default retention and less than current version
@@ -355,7 +355,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       if (isCurrentVersionRepushed && readyToBeRemovedVersions.isEmpty()) {
         for (Version v: versions) {
           if (v.getNumber() < currentVersion && v.getRepushSourceVersion() > NON_EXISTING_VERSION
-              && !VersionStatus.isVersionRolledBack(v.getStatus())) {
+              && isEligibleForStandardBackupCleanup(v)) {
             readyToBeRemovedVersions.add(v);
           }
         }
@@ -409,15 +409,18 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     return true;
   }
 
+  private static boolean isEligibleForStandardBackupCleanup(Version version) {
+    VersionStatus status = version.getStatus();
+    return status != VersionStatus.PUSHED && !VersionStatus.isVersionRolledBack(status);
+  }
+
   /**
    * Deletes ROLLED_BACK versions whose retention period has expired.
    *
-   * <p>The retention clock is anchored to {@link Store#getLatestVersionPromoteToCurrentTimestamp()},
-   * which is set when a version becomes current — including the rollback-target version being
-   * re-promoted. If a subsequent push completes before the retention expires, the timestamp resets
-   * and the ROLLED_BACK version survives longer than the configured retention. This is intentionally
-   * conservative: a per-version {@code rolledBackTimestamp} would give exact retention but requires
-   * a Version schema change.
+   * <p>The retention clock is anchored to {@link Store#getLatestVersionPromoteToCurrentTimestamp()}.
+   * Marking a child version ROLLED_BACK resets this store-level timestamp, and a later promotion may
+   * reset it again. This is intentionally conservative: exact independent retention for multiple
+   * rolled-back versions would require a per-version rollback timestamp.
    */
   boolean cleanupRolledBackVersions(Store store, String clusterName, List<Version> versions) {
     long rolledBackVersionRetentionMs = getRolledBackVersionRetentionMs(clusterName);

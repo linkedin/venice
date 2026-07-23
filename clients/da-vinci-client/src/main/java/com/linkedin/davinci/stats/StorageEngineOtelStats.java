@@ -5,6 +5,7 @@ import static com.linkedin.davinci.stats.OtelVersionedStatsUtils.getVersionForRo
 import static com.linkedin.davinci.stats.StorageEngineOtelMetricEntity.DISK_USAGE;
 import static com.linkedin.davinci.stats.StorageEngineOtelMetricEntity.KEY_COUNT_ESTIMATE;
 import static com.linkedin.davinci.stats.StorageEngineOtelMetricEntity.ROCKSDB_OPEN_FAILURE_COUNT;
+import static com.linkedin.davinci.stats.StorageEngineOtelMetricEntity.VERSION_COUNT;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats.StorageEngineStatsWrapper;
@@ -26,10 +27,11 @@ import java.util.Map;
 /**
  * Per-store OTel stats for storage engine metrics.
  *
- * <p>Holds 3 OTel metrics:
+ * <p>Holds 4 OTel metrics:
  * <ul>
  *   <li>{@code ingestion.disk.used} — ASYNC_GAUGE with VERSION_ROLE + RECORD_TYPE dimensions,
  *       implemented via {@link AsyncMetricEntityStateTwoEnums}{@code <VeniceRecordType, VersionRole>}.</li>
+ *   <li>{@code ingestion.disk.version_count} — ASYNC_GAUGE with VERSION_ROLE dimension</li>
  *   <li>{@code rocksdb.key.estimated_count} — ASYNC_GAUGE with VERSION_ROLE dimension</li>
  *   <li>{@code rocksdb.open.failure_count} — COUNTER with VERSION_ROLE dimension</li>
  * </ul>
@@ -61,6 +63,9 @@ public class StorageEngineOtelStats implements Closeable {
   /** Key count ASYNC_GAUGE with VersionRole dimension */
   private final AsyncMetricEntityStateOneEnum<VersionRole> keyCountMetric;
 
+  /** Number of local storage engines with each VersionRole */
+  private final AsyncMetricEntityStateOneEnum<VersionRole> versionCountMetric;
+
   /** RocksDB open failure COUNTER with VersionRole dimension */
   private final MetricEntityStateOneEnum<VersionRole> openFailureMetric;
 
@@ -78,9 +83,8 @@ public class StorageEngineOtelStats implements Closeable {
       Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelSetup.getBaseDimensionsMap();
 
       /*
-       * Two-callback contract: the liveStateResolver returns the wrapper or null (null -> dormant,
-       * no emission); the valueResolver reads the metric value from that wrapper. The null return
-       * is the liveness signal, enforced by the API.
+       * The live-state resolver returns the bounded per-version map when a role is present, or null
+       * when dormant. The value resolver aggregates that role without creating per-version attributes.
        */
       this.diskUsageMetrics = AsyncMetricEntityStateTwoEnums.create(
           DISK_USAGE.getMetricEntity(),
@@ -88,8 +92,8 @@ public class StorageEngineOtelStats implements Closeable {
           baseDimensionsMap,
           VeniceRecordType.class,
           VersionRole.class,
-          (recordType, role) -> getWrapperForRole(role),
-          (wrapper, recordType, role) -> diskUsage(wrapper, recordType));
+          (recordType, role) -> hasVersionForRole(role) ? wrappersByVersion : null,
+          (wrappers, recordType, role) -> diskUsageForRole(wrappers, role, recordType));
 
       this.keyCountMetric = AsyncMetricEntityStateOneEnum.create(
           KEY_COUNT_ESTIMATE.getMetricEntity(),
@@ -99,12 +103,21 @@ public class StorageEngineOtelStats implements Closeable {
           role -> getWrapperForRole(role),
           (wrapper, role) -> wrapper.getKeyCountEstimate());
 
+      this.versionCountMetric = AsyncMetricEntityStateOneEnum.create(
+          VERSION_COUNT.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          VersionRole.class,
+          role -> wrappersByVersion.isEmpty() ? null : wrappersByVersion,
+          (wrappers, role) -> countVersionsForRole(wrappers, role));
+
       // RocksDB open failure count: COUNTER with VersionRole dimension
       this.openFailureMetric = MetricEntityStateOneEnum
           .create(ROCKSDB_OPEN_FAILURE_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, VersionRole.class);
     } else {
       this.diskUsageMetrics = null;
       this.keyCountMetric = null;
+      this.versionCountMetric = null;
       this.openFailureMetric = null;
     }
   }
@@ -175,6 +188,33 @@ public class StorageEngineOtelStats implements Closeable {
     return wrappersByVersion.get(version);
   }
 
+  private boolean hasVersionForRole(VersionRole role) {
+    return countVersionsForRole(wrappersByVersion, role) > 0;
+  }
+
+  private long countVersionsForRole(Map<Integer, StorageEngineStatsWrapper> wrappers, VersionRole role) {
+    VersionInfo snapshot = versionInfo;
+    return wrappers.keySet().stream().filter(version -> classifyVersion(version, snapshot) == role).count();
+  }
+
+  private long diskUsageForRole(
+      Map<Integer, StorageEngineStatsWrapper> wrappers,
+      VersionRole role,
+      VeniceRecordType recordType) {
+    VersionInfo snapshot = versionInfo;
+    if (role == VersionRole.BACKUP) {
+      return wrappers.entrySet()
+          .stream()
+          .filter(entry -> classifyVersion(entry.getKey(), snapshot) == VersionRole.BACKUP)
+          .mapToLong(entry -> diskUsage(entry.getValue(), recordType))
+          .sum();
+    }
+
+    int version = getVersionForRole(role, snapshot, wrappers.keySet());
+    StorageEngineStatsWrapper wrapper = wrappers.get(version);
+    return wrapper == null ? 0 : diskUsage(wrapper, recordType);
+  }
+
   /** Reads disk usage (data or RMD) from a resolved wrapper. */
   private static long diskUsage(StorageEngineStatsWrapper wrapper, VeniceRecordType recordType) {
     switch (recordType) {
@@ -187,14 +227,15 @@ public class StorageEngineOtelStats implements Closeable {
     }
   }
 
-  /**
-   * Clears internal wrapper references. On subsequent collections each async-gauge's
-   * {@code liveStateResolver} will return {@code null} for every role and no data points will be
-   * emitted. The SDK instruments themselves are NOT deregistered — they remain registered and
-   * are polled until the SDK is shut down.
-   */
+  /** Stops observable callbacks and clears all storage-engine references. */
   @Override
   public void close() {
     wrappersByVersion.clear();
+    versionInfo = VersionInfo.NON_EXISTING;
+    if (emitOtelMetrics) {
+      diskUsageMetrics.close();
+      keyCountMetric.close();
+      versionCountMetric.close();
+    }
   }
 }

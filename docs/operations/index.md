@@ -6,6 +6,8 @@ This guide covers operational tasks for Venice administrators and operators.
 
 - [Repush](data-management/repush.md) - Re-ingest data from source of truth to repair inconsistencies or apply schema
   changes
+- [Version Lifecycle and Deletion](data-management/version-lifecycle.md) - Version states, retention gates, and deletion
+  decisions
 - [TTL](data-management/ttl.md) - Configure time-to-live to automatically expire old records
 - [System Stores](data-management/system-stores.md) - Internal stores used by Venice for metadata and coordination
 

@@ -17,10 +17,11 @@ import java.util.Set;
 /**
  * OTel metric entities for storage engine statistics.
  *
- * <p>Consolidates 4 Tehuti AsyncGauge sensors into 3 OTel metrics:
+ * <p>Consolidates storage-engine Tehuti sensors and adds bounded role-level visibility:
  * <ul>
  *   <li>{@code disk_usage_in_bytes} + {@code rmd_disk_usage_in_bytes} consolidated into
  *       {@link #DISK_USAGE} with {@code RECORD_TYPE} dimension (DATA vs REPLICATION_METADATA)</li>
+ *   <li>{@link #VERSION_COUNT} reports how many local storage engines have each version role</li>
  *   <li>{@code rocksdb_open_failure_count} maps to {@link #ROCKSDB_OPEN_FAILURE_COUNT} (COUNTER)</li>
  *   <li>{@code rocksdb_key_count_estimate} maps to {@link #KEY_COUNT_ESTIMATE} (ASYNC_GAUGE)</li>
  * </ul>
@@ -28,8 +29,14 @@ import java.util.Set;
 public enum StorageEngineOtelMetricEntity implements ModuleMetricEntityInterface {
   DISK_USAGE(
       "ingestion.disk.used", MetricType.ASYNC_GAUGE, MetricUnit.BYTES,
-      "Disk usage in bytes by record type (data or replication metadata)",
+      "Total disk usage in bytes across all versions with each role, by record type",
       setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE)
+  ),
+
+  VERSION_COUNT(
+      "ingestion.disk.version_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+      "Number of locally loaded storage-engine versions by role",
+      setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_VERSION_ROLE)
   ),
 
   ROCKSDB_OPEN_FAILURE_COUNT(

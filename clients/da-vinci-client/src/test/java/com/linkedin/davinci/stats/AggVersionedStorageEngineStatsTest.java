@@ -85,6 +85,31 @@ public class AggVersionedStorageEngineStatsTest {
   }
 
   @Test
+  public void testUnsetStorageEngineRemovesAndReopenRestoresOtelStats() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository veniceRepo = createOtelMetricsRepository(reader)) {
+      OtelTestContext ctx = createOtelTestContext(veniceRepo);
+      StorageEngineStats mockEngineStats = mock(StorageEngineStats.class);
+      doReturn(5000L).when(mockEngineStats).getStoreSizeInBytes();
+      StorageEngine mockEngine = mock(StorageEngine.class);
+      doReturn(mockEngineStats).when(mockEngine).getStats();
+      Attributes attrs = buildDiskUsageDataAttrs(ctx.clusterName, ctx.storeName, VersionRole.BACKUP);
+      String diskMetric = StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName();
+
+      ctx.stats.setStorageEngine(ctx.topicName, mockEngine);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 5000, attrs, diskMetric, OTEL_PREFIX);
+
+      ctx.stats.unsetStorageEngine(ctx.topicName);
+      LongPointData pointAfterClose = OpenTelemetryDataTestUtils
+          .getLongPointDataFromGaugeIfPresent(reader.collectAllMetrics(), diskMetric, OTEL_PREFIX, attrs);
+      Assert.assertNull(pointAfterClose, "Closed local engine must not emit a version metric");
+
+      ctx.stats.setStorageEngine(ctx.topicName, mockEngine);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 5000, attrs, diskMetric, OTEL_PREFIX);
+    }
+  }
+
+  @Test
   public void testRecordRocksDBOpenFailureWiresBothTehutiAndOtel() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     try (VeniceMetricsRepository veniceRepo = createOtelMetricsRepository(reader)) {

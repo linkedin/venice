@@ -1294,7 +1294,7 @@ public class TestVeniceHelixAdmin {
 
   /**
   * isPartitionReadyToServe=>true: Future version exists and partitions are ready → success
-  * isPartitionReadyToServe=>false: Future version exists but partitions aren’t ready → exception
+  * isPartitionReadyToServe=>false: Future version exists but partitions aren't ready → exception
   */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) throws Exception {
