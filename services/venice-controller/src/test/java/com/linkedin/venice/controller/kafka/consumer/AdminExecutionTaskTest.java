@@ -576,6 +576,39 @@ public class AdminExecutionTaskTest {
         "updateStore must not be called with targetRegionPromoted=true when message.targetRegionPromoted=false");
   }
 
+  @Test
+  public void testHandleSetStoreIgnoresEncryptionForReplicateAllConfigs() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
+    UpdateStore message = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
+    message.encryptionEnabled = true;
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(wrapper);
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        /* isParentController= */ false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertTrue(
+        captor.getAllValues().stream().allMatch(params -> !params.getEncryptionEnabled().isPresent()),
+        "updateStore must not receive encryptionEnabled from the admin-message snapshot");
+  }
+
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {
     AdminOperation adminOperation = new AdminOperation();
     adminOperation.operationType = AdminMessageType.UPDATE_STORE.getValue();

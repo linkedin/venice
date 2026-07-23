@@ -327,6 +327,11 @@ public class ConfigKeys {
       "enable.active.active.replication.as.default.for.hybrid.store";
 
   /**
+   * Cluster-level config to indicate whether this is an encryption cluster.
+   */
+  public static final String CLUSTER_ENCRYPTION_ENABLED = "cluster.encryption.enabled";
+
+  /**
    * Store-level config to enable blob transfers (feature flag)
    */
   public static final String ENABLE_BLOB_TRANSFER = "enable.blob.transfer";

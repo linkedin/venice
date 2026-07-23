@@ -23,6 +23,7 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
@@ -564,6 +565,11 @@ public class VeniceControllerClusterConfig {
   private final boolean activeActiveReplicationEnabledAsDefaultForHybrid;
 
   /**
+   * When this option is enabled, the cluster is treated as an encryption cluster.
+   */
+  private final boolean isEncryptionCluster;
+
+  /**
    * When this option is enabled, new schema registration will validate the schema against all existing store value schemas.
    */
   private final boolean controllerSchemaValidationEnabled;
@@ -814,6 +820,7 @@ public class VeniceControllerClusterConfig {
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
     this.activeActiveReplicationEnabledAsDefaultForHybrid =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
+    this.isEncryptionCluster = props.getBoolean(CLUSTER_ENCRYPTION_ENABLED, false);
     this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
     this.enabledIncrementalPushForHybridActiveActiveUserStores =
         props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
@@ -1625,6 +1632,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isActiveActiveReplicationEnabledAsDefaultForHybrid() {
     return activeActiveReplicationEnabledAsDefaultForHybrid;
+  }
+
+  public boolean isEncryptionCluster() {
+    return isEncryptionCluster;
   }
 
   public boolean isControllerSchemaValidationEnabled() {

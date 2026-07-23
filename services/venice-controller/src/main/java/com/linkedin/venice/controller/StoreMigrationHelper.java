@@ -5,13 +5,16 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.Logger;
 
 
@@ -21,6 +24,21 @@ import org.apache.logging.log4j.Logger;
  */
 final class StoreMigrationHelper {
   private StoreMigrationHelper() {
+  }
+
+  static void validateEncryptionClusterMigration(
+      boolean srcEncryptionCluster,
+      boolean destEncryptionCluster,
+      String srcClusterName,
+      String destClusterName,
+      String storeName) {
+    if (srcEncryptionCluster || destEncryptionCluster) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
+              + " because migration from or to an encryption cluster is not allowed.",
+          ErrorType.BAD_REQUEST);
+    }
   }
 
   static void cloneDestinationStoreAndSyncConfigs(

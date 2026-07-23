@@ -21,7 +21,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_M
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENCRYPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
@@ -188,6 +187,9 @@ public final class StoreConfigUpdater {
       String clusterName,
       String storeName,
       UpdateStoreQueryParams params) {
+    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
+    validateEncryptionEnabledUpdate(encryptionEnabled, clusterName, storeName);
+
     // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
     // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
     // if the regions filter only specifies one region, which is the parent region.
@@ -286,7 +288,6 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThresholdMilliseconds = params.getCompactionThresholdMilliseconds();
-    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -692,11 +693,6 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
-      encryptionEnabled.ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setEncryptionEnabled(aBoolean);
-        return store;
-      }));
-
       if (minCompactionLagSeconds.isPresent()) {
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
@@ -855,6 +851,22 @@ public final class StoreConfigUpdater {
   }
 
   /**
+   * Store encryption is controlled by cluster policy, so update-store must not explicitly provide the field.
+   */
+  static void validateEncryptionEnabledUpdate(
+      Optional<Boolean> requestedEncryptionEnabled,
+      String clusterName,
+      String storeName) {
+    if (requestedEncryptionEnabled.isPresent()) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "encryptionEnabled for store " + storeName + " in cluster " + clusterName
+              + " is controlled by cluster policy and must not be provided in update-store.",
+          ErrorType.BAD_REQUEST);
+    }
+  }
+
+  /**
    * Parent-side update-store: builds an UPDATE_STORE admin message that gets written to the admin
    * channel for child controllers to consume. Lifted from the body inside
    * {@code VeniceParentHelixAdmin.updateStore}'s {@code acquireAdminMessageLock} try-finally; the
@@ -950,6 +962,7 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
+    validateEncryptionEnabledUpdate(encryptionEnabled, clusterName, storeName);
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
@@ -1313,9 +1326,7 @@ public final class StoreConfigUpdater {
     setStore.compactionThresholdMilliseconds =
         compactionThreshold.map(admin.addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
             .orElseGet(currStore::getCompactionThresholdMilliseconds);
-    setStore.encryptionEnabled =
-        encryptionEnabled.map(admin.addToUpdatedConfigList(updatedConfigsList, ENCRYPTION_ENABLED))
-            .orElseGet(currStore::isEncryptionEnabled);
+    setStore.encryptionEnabled = currStore.isEncryptionEnabled();
     setStore.minCompactionLagSeconds =
         minCompactionLagSeconds.map(admin.addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
             .orElseGet(currStore::getMinCompactionLagSeconds);

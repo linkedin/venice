@@ -629,7 +629,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         .setExternalStorageReadMode(ExternalStorageReadMode.VENICE_ONLY)
         .setCompactionEnabled(true)
         .setCompactionThresholdMilliseconds(3600_000L)
-        .setEncryptionEnabled(true)
         .setMinCompactionLagSeconds(1L)
         .setMaxCompactionLagSeconds(2L)
         .setMaxRecordSizeBytes(1024)
@@ -652,9 +651,28 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    // 24 distinct ifPresent/conditional branches above (added encryptionEnabled). Allow some
-    // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
-    verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    // 23 fields are configured above; targetRegionPromoted skips its metadata write because this store has no
+    // promotable future version.
+    verify(admin, atLeast(22)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  @Test(expectedExceptions = VeniceHttpException.class)
+  public void testApplyOnChildRejectsExplicitEncryptionValue() {
+    String storeName = Utils.getUniqueString("explicit-encryption");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    StoreConfigUpdater
+        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
+  }
+
+  @Test(expectedExceptions = VeniceHttpException.class)
+  public void testApplyOnParentRejectsExplicitEncryptionValue() {
+    String storeName = Utils.getUniqueString("explicit-encryption");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
   }
 
   /**
@@ -772,6 +790,19 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
     verify(admin, never()).setStoreOwner(any(), any(), any());
+  }
+
+  @Test(expectedExceptions = VeniceHttpException.class)
+  public void testApplyOnChildRejectsEncryptionBeforeRegionsFilterNoOp() {
+    String storeName = Utils.getUniqueString("child-region-skipped-encryption");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multi = admin.getMultiClusterConfigs();
+    doReturn("dc-current").when(multi).getRegionName();
+
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setRegionsFilter("dc-other").setEncryptionEnabled(true);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
   }
 
   /**

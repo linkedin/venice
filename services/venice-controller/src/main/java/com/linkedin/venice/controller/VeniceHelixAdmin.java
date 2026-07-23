@@ -1247,6 +1247,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int largestUsedRTVersionNumber) {
     newStore.setNativeReplicationEnabled(config.isMultiRegion());
 
+    if (!newStore.isSystemStore()) {
+      newStore.setEncryptionEnabled(config.isEncryptionCluster());
+    }
+
     /**
      * Initialize default NR source fabric base on default config for different store types.
      */
@@ -1786,6 +1790,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
+
+    StoreMigrationHelper.validateEncryptionClusterMigration(
+        getControllerConfig(srcClusterName).isEncryptionCluster(),
+        getControllerConfig(destClusterName).isEncryptionCluster(),
+        srcClusterName,
+        destClusterName,
+        storeName);
 
     // Get original store properties
     StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
