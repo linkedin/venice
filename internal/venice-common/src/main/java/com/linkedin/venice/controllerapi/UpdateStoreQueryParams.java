@@ -858,10 +858,6 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getLong(COMPACTION_THRESHOLD_MILLISECONDS);
   }
 
-  public UpdateStoreQueryParams setEncryptionEnabled(boolean encryptionEnabled) {
-    return putBoolean(ENCRYPTION_ENABLED, encryptionEnabled);
-  }
-
   public Optional<Boolean> getEncryptionEnabled() {
     return getBoolean(ENCRYPTION_ENABLED);
   }

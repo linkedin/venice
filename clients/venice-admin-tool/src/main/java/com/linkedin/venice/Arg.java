@@ -300,7 +300,6 @@ public enum Arg {
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
   ENABLE_COMPACTION("enable-compaction", "ec", true, "Enable compaction"),
-  ENABLE_ENCRYPTION("enable-encryption", "ee", true, "Enable encryption"),
   COMPACTION_THRESHOLD_MILLISECONDS(
       "compaction-threshold-milliseconds", "ctms", true, "Set compaction threshold in milliseconds"
   ),

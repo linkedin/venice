@@ -23,7 +23,7 @@ import org.testng.annotations.Test;
 /**
  * Verifies encryption-cluster ({@code cluster.encryption.enabled=true}) store behavior: a newly
  * created store defaults to {@code encryptionEnabled=true} (via {@code configureNewStore}), and
- * update-store cannot change the encryption metadata.
+ * update-store preserves the encryption metadata.
  */
 public class TestEncryptionClusterStoreConfig {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
@@ -70,14 +70,6 @@ public class TestEncryptionClusterStoreConfig {
           storeResponse.getStore().isEncryptionEnabled(),
           "A newly created store in an encryption cluster must default to encryptionEnabled=true");
 
-      ControllerResponse matchingUpdate =
-          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
-      Assert.assertTrue(matchingUpdate.isError(), "encryptionEnabled must not be accepted by update-store");
-
-      ControllerResponse conflictingUpdate =
-          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
-      Assert.assertTrue(conflictingUpdate.isError(), "A value conflicting with cluster policy must be rejected");
-
       ControllerResponse omittedUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
       Assert.assertFalse(omittedUpdate.isError(), "Updates that omit encryptionEnabled must succeed");
@@ -113,12 +105,6 @@ public class TestEncryptionClusterStoreConfig {
           controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
           "An omitted encryption value must leave existing metadata unchanged");
 
-      ControllerResponse reconciliationUpdate =
-          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
-      Assert.assertTrue(reconciliationUpdate.isError(), "update-store must not repair encryption metadata");
-      Assert.assertFalse(
-          controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
-          "Rejected updates must leave encryption metadata unchanged");
     }
   }
 }
