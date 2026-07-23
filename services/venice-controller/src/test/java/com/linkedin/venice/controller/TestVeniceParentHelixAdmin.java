@@ -1874,7 +1874,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // Parent metadata marks the failed swap version (2) as ROLLED_BACK; the current version (1) is serving.
     mockParentStoreWithVersions(storeName, ROLLED_BACK);
     // One fabric rolled the version back, the others still hold it in PUSHED: positive evidence of abandonment.
-    doReturn(buildStrandedRegionClients(storeName, Arrays.asList(ROLLED_BACK, PUSHED, PUSHED))).when(internalAdmin)
+    doReturn(buildStrandedRegionClients(Arrays.asList(ROLLED_BACK, PUSHED, PUSHED))).when(internalAdmin)
         .getControllerClientMap(anyString());
 
     parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
@@ -1891,7 +1891,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = "stranded_store";
     mockParentStoreWithVersions(storeName, PUSHED);
     // The version was already cleaned up in one fabric (absent) but still lingers as PUSHED elsewhere.
-    doReturn(buildStrandedRegionClients(storeName, Arrays.asList(null, PUSHED, PUSHED))).when(internalAdmin)
+    doReturn(buildStrandedRegionClients(Arrays.asList(null, PUSHED, PUSHED))).when(internalAdmin)
         .getControllerClientMap(anyString());
 
     parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
@@ -1906,7 +1906,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = "stranded_store";
     mockParentStoreWithVersions(storeName, PUSHED);
     // Uniformly PUSHED with no fabric rolled back and none missing: could be a healthy push pending swap, so skip.
-    doReturn(buildStrandedRegionClients(storeName, Arrays.asList(PUSHED, PUSHED, PUSHED))).when(internalAdmin)
+    doReturn(buildStrandedRegionClients(Arrays.asList(PUSHED, PUSHED, PUSHED))).when(internalAdmin)
         .getControllerClientMap(anyString());
 
     parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
@@ -1934,9 +1934,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
    * Builds one mocked controller client per region. Every region reports current version 1. Version 2 is present with
    * the given status per region, or absent when the status entry is {@code null}.
    */
-  private Map<String, ControllerClient> buildStrandedRegionClients(
-      String storeName,
-      List<VersionStatus> versionTwoStatusPerRegion) {
+  private Map<String, ControllerClient> buildStrandedRegionClients(List<VersionStatus> versionTwoStatusPerRegion) {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
     for (int i = 0; i < versionTwoStatusPerRegion.size(); i++) {
       VersionStatus versionTwoStatus = versionTwoStatusPerRegion.get(i);

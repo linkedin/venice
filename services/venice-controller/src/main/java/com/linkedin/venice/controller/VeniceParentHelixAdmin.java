@@ -1300,13 +1300,23 @@ public class VeniceParentHelixAdmin implements Admin {
     if (controllerClientMap.isEmpty()) {
       return;
     }
-    Set<Integer> currentVersions = new HashSet<>(getCurrentVersionsForMultiColos(clusterName, storeName).values());
-    for (int versionNum: candidateVersionNums) {
-      // Never touch a version that is serving (current) in any colo.
-      if (currentVersions.contains(versionNum)) {
-        continue;
+    Map<String, StoreInfo> regionStores = new HashMap<>();
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      String region = entry.getKey();
+      StoreResponse storeResponse = entry.getValue().getStore(storeName);
+      if (storeResponse == null || storeResponse.isError() || storeResponse.getStore() == null) {
+        // Cannot determine this fabric's state; be conservative and skip the delete entirely.
+        LOGGER.warn(
+            "Skipping stranded-version cleanup for store: {} version: {}; failed to read store from region: {}",
+            storeName,
+            candidateVersionNums,
+            region);
+        return;
       }
-      if (!isVersionStrandedAcrossFabrics(storeName, versionNum, controllerClientMap)) {
+      regionStores.put(region, storeResponse.getStore());
+    }
+    for (int versionNum: candidateVersionNums) {
+      if (!isVersionStrandedAcrossFabrics(versionNum, regionStores)) {
         continue;
       }
       try {
@@ -1334,37 +1344,23 @@ public class VeniceParentHelixAdmin implements Admin {
    * (conservatively skipping the delete) if any fabric's state cannot be read, if the version is
    * current or actively pushing (STARTED) in any fabric, or if there is no evidence of abandonment.
    */
-  private boolean isVersionStrandedAcrossFabrics(
-      String storeName,
-      int versionNum,
-      Map<String, ControllerClient> controllerClientMap) {
+  private boolean isVersionStrandedAcrossFabrics(int versionNum, Map<String, StoreInfo> regionStores) {
     boolean rolledBackInSomeFabric = false;
     boolean presentInSomeFabric = false;
     boolean absentInSomeFabric = false;
-    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
-      String region = entry.getKey();
-      StoreResponse storeResponse = entry.getValue().getStore(storeName);
-      if (storeResponse == null || storeResponse.isError() || storeResponse.getStore() == null) {
-        // Cannot determine this fabric's state; be conservative and skip the delete entirely.
-        LOGGER.warn(
-            "Skipping stranded-version cleanup for store: {} version: {}; failed to read store from region: {}",
-            storeName,
-            versionNum,
-            region);
-        return false;
-      }
-      StoreInfo storeInfo = storeResponse.getStore();
+    for (StoreInfo storeInfo: regionStores.values()) {
       Optional<Version> regionVersion = storeInfo.getVersion(versionNum);
       if (!regionVersion.isPresent()) {
         absentInSomeFabric = true;
         continue;
       }
       presentInSomeFabric = true;
+      VersionStatus regionStatus = regionVersion.get().getStatus();
       // Never delete a version that is serving (current) or still actively pushing in any fabric.
-      if (storeInfo.getCurrentVersion() == versionNum || regionVersion.get().getStatus() == STARTED) {
+      if (storeInfo.getCurrentVersion() == versionNum || regionStatus == STARTED) {
         return false;
       }
-      if (regionVersion.get().getStatus() == ROLLED_BACK) {
+      if (regionStatus == ROLLED_BACK) {
         rolledBackInSomeFabric = true;
       }
     }
