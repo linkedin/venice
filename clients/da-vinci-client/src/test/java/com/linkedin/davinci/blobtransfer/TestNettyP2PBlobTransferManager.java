@@ -24,6 +24,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
+import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
@@ -42,6 +43,7 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
@@ -381,12 +383,14 @@ public class TestNettyP2PBlobTransferManager {
 
   @Test
   public void testFallsBackFromDaVinciPeerToServerAfterTransferFailure() throws Exception {
-    List<String> hostlist = Arrays.asList("dvc-host", "server-host");
-    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
-    response.setDiscoveryResult(hostlist);
-    doReturn(response).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
-    doReturn(true).when(finder).shouldPreservePeerOrder();
-    doReturn(new HashSet<>(hostlist)).when(client)
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Collections.singletonList("dvc-host"));
+    doReturn(primaryResponse).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    BlobPeersDiscoveryResponse fallbackResponse = new BlobPeersDiscoveryResponse();
+    fallbackResponse.setDiscoveryResult(Collections.singletonList("server-host"));
+    doReturn(true).when(finder).supportsFallback();
+    doReturn(fallbackResponse).when(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(new HashSet<>(Arrays.asList("dvc-host", "server-host"))).when(client)
         .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
 
     CompletableFuture<InputStream> daVinciFailure = new CompletableFuture<>();
@@ -403,11 +407,89 @@ public class TestNettyP2PBlobTransferManager {
             .get(10, TimeUnit.SECONDS);
 
     Assert.assertSame(result, serverResponse);
-    InOrder transferOrder = Mockito.inOrder(client);
+    InOrder transferOrder = Mockito.inOrder(finder, client);
+    transferOrder.verify(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     transferOrder.verify(client)
         .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    transferOrder.verify(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     transferOrder.verify(client)
         .get("server-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+  }
+
+  @Test
+  public void testDoesNotDiscoverFallbackAfterPrimaryTransferSucceeds() throws Exception {
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Collections.singletonList("dvc-host"));
+    doReturn(primaryResponse).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(true).when(finder).supportsFallback();
+    doReturn(Collections.singleton("dvc-host")).when(client)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    InputStream daVinciResponse = mock(InputStream.class);
+    doReturn(CompletableFuture.completedFuture(daVinciResponse)).when(client)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    InputStream result =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture()
+            .get(10, TimeUnit.SECONDS);
+
+    Assert.assertSame(result, daVinciResponse);
+    Mockito.verify(finder, Mockito.never()).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+  }
+
+  @Test
+  public void testDiscoversFallbackWhenNoPrimaryPeersExist() throws Exception {
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Collections.emptyList());
+    doReturn(primaryResponse).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    BlobPeersDiscoveryResponse fallbackResponse = new BlobPeersDiscoveryResponse();
+    fallbackResponse.setDiscoveryResult(Collections.singletonList("server-host"));
+    doReturn(true).when(finder).supportsFallback();
+    doReturn(fallbackResponse).when(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(Collections.singleton("server-host")).when(client)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    InputStream serverResponse = mock(InputStream.class);
+    doReturn(CompletableFuture.completedFuture(serverResponse)).when(client)
+        .get("server-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    InputStream result =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture()
+            .get(10, TimeUnit.SECONDS);
+
+    Assert.assertSame(result, serverResponse);
+    Mockito.verify(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+  }
+
+  @Test
+  public void testCancellationDoesNotDiscoverFallback() throws Exception {
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Collections.singletonList("dvc-host"));
+    doReturn(primaryResponse).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(true).when(finder).supportsFallback();
+    doReturn(Collections.singleton("dvc-host")).when(client)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    CompletableFuture<InputStream> daVinciTransfer = new CompletableFuture<>();
+    doReturn(daVinciTransfer).when(client)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    CompletableFuture<InputStream> result =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture();
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(TEST_STORE, TEST_VERSION), TEST_PARTITION);
+    manager.getTransferStatusTrackingManager().cancelTransfer(replicaId);
+    daVinciTransfer.completeExceptionally(new VeniceBlobTransferFileNotFoundException("DVC snapshot unavailable"));
+
+    try {
+      result.get(10, TimeUnit.SECONDS);
+      Assert.fail("Expected the partition transfer to be cancelled");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceBlobTransferCancelledException);
+    }
+    Mockito.verify(finder, Mockito.never()).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
   }
 
   /**

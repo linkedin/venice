@@ -2,15 +2,12 @@ package com.linkedin.venice.blobtransfer;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * Discovers Da Vinci peers first and Venice servers second for client cold-start blob transfer.
+ * Discovers Da Vinci peers first and lazily discovers Venice servers only after the primary peers are exhausted.
  */
 public class ServerAndDaVinciBlobFinder implements BlobFinder {
   private static final Logger LOGGER = LogManager.getLogger(ServerAndDaVinciBlobFinder.class);
@@ -30,30 +27,10 @@ public class ServerAndDaVinciBlobFinder implements BlobFinder {
 
   @Override
   public BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partitionId) {
-    BlobPeersDiscoveryResponse daVinciResponse = daVinciBlobFinder.discoverBlobPeers(storeName, version, partitionId);
-    BlobPeersDiscoveryResponse serverResponse = serverBlobFinder.discoverBlobPeers(storeName, version, partitionId);
-
-    List<String> daVinciPeers = getDiscoveredPeers(daVinciResponse);
-    List<String> serverPeers = getDiscoveredPeers(serverResponse);
-    Collections.shuffle(daVinciPeers);
-    Collections.shuffle(serverPeers);
-
-    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
-    List<String> discoveredPeers = new ArrayList<>(daVinciPeers.size() + serverPeers.size());
-    discoveredPeers.addAll(daVinciPeers);
-    discoveredPeers.addAll(serverPeers);
-    response.setDiscoveryResult(discoveredPeers);
-
-    if (discoveredPeers.isEmpty() && hasError(daVinciResponse) && hasError(serverResponse)) {
-      response.setError(true);
-      response.setErrorMessage(
-          "Failed to discover both Da Vinci peers and Venice servers. Da Vinci error: "
-              + getErrorMessage(daVinciResponse) + "; server error: " + getErrorMessage(serverResponse));
-    }
+    BlobPeersDiscoveryResponse response = daVinciBlobFinder.discoverBlobPeers(storeName, version, partitionId);
     LOGGER.info(
-        "Discovered {} Da Vinci peer(s) and {} Venice server peer(s) for store {} version {} partition {}.",
-        daVinciPeers.size(),
-        serverPeers.size(),
+        "Discovered {} Da Vinci peer(s) for store {} version {} partition {}.",
+        getDiscoveredPeerCount(response),
         storeName,
         version,
         partitionId);
@@ -61,24 +38,24 @@ public class ServerAndDaVinciBlobFinder implements BlobFinder {
   }
 
   @Override
-  public boolean shouldPreservePeerOrder() {
+  public boolean supportsFallback() {
     return true;
   }
 
-  private static List<String> getDiscoveredPeers(BlobPeersDiscoveryResponse response) {
-    if (response == null || response.isError() || response.getDiscoveryResult() == null
-        || response.getDiscoveryResult().isEmpty()) {
-      return new ArrayList<>();
-    }
-    return new ArrayList<>(response.getDiscoveryResult());
+  @Override
+  public BlobPeersDiscoveryResponse discoverFallbackBlobPeers(String storeName, int version, int partitionId) {
+    BlobPeersDiscoveryResponse response = serverBlobFinder.discoverBlobPeers(storeName, version, partitionId);
+    LOGGER.info(
+        "Discovered {} Venice server peer(s) for store {} version {} partition {}.",
+        getDiscoveredPeerCount(response),
+        storeName,
+        version,
+        partitionId);
+    return response;
   }
 
-  private static boolean hasError(BlobPeersDiscoveryResponse response) {
-    return response == null || response.isError();
-  }
-
-  private static String getErrorMessage(BlobPeersDiscoveryResponse response) {
-    return response == null ? "null response" : response.getErrorMessage();
+  private static int getDiscoveredPeerCount(BlobPeersDiscoveryResponse response) {
+    return response == null || response.getDiscoveryResult() == null ? 0 : response.getDiscoveryResult().size();
   }
 
   @Override
