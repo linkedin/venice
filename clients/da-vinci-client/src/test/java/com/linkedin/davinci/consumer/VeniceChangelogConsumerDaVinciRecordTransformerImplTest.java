@@ -249,14 +249,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   @Test
   public void testStopCompletesPendingStartWithoutStartingReporterAndShutsDownExecutor() throws Exception {
     CompletableFuture<Void> startFuture = veniceChangelogConsumer.start();
-    ExecutorService completableFutureThreadPool = getField("completableFutureThreadPool");
+    ExecutorService completableFutureThreadPool = veniceChangelogConsumer.getCompletableFutureThreadPool();
 
     assertFalse(startFuture.isDone(), "Start should wait for the first record");
 
     veniceChangelogConsumer.stop();
 
     startFuture.get(5, TimeUnit.SECONDS);
-    assertNull(getField("backgroundReporterThread"), "A reporter must not start after close wins");
+    assertNull(veniceChangelogConsumer.getBackgroundReporterThread(), "A reporter must not start after close wins");
     assertTrue(completableFutureThreadPool.isShutdown(), "Stop should shut down the dedicated start executor");
     assertTrue(
         completableFutureThreadPool.awaitTermination(5, TimeUnit.SECONDS),
@@ -909,16 +909,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   }
 
   @SuppressWarnings("unchecked")
-  private BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> getOutputQueue()
-      throws NoSuchFieldException, IllegalAccessException {
-    return getField("pubSubMessages");
-  }
-
-  @SuppressWarnings("unchecked")
-  private <T> T getField(String fieldName) throws NoSuchFieldException, IllegalAccessException {
-    Field field = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField(fieldName);
-    field.setAccessible(true);
-    return (T) field.get(veniceChangelogConsumer);
+  private BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> getOutputQueue() {
+    return veniceChangelogConsumer.getPubSubMessages();
   }
 
   private void onStartVersionIngestionHelper(boolean currentRecordTransformer, boolean isCurrentVersion) {

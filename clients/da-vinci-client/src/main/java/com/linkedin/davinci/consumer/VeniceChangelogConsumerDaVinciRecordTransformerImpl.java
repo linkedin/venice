@@ -1024,6 +1024,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   @VisibleForTesting
+  ExecutorService getCompletableFutureThreadPool() {
+    return completableFutureThreadPool;
+  }
+
+  @VisibleForTesting
+  Thread getBackgroundReporterThread() {
+    return backgroundReporterThread;
+  }
+
+  @VisibleForTesting
   public Set<Integer> getSubscribedPartitions() {
     return subscribedPartitions;
   }
