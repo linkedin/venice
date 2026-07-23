@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENCRYPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
@@ -72,6 +73,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -654,6 +656,16 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     // 23 fields are configured above; targetRegionPromoted skips its metadata write because this store has no
     // promotable future version.
     verify(admin, atLeast(22)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  @Test(expectedExceptions = VeniceHttpException.class)
+  public void testApplyOnChildRejectsLegacyEncryptionParameter() {
+    String storeName = Utils.getUniqueString("legacy-encryption");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    HashMap<String, String> params = new HashMap<>();
+    params.put(ENCRYPTION_ENABLED, Boolean.toString(true));
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams(params));
   }
 
   /**
