@@ -3,7 +3,8 @@ package com.linkedin.venice.controller;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
+import org.apache.http.HttpStatus;
 import org.testng.annotations.Test;
 
 
@@ -28,14 +29,15 @@ public class StoreMigrationHelperTest {
   }
 
   private void assertEncryptionClusterMigrationBlocked(boolean srcEncryptionCluster, boolean destEncryptionCluster) {
-    VeniceException exception = expectThrows(
-        VeniceException.class,
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
         () -> StoreMigrationHelper.validateEncryptionClusterMigration(
             srcEncryptionCluster,
             destEncryptionCluster,
             SRC_CLUSTER,
             DEST_CLUSTER,
             STORE_NAME));
+    assertTrue(exception.getHttpStatusCode() == HttpStatus.SC_BAD_REQUEST);
     assertTrue(exception.getMessage().contains("migration from or to an encryption cluster is not allowed"));
   }
 }
