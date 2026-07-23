@@ -94,10 +94,10 @@ public class VersionSpecificCDCShutdownTest {
   private static final Logger LOGGER = LogManager.getLogger(VersionSpecificCDCShutdownTest.class);
   private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private static final int PARTITION_COUNT = 3;
-  private static final int CDC_OUTPUT_BUFFER_SIZE = 2;
+  private static final int CDC_OUTPUT_BUFFER_SIZE = 100;
   private static final int FLINK_CLOSE_TIMEOUT_SECONDS = 30;
   private static final int BLOCKING_RECORD_START = 110;
-  private static final int BLOCKING_RECORD_COUNT = 20;
+  private static final int BLOCKING_RECORD_COUNT = 120;
   private static final int STORE_B_BLOCKED_RECORD_COUNT = 10;
   private static final String HYBRID_DRAINER_THREAD_PREFIX = "Store-writer-hybrid";
 
@@ -202,9 +202,9 @@ public class VersionSpecificCDCShutdownTest {
       consumerA = activeConsumerA;
       activeConsumerA.subscribeAll().get();
       Map<String, GenericRecord> consumerAEvents = new HashMap<>();
-      Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
+      Map<Integer, VeniceChangeCoordinate> checkpointsByPartition = new HashMap<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
-        pollAndCollectWithCheckpoints(activeConsumerA, consumerAEvents, checkpoints);
+        pollAndCollectWithCheckpoints(activeConsumerA, consumerAEvents, checkpointsByPartition);
         int expectedMinEvents = DEFAULT_USER_DATA_RECORD_COUNT + 9;
         assertTrue(
             consumerAEvents.size() >= expectedMinEvents,
@@ -212,14 +212,11 @@ public class VersionSpecificCDCShutdownTest {
       });
       verifyNearlineValues(consumerAEvents, 100, 110);
 
-      Set<Integer> checkpointPartitions = new HashSet<>();
-      for (VeniceChangeCoordinate checkpoint: checkpoints) {
-        checkpointPartitions.add(checkpoint.getPartition());
-      }
       assertEquals(
-          checkpointPartitions.size(),
+          checkpointsByPartition.size(),
           PARTITION_COUNT,
           "External checkpoints must cover every partition before the restart");
+      Set<VeniceChangeCoordinate> checkpoints = new HashSet<>(checkpointsByPartition.values());
 
       BlockingQueue<?> consumerAOutputQueue = getOutputQueue(activeConsumerA);
       BlockingQueue<?> consumerBOutputQueue = getOutputQueue(activeConsumerB);
@@ -505,14 +502,14 @@ public class VersionSpecificCDCShutdownTest {
   private void pollAndCollectWithCheckpoints(
       VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer,
       Map<String, GenericRecord> eventsMap,
-      Set<VeniceChangeCoordinate> checkpoints) {
+      Map<Integer, VeniceChangeCoordinate> checkpointsByPartition) {
     Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> messages =
         consumer.poll(1000);
     for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: messages) {
       if (msg.getKey() != null) {
         eventsMap.put(String.valueOf(msg.getKey().get("id")), msg.getValue().getCurrentValue());
       }
-      checkpoints.add(msg.getPosition());
+      checkpointsByPartition.put(msg.getPartition(), msg.getPosition());
     }
   }
 
