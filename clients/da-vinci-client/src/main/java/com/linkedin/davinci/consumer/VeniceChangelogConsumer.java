@@ -225,7 +225,8 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
   Map<Integer, Long> getLastHeartbeatPerPartition();
 
   /**
-   * Release the internal resources.
+   * Releases the internal resources. This consumer instance cannot be restarted or sought after close. Create a new
+   * consumer from {@link VeniceChangelogConsumerClientFactory} to resume consumption.
    */
   void close();
 }

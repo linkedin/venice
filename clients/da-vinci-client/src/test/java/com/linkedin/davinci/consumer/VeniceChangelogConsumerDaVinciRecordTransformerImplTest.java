@@ -11,8 +11,10 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -28,6 +30,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -54,9 +57,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -231,10 +238,199 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     veniceChangelogConsumer.stop();
     assertFalse(veniceChangelogConsumer.isStarted(), "isStarted should be false");
+    assertTrue(veniceChangelogConsumer.isClosed(), "isClosed should be true");
 
     verify(mockDaVinciClient).close();
     verify(veniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
+  }
+
+  @Test
+  public void testStopCompletesPendingStartWithoutStartingReporterAndShutsDownExecutor() throws Exception {
+    CompletableFuture<Void> startFuture = veniceChangelogConsumer.start();
+    ExecutorService completableFutureThreadPool = veniceChangelogConsumer.getCompletableFutureThreadPool();
+
+    assertFalse(startFuture.isDone(), "Start should wait for the first record");
+
+    veniceChangelogConsumer.stop();
+
+    startFuture.get(5, TimeUnit.SECONDS);
+    assertNull(veniceChangelogConsumer.getBackgroundReporterThread(), "A reporter must not start after close wins");
+    assertTrue(completableFutureThreadPool.isShutdown(), "Stop should shut down the dedicated start executor");
+    assertTrue(
+        completableFutureThreadPool.awaitTermination(5, TimeUnit.SECONDS),
+        "The dedicated start executor should terminate after the pending start completes");
+  }
+
+  @Test
+  public void testStopReleasesAllBlockedProducersWithoutPoller() throws Exception {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+
+    BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue = getOutputQueue();
+
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
+      int key = i;
+      recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata);
+    }
+    assertEquals(outputQueue.size(), MAX_BUFFER_SIZE, "Output queue should be full before producers block");
+
+    int blockedProducerCount = outputQueue.size() + 1;
+    AtomicReference<Throwable> threadFailure = new AtomicReference<>();
+    List<Thread> producerThreads = new ArrayList<>();
+    for (int i = 0; i < blockedProducerCount; i++) {
+      int key = MAX_BUFFER_SIZE + i;
+      Thread producerThread = new Thread(() -> {
+        try {
+          recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata);
+        } catch (Throwable throwable) {
+          threadFailure.compareAndSet(null, throwable);
+        }
+      }, "blocked-cdc-producer-" + i);
+      producerThreads.add(producerThread);
+      producerThread.start();
+    }
+
+    CountDownLatch daVinciCloseStarted = new CountDownLatch(1);
+    CountDownLatch allowDaVinciClose = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      daVinciCloseStarted.countDown();
+      assertTrue(allowDaVinciClose.await(30, TimeUnit.SECONDS), "Test should release DaVinci close");
+      return null;
+    }).when(mockDaVinciClient).close();
+    Thread stopThread = new Thread(() -> {
+      try {
+        veniceChangelogConsumer.stop();
+      } catch (Throwable throwable) {
+        threadFailure.compareAndSet(null, throwable);
+      }
+    }, "cdc-consumer-stop");
+
+    try {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertTrue(
+              producerThreads.stream().allMatch(producer -> producer.getState() == Thread.State.WAITING),
+              "Every producer should be blocked in the full output queue"));
+
+      stopThread.start();
+      assertTrue(daVinciCloseStarted.await(5, TimeUnit.SECONDS), "Stop should reach the DaVinci client");
+
+      for (Thread producerThread: producerThreads) {
+        producerThread.join(TimeUnit.SECONDS.toMillis(5));
+        assertFalse(producerThread.isAlive(), "Producer should exit after stop clears the queue");
+      }
+      assertNull(threadFailure.get(), "Producer threads should not fail");
+      assertTrue(stopThread.isAlive(), "Stop should still be waiting for DaVinci close");
+      assertTrue(
+          outputQueue.isEmpty(),
+          "The initial clear and post-put removal should release every producer without shutdown output");
+      assertTrue(veniceChangelogConsumer.isClosed(), "Stop should leave the consumer terminally closed");
+    } finally {
+      allowDaVinciClose.countDown();
+      stopThread.join(TimeUnit.SECONDS.toMillis(5));
+      for (Thread producerThread: producerThreads) {
+        if (producerThread.isAlive()) {
+          producerThread.interrupt();
+          producerThread.join(TimeUnit.SECONDS.toMillis(5));
+        }
+      }
+    }
+    assertFalse(stopThread.isAlive(), "Stop should finish after DaVinci close is released");
+    assertNull(threadFailure.get(), "Shutdown threads should not fail");
+  }
+
+  @Test
+  public void testPollDuringCloseReturnsNoShutdownWindowOutput() throws Exception {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+
+    CountDownLatch daVinciCloseStarted = new CountDownLatch(1);
+    CountDownLatch allowDaVinciClose = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      daVinciCloseStarted.countDown();
+      assertTrue(allowDaVinciClose.await(5, TimeUnit.SECONDS), "Test should release DaVinci close");
+      return null;
+    }).when(mockDaVinciClient).close();
+
+    CompletableFuture<Void> closeFuture = CompletableFuture.runAsync(() -> {
+      try {
+        veniceChangelogConsumer.stop();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
+
+    try {
+      assertTrue(daVinciCloseStarted.await(5, TimeUnit.SECONDS), "Close should reach the DaVinci client");
+      BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue =
+          getOutputQueue();
+      PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> shutdownWindowMessage =
+          mock(PubSubMessage.class);
+      outputQueue.add(shutdownWindowMessage);
+
+      assertTrue(
+          veniceChangelogConsumer.poll(POLL_TIMEOUT).isEmpty(),
+          "Poll must not emit a message inserted after close begins");
+      assertTrue(
+          outputQueue.contains(shutdownWindowMessage),
+          "Poll should return before draining once the consumer is closed");
+    } finally {
+      allowDaVinciClose.countDown();
+    }
+
+    closeFuture.get(5, TimeUnit.SECONDS);
+    assertTrue(getOutputQueue().isEmpty(), "Final close cleanup should empty the output queue");
+  }
+
+  @Test
+  public void testStartAndSeekRejectedAfterCloseAndDuplicateStopIsHarmless() throws Exception {
+    veniceChangelogConsumer.stop();
+
+    String freshConsumerInstruction = "Create a new consumer from VeniceChangelogConsumerClientFactory";
+    VeniceClientException startException = expectThrows(VeniceClientException.class, veniceChangelogConsumer::start);
+    assertTrue(
+        startException.getMessage().contains(TEST_STORE_NAME),
+        "Closed-consumer error should identify the store");
+    assertTrue(
+        startException.getMessage().contains(freshConsumerInstruction),
+        "Closed-consumer error should explain how to create a fresh consumer");
+    VeniceClientException seekException = expectThrows(
+        VeniceClientException.class,
+        () -> veniceChangelogConsumer.seekToBeginningOfPush(Collections.singleton(0)));
+    assertTrue(seekException.getMessage().contains(TEST_STORE_NAME), "Closed-consumer error should identify the store");
+    assertTrue(
+        seekException.getMessage().contains(freshConsumerInstruction),
+        "Closed-consumer error should explain how to create a fresh consumer");
+
+    veniceChangelogConsumer.stop();
+
+    assertTrue(veniceChangelogConsumer.isClosed(), "A stopped consumer must remain terminally closed");
+    verify(mockDaVinciClient).close();
+    verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
+  }
+
+  @Test
+  public void testCloseFailureStillLeavesTerminalStateAndCleansFactory() throws Exception {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+    assertFalse(getOutputQueue().isEmpty(), "Test setup should buffer a message before close");
+    doThrow(new VeniceException("close failure")).when(mockDaVinciClient).close();
+
+    assertThrows(VeniceException.class, veniceChangelogConsumer::stop);
+
+    assertTrue(veniceChangelogConsumer.isClosed(), "A failed close must still be terminal");
+    assertFalse(veniceChangelogConsumer.isStarted(), "A failed close must not leave the consumer started");
+    assertTrue(getOutputQueue().isEmpty(), "A failed close must still clear buffered output");
+    assertTrue(veniceChangelogConsumer.getSubscribedPartitions().isEmpty(), "Partition state should be cleared");
+    verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
+    verify(veniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
+
+    veniceChangelogConsumer.stop();
+    verify(mockDaVinciClient).close();
   }
 
   @Test
@@ -712,6 +908,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         () -> assertFalse(
             veniceChangelogConsumer.getSubscribedPartitions().contains(1),
             "Partition 1 should be removed from subscribedPartitions after failure"));
+  }
+
+  @SuppressWarnings("unchecked")
+  private BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> getOutputQueue() {
+    return veniceChangelogConsumer.getPubSubMessages();
   }
 
   private void onStartVersionIngestionHelper(boolean currentRecordTransformer, boolean isCurrentVersion) {
