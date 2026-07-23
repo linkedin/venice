@@ -8,6 +8,9 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -38,6 +41,7 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
@@ -1862,6 +1866,95 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 9; i <= 10; ++i) {
       Assert.assertTrue(capturedStore.containsVersion(i));
     }
+  }
+
+  @Test
+  public void testDeleteStrandedNonCurrentVersionsDeletesRolledBackVersion() {
+    String storeName = "stranded_store";
+    // Parent metadata marks the failed swap version (2) as ROLLED_BACK; the current version (1) is serving.
+    mockParentStoreWithVersions(storeName, ROLLED_BACK);
+    // One fabric rolled the version back, the others still hold it in PUSHED: positive evidence of abandonment.
+    doReturn(buildStrandedRegionClients(Arrays.asList(ROLLED_BACK, PUSHED, PUSHED))).when(internalAdmin)
+        .getControllerClientMap(anyString());
+
+    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_OLD_VERSION.getValue());
+    DeleteOldVersion deleteOldVersion = (DeleteOldVersion) adminMessage.payloadUnion;
+    assertEquals(deleteOldVersion.versionNum, 2);
+    assertEquals(deleteOldVersion.storeName.toString(), storeName);
+  }
+
+  @Test
+  public void testDeleteStrandedNonCurrentVersionsDeletesPartiallyCleanedVersion() {
+    String storeName = "stranded_store";
+    mockParentStoreWithVersions(storeName, PUSHED);
+    // The version was already cleaned up in one fabric (absent) but still lingers as PUSHED elsewhere.
+    doReturn(buildStrandedRegionClients(Arrays.asList(null, PUSHED, PUSHED))).when(internalAdmin)
+        .getControllerClientMap(anyString());
+
+    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_OLD_VERSION.getValue());
+    assertEquals(((DeleteOldVersion) adminMessage.payloadUnion).versionNum, 2);
+  }
+
+  @Test
+  public void testDeleteStrandedNonCurrentVersionsSkipsInProgressPush() {
+    String storeName = "stranded_store";
+    mockParentStoreWithVersions(storeName, PUSHED);
+    // Uniformly PUSHED with no fabric rolled back and none missing: could be a healthy push pending swap, so skip.
+    doReturn(buildStrandedRegionClients(Arrays.asList(PUSHED, PUSHED, PUSHED))).when(internalAdmin)
+        .getControllerClientMap(anyString());
+
+    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
+
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  /**
+   * Mocks the parent store returned by the internal admin with version 1 ONLINE (serving) and version 2 in the given
+   * status. Version 2 is the stranded/failed-swap version under test.
+   */
+  private void mockParentStoreWithVersions(String storeName, VersionStatus versionTwoStatus) {
+    Version versionOne = mock(Version.class);
+    doReturn(1).when(versionOne).getNumber();
+    doReturn(ONLINE).when(versionOne).getStatus();
+    Version versionTwo = mock(Version.class);
+    doReturn(2).when(versionTwo).getNumber();
+    doReturn(versionTwoStatus).when(versionTwo).getStatus();
+    Store parentStore = mock(Store.class);
+    doReturn(Arrays.asList(versionOne, versionTwo)).when(parentStore).getVersions();
+    doReturn(parentStore).when(internalAdmin).getStore(clusterName, storeName);
+  }
+
+  /**
+   * Builds one mocked controller client per region. Every region reports current version 1. Version 2 is present with
+   * the given status per region, or absent when the status entry is {@code null}.
+   */
+  private Map<String, ControllerClient> buildStrandedRegionClients(List<VersionStatus> versionTwoStatusPerRegion) {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    for (int i = 0; i < versionTwoStatusPerRegion.size(); i++) {
+      VersionStatus versionTwoStatus = versionTwoStatusPerRegion.get(i);
+      StoreInfo storeInfo = mock(StoreInfo.class);
+      doReturn(1).when(storeInfo).getCurrentVersion();
+      if (versionTwoStatus == null) {
+        doReturn(Optional.empty()).when(storeInfo).getVersion(2);
+      } else {
+        Version regionVersionTwo = mock(Version.class);
+        doReturn(2).when(regionVersionTwo).getNumber();
+        doReturn(versionTwoStatus).when(regionVersionTwo).getStatus();
+        doReturn(Optional.of(regionVersionTwo)).when(storeInfo).getVersion(2);
+      }
+      StoreResponse storeResponse = new StoreResponse();
+      storeResponse.setStore(storeInfo);
+      ControllerClient client = mock(ControllerClient.class);
+      doReturn(storeResponse).when(client).getStore(anyString());
+      controllerClientMap.put("region" + i, client);
+    }
+    return controllerClientMap;
   }
 
   private void mockControllerClients(String storeName) {
