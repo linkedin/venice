@@ -659,8 +659,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   }
 
   @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnChildRejectsEnabledEncryptionValue() {
-    String storeName = Utils.getUniqueString("matching-encryption");
+  public void testApplyOnChildRejectsExplicitEncryptionValue() {
+    String storeName = Utils.getUniqueString("explicit-encryption");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
     VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
     doReturn(true).when(clusterConfig).isEncryptionCluster();
@@ -670,8 +670,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   }
 
   @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnParentRejectsConflictingEncryptionValue() {
-    String storeName = Utils.getUniqueString("conflicting-encryption");
+  public void testApplyOnParentRejectsExplicitEncryptionValue() {
+    String storeName = Utils.getUniqueString("explicit-encryption");
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(true).when(config).isEncryptionCluster();
