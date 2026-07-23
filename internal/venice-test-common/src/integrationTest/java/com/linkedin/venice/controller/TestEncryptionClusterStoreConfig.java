@@ -72,7 +72,7 @@ public class TestEncryptionClusterStoreConfig {
 
       ControllerResponse matchingUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
-      Assert.assertFalse(matchingUpdate.isError(), "A value matching cluster policy must be accepted");
+      Assert.assertTrue(matchingUpdate.isError(), "encryptionEnabled must not be accepted by update-store");
 
       ControllerResponse conflictingUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
@@ -107,12 +107,10 @@ public class TestEncryptionClusterStoreConfig {
 
       ControllerResponse reconciliationUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
+      Assert.assertTrue(reconciliationUpdate.isError(), "update-store must not repair encryption metadata");
       Assert.assertFalse(
-          reconciliationUpdate.isError(),
-          "An explicit value matching cluster policy must repair metadata");
-      Assert.assertTrue(
           controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
-          "The explicit matching value must reconcile stale encryption metadata");
+          "Rejected updates must leave encryption metadata unchanged");
     }
   }
 }

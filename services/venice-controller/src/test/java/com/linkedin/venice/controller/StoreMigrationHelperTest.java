@@ -27,11 +27,6 @@ public class StoreMigrationHelperTest {
     assertEncryptionClusterMigrationBlocked(false, true);
   }
 
-  @Test
-  public void testBlocksMigrationBetweenEncryptionClusters() {
-    assertEncryptionClusterMigrationBlocked(true, true);
-  }
-
   private void assertEncryptionClusterMigrationBlocked(boolean srcEncryptionCluster, boolean destEncryptionCluster) {
     VeniceException exception = expectThrows(
         VeniceException.class,

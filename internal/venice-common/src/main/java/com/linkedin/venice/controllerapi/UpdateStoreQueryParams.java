@@ -184,7 +184,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
             .setCompactionEnabled(srcStore.isCompactionEnabled())
             .setCompactionThresholdMilliseconds(srcStore.getCompactionThreshold())
-            .setEncryptionEnabled(srcStore.isEncryptionEnabled())
             .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())

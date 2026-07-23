@@ -577,7 +577,7 @@ public class AdminExecutionTaskTest {
   }
 
   @Test
-  public void testHandleSetStore_ReplicatesEncryptionForReplicateAllConfigs() {
+  public void testHandleSetStore_IgnoresEncryptionForReplicateAllConfigs() {
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
 
     AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
@@ -604,39 +604,7 @@ public class AdminExecutionTaskTest {
 
     ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
     verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
-    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.of(true));
-  }
-
-  @Test
-  public void testHandleSetStore_ReplicatesExplicitEncryptionForReplicateAllConfigs() {
-    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
-
-    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
-    UpdateStore message = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
-    message.encryptionEnabled = true;
-    message.updatedConfigsList.add("encryption_enabled");
-    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
-    queue.add(wrapper);
-
-    AdminExecutionTask task = new AdminExecutionTask(
-        mockLogger,
-        clusterName,
-        storeName,
-        lastSucceededExecutionIdMap,
-        lastPersistedExecutionId,
-        queue,
-        mockAdmin,
-        mockExecutionIdAccessor,
-        /* isParentController= */ false,
-        mockStats,
-        regionName,
-        inflightThreadsByStore);
-
-    task.call();
-
-    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
-    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
-    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.of(true));
+    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.empty());
   }
 
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {

@@ -10,7 +10,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENCRYPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
@@ -632,7 +631,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         .setExternalStorageReadMode(ExternalStorageReadMode.VENICE_ONLY)
         .setCompactionEnabled(true)
         .setCompactionThresholdMilliseconds(3600_000L)
-        .setEncryptionEnabled(true)
         .setMinCompactionLagSeconds(1L)
         .setMaxCompactionLagSeconds(2L)
         .setMaxRecordSizeBytes(1024)
@@ -655,13 +653,13 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    // 24 distinct ifPresent/conditional branches above (added encryptionEnabled). Allow some
+    // 22 distinct ifPresent/conditional branches above. Allow some
     // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
-    verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    verify(admin, atLeast(22)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
   }
 
-  @Test
-  public void testApplyOnChildAcceptsMatchingEncryptionValue() {
+  @Test(expectedExceptions = VeniceHttpException.class)
+  public void testApplyOnChildRejectsEnabledEncryptionValue() {
     String storeName = Utils.getUniqueString("matching-encryption");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
     VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
@@ -669,67 +667,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     StoreConfigUpdater
         .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
-
-    ArgumentCaptor<VeniceHelixAdmin.StoreMetadataOperation> operationCaptor =
-        ArgumentCaptor.forClass(VeniceHelixAdmin.StoreMetadataOperation.class);
-    verify(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), operationCaptor.capture());
-    Store store = admin.getStore(clusterName, storeName);
-    operationCaptor.getValue().update(store, admin.getHelixVeniceClusterResources(clusterName));
-    assertTrue(store.isEncryptionEnabled());
-  }
-
-  @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnChildRejectsConflictingEncryptionValue() {
-    String storeName = Utils.getUniqueString("conflicting-encryption");
-    VeniceHelixAdmin admin = newChildAdminMock(storeName);
-    VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
-    doReturn(true).when(clusterConfig).isEncryptionCluster();
-
-    StoreConfigUpdater
-        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
-  }
-
-  @Test
-  public void testApplyOnChildAcceptsOmittedEncryptionValueWhenMetadataIsStale() {
-    String storeName = Utils.getUniqueString("omitted-encryption");
-    VeniceHelixAdmin admin = newChildAdminMock(storeName);
-    VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
-    doReturn(true).when(clusterConfig).isEncryptionCluster();
-
-    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
-
-    verify(admin).setStoreOwner(clusterName, storeName, "new-owner");
-    assertFalse(admin.getStore(clusterName, storeName).isEncryptionEnabled());
-  }
-
-  @Test
-  public void testApplyOnChildAcceptsOmittedEncryptionValueWhenMetadataMatches() {
-    String storeName = Utils.getUniqueString("omitted-encryption");
-    VeniceHelixAdmin admin = newChildAdminMock(storeName);
-    VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
-    doReturn(true).when(clusterConfig).isEncryptionCluster();
-    Store store = admin.getStore(clusterName, storeName);
-    store.setEncryptionEnabled(true);
-
-    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
-
-    verify(admin).setStoreOwner(clusterName, storeName, "new-owner");
-  }
-
-  @Test
-  public void testApplyOnParentAcceptsMatchingEncryptionValue() {
-    String storeName = Utils.getUniqueString("matching-encryption");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    store.setEncryptionEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(true).when(config).isEncryptionCluster();
-    parentAdmin.initStorageCluster(clusterName);
-
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
-
-    UpdateStore message = captureLastUpdateStore();
-    assertTrue(message.encryptionEnabled);
-    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals));
   }
 
   @Test(expectedExceptions = VeniceHttpException.class)
@@ -741,63 +678,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     parentAdmin.initStorageCluster(clusterName);
 
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
-  }
-
-  @Test
-  public void testApplyOnParentAcceptsOmittedEncryptionValueWhenMetadataIsStale() {
-    String storeName = Utils.getUniqueString("omitted-encryption");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(true).when(config).isEncryptionCluster();
-    parentAdmin.initStorageCluster(clusterName);
-
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
-
-    UpdateStore message = captureLastUpdateStore();
-    assertFalse(message.encryptionEnabled);
-    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals));
-  }
-
-  @Test
-  public void testApplyOnParentAcceptsOmittedEncryptionValueWhenMetadataMatches() {
-    String storeName = Utils.getUniqueString("omitted-encryption");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    store.setEncryptionEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(true).when(config).isEncryptionCluster();
-    parentAdmin.initStorageCluster(clusterName);
-
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
-
-    UpdateStore message = captureLastUpdateStore();
-    assertTrue(message.encryptionEnabled);
-    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals));
-  }
-
-  @Test
-  public void testApplyOnParentPreservesEncryptionPresenceForReplicateAllConfigs() {
-    String storeName = Utils.getUniqueString("replicate-all-encryption");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    store.setEncryptionEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(true).when(config).isEncryptionCluster();
-    parentAdmin.initStorageCluster(clusterName);
-
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setReplicateAllConfigs(true).setOwner("new-owner"));
-    UpdateStore omittedMessage = captureLastUpdateStore();
-    assertFalse(
-        omittedMessage.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals));
-
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setReplicateAllConfigs(true).setEncryptionEnabled(true));
-    UpdateStore explicitMessage = captureLastUpdateStore();
-    assertTrue(
-        explicitMessage.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(ENCRYPTION_ENABLED::equals));
   }
 
   /**
@@ -915,6 +795,19 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
     verify(admin, never()).setStoreOwner(any(), any(), any());
+  }
+
+  @Test(expectedExceptions = VeniceHttpException.class)
+  public void testApplyOnChildRejectsEncryptionBeforeRegionsFilterNoOp() {
+    String storeName = Utils.getUniqueString("child-region-skipped-encryption");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multi = admin.getMultiClusterConfigs();
+    doReturn("dc-current").when(multi).getRegionName();
+
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setRegionsFilter("dc-other").setEncryptionEnabled(true);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
   }
 
   /**
