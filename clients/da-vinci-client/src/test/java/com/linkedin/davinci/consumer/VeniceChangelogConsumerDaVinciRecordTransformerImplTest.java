@@ -62,9 +62,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -268,7 +267,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     veniceChangelogConsumer.start();
     onStartVersionIngestionHelper(true, true);
 
-    int blockedProducerCount = MAX_BUFFER_SIZE + 3;
     BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue = getOutputQueue();
 
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
@@ -277,14 +275,22 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     }
     assertEquals(outputQueue.size(), MAX_BUFFER_SIZE, "Output queue should be full before producers block");
 
-    CountDownLatch producersStarted = new CountDownLatch(blockedProducerCount);
+    int blockedProducerCount = outputQueue.size() + 1;
+    AtomicReference<Throwable> threadFailure = new AtomicReference<>();
     List<Thread> producerThreads = new ArrayList<>();
-    ExecutorService producerExecutor = Executors.newFixedThreadPool(blockedProducerCount, runnable -> {
-      Thread thread = new Thread(runnable, "blocked-cdc-producer-" + producerThreads.size());
-      producerThreads.add(thread);
-      return thread;
-    });
-    List<Future<?>> producerFutures = new ArrayList<>();
+    for (int i = 0; i < blockedProducerCount; i++) {
+      int key = MAX_BUFFER_SIZE + i;
+      Thread producerThread = new Thread(() -> {
+        try {
+          recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata);
+        } catch (Throwable throwable) {
+          threadFailure.compareAndSet(null, throwable);
+        }
+      }, "blocked-cdc-producer-" + i);
+      producerThreads.add(producerThread);
+      producerThread.start();
+    }
+
     CountDownLatch daVinciCloseStarted = new CountDownLatch(1);
     CountDownLatch allowDaVinciClose = new CountDownLatch(1);
     doAnswer(invocation -> {
@@ -292,52 +298,48 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
       assertTrue(allowDaVinciClose.await(30, TimeUnit.SECONDS), "Test should release DaVinci close");
       return null;
     }).when(mockDaVinciClient).close();
-    CompletableFuture<Void> stopFuture = null;
-    try {
-      for (int i = 0; i < blockedProducerCount; i++) {
-        int key = MAX_BUFFER_SIZE + i;
-        producerFutures.add(producerExecutor.submit(() -> {
-          producersStarted.countDown();
-          recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata);
-        }));
+    Thread stopThread = new Thread(() -> {
+      try {
+        veniceChangelogConsumer.stop();
+      } catch (Throwable throwable) {
+        threadFailure.compareAndSet(null, throwable);
       }
+    }, "cdc-consumer-stop");
 
-      assertTrue(producersStarted.await(5, TimeUnit.SECONDS), "Every producer should start");
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-        assertEquals(producerThreads.size(), blockedProducerCount, "Every producer should have a worker thread");
-        for (int i = 0; i < blockedProducerCount; i++) {
-          assertFalse(producerFutures.get(i).isDone(), "Producer should remain blocked until stop clears the queue");
-          assertEquals(
-              producerThreads.get(i).getState(),
-              Thread.State.WAITING,
-              "Producer should be blocked in the full output queue");
-        }
-      });
+    try {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertTrue(
+              producerThreads.stream().allMatch(producer -> producer.getState() == Thread.State.WAITING),
+              "Every producer should be blocked in the full output queue"));
 
-      stopFuture = CompletableFuture.runAsync(() -> {
-        try {
-          veniceChangelogConsumer.stop();
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-      });
+      stopThread.start();
       assertTrue(daVinciCloseStarted.await(5, TimeUnit.SECONDS), "Stop should reach the DaVinci client");
 
-      for (Future<?> producerFuture: producerFutures) {
-        producerFuture.get(5, TimeUnit.SECONDS);
+      for (Thread producerThread: producerThreads) {
+        producerThread.join(TimeUnit.SECONDS.toMillis(5));
+        assertFalse(producerThread.isAlive(), "Producer should exit after stop clears the queue");
       }
-      assertFalse(stopFuture.isDone(), "Stop should still be waiting for DaVinci close");
+      assertNull(threadFailure.get(), "Producer threads should not fail");
+      assertTrue(stopThread.isAlive(), "Stop should still be waiting for DaVinci close");
       assertTrue(
           outputQueue.isEmpty(),
           "The initial clear and post-put removal should release every producer without shutdown output");
       assertTrue(veniceChangelogConsumer.isClosed(), "Stop should leave the consumer terminally closed");
     } finally {
       allowDaVinciClose.countDown();
-      if (stopFuture != null) {
-        stopFuture.get(5, TimeUnit.SECONDS);
+      stopThread.join(TimeUnit.SECONDS.toMillis(5));
+      for (Thread producerThread: producerThreads) {
+        if (producerThread.isAlive()) {
+          producerThread.interrupt();
+          producerThread.join(TimeUnit.SECONDS.toMillis(5));
+        }
       }
-      producerExecutor.shutdownNow();
     }
+    assertFalse(stopThread.isAlive(), "Stop should finish after DaVinci close is released");
+    assertNull(threadFailure.get(), "Shutdown threads should not fail");
   }
 
   @Test
