@@ -1353,9 +1353,7 @@ public final class StoreConfigUpdater {
     setStore.compactionThresholdMilliseconds =
         compactionThreshold.map(admin.addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
             .orElseGet(currStore::getCompactionThresholdMilliseconds);
-    setStore.encryptionEnabled = !currStore.isSystemStore() && encryptionEnabled.isPresent()
-        ? isEncryptionCluster
-        : currStore.isEncryptionEnabled();
+    setStore.encryptionEnabled = currStore.isEncryptionEnabled();
     if (!currStore.isSystemStore() && encryptionEnabled.isPresent()) {
       updatedConfigsList.add(ENCRYPTION_ENABLED);
     }

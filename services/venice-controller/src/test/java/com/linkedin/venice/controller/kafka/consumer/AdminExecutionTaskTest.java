@@ -577,7 +577,7 @@ public class AdminExecutionTaskTest {
   }
 
   @Test
-  public void testHandleSetStore_PreservesEncryptionPresenceForReplicateAllConfigs() {
+  public void testHandleSetStore_ReplicatesEncryptionForReplicateAllConfigs() {
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
 
     AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
@@ -604,7 +604,7 @@ public class AdminExecutionTaskTest {
 
     ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
     verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
-    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.empty());
+    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.of(true));
   }
 
   @Test

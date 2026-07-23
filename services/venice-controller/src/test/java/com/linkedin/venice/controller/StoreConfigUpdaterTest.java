@@ -720,6 +720,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   public void testApplyOnParentAcceptsMatchingEncryptionValue() {
     String storeName = Utils.getUniqueString("matching-encryption");
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setEncryptionEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(true).when(config).isEncryptionCluster();
     parentAdmin.initStorageCluster(clusterName);
