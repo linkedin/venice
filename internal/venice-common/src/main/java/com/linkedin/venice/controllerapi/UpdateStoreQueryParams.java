@@ -24,7 +24,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENCRYPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
@@ -856,10 +855,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Long> getCompactionThresholdMilliseconds() {
     return getLong(COMPACTION_THRESHOLD_MILLISECONDS);
-  }
-
-  public Optional<Boolean> getEncryptionEnabled() {
-    return getBoolean(ENCRYPTION_ENABLED);
   }
 
   public UpdateStoreQueryParams setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
