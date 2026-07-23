@@ -1430,7 +1430,6 @@ public class AdminTool {
     genericParam(cmd, Arg.STORAGE_PERSONA, s -> s, p -> params.setStoragePersona(p), argSet);
     integerParam(cmd, Arg.LATEST_SUPERSET_SCHEMA_ID, p -> params.setLatestSupersetSchemaId(p), argSet);
     booleanParam(cmd, Arg.ENABLE_COMPACTION, p -> params.setCompactionEnabled(p), argSet);
-    booleanParam(cmd, Arg.ENABLE_ENCRYPTION, p -> params.setEncryptionEnabled(p), argSet);
     longParam(cmd, Arg.COMPACTION_THRESHOLD_MILLISECONDS, p -> params.setCompactionThresholdMilliseconds(p), argSet);
     longParam(cmd, Arg.MIN_COMPACTION_LAG_SECONDS, p -> params.setMinCompactionLagSeconds(p), argSet);
     longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);

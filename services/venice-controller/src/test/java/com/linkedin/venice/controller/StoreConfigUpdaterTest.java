@@ -656,25 +656,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     verify(admin, atLeast(22)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
   }
 
-  @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnChildRejectsExplicitEncryptionValue() {
-    String storeName = Utils.getUniqueString("explicit-encryption");
-    VeniceHelixAdmin admin = newChildAdminMock(storeName);
-
-    StoreConfigUpdater
-        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
-  }
-
-  @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnParentRejectsExplicitEncryptionValue() {
-    String storeName = Utils.getUniqueString("explicit-encryption");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    parentAdmin.initStorageCluster(clusterName);
-
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
-  }
-
   /**
    * Covers the child-side persona branch: when {@code personaName} is supplied, the resolved
    * {@link StoragePersonaRepository} from the cluster resources must receive an
@@ -790,19 +771,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
     verify(admin, never()).setStoreOwner(any(), any(), any());
-  }
-
-  @Test(expectedExceptions = VeniceHttpException.class)
-  public void testApplyOnChildRejectsEncryptionBeforeRegionsFilterNoOp() {
-    String storeName = Utils.getUniqueString("child-region-skipped-encryption");
-    VeniceHelixAdmin admin = newChildAdminMock(storeName);
-    VeniceControllerMultiClusterConfig multi = admin.getMultiClusterConfigs();
-    doReturn("dc-current").when(multi).getRegionName();
-
-    UpdateStoreQueryParams params =
-        new UpdateStoreQueryParams().setRegionsFilter("dc-other").setEncryptionEnabled(true);
-
-    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
   }
 
   /**

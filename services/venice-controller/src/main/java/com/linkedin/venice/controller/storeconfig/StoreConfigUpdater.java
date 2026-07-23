@@ -187,9 +187,6 @@ public final class StoreConfigUpdater {
       String clusterName,
       String storeName,
       UpdateStoreQueryParams params) {
-    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
-    validateEncryptionEnabledUpdate(encryptionEnabled, clusterName, storeName);
-
     // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
     // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
     // if the regions filter only specifies one region, which is the parent region.
@@ -851,22 +848,6 @@ public final class StoreConfigUpdater {
   }
 
   /**
-   * Store encryption is controlled by cluster policy, so update-store must not explicitly provide the field.
-   */
-  static void validateEncryptionEnabledUpdate(
-      Optional<Boolean> requestedEncryptionEnabled,
-      String clusterName,
-      String storeName) {
-    if (requestedEncryptionEnabled.isPresent()) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "encryptionEnabled for store " + storeName + " in cluster " + clusterName
-              + " is controlled by cluster policy and must not be provided in update-store.",
-          ErrorType.BAD_REQUEST);
-    }
-  }
-
-  /**
    * Parent-side update-store: builds an UPDATE_STORE admin message that gets written to the admin
    * channel for child controllers to consume. Lifted from the body inside
    * {@code VeniceParentHelixAdmin.updateStore}'s {@code acquireAdminMessageLock} try-finally; the
@@ -948,7 +929,6 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
-    Optional<Boolean> encryptionEnabled = params.getEncryptionEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -962,7 +942,6 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    validateEncryptionEnabledUpdate(encryptionEnabled, clusterName, storeName);
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;

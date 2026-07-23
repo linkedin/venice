@@ -607,7 +607,6 @@ public class VeniceParentHelixAdminSchemaTest {
     testUpdateGlobalRtDivEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
-    testUpdateEncryptionEnabled(parentControllerClient, childControllerClient);
     testUpdateEnumSchemaEvolution(parentControllerClient, childControllerClient);
     testUpdateStoreFlinkVeniceViewsEnable(parentControllerClient, childControllerClient);
   }
@@ -737,23 +736,6 @@ public class VeniceParentHelixAdminSchemaTest {
       Assert.assertEquals(response.getStore().getCompactionThreshold(), expectedCompactionThreshold);
     };
     testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
-  }
-
-  private void testUpdateEncryptionEnabled(ControllerClient parentClient, ControllerClient childClient) {
-    String storeName = Utils.getUniqueString("test_store");
-    NewStoreResponse newStoreResponse =
-        parentClient.createNewStore(storeName, "test_owner", "\"long\"", generateSchema(false).toString());
-    Assert.assertFalse(newStoreResponse.isError(), newStoreResponse.getError());
-
-    ControllerResponse updateResponse =
-        parentClient.updateStore(storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
-    Assert.assertTrue(updateResponse.isError());
-
-    Assert.assertFalse(parentClient.getStore(storeName).getStore().isEncryptionEnabled());
-    TestUtils.waitForNonDeterministicAssertion(
-        30,
-        TimeUnit.SECONDS,
-        () -> Assert.assertFalse(childClient.getStore(storeName).getStore().isEncryptionEnabled()));
   }
 
   private void testUpdateEnumSchemaEvolution(ControllerClient parentClient, ControllerClient childClient) {
