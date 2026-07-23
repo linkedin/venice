@@ -604,7 +604,9 @@ public class AdminExecutionTaskTest {
 
     ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
     verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
-    assertEquals(captor.getValue().getEncryptionEnabled(), java.util.Optional.empty());
+    assertTrue(
+        captor.getAllValues().stream().allMatch(params -> !params.getEncryptionEnabled().isPresent()),
+        "updateStore must not receive encryptionEnabled from the admin-message snapshot");
   }
 
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {
