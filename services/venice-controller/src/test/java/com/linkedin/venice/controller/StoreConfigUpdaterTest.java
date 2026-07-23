@@ -624,8 +624,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   public void testApplyOnChild_ChildOnlyMetadataFields_TriggerStoreMetadataUpdates() {
     String storeName = Utils.getUniqueString("child-meta-sweep");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
-    VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
-    doReturn(true).when(clusterConfig).isEncryptionCluster();
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageMode(StorageMode.INTERNAL)
         .setExternalStorageReadMode(ExternalStorageReadMode.VENICE_ONLY)
@@ -662,8 +660,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   public void testApplyOnChildRejectsExplicitEncryptionValue() {
     String storeName = Utils.getUniqueString("explicit-encryption");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
-    VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
-    doReturn(true).when(clusterConfig).isEncryptionCluster();
 
     StoreConfigUpdater
         .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(true));
@@ -674,7 +670,6 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     String storeName = Utils.getUniqueString("explicit-encryption");
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(true).when(config).isEncryptionCluster();
     parentAdmin.initStorageCluster(clusterName);
 
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEncryptionEnabled(false));
