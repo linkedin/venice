@@ -86,19 +86,14 @@ import org.testng.annotations.Test;
  *
  * Uses two stores sharing a DaVinciBackend singleton: store B stays alive throughout while
  * store A is closed and restarted. Validates that close completes within Flink's 30s timeout,
- * the restarted consumer can seek to checkpoint and receive nearline records, and store B
- * remains unaffected.
+ * closing store A releases store B on the shared hybrid drainer, and the restarted store A
+ * consumer can replay from external checkpoints.
  */
 @Test(singleThreaded = true)
 public class VersionSpecificCDCShutdownTest {
   private static final Logger LOGGER = LogManager.getLogger(VersionSpecificCDCShutdownTest.class);
   private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private static final int PARTITION_COUNT = 3;
-  private static final int CDC_OUTPUT_BUFFER_SIZE = 100;
-  private static final int FLINK_CLOSE_TIMEOUT_SECONDS = 30;
-  private static final int BLOCKING_RECORD_START = 110;
-  private static final int BLOCKING_RECORD_COUNT = 120;
-  private static final int STORE_B_BLOCKED_RECORD_COUNT = 10;
   private static final String HYBRID_DRAINER_THREAD_PREFIX = "Store-writer-hybrid";
 
   private String clusterName;
@@ -151,19 +146,24 @@ public class VersionSpecificCDCShutdownTest {
    * Simulates the Flink CDC task restart scenario end-to-end:
    * 1. Store B's consumer runs throughout, keeping the DaVinciBackend singleton alive.
    * 2. Store A's consumer subscribes and receives batch + nearline data.
-   * 3. Additional nearline records are produced to load the drainer before close.
-   * 4. Store A's consumer close() is called with Flink's 30s timeout.
-   * 5. Asserts close completes within 30s.
-   * 6. A new consumer seeks to checkpoint, receives new nearline records with value verification.
-   * 7. Store B receives new nearline records with value verification.
+   * 3. Store A's bounded output queue fills and blocks the sole shared hybrid drainer.
+   * 4. A store B record queues behind store A and cannot progress.
+   * 5. Store A's consumer close() completes within Flink's 30s timeout and releases store B.
+   * 6. A fresh store A consumer seeks to the latest external checkpoints and replays every blocked record.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testVersionSpecificCDCConsumerRestartWithinFlinkTimeout() throws Exception {
+    int outputBufferSize = 100;
+    int closeTimeoutSeconds = 30;
+    int blockingRecordStart = 110;
+    int storeARecordCount = outputBufferSize + 1;
+    int storeBRecordCount = 1;
     String storeA = Utils.getUniqueString("storeA");
     String storeB = Utils.getUniqueString("storeB");
     VeniceChangelogConsumer<GenericRecord, GenericRecord> consumerA = null;
     VeniceChangelogConsumer<GenericRecord, GenericRecord> consumerB = null;
     VeniceChangelogConsumer<GenericRecord, GenericRecord> restartedConsumerA = null;
+    BlockingQueue<?> consumerAOutputQueueForCleanup = null;
     ExecutorService closeExecutor = null;
     Future<?> closeFuture = null;
 
@@ -181,7 +181,7 @@ public class VersionSpecificCDCShutdownTest {
         runSamzaStreamJob(producerB, storeB, 10, 100);
       }
 
-      VeniceChangelogConsumerClientFactory factory = createFactory(inputDir);
+      VeniceChangelogConsumerClientFactory factory = createFactory(inputDir, outputBufferSize);
 
       VeniceChangelogConsumer<GenericRecord, GenericRecord> activeConsumerB =
           factory.getVersionSpecificChangelogConsumer(storeB, 1);
@@ -202,9 +202,9 @@ public class VersionSpecificCDCShutdownTest {
       consumerA = activeConsumerA;
       activeConsumerA.subscribeAll().get();
       Map<String, GenericRecord> consumerAEvents = new HashMap<>();
-      Map<Integer, VeniceChangeCoordinate> checkpointsByPartition = new HashMap<>();
+      Map<Integer, VeniceChangeCoordinate> latestCheckpointsByPartition = new HashMap<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
-        pollAndCollectWithCheckpoints(activeConsumerA, consumerAEvents, checkpointsByPartition);
+        pollAndCollectWithCheckpoints(activeConsumerA, consumerAEvents, latestCheckpointsByPartition);
         int expectedMinEvents = DEFAULT_USER_DATA_RECORD_COUNT + 9;
         assertTrue(
             consumerAEvents.size() >= expectedMinEvents,
@@ -213,26 +213,27 @@ public class VersionSpecificCDCShutdownTest {
       verifyNearlineValues(consumerAEvents, 100, 110);
 
       assertEquals(
-          checkpointsByPartition.size(),
+          latestCheckpointsByPartition.size(),
           PARTITION_COUNT,
           "External checkpoints must cover every partition before the restart");
-      Set<VeniceChangeCoordinate> checkpoints = new HashSet<>(checkpointsByPartition.values());
+      Set<VeniceChangeCoordinate> latestCheckpoints = new HashSet<>(latestCheckpointsByPartition.values());
 
       BlockingQueue<?> consumerAOutputQueue = getOutputQueue(activeConsumerA);
+      consumerAOutputQueueForCleanup = consumerAOutputQueue;
       BlockingQueue<?> consumerBOutputQueue = getOutputQueue(activeConsumerB);
       assertTrue(consumerAOutputQueue.isEmpty(), "Store A output queue must start empty");
       assertTrue(consumerBOutputQueue.isEmpty(), "Store B output queue must start empty");
 
-      // Stop polling A, fill its tiny output queue, and block the sole shared hybrid drainer in put().
+      // Stop polling A, fill its bounded output queue, and block the sole shared hybrid drainer in put().
       try (VeniceSystemProducer producerA =
           IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeA, Version.PushType.STREAM)) {
-        runSamzaStreamJob(producerA, storeA, BLOCKING_RECORD_COUNT, BLOCKING_RECORD_START);
+        runSamzaStreamJob(producerA, storeA, storeARecordCount, blockingRecordStart);
       }
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
         assertEquals(
             consumerAOutputQueue.size(),
-            CDC_OUTPUT_BUFFER_SIZE,
+            outputBufferSize,
             "Store A output queue should be full before shutdown");
         assertNotNull(
             findBlockedSharedHybridDrainer(),
@@ -242,12 +243,12 @@ public class VersionSpecificCDCShutdownTest {
       // Queue store B records behind the blocked A record and prove B cannot make progress before A shuts down.
       try (VeniceSystemProducer producerB =
           IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeB, Version.PushType.STREAM)) {
-        runSamzaStreamJob(producerB, storeB, STORE_B_BLOCKED_RECORD_COUNT, BLOCKING_RECORD_START);
+        runSamzaStreamJob(producerB, storeB, storeBRecordCount, blockingRecordStart);
       }
 
       BlockingQueue<?> sharedHybridDrainerQueue = getSharedHybridDrainerQueue();
       String storeBVersionTopic = Version.composeKafkaTopic(storeB, 1);
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, () -> {
         assertTrue(
             drainerQueueContainsTopic(sharedHybridDrainerQueue, storeBVersionTopic),
             "Store B records should be queued behind the blocked store A record");
@@ -276,14 +277,14 @@ public class VersionSpecificCDCShutdownTest {
 
       boolean closedInTime = false;
       try {
-        closeFuture.get(FLINK_CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        closeFuture.get(closeTimeoutSeconds, TimeUnit.SECONDS);
         closedInTime = true;
       } catch (TimeoutException e) {
         Thread stillBlockedDrainer = findBlockedSharedHybridDrainer();
         LOGGER.error(
             "CDC shutdown red reproduction: close exceeded Flink's {}s timeout; "
                 + "consumerAQueueSize={}, consumerBQueueSize={}, blockedDrainer={}",
-            FLINK_CLOSE_TIMEOUT_SECONDS,
+            closeTimeoutSeconds,
             consumerAOutputQueue.size(),
             consumerBOutputQueue.size(),
             describeThread(stillBlockedDrainer));
@@ -292,17 +293,17 @@ public class VersionSpecificCDCShutdownTest {
       long closeElapsedMs = System.currentTimeMillis() - closeStartMs;
       assertTrue(
           closedInTime,
-          "CDC consumer A close exceeded Flink's 30s timeout while the shared StoreBuffer drainer was blocked "
-              + "in its full output queue; elapsedMs=" + closeElapsedMs + ", drainer="
-              + describeThread(findBlockedSharedHybridDrainer()));
+          "CDC consumer A close exceeded Flink's " + closeTimeoutSeconds
+              + "s timeout while the shared StoreBuffer drainer was blocked in its full output queue; elapsedMs="
+              + closeElapsedMs + ", drainer=" + describeThread(findBlockedSharedHybridDrainer()));
 
       Map<String, GenericRecord> resumedBEvents = new HashMap<>();
       try {
         pollAndVerifyNearlineRecords(
             activeConsumerB,
             resumedBEvents,
-            BLOCKING_RECORD_START,
-            BLOCKING_RECORD_START + STORE_B_BLOCKED_RECORD_COUNT);
+            blockingRecordStart,
+            blockingRecordStart + storeBRecordCount);
       } catch (AssertionError e) {
         throw new AssertionError(
             "Store B did not resume after consumer A shutdown; shared drainer="
@@ -316,24 +317,24 @@ public class VersionSpecificCDCShutdownTest {
           restartedConsumerA,
           consumerA,
           "Factory should return a fresh consumer after the old consumer is closed");
-      restartedConsumerA.seekToCheckpoint(checkpoints).get();
+      restartedConsumerA.seekToCheckpoint(latestCheckpoints).get();
 
       Map<String, GenericRecord> replayedAEvents = new HashMap<>();
       pollAndVerifyNearlineRecords(
           restartedConsumerA,
           replayedAEvents,
-          BLOCKING_RECORD_START,
-          BLOCKING_RECORD_START + BLOCKING_RECORD_COUNT);
+          blockingRecordStart,
+          blockingRecordStart + storeARecordCount);
       LOGGER.info(
           "Restarted consumer A replayed all {} expected records from external checkpoints; "
               + "store B resumed with {} records.",
-          BLOCKING_RECORD_COUNT,
+          storeARecordCount,
           resumedBEvents.size());
     } finally {
-      releaseBlockedSharedDrainerForCleanup(consumerA);
-      if (closeFuture != null && !closeFuture.isDone()) {
+      releaseBlockedSharedDrainerForCleanup(consumerAOutputQueueForCleanup);
+      if (closeFuture != null) {
         try {
-          closeFuture.get(30, TimeUnit.SECONDS);
+          closeFuture.get(closeTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
           LOGGER.warn("Consumer A close did not finish during test cleanup", e);
         }
@@ -341,7 +342,7 @@ public class VersionSpecificCDCShutdownTest {
         closeInBackground(consumerA);
       }
       if (closeExecutor != null) {
-        closeExecutor.shutdownNow();
+        closeExecutor.shutdown();
       }
       closeInBackground(restartedConsumerA);
       closeInBackground(consumerB);
@@ -351,10 +352,7 @@ public class VersionSpecificCDCShutdownTest {
   }
 
   private BlockingQueue<?> getOutputQueue(VeniceChangelogConsumer<?, ?> consumer) throws ReflectiveOperationException {
-    Field outputQueueField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("pubSubMessages");
-    outputQueueField.setAccessible(true);
-    return (BlockingQueue<?>) outputQueueField.get(consumer);
+    return (BlockingQueue<?>) readField(consumer, "pubSubMessages");
   }
 
   private BlockingQueue<?> getSharedHybridDrainerQueue() throws ReflectiveOperationException {
@@ -444,22 +442,19 @@ public class VersionSpecificCDCShutdownTest {
     return description.toString();
   }
 
-  private void releaseBlockedSharedDrainerForCleanup(VeniceChangelogConsumer<?, ?> consumer) {
-    if (consumer == null) {
+  private void releaseBlockedSharedDrainerForCleanup(BlockingQueue<?> outputQueue) {
+    if (outputQueue == null) {
       return;
     }
 
-    long deadlineMs = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
+    long deadlineMs = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(10);
     Thread blockedDrainer;
     while ((blockedDrainer = findBlockedSharedHybridDrainer()) != null && System.currentTimeMillis() < deadlineMs) {
+      outputQueue.clear();
       try {
-        consumer.poll(0);
         Thread.sleep(10);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        break;
-      } catch (Exception e) {
-        LOGGER.warn("Failed to drain consumer A during test cleanup", e);
         break;
       }
     }
@@ -578,7 +573,7 @@ public class VersionSpecificCDCShutdownTest {
     return inputDirPath;
   }
 
-  private VeniceChangelogConsumerClientFactory createFactory(String inputDirRef) {
+  private VeniceChangelogConsumerClientFactory createFactory(String inputDirRef, int outputBufferSize) {
     Properties consumerProps = ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirRef);
     consumerProps.put(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, true);
     consumerProps.put(SORTED_INPUT_DRAINER_SIZE, 1);
@@ -589,7 +584,7 @@ public class VersionSpecificCDCShutdownTest {
         .setLocalD2ZkHosts(zkAddress)
         .setControllerRequestRetryCount(3)
         .setD2Client(d2Client)
-        .setMaxBufferSize(CDC_OUTPUT_BUFFER_SIZE);
+        .setMaxBufferSize(outputBufferSize);
     return new VeniceChangelogConsumerClientFactory(globalConfig, metricsRepository);
   }
 

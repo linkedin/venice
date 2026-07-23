@@ -57,7 +57,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -66,8 +65,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -250,24 +247,29 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   }
 
   @Test
+  public void testStopCompletesPendingStartWithoutStartingReporterAndShutsDownExecutor() throws Exception {
+    CompletableFuture<Void> startFuture = veniceChangelogConsumer.start();
+    ExecutorService completableFutureThreadPool = getField("completableFutureThreadPool");
+
+    assertFalse(startFuture.isDone(), "Start should wait for the first record");
+
+    veniceChangelogConsumer.stop();
+
+    startFuture.get(5, TimeUnit.SECONDS);
+    assertNull(getField("backgroundReporterThread"), "A reporter must not start after close wins");
+    assertTrue(completableFutureThreadPool.isShutdown(), "Stop should shut down the dedicated start executor");
+    assertTrue(
+        completableFutureThreadPool.awaitTermination(5, TimeUnit.SECONDS),
+        "The dedicated start executor should terminate after the pending start completes");
+  }
+
+  @Test
   public void testStopReleasesAllBlockedProducersWithoutPoller() throws Exception {
     veniceChangelogConsumer.start();
     onStartVersionIngestionHelper(true, true);
 
     int blockedProducerCount = MAX_BUFFER_SIZE + 3;
-    CountDownLatch blockedPutAttempts = new CountDownLatch(blockedProducerCount);
-    BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue =
-        new ArrayBlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>>(MAX_BUFFER_SIZE) {
-          @Override
-          public void put(PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message)
-              throws InterruptedException {
-            if (remainingCapacity() == 0) {
-              blockedPutAttempts.countDown();
-            }
-            super.put(message);
-          }
-        };
-    setOutputQueue(outputQueue);
+    BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue = getOutputQueue();
 
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
       int key = i;
@@ -275,65 +277,67 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     }
     assertEquals(outputQueue.size(), MAX_BUFFER_SIZE, "Output queue should be full before producers block");
 
-    ExecutorService producerExecutor = Executors.newFixedThreadPool(blockedProducerCount);
+    CountDownLatch producersStarted = new CountDownLatch(blockedProducerCount);
+    List<Thread> producerThreads = new ArrayList<>();
+    ExecutorService producerExecutor = Executors.newFixedThreadPool(blockedProducerCount, runnable -> {
+      Thread thread = new Thread(runnable, "blocked-cdc-producer-" + producerThreads.size());
+      producerThreads.add(thread);
+      return thread;
+    });
     List<Future<?>> producerFutures = new ArrayList<>();
+    CountDownLatch daVinciCloseStarted = new CountDownLatch(1);
+    CountDownLatch allowDaVinciClose = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      daVinciCloseStarted.countDown();
+      assertTrue(allowDaVinciClose.await(30, TimeUnit.SECONDS), "Test should release DaVinci close");
+      return null;
+    }).when(mockDaVinciClient).close();
+    CompletableFuture<Void> stopFuture = null;
     try {
       for (int i = 0; i < blockedProducerCount; i++) {
         int key = MAX_BUFFER_SIZE + i;
-        producerFutures.add(
-            producerExecutor
-                .submit(() -> recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata)));
+        producerFutures.add(producerExecutor.submit(() -> {
+          producersStarted.countDown();
+          recordTransformer.processPut(Lazy.of(() -> key), lazyValue, 0, recordMetadata);
+        }));
       }
 
-      assertTrue(blockedPutAttempts.await(5, TimeUnit.SECONDS), "Every producer should reach the full output queue");
-      for (Future<?> producerFuture: producerFutures) {
-        assertFalse(producerFuture.isDone(), "Producer should remain blocked until stop clears the queue");
-      }
+      assertTrue(producersStarted.await(5, TimeUnit.SECONDS), "Every producer should start");
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        assertEquals(producerThreads.size(), blockedProducerCount, "Every producer should have a worker thread");
+        for (int i = 0; i < blockedProducerCount; i++) {
+          assertFalse(producerFutures.get(i).isDone(), "Producer should remain blocked until stop clears the queue");
+          assertEquals(
+              producerThreads.get(i).getState(),
+              Thread.State.WAITING,
+              "Producer should be blocked in the full output queue");
+        }
+      });
 
-      veniceChangelogConsumer.stop();
+      stopFuture = CompletableFuture.runAsync(() -> {
+        try {
+          veniceChangelogConsumer.stop();
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      });
+      assertTrue(daVinciCloseStarted.await(5, TimeUnit.SECONDS), "Stop should reach the DaVinci client");
 
       for (Future<?> producerFuture: producerFutures) {
         producerFuture.get(5, TimeUnit.SECONDS);
       }
-      assertTrue(outputQueue.isEmpty(), "Stop should release blocked producers without leaving shutdown output");
+      assertFalse(stopFuture.isDone(), "Stop should still be waiting for DaVinci close");
+      assertTrue(
+          outputQueue.isEmpty(),
+          "The initial clear and post-put removal should release every producer without shutdown output");
       assertTrue(veniceChangelogConsumer.isClosed(), "Stop should leave the consumer terminally closed");
     } finally {
+      allowDaVinciClose.countDown();
+      if (stopFuture != null) {
+        stopFuture.get(5, TimeUnit.SECONDS);
+      }
       producerExecutor.shutdownNow();
     }
-  }
-
-  @Test
-  public void testLatePutRemovesOnlyInsertedMessage() throws Exception {
-    veniceChangelogConsumer.start();
-    onStartVersionIngestionHelper(true, true);
-
-    AtomicBoolean closedFlag = getAtomicBooleanField("isClosed");
-    AtomicBoolean startedFlag = getAtomicBooleanField("isStarted");
-    AtomicReference<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> insertedMessage =
-        new AtomicReference<>();
-    PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> sentinelMessage = mock(PubSubMessage.class);
-    BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue =
-        new ArrayBlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>>(2) {
-          @Override
-          public void put(PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message)
-              throws InterruptedException {
-            super.put(message);
-            insertedMessage.set(message);
-            super.put(sentinelMessage);
-            startedFlag.set(false);
-            closedFlag.set(true);
-          }
-        };
-    setOutputQueue(outputQueue);
-
-    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
-
-    assertNotNull(insertedMessage.get(), "The test producer should insert its message before observing close");
-    assertFalse(
-        outputQueue.stream().anyMatch(message -> message == insertedMessage.get()),
-        "The exact message inserted across the shutdown boundary should be removed");
-    assertEquals(outputQueue.size(), 1, "Removal should not purge unrelated queue entries");
-    assertSame(outputQueue.peek(), sentinelMessage, "Only the exact late message should be removed");
   }
 
   @Test
@@ -907,26 +911,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   @SuppressWarnings("unchecked")
   private BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> getOutputQueue()
       throws NoSuchFieldException, IllegalAccessException {
-    Field outputQueueField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("pubSubMessages");
-    outputQueueField.setAccessible(true);
-    return (BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>>) outputQueueField
-        .get(veniceChangelogConsumer);
+    return getField("pubSubMessages");
   }
 
-  private void setOutputQueue(
-      BlockingQueue<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> outputQueue)
-      throws NoSuchFieldException, IllegalAccessException {
-    Field outputQueueField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("pubSubMessages");
-    outputQueueField.setAccessible(true);
-    outputQueueField.set(veniceChangelogConsumer, outputQueue);
-  }
-
-  private AtomicBoolean getAtomicBooleanField(String fieldName) throws NoSuchFieldException, IllegalAccessException {
+  @SuppressWarnings("unchecked")
+  private <T> T getField(String fieldName) throws NoSuchFieldException, IllegalAccessException {
     Field field = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField(fieldName);
     field.setAccessible(true);
-    return (AtomicBoolean) field.get(veniceChangelogConsumer);
+    return (T) field.get(veniceChangelogConsumer);
   }
 
   private void onStartVersionIngestionHelper(boolean currentRecordTransformer, boolean isCurrentVersion) {

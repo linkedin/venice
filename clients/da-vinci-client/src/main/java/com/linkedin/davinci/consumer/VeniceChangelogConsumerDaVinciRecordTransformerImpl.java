@@ -280,8 +280,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           }
 
           if (changeCaptureStats != null) {
-            backgroundReporterThread = new BackgroundReporterThread();
-            backgroundReporterThread.start();
+            bufferLock.lock();
+            try {
+              if (!isClosed.get()) {
+                backgroundReporterThread = new BackgroundReporterThread();
+                backgroundReporterThread.start();
+              }
+            } finally {
+              bufferLock.unlock();
+            }
           }
         } catch (InterruptedException e) {
           LOGGER.info("Thread was interrupted", e);
@@ -345,10 +352,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       isStarted.set(false);
       partitionToVersionToServe.clear();
       pubSubMessages.clear();
+      startLatch.countDown();
       bufferIsFullCondition.signalAll();
     } finally {
       bufferLock.unlock();
     }
+    completableFutureThreadPool.shutdown();
     try {
       if (backgroundReporterThread != null) {
         backgroundReporterThread.interrupt();
