@@ -23,7 +23,7 @@ import org.testng.annotations.Test;
 /**
  * Verifies encryption-cluster ({@code cluster.encryption.enabled=true}) store behavior: a newly
  * created store defaults to {@code encryptionEnabled=true} (via {@code configureNewStore}), and
- * encryption cannot be disabled once enabled.
+ * update-store cannot change the encryption metadata.
  */
 public class TestEncryptionClusterStoreConfig {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
@@ -87,6 +87,14 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertTrue(
           storeAfterUpdate.getStore().isEncryptionEnabled(),
           "Omitting encryptionEnabled must not make metadata inconsistent with cluster policy");
+
+      ControllerResponse replicateAllUpdate = controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setOwner("replicated-owner").setReplicateAllConfigs(true));
+      Assert.assertFalse(replicateAllUpdate.isError(), "Replicate-all updates must succeed");
+      Assert.assertTrue(
+          controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
+          "Replicate-all updates must preserve encryption metadata");
 
       venice.getLeaderVeniceController()
           .getVeniceHelixAdmin()
