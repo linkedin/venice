@@ -851,7 +851,7 @@ public final class StoreConfigUpdater {
   }
 
   /**
-   * Store encryption is controlled by cluster policy and cannot be changed through update-store.
+   * Store encryption is controlled by cluster policy, so update-store must not explicitly provide the field.
    */
   static void validateEncryptionEnabledUpdate(
       Optional<Boolean> requestedEncryptionEnabled,
@@ -861,7 +861,7 @@ public final class StoreConfigUpdater {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "encryptionEnabled for store " + storeName + " in cluster " + clusterName
-              + " is controlled by cluster policy and cannot be updated.",
+              + " is controlled by cluster policy and must not be provided in update-store.",
           ErrorType.BAD_REQUEST);
     }
   }
