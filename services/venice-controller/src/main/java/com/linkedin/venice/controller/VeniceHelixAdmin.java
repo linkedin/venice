@@ -5430,6 +5430,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  public void setMergedValueRmdColumnFamilyEnabled(
+      String clusterName,
+      String storeName,
+      boolean mergedValueRmdColumnFamilyEnabled) {
+    storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+      store.setMergedValueRmdColumnFamilyEnabled(mergedValueRmdColumnFamilyEnabled);
+      return store;
+    });
+  }
+
   public void setIncrementalPushEnabled(String clusterName, String storeName, boolean incrementalPushEnabled) {
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();

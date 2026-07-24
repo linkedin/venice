@@ -39,6 +39,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SU
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
@@ -251,6 +252,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
     Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
     Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
+    Optional<Boolean> mergedValueRmdColumnFamilyEnabled = params.getMergedValueRmdColumnFamilyEnabled();
     Optional<Integer> batchGetLimit = params.getBatchGetLimit();
     Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
     Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -453,6 +455,10 @@ public final class StoreConfigUpdater {
 
       if (rmdChunkingEnabled.isPresent()) {
         admin.setRmdChunkingEnabled(clusterName, storeName, rmdChunkingEnabled.get());
+      }
+
+      if (mergedValueRmdColumnFamilyEnabled.isPresent()) {
+        admin.setMergedValueRmdColumnFamilyEnabled(clusterName, storeName, mergedValueRmdColumnFamilyEnabled.get());
       }
 
       if (batchGetLimit.isPresent()) {
@@ -881,6 +887,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
     Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
     Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
+    Optional<Boolean> mergedValueRmdColumnFamilyEnabled = params.getMergedValueRmdColumnFamilyEnabled();
     Optional<Integer> batchGetLimit = params.getBatchGetLimit();
     Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
     Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -1404,6 +1411,18 @@ public final class StoreConfigUpdater {
         .checkAndMaybeApplyRmdChunkingConfigChange(admin, clusterName, storeName, rmdChunkingEnabled, setStore);
     if (rmdChunkingConfigUpdated) {
       updatedConfigsList.add(RMD_CHUNKING_ENABLED);
+    }
+
+    // Update merged value-RMD column family config (requires active-active replication to be enabled).
+    if (mergedValueRmdColumnFamilyEnabled.isPresent()) {
+      if (mergedValueRmdColumnFamilyEnabled.get() && !setStore.getActiveActiveReplicationEnabled()) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Merged value-RMD column family requires active-active replication to be enabled.",
+            ErrorType.BAD_REQUEST);
+      }
+      setStore.mergedValueRmdColumnFamilyEnabled = mergedValueRmdColumnFamilyEnabled.get();
+      updatedConfigsList.add(MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED);
     }
 
     // Validate Amplification Factor config based on latest A/A and partial update status.

@@ -417,6 +417,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getSchemaRepo()).thenReturn(schemaRepository);
     when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
     when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorageInternal(anyInt(), any(), any())).thenCallRealMethod();
+    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorageInternal(any(), anyInt(), any(), any()))
+        .thenCallRealMethod();
     when(ingestionTask.isChunked()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
     ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();

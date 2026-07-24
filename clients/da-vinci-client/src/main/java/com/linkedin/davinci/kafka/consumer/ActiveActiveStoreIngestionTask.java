@@ -22,6 +22,8 @@ import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
+import com.linkedin.davinci.store.MergedValueRmdReadOptimizingStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -456,6 +458,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @return The object containing RMD and value schema id. If nothing is found, return null
    */
   RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
+      StorageEngine readStorageEngine,
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       int partition,
@@ -473,8 +476,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           cachedRecord.getRmdManifest());
     }
     ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
-    byte[] replicationMetadataWithValueSchemaBytes =
-        getRmdWithValueSchemaByteBufferFromStorage(partition, key, rmdManifestContainer, currentTimeForMetricsMs);
+    byte[] replicationMetadataWithValueSchemaBytes = getRmdWithValueSchemaByteBufferFromStorage(
+        readStorageEngine,
+        partition,
+        key,
+        rmdManifestContainer,
+        currentTimeForMetricsMs);
     if (replicationMetadataWithValueSchemaBytes == null) {
       return null; // No RMD for this key
     }
@@ -495,13 +502,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * RMD manifest into passed-in {@link ChunkedValueManifestContainer} container object if current RMD value is chunked.
    */
   byte[] getRmdWithValueSchemaByteBufferFromStorage(
+      StorageEngine readStorageEngine,
       int partition,
       byte[] key,
       ChunkedValueManifestContainer rmdManifestContainer,
       long currentTimeForMetricsMs) {
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result = databaseLookupWithConcurrencyLimit(
-        () -> getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key, rmdManifestContainer));
+        () -> getRmdWithValueSchemaByteBufferFromStorageInternal(
+            readStorageEngine,
+            partition,
+            key,
+            rmdManifestContainer));
     long rmdLookupElapsedNs = System.nanoTime() - lookupStartTimeInNS;
     double rmdLookupLatency = rmdLookupElapsedNs / 1_000_000.0;
     getHostLevelIngestionStats()
@@ -526,8 +538,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int partition,
       byte[] key,
       ChunkedValueManifestContainer rmdManifestContainer) {
+    return getRmdWithValueSchemaByteBufferFromStorageInternal(getStorageEngine(), partition, key, rmdManifestContainer);
+  }
+
+  ValueRecord getRmdWithValueSchemaByteBufferFromStorageInternal(
+      StorageEngine readStorageEngine,
+      int partition,
+      byte[] key,
+      ChunkedValueManifestContainer rmdManifestContainer) {
     return SingleGetChunkingAdapter
-        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), rmdManifestContainer);
+        .getReplicationMetadata(readStorageEngine, partition, key, isChunked(), rmdManifestContainer);
   }
 
   @Override
@@ -571,8 +591,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    // When the merged value-RMD column family is enabled, the value and RMD live in the same record, so the value
+    // and RMD top-level reads are served from a single storage lookup during conflict resolution instead of two.
+    final StorageEngine dcrReadStorageEngine = isMergedValueRmdColumnFamilyEnabled
+        ? new MergedValueRmdReadOptimizingStorageEngine(getStorageEngine(), partition)
+        : getStorageEngine();
     Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
         () -> getValueBytesForKey(
+            dcrReadStorageEngine,
             partitionConsumptionState,
             keyBytes,
             consumerRecord.getTopicPartition(),
@@ -585,6 +611,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     final RmdWithValueSchemaId rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
+        dcrReadStorageEngine,
         partitionConsumptionState,
         keyBytes,
         partition,
@@ -876,6 +903,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @return
    */
   private ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
+      StorageEngine readStorageEngine,
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       PubSubTopicPartition topicPartition,
@@ -894,7 +922,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       originalValue = databaseLookupWithConcurrencyLimit(
           () -> RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
-              storageEngine,
+              readStorageEngine,
               topicPartition.getPartitionNumber(),
               ByteBuffer.wrap(key),
               isChunked,

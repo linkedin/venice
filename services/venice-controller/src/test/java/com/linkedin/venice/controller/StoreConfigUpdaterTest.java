@@ -12,6 +12,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -40,6 +41,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -504,6 +506,73 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
           "Child setter verification failed for " + failures.size() + " field(s):\n  - "
               + String.join("\n  - ", failures));
     }
+  }
+
+  /**
+   * The merged value-RMD column family is not a trivial field: enabling it on the parent requires active-active
+   * replication, so it is driven explicitly here instead of through {@link #TRIVIAL_FIELDS}.
+   * <ul>
+   *   <li>Parent: enabling it with active-active replication on succeeds and records the config key; enabling it
+   *       with active-active replication off is rejected; disabling it is always allowed.</li>
+   *   <li>Child: the value is applied through the matching {@code VeniceHelixAdmin} setter.</li>
+   * </ul>
+   */
+  @Test
+  public void testMergedValueRmdColumnFamily_ParentRequiresActiveActiveAndChildAppliesSetter() {
+    // Parent: enabling with active-active replication enabled succeeds and records the config.
+    String aaStoreName = Utils.getUniqueString("merged-cf-aa");
+    Store aaStore = TestUtils.createTestStore(aaStoreName, "test-owner", System.currentTimeMillis());
+    aaStore.setActiveActiveReplicationEnabled(true);
+    doReturn(aaStore).when(internalAdmin).getStore(clusterName, aaStoreName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin
+        .updateStore(clusterName, aaStoreName, new UpdateStoreQueryParams().setMergedValueRmdColumnFamilyEnabled(true));
+    UpdateStore enabledMsg = captureLastUpdateStore();
+    assertTrue(enabledMsg.mergedValueRmdColumnFamilyEnabled, "merged value-RMD CF should be enabled in the message");
+    assertTrue(
+        updatedConfigKeys(enabledMsg).contains(MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED),
+        "updatedConfigsList should contain the merged value-RMD CF key");
+
+    // Parent: disabling it is allowed regardless of active-active replication (short-circuits the validation).
+    String disableStoreName = Utils.getUniqueString("merged-cf-disable");
+    Store disableStore = TestUtils.createTestStore(disableStoreName, "test-owner", System.currentTimeMillis());
+    doReturn(disableStore).when(internalAdmin).getStore(clusterName, disableStoreName);
+    parentAdmin.updateStore(
+        clusterName,
+        disableStoreName,
+        new UpdateStoreQueryParams().setMergedValueRmdColumnFamilyEnabled(false));
+    UpdateStore disabledMsg = captureLastUpdateStore();
+    assertFalse(disabledMsg.mergedValueRmdColumnFamilyEnabled, "merged value-RMD CF should be disabled in the message");
+    assertTrue(updatedConfigKeys(disabledMsg).contains(MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED));
+
+    // Parent: enabling without active-active replication is rejected.
+    String noAaStoreName = Utils.getUniqueString("merged-cf-no-aa");
+    Store noAaStore = TestUtils.createTestStore(noAaStoreName, "test-owner", System.currentTimeMillis());
+    doReturn(noAaStore).when(internalAdmin).getStore(clusterName, noAaStoreName);
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> parentAdmin.updateStore(
+            clusterName,
+            noAaStoreName,
+            new UpdateStoreQueryParams().setMergedValueRmdColumnFamilyEnabled(true)));
+    assertTrue(
+        e.getMessage().contains("active-active replication"),
+        "rejection should explain the active-active requirement, got: " + e.getMessage());
+
+    // Child: the value is applied through the matching VeniceHelixAdmin setter.
+    String childStoreName = Utils.getUniqueString("merged-cf-child");
+    VeniceHelixAdmin childAdmin = newChildAdminMock(childStoreName);
+    StoreConfigUpdater.applyOnChild(
+        childAdmin,
+        clusterName,
+        childStoreName,
+        new UpdateStoreQueryParams().setMergedValueRmdColumnFamilyEnabled(true));
+    verify(childAdmin).setMergedValueRmdColumnFamilyEnabled(clusterName, childStoreName, true);
+  }
+
+  private static Set<String> updatedConfigKeys(UpdateStore msg) {
+    return msg.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet());
   }
 
   /**

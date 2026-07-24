@@ -185,6 +185,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
 
+  boolean isMergedValueRmdColumnFamilyEnabled();
+
+  void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled);
+
   String getStoreName();
 
   String getPushJobId();
