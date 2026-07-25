@@ -184,6 +184,17 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   /**
+   * Spark never truncates the dataset while writing: the per-partition writers cannot see the
+   * whole-dataset size during execution (see {@code AbstractPartitionWriter#getTotalIncomingDataSizeInBytes}
+   * which returns 0 for Spark), so the complete dataset is always written and the driver-side check is the
+   * authoritative gate. This makes it safe for the driver to accept a mid-push quota increase.
+   */
+  @Override
+  public boolean truncatesDataExceedingQuota() {
+    return false;
+  }
+
+  /**
    * Common configuration for all the Mapreduce Jobs run as part of VPJ
    *
    * @param config

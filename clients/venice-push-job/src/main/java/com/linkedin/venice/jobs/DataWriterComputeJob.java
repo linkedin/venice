@@ -98,6 +98,22 @@ public abstract class DataWriterComputeJob implements ComputeJob {
     return Optional.empty();
   }
 
+  /**
+   * Whether this engine <em>truncates</em> the dataset while writing: i.e. once the running size hits the
+   * configured storage quota it stops emitting further records, leaving a partial dataset on the version
+   * topic. Note this is not "quota enforcement" (the push is failed by the driver, not by the writer) —
+   * it is a write-time optimization that drops data beyond the quota.
+   *
+   * <p>This matters for the driver-side quota re-check: if the quota is raised mid-push, the driver may
+   * only accept the (now-larger) quota when the complete dataset was written. Engines that truncate may
+   * have produced an incomplete dataset against the job-start quota, so the driver must not accept an
+   * increased quota for them. The default is {@code true} (fail-safe); engines that never truncate and
+   * always write the full dataset (e.g. Spark) override this to {@code false}.
+   */
+  public boolean truncatesDataExceedingQuota() {
+    return true;
+  }
+
   @VisibleForTesting
   public void validateJob() {
     DataWriterTaskTracker dataWriterTaskTracker = getTaskTracker();
