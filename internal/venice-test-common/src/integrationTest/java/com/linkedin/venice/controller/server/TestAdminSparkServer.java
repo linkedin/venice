@@ -865,6 +865,37 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientCanUpdateThroughputQuota() {
+    String storeName = Utils.getUniqueString("test-throughput-quota-store");
+    assertCommand(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
+    try {
+      // Sanity: a freshly created store has no throughput limit (the -1 "unlimited" sentinel).
+      StoreInfo storeBeforeUpdate = assertCommand(controllerClient.getStore(storeName)).getStore();
+      Assert.assertEquals(storeBeforeUpdate.getThroughputQuotaInBytes(), -1L);
+      Assert.assertEquals(storeBeforeUpdate.getThroughputQuotaInRecords(), -1L);
+
+      long throughputQuotaInBytes = 12345678L;
+      long throughputQuotaInRecords = 4321L;
+      assertCommand(
+          parentControllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setThroughputQuotaInBytes(throughputQuotaInBytes)
+                  .setThroughputQuotaInRecords(throughputQuotaInRecords)));
+
+      // updateStore is issued against the parent controller and propagates to the child region
+      // asynchronously through the admin channel, so poll until the child region reflects the values
+      // read back through the full ControllerClient -> controller -> ZooKeeper -> getStore chain.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        StoreInfo store = assertCommand(controllerClient.getStore(storeName)).getStore();
+        Assert.assertEquals(store.getThroughputQuotaInBytes(), throughputQuotaInBytes);
+        Assert.assertEquals(store.getThroughputQuotaInRecords(), throughputQuotaInRecords);
+      });
+    } finally {
+      deleteStore(storeName);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanGetStorageEngineOverheadRatio() {
     String storeName = Utils.getUniqueString("test-store");
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\""));

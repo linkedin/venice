@@ -1094,6 +1094,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
     storeProperties.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
+    storeProperties.setThroughputQuotaInBytes(getThroughputQuotaInBytes());
+    storeProperties.setThroughputQuotaInRecords(getThroughputQuotaInRecords());
     storeProperties.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
     storeProperties.setVersions(convertVersions(getVersions()));
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
@@ -1742,6 +1744,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getThroughputQuotaInBytes() {
+    return this.delegate.getThroughputQuotaInBytes();
+  }
+
+  @Override
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getThroughputQuotaInRecords() {
+    return this.delegate.getThroughputQuotaInRecords();
+  }
+
+  @Override
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
     throw new UnsupportedOperationException();
   }
 

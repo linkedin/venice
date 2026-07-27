@@ -83,6 +83,8 @@ public class StoreInfo {
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
+    storeInfo.setThroughputQuotaInBytes(store.getThroughputQuotaInBytes());
+    storeInfo.setThroughputQuotaInRecords(store.getThroughputQuotaInRecords());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
@@ -376,6 +378,10 @@ public class StoreInfo {
   private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
   private int maxNearlineRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+
+  private long throughputQuotaInBytes = -1;
+
+  private long throughputQuotaInRecords = -1;
 
   private boolean unusedSchemaDeletionEnabled;
 
@@ -940,6 +946,22 @@ public class StoreInfo {
 
   public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
     this.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
+  }
+
+  public long getThroughputQuotaInBytes() {
+    return this.throughputQuotaInBytes;
+  }
+
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    this.throughputQuotaInBytes = throughputQuotaInBytes;
+  }
+
+  public long getThroughputQuotaInRecords() {
+    return this.throughputQuotaInRecords;
+  }
+
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    this.throughputQuotaInRecords = throughputQuotaInRecords;
   }
 
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {

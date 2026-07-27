@@ -316,6 +316,14 @@ public enum Arg {
   MAX_NEARLINE_RECORD_SIZE_BYTES(
       "max-nearline-record-size-bytes", "mnrsb", true,
       "Store-level max record size for VeniceWriter to determine whether to pause consumption on nearline jobs with partial updates."
+  ),
+  THROUGHPUT_QUOTA_IN_BYTES(
+      "throughput-quota-in-bytes", "tqib", true,
+      "Store-level nearline write quota: maximum throughput in bytes clients can produce into the store. -1 means no limit."
+  ),
+  THROUGHPUT_QUOTA_IN_RECORDS(
+      "throughput-quota-in-records", "tqir", true,
+      "Store-level nearline write quota: maximum throughput in records clients can produce into the store. -1 means no limit."
   ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(

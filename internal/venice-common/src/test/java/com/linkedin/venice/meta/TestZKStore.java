@@ -103,6 +103,24 @@ public class TestZKStore {
     Assert.assertEquals(clonedStore.getVersion(1).getBlobDbEnabled(), ActivationState.DISABLED.name());
   }
 
+  @Test
+  public void testCloneStorePreservesThroughputQuota() {
+    Store store = TestUtils.createTestStore("throughputStore", "owner", System.currentTimeMillis());
+    // Default is -1 (no limit).
+    Assert.assertEquals(store.getThroughputQuotaInBytes(), -1L);
+    Assert.assertEquals(store.getThroughputQuotaInRecords(), -1L);
+
+    store.setThroughputQuotaInBytes(123456L);
+    store.setThroughputQuotaInRecords(789L);
+    Assert.assertEquals(store.getThroughputQuotaInBytes(), 123456L);
+    Assert.assertEquals(store.getThroughputQuotaInRecords(), 789L);
+
+    Store clonedStore = store.cloneStore();
+    Assert.assertEquals(clonedStore.getThroughputQuotaInBytes(), 123456L);
+    Assert.assertEquals(clonedStore.getThroughputQuotaInRecords(), 789L);
+    Assert.assertEquals(store, clonedStore);
+  }
+
   private static void assertVersionsEquals(
       Store store,
       int versionToPreserve,
