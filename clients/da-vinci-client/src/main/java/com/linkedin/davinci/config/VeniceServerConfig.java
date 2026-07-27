@@ -33,6 +33,7 @@ import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPP
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -703,6 +704,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
   private final boolean daVinciPausedSitEnabled;
+  private final String deferredVersionSwapRegionRollforwardOrder;
   private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
@@ -1224,6 +1226,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     daVinciCurrentVersionBootstrappingSpeedupEnabled =
         serverProperties.getBoolean(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true);
     daVinciPausedSitEnabled = serverProperties.getBoolean(DAVINCI_PAUSED_SIT_ENABLED, false);
+    deferredVersionSwapRegionRollforwardOrder =
+        serverProperties.getString(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, "");
     daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond =
         serverProperties.getLong(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND, 500000);
     daVinciCurrentVersionBootstrappingQuotaBytesPerSecond = serverProperties
@@ -2189,6 +2193,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDaVinciPausedSitEnabled() {
     return daVinciPausedSitEnabled;
+  }
+
+  /**
+   * The cluster's sequential roll-forward region order (mirrors the controller config
+   * {@link com.linkedin.venice.ConfigKeys#DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER}). When set,
+   * a deferred-swap push is rolled forward region-by-region in this order and the active (unpaused)
+   * region for Da Vinci is its head. Empty string means sequential roll-forward is not configured, in
+   * which case the version's {@code targetSwapRegion} governs the active region (parallel target-region
+   * push).
+   */
+  public String getDeferredVersionSwapRegionRollforwardOrder() {
+    return deferredVersionSwapRegionRollforwardOrder;
   }
 
   public long getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond() {
