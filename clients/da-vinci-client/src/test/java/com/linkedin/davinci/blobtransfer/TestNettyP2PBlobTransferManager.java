@@ -492,6 +492,201 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.verify(finder, Mockito.never()).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
   }
 
+  @Test
+  public void testFallbackDiscoveryErrorAfterPrimaryPeersFail() throws Exception {
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Collections.singletonList("dvc-host"));
+    doReturn(primaryResponse).when(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    BlobPeersDiscoveryResponse fallbackResponse = new BlobPeersDiscoveryResponse();
+    fallbackResponse.setError(true);
+    fallbackResponse.setErrorMessage("server metadata unavailable");
+    doReturn(true).when(finder).supportsFallback();
+    doReturn(fallbackResponse).when(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(Collections.singleton("dvc-host")).when(client)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    CompletableFuture<InputStream> daVinciFailure = new CompletableFuture<>();
+    daVinciFailure.completeExceptionally(new VeniceBlobTransferFileNotFoundException("DVC snapshot unavailable"));
+    doReturn(daVinciFailure).when(client)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    try {
+      manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+          .toCompletableFuture()
+          .get(10, TimeUnit.SECONDS);
+      Assert.fail("Expected the partition transfer to fail after fallback discovery returned an error");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof VenicePeersAllFailedException);
+    }
+    Mockito.verify(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+  }
+
+  /**
+   * When the manager is closed while a transfer is in flight, dispatching fallback discovery onto the shut down
+   * replica blob fetch executor is rejected. The rejection must fail the partition transfer instead of leaving the
+   * future uncompleted, otherwise the replica never falls back to Kafka bootstrapping.
+   */
+  @Test
+  public void testFallbackDispatchRejectionFailsTransfer() throws Exception {
+    NettyFileTransferClient closedManagerClient = mock(NettyFileTransferClient.class);
+    BlobFinder closedManagerFinder = mock(BlobFinder.class);
+    NettyP2PBlobTransferManager closedManager = new NettyP2PBlobTransferManager(
+        mock(P2PBlobTransferService.class),
+        closedManagerClient,
+        closedManagerFinder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        1,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Collections.singletonList("dvc-host"));
+    doReturn(primaryResponse).when(closedManagerFinder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(true).when(closedManagerFinder).supportsFallback();
+    doReturn(Collections.singleton("dvc-host")).when(closedManagerClient)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    CompletableFuture<InputStream> daVinciTransfer = new CompletableFuture<>();
+    doReturn(daVinciTransfer).when(closedManagerClient)
+        .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    CompletableFuture<InputStream> result =
+        closedManager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture();
+    closedManager.close();
+    daVinciTransfer.completeExceptionally(new VeniceBlobTransferFileNotFoundException("DVC snapshot unavailable"));
+
+    try {
+      result.get(10, TimeUnit.SECONDS);
+      Assert.fail("Expected the partition transfer to fail once fallback dispatch was rejected");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof VenicePeersAllFailedException);
+    }
+  }
+
+  /**
+   * Second rejection race: the fallback dispatch is never reached because the executor is shut down while the chain is
+   * mid-flight, so the next host's {@code thenComposeAsync} dispatch is rejected and the chain completes
+   * exceptionally. {@code thenRun} skips exceptional completion, so the partition future must be failed from a
+   * {@code whenComplete} observer rather than left hanging.
+   */
+  @Test
+  public void testPeerChainRejectionMidFlightFailsTransfer() throws Exception {
+    NettyFileTransferClient closedManagerClient = mock(NettyFileTransferClient.class);
+    BlobFinder closedManagerFinder = mock(BlobFinder.class);
+    NettyP2PBlobTransferManager closedManager = new NettyP2PBlobTransferManager(
+        mock(P2PBlobTransferService.class),
+        closedManagerClient,
+        closedManagerFinder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        1,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+
+    // Two peers, so the second host still needs an executor dispatch after the first host resolves.
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Arrays.asList("dvc-host-1", "dvc-host-2"));
+    doReturn(primaryResponse).when(closedManagerFinder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(true).when(closedManagerFinder).supportsFallback();
+    doReturn(new HashSet<>(Arrays.asList("dvc-host-1", "dvc-host-2"))).when(closedManagerClient)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    CompletableFuture<InputStream> firstTransfer = new CompletableFuture<>();
+    doReturn(firstTransfer).when(closedManagerClient)
+        .get(
+            anyString(),
+            eq(TEST_STORE),
+            eq(TEST_VERSION),
+            eq(TEST_PARTITION),
+            eq(BlobTransferTableFormat.BLOCK_BASED_TABLE));
+
+    CompletableFuture<InputStream> result =
+        closedManager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture();
+    // Let the first host be dispatched before the executor goes away, so the rejection lands on the second host.
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> Mockito.verify(closedManagerClient)
+            .get(
+                anyString(),
+                eq(TEST_STORE),
+                eq(TEST_VERSION),
+                eq(TEST_PARTITION),
+                eq(BlobTransferTableFormat.BLOCK_BASED_TABLE)));
+    closedManager.close();
+    firstTransfer.completeExceptionally(new VeniceBlobTransferFileNotFoundException("DVC snapshot unavailable"));
+
+    try {
+      result.get(10, TimeUnit.SECONDS);
+      Assert.fail("Expected the partition transfer to fail once the peer chain was rejected");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof VenicePeersAllFailedException);
+    }
+  }
+
+  /**
+   * A rejection that races a cancellation must report the cancellation rather than claiming every peer was tried,
+   * matching what the normal peer-exhaustion path reports.
+   */
+  @Test
+  public void testCancellationWinsOverChainRejection() throws Exception {
+    NettyFileTransferClient closedManagerClient = mock(NettyFileTransferClient.class);
+    BlobFinder closedManagerFinder = mock(BlobFinder.class);
+    NettyP2PBlobTransferManager closedManager = new NettyP2PBlobTransferManager(
+        mock(P2PBlobTransferService.class),
+        closedManagerClient,
+        closedManagerFinder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        1,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+
+    BlobPeersDiscoveryResponse primaryResponse = new BlobPeersDiscoveryResponse();
+    primaryResponse.setDiscoveryResult(Arrays.asList("dvc-host-1", "dvc-host-2"));
+    doReturn(primaryResponse).when(closedManagerFinder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(true).when(closedManagerFinder).supportsFallback();
+    doReturn(new HashSet<>(Arrays.asList("dvc-host-1", "dvc-host-2"))).when(closedManagerClient)
+        .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
+
+    CompletableFuture<InputStream> firstTransfer = new CompletableFuture<>();
+    doReturn(firstTransfer).when(closedManagerClient)
+        .get(
+            anyString(),
+            eq(TEST_STORE),
+            eq(TEST_VERSION),
+            eq(TEST_PARTITION),
+            eq(BlobTransferTableFormat.BLOCK_BASED_TABLE));
+
+    CompletableFuture<InputStream> result =
+        closedManager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+            .toCompletableFuture();
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> Mockito.verify(closedManagerClient)
+            .get(
+                anyString(),
+                eq(TEST_STORE),
+                eq(TEST_VERSION),
+                eq(TEST_PARTITION),
+                eq(BlobTransferTableFormat.BLOCK_BASED_TABLE)));
+    // Cancel and shut the executor down, so the next host's dispatch is rejected while a cancellation is pending.
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(TEST_STORE, TEST_VERSION), TEST_PARTITION);
+    closedManager.getTransferStatusTrackingManager().cancelTransfer(replicaId);
+    closedManager.close();
+    firstTransfer.completeExceptionally(new VeniceBlobTransferFileNotFoundException("DVC snapshot unavailable"));
+
+    try {
+      result.get(10, TimeUnit.SECONDS);
+      Assert.fail("Expected the partition transfer to be cancelled");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(
+          e.getCause() instanceof VeniceBlobTransferCancelledException,
+          "Expected a cancellation, but got: " + e.getCause());
+    }
+  }
+
   /**
    * The client is initialized with host freshness 30 sec, so when purgeStaleConnectivityRecords is called,
    * All hosts connectivity records older than 30s should be purged.
