@@ -49,6 +49,10 @@ public interface StatefulVeniceChangelogConsumer<K, V> extends AutoCloseable {
    */
   CompletableFuture<Void> start();
 
+  /**
+   * Stops this consumer and releases its internal resources. This consumer instance cannot be restarted after this
+   * method is called. Create a new consumer from {@link VeniceChangelogConsumerClientFactory} to resume consumption.
+   */
   void stop() throws Exception;
 
   /**

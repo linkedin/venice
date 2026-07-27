@@ -499,13 +499,17 @@ public class TestVersionSpecificChangelogConsumer {
         initTimestampNs);
 
     // Restart client to ensure it seeks to the beginning of the topic and all record metadata is available
+    testCloseables.remove(changeLogConsumer);
     changeLogConsumer.close();
-    changeLogConsumer.subscribeAll().get();
+    VeniceChangelogConsumer<Integer, Utf8> restartedChangeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(restartedChangeLogConsumer);
+    restartedChangeLogConsumer.subscribeAll().get();
 
     // All data should be from version 1
     // there are 3 partitions, so we expect 3 control messages EOP
     pollAndVerify(
-        changeLogConsumer,
+        restartedChangeLogConsumer,
         1,
         numKeys,
         createControlMessageCountMap(partitionCount, 0),
@@ -518,12 +522,18 @@ public class TestVersionSpecificChangelogConsumer {
     IntegrationTestPushUtils.runVPJ(props, 2, childControllerClientRegion0);
 
     // Client should see VersionSwap control messages since new version is pushed
-    pollAndVerify(changeLogConsumer, 1, 0, createControlMessageCountMap(0, partitionCount), partitionCount, true);
+    pollAndVerify(
+        restartedChangeLogConsumer,
+        1,
+        0,
+        createControlMessageCountMap(0, partitionCount),
+        partitionCount,
+        true);
 
     // Client shouldn't be able to poll anything besides heartbeat messages, since it's still on version 1
     int nonHeartbeatMessagesCount = 0;
     Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> oldVersionMessages =
-        changeLogConsumer.poll(1000);
+        restartedChangeLogConsumer.poll(1000);
     for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: oldVersionMessages) {
       if (message.getKey() != null) {
         nonHeartbeatMessagesCount++;
@@ -538,7 +548,8 @@ public class TestVersionSpecificChangelogConsumer {
     assertEquals(nonHeartbeatMessagesCount, 0);
 
     // Restart a new client
-    changeLogConsumer.close();
+    testCloseables.remove(restartedChangeLogConsumer);
+    restartedChangeLogConsumer.close();
     long newClientTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Integer, Utf8> newChangeLogConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
@@ -556,6 +567,7 @@ public class TestVersionSpecificChangelogConsumer {
         newClientTimestampNs);
 
     // Push version 3 with deferred version swap and subscribe to the future version
+    testCloseables.remove(newChangeLogConsumer);
     newChangeLogConsumer.close();
     version++;
     TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
