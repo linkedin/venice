@@ -2,6 +2,7 @@ package com.linkedin.davinci;
 
 import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.config.StoreBackendConfig;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -14,6 +15,7 @@ import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -306,20 +308,47 @@ public class StoreBackend {
       return;
     }
 
-    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetSwapRegion);
-    String currentRegion = backend.getConfigLoader().getVeniceServerConfig().getRegionName();
+    VeniceServerConfig serverConfig = backend.getConfigLoader().getVeniceServerConfig();
+    String currentRegion = serverConfig.getRegionName();
 
-    if (targetRegions.contains(currentRegion)) {
-      // This DVC instance IS in the target region — always subscribe active.
+    // Determine which region ingests actively (unpaused) for this deferred-swap push.
+    // When the cluster is configured for sequential roll-forward, the controller promotes regions one
+    // at a time following the roll-forward order, and the active region is its head
+    // (rollForwardOrder.get(0)). Da Vinci must key off the SAME order the controller uses (see
+    // AbstractPushMonitor#sequentialRollForwardFirstRegion); otherwise it can pause the very region the
+    // controller is waiting on to complete, deadlocking the swap (the region never completes because
+    // DVC is paused, and DVC never resumes because the region is not promoted). When sequential
+    // roll-forward is not configured, fall back to the version's targetSwapRegion (parallel
+    // target-region push).
+    String rollForwardOrder = serverConfig.getDeferredVersionSwapRegionRollforwardOrder();
+    boolean isActiveRegion;
+    if (!StringUtils.isEmpty(rollForwardOrder)) {
+      List<String> rollForwardOrderList = RegionUtils.parseRegionRolloutOrderList(rollForwardOrder);
+      isActiveRegion = !rollForwardOrderList.isEmpty() && rollForwardOrderList.get(0).equals(currentRegion);
+    } else {
+      isActiveRegion = RegionUtils.parseRegionsFilterList(targetSwapRegion).contains(currentRegion);
+    }
+
+    if (isActiveRegion) {
+      // This DVC instance is in the active (target / roll-forward head) region — always subscribe active.
       subscribeFutureVersion(targetVersion, false);
       return;
     }
 
-    // Non-target region with a target-region push in flight.
-    boolean pausedSitEnabled = backend.getConfigLoader().getVeniceServerConfig().isDaVinciPausedSitEnabled();
+    // Non-active region with a deferred-swap push in flight.
+    boolean pausedSitEnabled = serverConfig.isDaVinciPausedSitEnabled();
     if (pausedSitEnabled) {
       // Paused-SIT mode: subscribe immediately in a paused state; resume when targetRegionPromoted fires.
       boolean createPaused = !targetVersion.isTargetRegionPromoted();
+      LOGGER.info(
+          "Subscribing to future version {} in region {} with createPaused={} "
+              + "(targetSwapRegion={}, rollForwardOrder='{}', targetRegionPromoted={})",
+          targetVersion.kafkaTopicName(),
+          currentRegion,
+          createPaused,
+          targetSwapRegion,
+          rollForwardOrder,
+          targetVersion.isTargetRegionPromoted());
       subscribeFutureVersion(targetVersion, createPaused);
     } else {
       // Legacy mode: subscribe only once the version is ONLINE in this region.
