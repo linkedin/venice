@@ -823,6 +823,62 @@ public class StoreBackendTest {
   }
 
   /**
+   * A whitespace-only roll-forward order must be treated as "not configured" and fall back to the
+   * version's targetSwapRegion, rather than yielding an empty-string head that matches no region. If it
+   * did, paused-SIT mode would pause EVERY region and reintroduce the deadlock. Here the local region
+   * dc-0 is in targetSwapRegion, so it must subscribe ACTIVE.
+   */
+  @Test
+  public void testSequentialRollForwardBlankOrderFallsBackToTargetSwapRegion() throws Exception {
+    rebuildStoreBackendWithRollForwardOrder("   "); // whitespace-only — no usable head
+
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-0"); // local IS the target region
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Falls back to targetSwapRegion membership — local region is the target, so subscribe ACTIVE.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Region must subscribe");
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
+  }
+
+  /**
+   * A roll-forward order with a leading (blank) entry must skip the blank and read the first non-blank
+   * region as the head, rather than treating the empty string as the head. Here a leading comma makes
+   * dc-0 (local) the effective head, so it must subscribe ACTIVE even though it is not in
+   * targetSwapRegion.
+   */
+  @Test
+  public void testSequentialRollForwardLeadingCommaSkipsBlankHead() throws Exception {
+    rebuildStoreBackendWithRollForwardOrder(",dc-0,dc-1"); // leading blank; first non-blank head = dc-0
+
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-1"); // dc-0 (local) is NOT in targetSwapRegion, but IS the head
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Head resolves to dc-0 (first non-blank) — local region must subscribe ACTIVE.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Roll-forward head region must subscribe");
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
+  }
+
+  /**
    * Verify that {@link StoreBackend#setDaVinciFutureVersion} keeps
    * {@link KafkaStoreIngestionService}'s future-slot registry in sync so the
    * current-version-bootstrapping speedup throttler can skip future-slot versions.

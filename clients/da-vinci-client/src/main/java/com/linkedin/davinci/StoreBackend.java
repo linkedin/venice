@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -313,19 +312,32 @@ public class StoreBackend {
 
     // Determine which region ingests actively (unpaused) for this deferred-swap push.
     // When the cluster is configured for sequential roll-forward, the controller promotes regions one
-    // at a time following the roll-forward order, and the active region is its head
-    // (rollForwardOrder.get(0)). Da Vinci must key off the SAME order the controller uses (see
-    // AbstractPushMonitor#sequentialRollForwardFirstRegion); otherwise it can pause the very region the
-    // controller is waiting on to complete, deadlocking the swap (the region never completes because
-    // DVC is paused, and DVC never resumes because the region is not promoted). When sequential
-    // roll-forward is not configured, fall back to the version's targetSwapRegion (parallel
+    // at a time following the roll-forward order, and the active region is its head. Da Vinci must key
+    // off the SAME order the controller uses (see AbstractPushMonitor#sequentialRollForwardFirstRegion);
+    // otherwise it can pause the very region the controller is waiting on to complete, deadlocking the
+    // swap (the region never completes because DVC is paused, and DVC never resumes because the region
+    // is not promoted).
+    //
+    // Skip blank entries when reading the head: a whitespace-only config or a leading comma would
+    // otherwise yield an empty-string head, which matches no region and — in paused-SIT mode — would
+    // pause EVERY region, reintroducing the deadlock. If the config is unset or has no non-blank
+    // entries, treat it as not configured and fall back to the version's targetSwapRegion (parallel
     // target-region push).
-    String rollForwardOrder = serverConfig.getDeferredVersionSwapRegionRollforwardOrder();
+    String rollForwardHead = null;
+    for (String region: RegionUtils
+        .parseRegionRolloutOrderList(serverConfig.getDeferredVersionSwapRegionRollforwardOrder())) {
+      if (!StringUtils.isBlank(region)) {
+        rollForwardHead = region;
+        break;
+      }
+    }
+
     boolean isActiveRegion;
-    if (!StringUtils.isEmpty(rollForwardOrder)) {
-      List<String> rollForwardOrderList = RegionUtils.parseRegionRolloutOrderList(rollForwardOrder);
-      isActiveRegion = !rollForwardOrderList.isEmpty() && rollForwardOrderList.get(0).equals(currentRegion);
+    if (rollForwardHead != null) {
+      // Sequential roll-forward: the active (unpaused) region is the head of the roll-forward order.
+      isActiveRegion = rollForwardHead.equals(currentRegion);
     } else {
+      // Parallel target-region push (or roll-forward not configured): use targetSwapRegion membership.
       isActiveRegion = RegionUtils.parseRegionsFilterList(targetSwapRegion).contains(currentRegion);
     }
 
@@ -342,12 +354,12 @@ public class StoreBackend {
       boolean createPaused = !targetVersion.isTargetRegionPromoted();
       LOGGER.info(
           "Subscribing to future version {} in region {} with createPaused={} "
-              + "(targetSwapRegion={}, rollForwardOrder='{}', targetRegionPromoted={})",
+              + "(targetSwapRegion={}, rollForwardHead={}, targetRegionPromoted={})",
           targetVersion.kafkaTopicName(),
           currentRegion,
           createPaused,
           targetSwapRegion,
-          rollForwardOrder,
+          rollForwardHead,
           targetVersion.isTargetRegionPromoted());
       subscribeFutureVersion(targetVersion, createPaused);
     } else {
