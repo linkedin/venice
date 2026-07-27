@@ -735,6 +735,72 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   }
 
   /**
+   * Throughput write-quota uses {@code -1} as the "no limit" sentinel; any value below {@code -1}
+   * is invalid and {@code applyOnChild} must reject it before applying the update.
+   */
+  @Test
+  public void testApplyOnChild_ThroughputQuotaBelowNegativeOne_Throws() {
+    String storeName = Utils.getUniqueString("child-throughput-invalid");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams bytesParams = new UpdateStoreQueryParams().setThroughputQuotaInBytes(-2L);
+    try {
+      StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, bytesParams);
+      fail("Expected VeniceException because throughputQuotaInBytes was below -1");
+    } catch (VeniceException expected) {
+      // expected
+    }
+
+    UpdateStoreQueryParams recordsParams = new UpdateStoreQueryParams().setThroughputQuotaInRecords(-100L);
+    try {
+      StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, recordsParams);
+      fail("Expected VeniceException because throughputQuotaInRecords was below -1");
+    } catch (VeniceException expected) {
+      // expected
+    }
+
+    // The invalid updates must not have been applied.
+    verify(admin, never()).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * Boundary check: {@code -1} (no limit) is a legal throughput write-quota value and must be
+   * applied rather than rejected.
+   */
+  @Test
+  public void testApplyOnChild_ThroughputQuotaNegativeOneAllowed() {
+    String storeName = Utils.getUniqueString("child-throughput-no-limit");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setThroughputQuotaInBytes(-1L).setThroughputQuotaInRecords(-1L);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, atLeastOnce()).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * The same {@code >= -1} validation must guard the parent path so an invalid quota never reaches
+   * the UPDATE_STORE admin message.
+   */
+  @Test
+  public void testApplyOnParent_ThroughputQuotaBelowNegativeOne_Throws() {
+    String storeName = Utils.getUniqueString("parent-throughput-invalid");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setThroughputQuotaInBytes(-2L);
+    try {
+      parentAdmin.updateStore(clusterName, storeName, params);
+      fail("Expected VeniceException because throughputQuotaInBytes was below -1");
+    } catch (VeniceException expected) {
+      // expected
+    }
+  }
+
+  /**
    * Covers the hybrid block's outer guard: when any hybrid-related field is supplied,
    * {@link com.linkedin.venice.controller.HybridStoreConfigPolicy#mergeNewSettingsIntoOldHybridStoreConfig}
    * is invoked and the resulting non-empty {@code newHybridStoreConfig} drives a
