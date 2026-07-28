@@ -73,10 +73,10 @@ public final class VenicePushJobConstants {
    *  Enabling this collects metrics for all compression strategies regardless of
    *  the configured compression strategy. This means: zstd dictionary will be
    *  created even if {@link CompressionStrategy#ZSTD_WITH_DICT} is not the configured
-   *  store compression strategy (refer {@link VenicePushJob#shouldBuildZstdCompressionDictionary})
+   *  store compression strategy (refer to {@code VenicePushJob.shouldBuildZstdCompressionDictionary})
    *  <br><br>
    *
-   *  This config also gets evaluated in {@link VenicePushJob#evaluateCompressionMetricCollectionEnabled}
+   *  This config also gets evaluated in {@code VenicePushJob.evaluateCompressionMetricCollectionEnabled}
    *  <br><br>
    */
   public static final String COMPRESSION_METRIC_COLLECTION_ENABLED = "compression.metric.collection.enabled";
@@ -509,6 +509,9 @@ public final class VenicePushJobConstants {
    * The class must extend {@link DataWriterComputeJob} and have a zero-arg constructor.
    */
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
+
+  /** Enables Spark's pre-write quota check. Disabled by default. */
+  public static final String SPARK_PRE_WRITE_QUOTA_CHECK = "spark.pre.write.quota.check";
 
   /**
    * Namespace for the external-storage dual-write subsystem. Every property whose key starts with this
