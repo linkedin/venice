@@ -8,6 +8,7 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
+import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
@@ -1887,18 +1888,48 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testDeleteStrandedNonCurrentVersionsDeletesPartiallyCleanedVersion() {
+  public void testDeleteStrandedNonCurrentVersionsSkipsPartiallyCleanedVersionWithoutRollback() {
     String storeName = "stranded_store";
     mockParentStoreWithVersions(storeName, PUSHED);
-    // The version was already cleaned up in one fabric (absent) but still lingers as PUSHED elsewhere.
+    // The version was cleaned up in one fabric (absent) but lingers as PUSHED elsewhere with no fabric rolled back:
+    // without positive ROLLED_BACK evidence this could still be a healthy push pending swap, so skip.
     doReturn(buildStrandedRegionClients(Arrays.asList(null, PUSHED, PUSHED))).when(internalAdmin)
+        .getControllerClientMap(anyString());
+
+    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
+
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  @Test
+  public void testDeleteStrandedNonCurrentVersionsDeletesKilledVersion() {
+    String storeName = "stranded_store";
+    mockParentStoreWithVersions(storeName, KILLED);
+    // KILLED is also positive evidence that the version was abandoned, while the other fabrics can still retain it.
+    doReturn(buildStrandedRegionClients(Arrays.asList(KILLED, PUSHED, PUSHED))).when(internalAdmin)
         .getControllerClientMap(anyString());
 
     parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
 
     AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     assertEquals(adminMessage.operationType, AdminMessageType.DELETE_OLD_VERSION.getValue());
-    assertEquals(((DeleteOldVersion) adminMessage.payloadUnion).versionNum, 2);
+    DeleteOldVersion deleteOldVersion = (DeleteOldVersion) adminMessage.payloadUnion;
+    assertEquals(deleteOldVersion.versionNum, 2);
+    assertEquals(deleteOldVersion.storeName.toString(), storeName);
+  }
+
+  @Test
+  public void testDeleteStrandedNonCurrentVersionsSkipsWhenRegionStoreReadThrows() {
+    String storeName = "stranded_store";
+    mockParentStoreWithVersions(storeName, ROLLED_BACK);
+    Map<String, ControllerClient> controllerClientMap =
+        buildStrandedRegionClients(Arrays.asList(ROLLED_BACK, PUSHED, PUSHED));
+    doThrow(new VeniceException("child read failed")).when(controllerClientMap.get("region1")).getStore(anyString());
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+
+    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
+
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
 
   @Test

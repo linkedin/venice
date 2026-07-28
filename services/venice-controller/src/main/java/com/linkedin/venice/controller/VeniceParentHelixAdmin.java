@@ -1269,11 +1269,10 @@ public class VeniceParentHelixAdmin implements Admin {
    * <p>
    * Because PUSHED is also the legitimate status of a completed push that is still awaiting its swap,
    * a version is only deleted when there is positive cross-fabric evidence that it has been abandoned:
-   * at least one fabric reports it as ROLLED_BACK, or at least one fabric has already cleaned it up
-   * (the version is absent there) while at least one other fabric still has it. A version that is
-   * uniformly PUSHED/STARTED across the fabrics with none rolled back and none missing is left
-   * untouched, since that can be an in-progress or healthy push pending a deferred swap. The version
-   * is never touched if it is the current (serving) version in any fabric.
+   * at least one fabric reports it as ROLLED_BACK or KILLED. A version that is uniformly PUSHED/STARTED
+   * across the fabrics with none rolled back or killed is left untouched, since that can be an in-progress
+   * or healthy push pending a deferred swap. The version is never touched if it is the current (serving)
+   * version in any fabric.
    * <p>
    * The delete is issued through the existing {@link #deleteOldVersionInStore} plumbing
    * (DELETE_OLD_VERSION admin message), which is ACL-free, ordered, and no-ops in fabrics where the
@@ -1284,12 +1283,18 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       return;
     }
-    // Cheap local pre-filter: only versions that finished a push (PUSHED) or were rolled back (ROLLED_BACK)
-    // can be stranded leaks. Skip the cross-fabric queries entirely on the common path where there are none.
+    // Cheap local pre-filter: only versions that finished a push (PUSHED), were rolled back (ROLLED_BACK),
+    // or were killed (KILLED) can be stranded leaks. Skip the cross-fabric queries entirely on the common path
+    // where there are none.
+    // A deferred-swap rollback propagates ROLLED_BACK to the parent version here (DeferredVersionSwapService
+    // updates the parent store repository right after rolling back the target region), so the stranded version
+    // is reliably a candidate. PUSHED is the fallback: it is the parent status before the swap attempt, which is
+    // what remains if that ROLLED_BACK write is ever skipped/fails. Child-fabric statuses are consulted later,
+    // in isVersionStrandedAcrossFabrics, only as the guardrail confirming abandonment before deleting.
     List<Integer> candidateVersionNums = new ArrayList<>();
     for (Version version: store.getVersions()) {
       VersionStatus parentStatus = version.getStatus();
-      if (parentStatus == PUSHED || parentStatus == ROLLED_BACK) {
+      if (parentStatus == PUSHED || parentStatus == ROLLED_BACK || parentStatus == KILLED) {
         candidateVersionNums.add(version.getNumber());
       }
     }
@@ -1303,14 +1308,29 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, StoreInfo> regionStores = new HashMap<>();
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       String region = entry.getKey();
-      StoreResponse storeResponse = entry.getValue().getStore(storeName);
-      if (storeResponse == null || storeResponse.isError() || storeResponse.getStore() == null) {
+      StoreResponse storeResponse;
+      try {
+        storeResponse = entry.getValue().getStore(storeName);
+      } catch (Exception e) {
         // Cannot determine this fabric's state; be conservative and skip the delete entirely.
         LOGGER.warn(
             "Skipping stranded-version cleanup for store: {} version: {}; failed to read store from region: {}",
             storeName,
             candidateVersionNums,
-            region);
+            region,
+            e);
+        return;
+      }
+      if (storeResponse == null || storeResponse.isError() || storeResponse.getStore() == null) {
+        // Cannot determine this fabric's state; be conservative and skip the delete entirely.
+        LOGGER.warn(
+            "Skipping stranded-version cleanup for store: {} version: {}; failed to read store from region: {} ({})",
+            storeName,
+            candidateVersionNums,
+            region,
+            storeResponse == null
+                ? "null response"
+                : storeResponse.isError() ? storeResponse.getError() : "store payload was null");
         return;
       }
       regionStores.put(region, storeResponse.getStore());
@@ -1345,27 +1365,23 @@ public class VeniceParentHelixAdmin implements Admin {
    * current or actively pushing (STARTED) in any fabric, or if there is no evidence of abandonment.
    */
   private boolean isVersionStrandedAcrossFabrics(int versionNum, Map<String, StoreInfo> regionStores) {
-    boolean rolledBackInSomeFabric = false;
-    boolean presentInSomeFabric = false;
-    boolean absentInSomeFabric = false;
+    boolean abandonedInSomeFabric = false;
     for (StoreInfo storeInfo: regionStores.values()) {
       Optional<Version> regionVersion = storeInfo.getVersion(versionNum);
       if (!regionVersion.isPresent()) {
-        absentInSomeFabric = true;
         continue;
       }
-      presentInSomeFabric = true;
       VersionStatus regionStatus = regionVersion.get().getStatus();
       // Never delete a version that is serving (current) or still actively pushing in any fabric.
       if (storeInfo.getCurrentVersion() == versionNum || regionStatus == STARTED) {
         return false;
       }
-      if (regionStatus == ROLLED_BACK) {
-        rolledBackInSomeFabric = true;
+      if (regionStatus == ROLLED_BACK || regionStatus == KILLED) {
+        abandonedInSomeFabric = true;
       }
     }
-    // Delete only with positive evidence of abandonment: rolled back somewhere, or partially cleaned up.
-    return rolledBackInSomeFabric || (absentInSomeFabric && presentInSomeFabric);
+    // Delete only with positive evidence of abandonment: rolled back or killed in at least one fabric.
+    return abandonedInSomeFabric;
   }
 
   /**
