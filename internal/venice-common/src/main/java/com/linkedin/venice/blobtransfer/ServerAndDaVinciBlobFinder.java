@@ -43,7 +43,7 @@ public class ServerAndDaVinciBlobFinder implements BlobFinder {
   }
 
   @Override
-  public BlobPeersDiscoveryResponse discoverFallbackBlobPeers(String storeName, int version, int partitionId) {
+  public BlobPeersDiscoveryResponse discoverFallbackBlobPeersIfEnabled(String storeName, int version, int partitionId) {
     BlobPeersDiscoveryResponse response = serverBlobFinder.discoverBlobPeers(storeName, version, partitionId);
     LOGGER.info(
         "Discovered {} Venice server peer(s) for store {} version {} partition {}.",

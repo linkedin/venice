@@ -182,7 +182,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         return;
       }
 
-      BlobPeersDiscoveryResponse fallbackResponse = peerFinder.discoverFallbackBlobPeers(storeName, version, partition);
+      BlobPeersDiscoveryResponse fallbackResponse =
+          peerFinder.discoverFallbackBlobPeersIfEnabled(storeName, version, partition);
       if (perPartitionTransferFuture.isDone() || completeIfCancelled(replicaId, perPartitionTransferFuture)) {
         return;
       }

@@ -389,7 +389,8 @@ public class TestNettyP2PBlobTransferManager {
     BlobPeersDiscoveryResponse fallbackResponse = new BlobPeersDiscoveryResponse();
     fallbackResponse.setDiscoveryResult(Collections.singletonList("server-host"));
     doReturn(true).when(finder).supportsFallback();
-    doReturn(fallbackResponse).when(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(fallbackResponse).when(finder)
+        .discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     doReturn(new HashSet<>(Arrays.asList("dvc-host", "server-host"))).when(client)
         .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
 
@@ -411,7 +412,7 @@ public class TestNettyP2PBlobTransferManager {
     transferOrder.verify(finder).discoverBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     transferOrder.verify(client)
         .get("dvc-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
-    transferOrder.verify(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    transferOrder.verify(finder).discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     transferOrder.verify(client)
         .get("server-host", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
   }
@@ -435,7 +436,8 @@ public class TestNettyP2PBlobTransferManager {
             .get(10, TimeUnit.SECONDS);
 
     Assert.assertSame(result, daVinciResponse);
-    Mockito.verify(finder, Mockito.never()).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(finder, Mockito.never())
+        .discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
   }
 
   @Test
@@ -446,7 +448,8 @@ public class TestNettyP2PBlobTransferManager {
     BlobPeersDiscoveryResponse fallbackResponse = new BlobPeersDiscoveryResponse();
     fallbackResponse.setDiscoveryResult(Collections.singletonList("server-host"));
     doReturn(true).when(finder).supportsFallback();
-    doReturn(fallbackResponse).when(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(fallbackResponse).when(finder)
+        .discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     doReturn(Collections.singleton("server-host")).when(client)
         .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
 
@@ -460,7 +463,7 @@ public class TestNettyP2PBlobTransferManager {
             .get(10, TimeUnit.SECONDS);
 
     Assert.assertSame(result, serverResponse);
-    Mockito.verify(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(finder).discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
   }
 
   @Test
@@ -489,7 +492,8 @@ public class TestNettyP2PBlobTransferManager {
     } catch (ExecutionException e) {
       Assert.assertTrue(e.getCause() instanceof VeniceBlobTransferCancelledException);
     }
-    Mockito.verify(finder, Mockito.never()).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(finder, Mockito.never())
+        .discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
   }
 
   @Test
@@ -501,7 +505,8 @@ public class TestNettyP2PBlobTransferManager {
     fallbackResponse.setError(true);
     fallbackResponse.setErrorMessage("server metadata unavailable");
     doReturn(true).when(finder).supportsFallback();
-    doReturn(fallbackResponse).when(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    doReturn(fallbackResponse).when(finder)
+        .discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     doReturn(Collections.singleton("dvc-host")).when(client)
         .getConnectableHosts(any(), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION));
 
@@ -518,7 +523,7 @@ public class TestNettyP2PBlobTransferManager {
     } catch (ExecutionException e) {
       Assert.assertTrue(e.getCause() instanceof VenicePeersAllFailedException);
     }
-    Mockito.verify(finder).discoverFallbackBlobPeers(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(finder).discoverFallbackBlobPeersIfEnabled(TEST_STORE, TEST_VERSION, TEST_PARTITION);
   }
 
   /**

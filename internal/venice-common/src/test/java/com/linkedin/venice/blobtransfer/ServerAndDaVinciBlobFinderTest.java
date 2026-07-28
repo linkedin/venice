@@ -36,7 +36,7 @@ public class ServerAndDaVinciBlobFinderTest {
   }
 
   @Test
-  public void testDiscoverFallbackBlobPeersReturnsServerPeers() {
+  public void testDiscoverFallbackBlobPeersIfEnabledReturnsServerPeers() {
     BlobFinder daVinciBlobFinder = mock(BlobFinder.class);
     BlobFinder serverBlobFinder = mock(BlobFinder.class);
     BlobPeersDiscoveryResponse serverResponse = new BlobPeersDiscoveryResponse();
@@ -44,7 +44,7 @@ public class ServerAndDaVinciBlobFinderTest {
     doReturn(serverResponse).when(serverBlobFinder).discoverBlobPeers(anyString(), anyInt(), anyInt());
     ServerAndDaVinciBlobFinder finder = new ServerAndDaVinciBlobFinder(daVinciBlobFinder, serverBlobFinder);
 
-    BlobPeersDiscoveryResponse response = finder.discoverFallbackBlobPeers(STORE_NAME, VERSION, PARTITION);
+    BlobPeersDiscoveryResponse response = finder.discoverFallbackBlobPeersIfEnabled(STORE_NAME, VERSION, PARTITION);
 
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getDiscoveryResult(), Collections.singletonList("server-host"));
