@@ -136,6 +136,7 @@ import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1869,53 +1870,45 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
-  @Test
-  public void testDeleteStrandedNonCurrentVersionsDeletesRolledBackVersion() {
-    String storeName = "stranded_store";
-    // Parent metadata marks the failed swap version (2) as ROLLED_BACK; the current version (1) is serving.
-    mockParentStoreWithVersions(storeName, ROLLED_BACK);
-    // One fabric rolled the version back, the others still hold it in PUSHED: positive evidence of abandonment.
-    doReturn(buildStrandedRegionClients(Arrays.asList(ROLLED_BACK, PUSHED, PUSHED))).when(internalAdmin)
-        .getControllerClientMap(anyString());
-
-    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
-
-    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
-    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_OLD_VERSION.getValue());
-    DeleteOldVersion deleteOldVersion = (DeleteOldVersion) adminMessage.payloadUnion;
-    assertEquals(deleteOldVersion.versionNum, 2);
-    assertEquals(deleteOldVersion.storeName.toString(), storeName);
+  /**
+   * Cross-fabric decision matrix for {@link VeniceParentHelixAdmin#deleteStrandedNonCurrentVersions}. Version 2 is
+   * the candidate under test and version 1 is the serving version everywhere. A {@code null} region status means the
+   * version is already absent in that fabric. The version is only deleted with positive evidence of abandonment,
+   * meaning at least one fabric reports it as ROLLED_BACK or KILLED.
+   */
+  @DataProvider(name = "strandedVersionEvidence")
+  public static Object[][] strandedVersionEvidence() {
+    return new Object[][] {
+        { "rolled back in one fabric, still PUSHED in the rest", ROLLED_BACK,
+            Arrays.asList(ROLLED_BACK, PUSHED, PUSHED), true },
+        { "killed in one fabric, still PUSHED in the rest", KILLED, Arrays.asList(KILLED, PUSHED, PUSHED), true },
+        { "uniformly PUSHED, so possibly a healthy push awaiting its swap", PUSHED,
+            Arrays.asList(PUSHED, PUSHED, PUSHED), false },
+        { "already cleaned up in one fabric but never abandoned in any", PUSHED, Arrays.asList(null, PUSHED, PUSHED),
+            false } };
   }
 
-  @Test
-  public void testDeleteStrandedNonCurrentVersionsSkipsPartiallyCleanedVersionWithoutRollback() {
+  @Test(dataProvider = "strandedVersionEvidence")
+  public void testDeleteStrandedNonCurrentVersions(
+      String scenario,
+      VersionStatus parentStatus,
+      List<VersionStatus> regionStatuses,
+      boolean expectDelete) {
     String storeName = "stranded_store";
-    mockParentStoreWithVersions(storeName, PUSHED);
-    // The version was cleaned up in one fabric (absent) but lingers as PUSHED elsewhere with no fabric rolled back:
-    // without positive ROLLED_BACK evidence this could still be a healthy push pending swap, so skip.
-    doReturn(buildStrandedRegionClients(Arrays.asList(null, PUSHED, PUSHED))).when(internalAdmin)
-        .getControllerClientMap(anyString());
+    mockParentStoreWithVersions(storeName, parentStatus);
+    doReturn(buildStrandedRegionClients(regionStatuses)).when(internalAdmin).getControllerClientMap(anyString());
 
     parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
 
-    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-  }
-
-  @Test
-  public void testDeleteStrandedNonCurrentVersionsDeletesKilledVersion() {
-    String storeName = "stranded_store";
-    mockParentStoreWithVersions(storeName, KILLED);
-    // KILLED is also positive evidence that the version was abandoned, while the other fabrics can still retain it.
-    doReturn(buildStrandedRegionClients(Arrays.asList(KILLED, PUSHED, PUSHED))).when(internalAdmin)
-        .getControllerClientMap(anyString());
-
-    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
-
+    if (!expectDelete) {
+      assertNoAdminMessageSent();
+      return;
+    }
     AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
-    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_OLD_VERSION.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_OLD_VERSION.getValue(), scenario);
     DeleteOldVersion deleteOldVersion = (DeleteOldVersion) adminMessage.payloadUnion;
-    assertEquals(deleteOldVersion.versionNum, 2);
-    assertEquals(deleteOldVersion.storeName.toString(), storeName);
+    assertEquals(deleteOldVersion.versionNum, 2, scenario);
+    assertEquals(deleteOldVersion.storeName.toString(), storeName, scenario);
   }
 
   @Test
@@ -1929,19 +1922,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
 
-    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+    assertNoAdminMessageSent();
   }
 
-  @Test
-  public void testDeleteStrandedNonCurrentVersionsSkipsInProgressPush() {
-    String storeName = "stranded_store";
-    mockParentStoreWithVersions(storeName, PUSHED);
-    // Uniformly PUSHED with no fabric rolled back and none missing: could be a healthy push pending swap, so skip.
-    doReturn(buildStrandedRegionClients(Arrays.asList(PUSHED, PUSHED, PUSHED))).when(internalAdmin)
-        .getControllerClientMap(anyString());
-
-    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
-
+  private void assertNoAdminMessageSent() {
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
 

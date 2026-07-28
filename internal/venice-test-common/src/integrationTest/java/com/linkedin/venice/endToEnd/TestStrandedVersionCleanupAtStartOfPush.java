@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import org.testng.annotations.Test;
 
 
@@ -105,11 +106,13 @@ public class TestStrandedVersionCleanupAtStartOfPush extends AbstractMultiRegion
   @Test(timeOut = TEST_TIMEOUT)
   public void testStrandedRolledBackVersionIsReapedAtStartOfNextPush() throws InterruptedException {
     String storeName = Utils.getUniqueString("strandedVersionCleanup");
-    Map<String, ControllerClient> childControllerClients = new LinkedHashMap<>();
-    try (ControllerClient parentControllerClient =
-        new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl())) {
+    // Keyed by region label, with the parent first so it is the first region reported on assertion failures.
+    Map<String, ControllerClient> controllerClients = new LinkedHashMap<>();
+    try {
+      ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl());
+      controllerClients.put(PARENT, parentControllerClient);
       for (int i = 0; i < childDatacenters.size(); i++) {
-        childControllerClients.put(
+        controllerClients.put(
             multiRegionMultiClusterWrapper.getChildRegionNames().get(i),
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(i).getControllerConnectString()));
       }
@@ -130,13 +133,10 @@ public class TestStrandedVersionCleanupAtStartOfPush extends AbstractMultiRegion
       // The parent aggregates the rollback from its child regions asynchronously, so wait until it reports
       // ROLLED_BACK — only then is v2 a cleanup candidate there. The child regions must still hold v2 as
       // ROLLED_BACK while serving v1, which is the cross-fabric evidence the parent acts on.
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        assertRolledBackToVersionOne(getStore(parentControllerClient, storeName, PARENT), PARENT);
-        childControllerClients.forEach(
-            (regionName, childControllerClient) -> assertRolledBackToVersionOne(
-                getStore(childControllerClient, storeName, regionName),
-                regionName));
-      });
+      assertEverywhere(
+          controllerClients,
+          storeName,
+          TestStrandedVersionCleanupAtStartOfPush::assertRolledBackToVersionOne);
 
       // The rollback-origin guard rejects a new push while v2 is within its retention window, so wait it
       // out before pushing v3. The buffer absorbs clock skew against the rollback's promote timestamp.
@@ -147,16 +147,28 @@ public class TestStrandedVersionCleanupAtStartOfPush extends AbstractMultiRegion
 
       // The delete is issued at start-of-push and propagates over the admin channel, so it can land after
       // the push itself completes.
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        assertStrandedVersionReaped(getStore(parentControllerClient, storeName, PARENT), PARENT);
-        childControllerClients.forEach(
-            (regionName, childControllerClient) -> assertStrandedVersionReaped(
-                getStore(childControllerClient, storeName, regionName),
-                regionName));
-      });
+      assertEverywhere(
+          controllerClients,
+          storeName,
+          TestStrandedVersionCleanupAtStartOfPush::assertStrandedVersionReaped);
     } finally {
-      childControllerClients.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      controllerClients.values().forEach(Utils::closeQuietlyWithErrorLogged);
     }
+  }
+
+  /**
+   * Retries {@code assertion} against every region until they all agree or the wait expires. The assertion receives
+   * a region's view of the store along with the label naming that region.
+   */
+  private static void assertEverywhere(
+      Map<String, ControllerClient> controllerClients,
+      String storeName,
+      BiConsumer<StoreInfo, String> assertion) {
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        () -> controllerClients.forEach(
+            (label, controllerClient) -> assertion.accept(getStore(controllerClient, storeName, label), label)));
   }
 
   private static void assertRolledBackToVersionOne(StoreInfo store, String label) {
