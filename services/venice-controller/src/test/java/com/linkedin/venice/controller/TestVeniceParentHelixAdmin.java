@@ -12,6 +12,7 @@ import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
+import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -130,6 +131,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
@@ -1872,9 +1874,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   /**
    * Cross-fabric decision matrix for {@link VeniceParentHelixAdmin#deleteStrandedNonCurrentVersions}. Version 2 is
-   * the candidate under test and version 1 is the serving version everywhere. A {@code null} region status means the
-   * version is already absent in that fabric. The version is only deleted with positive evidence of abandonment,
-   * meaning at least one fabric reports it as ROLLED_BACK or KILLED.
+   * the candidate under test and version 1 is the serving version everywhere, except where version 2 is ONLINE and
+   * therefore serving in that fabric. A {@code null} region status means the version is already absent in that
+   * fabric. The version is only deleted with positive evidence of abandonment, meaning at least one fabric reports it
+   * as ROLLED_BACK or KILLED, and no fabric is still serving or pushing it.
    */
   @DataProvider(name = "strandedVersionEvidence")
   public static Object[][] strandedVersionEvidence() {
@@ -1885,7 +1888,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         { "uniformly PUSHED, so possibly a healthy push awaiting its swap", PUSHED,
             Arrays.asList(PUSHED, PUSHED, PUSHED), false },
         { "already cleaned up in one fabric but never abandoned in any", PUSHED, Arrays.asList(null, PUSHED, PUSHED),
-            false } };
+            false },
+        { "rolled back in one fabric but still serving in another", ROLLED_BACK,
+            Arrays.asList(ROLLED_BACK, ONLINE, PUSHED), false },
+        { "rolled back in one fabric but still pushing in another", ROLLED_BACK,
+            Arrays.asList(ROLLED_BACK, STARTED, PUSHED), false } };
   }
 
   @Test(dataProvider = "strandedVersionEvidence")
@@ -1911,13 +1918,34 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(deleteOldVersion.storeName.toString(), storeName, scenario);
   }
 
-  @Test
-  public void testDeleteStrandedNonCurrentVersionsSkipsWhenRegionStoreReadThrows() {
+  /**
+   * The ways a fabric's state can be unreadable. Each entry sabotages one region's controller client. All of them
+   * must abort the cleanup, since a version cannot be proven abandoned without every fabric's state.
+   */
+  @DataProvider(name = "unreadableRegion")
+  public static Object[][] unreadableRegion() {
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("region unavailable");
+    return new Object[][] {
+        { "read throws",
+            (Consumer<ControllerClient>) client -> doThrow(new VeniceException("child read failed")).when(client)
+                .getStore(anyString()) },
+        { "error response",
+            (Consumer<ControllerClient>) client -> doReturn(errorResponse).when(client).getStore(anyString()) },
+        { "null store payload",
+            (Consumer<ControllerClient>) client -> doReturn(new StoreResponse()).when(client).getStore(anyString()) },
+        { "null response", (Consumer<ControllerClient>) client -> doReturn(null).when(client).getStore(anyString()) } };
+  }
+
+  @Test(dataProvider = "unreadableRegion")
+  public void testDeleteStrandedNonCurrentVersionsSkipsWhenRegionStoreIsUnreadable(
+      String scenario,
+      Consumer<ControllerClient> sabotage) {
     String storeName = "stranded_store";
     mockParentStoreWithVersions(storeName, ROLLED_BACK);
     Map<String, ControllerClient> controllerClientMap =
         buildStrandedRegionClients(Arrays.asList(ROLLED_BACK, PUSHED, PUSHED));
-    doThrow(new VeniceException("child read failed")).when(controllerClientMap.get("region1")).getStore(anyString());
+    sabotage.accept(controllerClientMap.get("region1"));
     doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
 
     parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
@@ -1946,15 +1974,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   /**
-   * Builds one mocked controller client per region. Every region reports current version 1. Version 2 is present with
-   * the given status per region, or absent when the status entry is {@code null}.
+   * Builds one mocked controller client per region. Version 2 is present with the given status per region, or absent
+   * when the status entry is {@code null}. A region serves version 2 when its status there is ONLINE, and version 1
+   * otherwise.
    */
   private Map<String, ControllerClient> buildStrandedRegionClients(List<VersionStatus> versionTwoStatusPerRegion) {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
     for (int i = 0; i < versionTwoStatusPerRegion.size(); i++) {
       VersionStatus versionTwoStatus = versionTwoStatusPerRegion.get(i);
       StoreInfo storeInfo = mock(StoreInfo.class);
-      doReturn(1).when(storeInfo).getCurrentVersion();
+      doReturn(versionTwoStatus == ONLINE ? 2 : 1).when(storeInfo).getCurrentVersion();
       if (versionTwoStatus == null) {
         doReturn(Optional.empty()).when(storeInfo).getVersion(2);
       } else {
