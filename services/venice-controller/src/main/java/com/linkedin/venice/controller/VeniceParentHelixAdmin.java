@@ -1258,39 +1258,20 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Reap "stranded" bootstrapped versions at the start of a new push. A stranded version is one that
-   * finished bootstrapping (status {@link VersionStatus#PUSHED}) or was rolled back (status
-   * {@link VersionStatus#ROLLED_BACK}) but is non-current in every colo, so it is invisible to both
-   * cleanup paths: {@code StoreBackupVersionCleanupService} only deletes versions numbered below the
-   * current version, and SOP cleanup deliberately retains PUSHED versions. This happens when a
-   * deferred version swap fails post-swap validation: the target region rolls the version back while
-   * the non-target regions keep their copy in PUSHED status numbered above their unchanged current
-   * version, leaking one on-disk version per failed swap.
-   * <p>
-   * Because PUSHED is also the legitimate status of a completed push that is still awaiting its swap,
-   * a version is only deleted when there is positive cross-fabric evidence that it has been abandoned:
-   * at least one fabric reports it as ROLLED_BACK or KILLED. A version that is uniformly PUSHED/STARTED
-   * across the fabrics with none rolled back or killed is left untouched, since that can be an in-progress
-   * or healthy push pending a deferred swap. The version is never touched if it is the current (serving)
-   * version in any fabric.
-   * <p>
-   * The delete is issued through the existing {@link #deleteOldVersionInStore} plumbing
-   * (DELETE_OLD_VERSION admin message), which is ACL-free, ordered, and no-ops in fabrics where the
-   * version is already absent.
+   * Reap "stranded" bootstrapped versions at the start of a new push using the DELETE_OLD_VERSION admin message.
+   * PUSHED can mean a colo is awaiting its swap, so a version is only deleted when we know it has been abandoned
+   * (at least one fabric reports it as ROLLED_BACK or KILLED).
+   *
+   * A version that is uniformly PUSHED/STARTED across the fabrics with none rolled back or killed is left untouched,
+   * since that can be an in-progress or healthy push pending a deferred swap. The version is never touched if it is
+   * the current (serving) version in any fabric.
    */
   void deleteStrandedNonCurrentVersions(String clusterName, String storeName) {
     Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
     if (store == null) {
       return;
     }
-    // Cheap local pre-filter: only versions that finished a push (PUSHED), were rolled back (ROLLED_BACK),
-    // or were killed (KILLED) can be stranded leaks. Skip the cross-fabric queries entirely on the common path
-    // where there are none.
-    // A deferred-swap rollback propagates ROLLED_BACK to the parent version here (DeferredVersionSwapService
-    // updates the parent store repository right after rolling back the target region), so the stranded version
-    // is reliably a candidate. PUSHED is the fallback: it is the parent status before the swap attempt, which is
-    // what remains if that ROLLED_BACK write is ever skipped/fails. Child-fabric statuses are consulted later,
-    // in isVersionStrandedAcrossFabrics, only as the guardrail confirming abandonment before deleting.
+    // Filter for PUSHED, ROLLED_BACK, and KILLED. Only further check multiple child fabrics if there are candidates.
     List<Integer> candidateVersionNums = new ArrayList<>();
     for (Version version: store.getVersions()) {
       VersionStatus parentStatus = version.getStatus();
