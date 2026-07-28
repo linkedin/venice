@@ -162,6 +162,11 @@ public class StoreBackend {
     return backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
   }
 
+  private Version getVersionByNumber(int versionNumber) {
+    Store store = backend.getStoreRepository().getStore(storeName);
+    return store == null ? null : store.getVersion(versionNumber);
+  }
+
   public synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion,
@@ -202,7 +207,8 @@ public class StoreBackend {
       if (daVinciFutureVersion == null) {
         trySubscribeDaVinciFutureVersion();
       } else {
-        daVinciFutureVersion.subscribe(partitions, null, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+        daVinciFutureVersion.subscribe(partitions, null, null, false)
+            .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
       }
     }
 
@@ -219,25 +225,27 @@ public class StoreBackend {
           break;
       }
     }
-    return daVinciCurrentVersion.subscribe(partitions, resolvedTimestampsMap, resolvedPositionMap).exceptionally(e -> {
-      synchronized (this) {
-        addFaultyVersion(savedVersion, e);
-        // Don't propagate failure to subscribe() caller, if future version has become current and is ready to
-        // serve.
-        if (daVinciCurrentVersion != null && daVinciCurrentVersion.isReadyToServe(subscription)) {
-          return null;
-        }
-      }
-      throw (e instanceof CompletionException) ? (CompletionException) e : new CompletionException(e);
-    }).whenComplete((v, e) -> {
-      synchronized (this) {
-        if (e == null) {
-          LOGGER.info("Ready to serve partitions {} of {}", subscription, daVinciCurrentVersion);
-        } else {
-          LOGGER.warn("Failed to subscribe to partitions {} of {}", subscription, savedVersion, e);
-        }
-      }
-    });
+    return daVinciCurrentVersion.subscribe(partitions, resolvedTimestampsMap, resolvedPositionMap, false)
+        .exceptionally(e -> {
+          synchronized (this) {
+            addFaultyVersion(savedVersion, e);
+            // Don't propagate failure to subscribe() caller, if future version has become current and is ready to
+            // serve.
+            if (daVinciCurrentVersion != null && daVinciCurrentVersion.isReadyToServe(subscription)) {
+              return null;
+            }
+          }
+          throw (e instanceof CompletionException) ? (CompletionException) e : new CompletionException(e);
+        })
+        .whenComplete((v, e) -> {
+          synchronized (this) {
+            if (e == null) {
+              LOGGER.info("Ready to serve partitions {} of {}", subscription, daVinciCurrentVersion);
+            } else {
+              LOGGER.warn("Failed to subscribe to partitions {} of {}", subscription, savedVersion, e);
+            }
+          }
+        });
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
@@ -290,30 +298,110 @@ public class StoreBackend {
       return;
     }
 
-    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
-    VeniceServerConfig veniceServerConfig = backend.getConfigLoader().getVeniceServerConfig();
-    String currentRegion = veniceServerConfig.getRegionName();
-    boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetVersion.getTargetSwapRegion());
-    boolean startIngestionInNonTargetRegion = isTargetRegionEnabled && !targetRegions.contains(currentRegion)
-        && targetVersion.getStatus() == VersionStatus.ONLINE;
+    String targetSwapRegion = targetVersion.getTargetSwapRegion();
+    boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetSwapRegion);
 
-    // Subscribe to the future version if:
-    // 1. Target region push with delayed ingestion is not enabled
-    // 2. Target region push with delayed ingestion is enabled and the current region is a target region
-    // 3. Target region push with delayed ingestion is enabled and the current region is a non target region
-    // and the wait time has elapsed. The wait time has elapsed when the version status is marked ONLINE
-    if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || !isTargetRegionEnabled) {
-      LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
-      setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
-      // For future version subscription, we don't need to pass any timestamps or position map
-      daVinciFutureVersion.subscribe(subscription, null, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+    if (!isTargetRegionEnabled) {
+      // No target-region push — always subscribe active.
+      subscribeFutureVersion(targetVersion, false);
+      return;
+    }
+
+    VeniceServerConfig serverConfig = backend.getConfigLoader().getVeniceServerConfig();
+    String currentRegion = serverConfig.getRegionName();
+
+    // Determine which region ingests actively (unpaused) for this deferred-swap push.
+    // When the cluster is configured for sequential roll-forward, the controller promotes regions one
+    // at a time following the roll-forward order, and the active region is its head. Da Vinci must key
+    // off the SAME order the controller uses (see AbstractPushMonitor#sequentialRollForwardFirstRegion);
+    // otherwise it can pause the very region the controller is waiting on to complete, deadlocking the
+    // swap (the region never completes because DVC is paused, and DVC never resumes because the region
+    // is not promoted).
+    //
+    // Skip blank entries when reading the head: a whitespace-only config or a leading comma would
+    // otherwise yield an empty-string head, which matches no region and — in paused-SIT mode — would
+    // pause EVERY region, reintroducing the deadlock. If the config is unset or has no non-blank
+    // entries, treat it as not configured and fall back to the version's targetSwapRegion (parallel
+    // target-region push).
+    String rollForwardHead = null;
+    for (String region: RegionUtils
+        .parseRegionRolloutOrderList(serverConfig.getDeferredVersionSwapRegionRollforwardOrder())) {
+      if (!StringUtils.isBlank(region)) {
+        rollForwardHead = region;
+        break;
+      }
+    }
+
+    boolean isActiveRegion;
+    if (rollForwardHead != null) {
+      // Sequential roll-forward: the active (unpaused) region is the head of the roll-forward order.
+      isActiveRegion = rollForwardHead.equals(currentRegion);
     } else {
+      // Parallel target-region push (or roll-forward not configured): use targetSwapRegion membership.
+      isActiveRegion = RegionUtils.parseRegionsFilterList(targetSwapRegion).contains(currentRegion);
+    }
+
+    if (isActiveRegion) {
+      // This DVC instance is in the active (target / roll-forward head) region — always subscribe active.
+      subscribeFutureVersion(targetVersion, false);
+      return;
+    }
+
+    // Non-active region with a deferred-swap push in flight.
+    boolean pausedSitEnabled = serverConfig.isDaVinciPausedSitEnabled();
+    if (pausedSitEnabled) {
+      // Paused-SIT mode: subscribe immediately in a paused state; resume when targetRegionPromoted fires.
+      boolean createPaused = !targetVersion.isTargetRegionPromoted();
       LOGGER.info(
-          "Skipping subscribe to future version: {} in region: {} because the target version status is: {} and the target regions are: {}",
+          "Subscribing to future version {} in region {} with createPaused={} "
+              + "(targetSwapRegion={}, rollForwardHead={}, targetRegionPromoted={})",
           targetVersion.kafkaTopicName(),
           currentRegion,
-          targetVersion.getStatus(),
-          targetVersion.getTargetSwapRegion());
+          createPaused,
+          targetSwapRegion,
+          rollForwardHead,
+          targetVersion.isTargetRegionPromoted());
+      subscribeFutureVersion(targetVersion, createPaused);
+    } else {
+      // Legacy mode: subscribe only once the version is ONLINE in this region.
+      if (targetVersion.getStatus() == VersionStatus.ONLINE) {
+        subscribeFutureVersion(targetVersion, false);
+      } else {
+        LOGGER.info(
+            "Skipping subscribe to future version: {} in region: {} because paused-SIT is disabled and "
+                + "version is not yet ONLINE (status={}, targetSwapRegion={})",
+            targetVersion.kafkaTopicName(),
+            currentRegion,
+            targetVersion.getStatus(),
+            targetSwapRegion);
+      }
+    }
+  }
+
+  private void subscribeFutureVersion(Version targetVersion, boolean createPaused) {
+    LOGGER.info("Subscribing to future version {} (createPaused={})", targetVersion.kafkaTopicName(), createPaused);
+    setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
+    // For future version subscription, we don't need to pass any timestamps or position map
+    daVinciFutureVersion.subscribe(subscription, null, null, createPaused)
+        .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+  }
+
+  /**
+   * Resume the future version's ingestion if it was created paused and targetRegionPromoted has
+   * since flipped to true. Only relevant when paused-SIT mode is enabled.
+   */
+  synchronized void maybeResumeDaVinciFutureVersion() {
+    if (daVinciFutureVersion == null || !daVinciFutureVersion.isPaused()) {
+      return;
+    }
+    // Re-fetch the version fresh from the store repository instead of reading
+    // daVinciFutureVersion.getVersion(), which is an immutable snapshot captured at subscribe time.
+    // VersionBackend holds a final Version whose targetRegionPromoted flag never updates, so trusting
+    // the snapshot here would never observe the flip and the paused SIT would never resume.
+    Version freshFutureVersion = getVersionByNumber(daVinciFutureVersion.getVersion().getNumber());
+    if (freshFutureVersion != null && freshFutureVersion.isTargetRegionPromoted()) {
+      LOGGER.info("Resuming future-slot-paused SIT for version {}", daVinciFutureVersion.getVersion().kafkaTopicName());
+      daVinciFutureVersion.resume();
     }
   }
 

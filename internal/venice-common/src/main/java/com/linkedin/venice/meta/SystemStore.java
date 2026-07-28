@@ -703,6 +703,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isEncryptionEnabled() {
+    return zkSharedStore.isEncryptionEnabled();
+  }
+
+  @Override
+  public void setEncryptionEnabled(boolean encryptionEnabled) {
+    throwUnsupportedOperationException("setEncryptionEnabled");
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return zkSharedStore.getMinCompactionLagSeconds();
   }

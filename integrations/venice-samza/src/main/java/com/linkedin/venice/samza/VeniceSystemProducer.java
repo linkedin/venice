@@ -3,6 +3,7 @@ package com.linkedin.venice.samza;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
 
@@ -287,6 +288,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   protected AbstractVeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
       VersionCreationResponse store,
       Properties veniceWriterProperties) {
+    // Default the Kafka producer delivery timeout to 20 days (unless the job configured its own) so that nearline
+    // writes are retried rather than dropped during extended pub-sub unavailability.
+    veniceWriterProperties.putIfAbsent(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS, Integer.toString(20 * Time.MS_PER_DAY));
     Integer partitionCount = pushType.isBatchOrStreamReprocessing()
         ? (store.getPartitions())
         /**

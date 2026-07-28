@@ -39,6 +39,8 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -49,6 +51,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -167,10 +171,22 @@ public class DaVinciClientServerFallbackBlobTransferTest {
    * {@code SERVER_HTTP2_INBOUND_ENABLED} so the server's D2 service advertises https, and enables
    * {@code setStorageNodeReadQuotaEnabled(true)} on the store.
    */
-  @Test(timeOut = TEST_TIMEOUT, enabled = true)
-  public void testClientColdStartsFromServerWhenNoPeers() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False", enabled = true)
+  public void testClientColdStartsFromServerWhenNoPeers(boolean activeActiveReplicationEnabled) throws Exception {
     String storeName = Utils.getUniqueString("server-fallback-store");
-    setUpStore(storeName);
+    setUpStore(storeName, activeActiveReplicationEnabled);
+
+    if (activeActiveReplicationEnabled) {
+      StorageEngine storageEngine = cluster.getVeniceServers()
+          .get(0)
+          .getVeniceServer()
+          .getStorageService()
+          .getStorageEngine(Version.composeKafkaTopic(storeName, 1));
+      Assert.assertNotNull(storageEngine);
+      Assert.assertTrue(
+          storageEngine.getPartitionOrThrow(0) instanceof ReplicationMetadataRocksDBStoragePartition,
+          "Active-active server partition should contain the replication-metadata column family");
+    }
 
     String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
     String dvcPath = Utils.getTempDataDirectory().getAbsolutePath();
@@ -238,7 +254,7 @@ public class DaVinciClientServerFallbackBlobTransferTest {
     }
   }
 
-  private void setUpStore(String storeName) {
+  private void setUpStore(String storeName, boolean activeActiveReplicationEnabled) {
     File inputDir = getTempDataDirectory();
     try {
       writeSimpleAvroFileWithIntToStringSchema(inputDir);
@@ -252,6 +268,9 @@ public class DaVinciClientServerFallbackBlobTransferTest {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(1)
         .setBlobTransferEnabled(true)
         .setStorageNodeReadQuotaEnabled(true);
+    if (activeActiveReplicationEnabled) {
+      params.setActiveActiveReplicationEnabled(true).setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10);
+    }
     try (ControllerClient controllerClient =
         createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
       cluster.createMetaSystemStore(storeName);

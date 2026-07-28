@@ -52,6 +52,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -77,10 +78,12 @@ import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -1366,6 +1369,97 @@ public class VeniceChangelogConsumerImplTest {
     // switchToNewTopic with a different topic on the same partition should return true
     PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
     assertTrue(veniceChangelogConsumer.switchToNewTopic(new PubSubTopicPartitionImpl(newVersionTopic, 0)));
+  }
+
+  /**
+   * Reproduces the CDC client failure observed after Global RT DIV was enabled. A Global RT DIV message is
+   * produced into the version topic with a {@link MessageType#GLOBAL_RT_DIV} {@link KafkaKey} while its
+   * {@link KafkaMessageEnvelope} messageType stays {@link MessageType#PUT}, and its {@link Put} payload carries a
+   * serialized {@link GlobalRtDivState} tagged with the GLOBAL_RT_DIV_STATE protocol version as its schema id.
+   * Without special handling, {@link VeniceChangelogConsumerImpl#internalPoll} routes it through the PUT path and
+   * deserializes the DIV payload with the store value schema (whose id collides with the DIV protocol version),
+   * which is what surfaced as "Could not deserialize bytes back into Avro object". This test verifies the message
+   * is skipped and the surrounding data records are still returned intact.
+   */
+  @Test
+  public void testGlobalRtDivMessageIsSkippedDuringPoll() throws ExecutionException, InterruptedException {
+    prepareVersionTopicRecordsWithGlobalRtDivToBePolled(mockPubSubConsumer, oldVersionTopic, 0);
+
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    veniceChangelogConsumer.subscribe(Collections.singleton(0)).get();
+
+    List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        new ArrayList<>(veniceChangelogConsumer.poll(pollTimeoutMs));
+
+    // The Global RT DIV message must be skipped: only the two normal PUT records are returned, and polling must
+    // not choke while attempting to deserialize the DIV payload with the store value deserializer.
+    assertEquals(pubSubMessages.size(), 2);
+    assertEquals(pubSubMessages.get(0).getValue().getCurrentValue().toString(), "newValue0");
+    assertEquals(pubSubMessages.get(1).getValue().getCurrentValue().toString(), "newValue1");
+
+    veniceChangelogConsumer.close();
+  }
+
+  private void prepareVersionTopicRecordsWithGlobalRtDivToBePolled(
+      PubSubConsumerAdapter pubSubConsumerAdapter,
+      PubSubTopic versionTopic,
+      int partition) {
+    List<DefaultPubSubMessage> consumerRecordList = new ArrayList<>();
+    consumerRecordList.add(
+        constructConsumerRecord(
+            versionTopic,
+            partition,
+            "newValue0",
+            "key0",
+            Arrays.asList(0L, 0L),
+            ApacheKafkaOffsetPosition.of(0L)));
+    // Interleave a Global RT DIV message between two data records to prove it is skipped without disrupting the
+    // records around it.
+    consumerRecordList
+        .add(constructGlobalRtDivRecord(versionTopic, partition, "globalRtDivKey", ApacheKafkaOffsetPosition.of(1L)));
+    consumerRecordList.add(
+        constructConsumerRecord(
+            versionTopic,
+            partition,
+            "newValue1",
+            "key1",
+            Arrays.asList(1L, 1L),
+            ApacheKafkaOffsetPosition.of(2L)));
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerRecordsMap = new HashMap<>();
+    consumerRecordsMap.put(new PubSubTopicPartitionImpl(versionTopic, partition), consumerRecordList);
+    doReturn(consumerRecordsMap).when(pubSubConsumerAdapter).poll(pollTimeoutMs);
+  }
+
+  private DefaultPubSubMessage constructGlobalRtDivRecord(
+      PubSubTopic versionTopic,
+      int partition,
+      String key,
+      PubSubPosition pubSubPosition) {
+    // Build and serialize a GlobalRtDivState with its protocol serializer, exactly as the server's VeniceWriter
+    // does when propagating the RT DIV snapshot through the local version topic.
+    GlobalRtDivState divState = new GlobalRtDivState("localhost:9092", new HashMap<>(), ByteBuffer.wrap(new byte[0]));
+    InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+    byte[] serializedDiv = ByteUtils.extractByteArray(globalRtDivStateSerializer.serialize(divState));
+    int divSchemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = 10000L;
+    // The envelope messageType is PUT (as VeniceWriter sets it); only the KafkaKey below marks it as GLOBAL_RT_DIV.
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(
+        MessageType.PUT.getValue(),
+        producerMetadata,
+        new Put(ByteBuffer.wrap(serializedDiv), divSchemaId, -1, ByteBuffer.wrap(new byte[0])),
+        null);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keySerializer.serialize(key));
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+    return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, pubSubPosition, 0, 0);
   }
 
   private ChangelogClientConfig getChangelogClientConfig() {

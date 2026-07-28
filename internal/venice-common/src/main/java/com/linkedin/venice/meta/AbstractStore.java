@@ -296,9 +296,30 @@ public abstract class AbstractStore implements Store {
   @Override
   public List<Version> retrieveVersionsToDelete(int clusterNumVersionsToPreserve) {
     checkVersionSupplier();
+    return computeVersionsToDelete(
+        storeVersionsSupplier.getForRead(),
+        getCurrentVersion(),
+        clusterNumVersionsToPreserve,
+        getNumVersionsToPreserve(),
+        isMigrating());
+  }
+
+  /**
+   * Same version-deletion policy as {@link #retrieveVersionsToDelete(int)}, but over raw fields so
+   * callers that only hold a version snapshot (e.g. a child {@code StoreInfo}) can reuse it without a
+   * full {@link Store}. {@code storeNumVersionsToPreserve} is the store-level override
+   * ({@link #NUM_VERSION_PRESERVE_NOT_SET} when unset, in which case {@code clusterNumVersionsToPreserve}
+   * applies). Assumes {@code versions} is sorted by version number ascending.
+   */
+  public static List<Version> computeVersionsToDelete(
+      List<Version> versions,
+      int currentVersion,
+      int clusterNumVersionsToPreserve,
+      int storeNumVersionsToPreserve,
+      boolean isMigrating) {
     int curNumVersionsToPreserve = clusterNumVersionsToPreserve;
-    if (getNumVersionsToPreserve() != NUM_VERSION_PRESERVE_NOT_SET) {
-      curNumVersionsToPreserve = getNumVersionsToPreserve();
+    if (storeNumVersionsToPreserve != NUM_VERSION_PRESERVE_NOT_SET) {
+      curNumVersionsToPreserve = storeNumVersionsToPreserve;
     }
     // when numVersionsToPreserve is less than 1, it usually means a config issue.
     // Setting it to zero, will cause the store to be deleted as soon as push completes.
@@ -307,13 +328,11 @@ public abstract class AbstractStore implements Store {
           "At least 1 version should be preserved. Parameter " + curNumVersionsToPreserve);
     }
 
-    List<Version> versions = storeVersionsSupplier.getForRead();
     int versionCnt = versions.size();
     if (versionCnt == 0) {
       return Collections.emptyList();
     }
 
-    // The code assumes that Versions are sorted in increasing order by addVersion and increaseVersion
     int lastElementIndex = versionCnt - 1;
     List<Version> versionsToDelete = new ArrayList<>();
 
@@ -327,8 +346,7 @@ public abstract class AbstractStore implements Store {
      */
     // current version need not be the largest version, preseve it before finding other versions > current version
     for (int i = lastElementIndex; i >= 0; i--) {
-      Version version = versions.get(i);
-      if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
+      if (versions.get(i).getNumber() == currentVersion) { // currentVersion is always preserved
         curNumVersionsToPreserve--;
       }
     }
@@ -336,7 +354,7 @@ public abstract class AbstractStore implements Store {
     for (int i = lastElementIndex; i >= 0; i--) {
       Version version = versions.get(i);
 
-      if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
+      if (version.getNumber() == currentVersion) { // currentVersion is always preserved
         continue;
       }
       if (VersionStatus.isVersionRolledBack(version.getStatus())) {
@@ -354,7 +372,7 @@ public abstract class AbstractStore implements Store {
         } else {
           versionsToDelete.add(version);
         }
-      } else if (VersionStatus.STARTED.equals(version.getStatus()) && (i != lastElementIndex) && !isMigrating()) {
+      } else if (VersionStatus.STARTED.equals(version.getStatus()) && (i != lastElementIndex) && !isMigrating) {
         // For the non-last started version, if it's not the current version(STARTED version should not be the current
         // version, just prevent some edge cases here.), we should delete it only if the store is not migrating
         // as during store migration are there are concurrent pushes with STARTED version.

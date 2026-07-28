@@ -11,7 +11,7 @@ operators can quickly find the relevant section when an alert fires.
 
 If your investigation uncovers a bug in Venice, please [file an issue](https://github.com/linkedin/venice/issues) on the
 Venice repository. For questions or help troubleshooting, post in the
-[Venice Slack community](http://slack.venicedb.org).
+[Venice Discord community](https://discord.gg/6aZZfwswDt).
 
 ### General Triage Workflow
 

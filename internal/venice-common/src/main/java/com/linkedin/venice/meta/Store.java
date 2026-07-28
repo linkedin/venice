@@ -347,6 +347,10 @@ public interface Store {
 
   void setCompactionThresholdMilliseconds(long compactionThreshold);
 
+  boolean isEncryptionEnabled();
+
+  void setEncryptionEnabled(boolean encryptionEnabled);
+
   long getMinCompactionLagSeconds();
 
   void setMinCompactionLagSeconds(long minCompactionLagSeconds);

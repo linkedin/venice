@@ -150,6 +150,14 @@ public class TestAdminTool {
   }
 
   @Test
+  public void testAdminUpdateStoreRejectsEncryptionArgument() {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--enable-encryption", "true" };
+
+    expectThrows(ParseException.class, () -> AdminTool.getCommandLine(args));
+  }
+
+  @Test
   public void testAdminUpdateStoreArgEtlActiveFabrics() throws ParseException, IOException {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--etl-active-fabrics", "dc-0,dc-1" };

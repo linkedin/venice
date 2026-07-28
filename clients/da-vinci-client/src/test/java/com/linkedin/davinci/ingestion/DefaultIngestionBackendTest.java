@@ -78,7 +78,8 @@ public class DefaultIngestionBackendTest {
 
     when(storeConfig.getStoreVersionName()).thenReturn(STORE_VERSION);
     when(storeIngestionService.getMetadataRepo()).thenReturn(metadataRepo);
-    doNothing().when(storeIngestionService).startConsumption(any(VeniceStoreVersionConfig.class), anyInt(), any());
+    doNothing().when(storeIngestionService)
+        .startConsumption(any(VeniceStoreVersionConfig.class), anyInt(), any(), anyBoolean());
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
@@ -93,7 +94,7 @@ public class DefaultIngestionBackendTest {
 
     // Verify store is opened and consumption is started via ingestion service
     verify(storageService).openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any());
-    verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any());
+    verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any(), anyBoolean());
   }
 
   @Test
@@ -103,7 +104,7 @@ public class DefaultIngestionBackendTest {
     ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
     // Verify blob transfer flag is synced from store metadata to store config
-    verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any());
+    verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any(), anyBoolean());
   }
 
   @Test
@@ -114,7 +115,7 @@ public class DefaultIngestionBackendTest {
 
     // When store doesn't have blob transfer enabled, setBlobTransferEnabled should not be called
     verify(storeConfig, org.mockito.Mockito.never()).setBlobTransferEnabled(true);
-    verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any());
+    verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any(), anyBoolean());
   }
 
   @Test

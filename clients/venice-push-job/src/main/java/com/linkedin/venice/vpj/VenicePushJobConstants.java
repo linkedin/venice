@@ -57,7 +57,9 @@ public final class VenicePushJobConstants {
   public static final String PARTITION_COUNT = "partition.count";
   public static final String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
   public static final String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
+  public static final int DEFAULT_POLL_STATUS_RETRY_ATTEMPTS = 100;
   public static final String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
+  public static final int DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS = 10;
   public static final String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
   public static final String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
   public static final String PUSH_JOB_TIMEOUT_OVERRIDE_MS = "push.job.timeout.override.ms";
@@ -71,10 +73,10 @@ public final class VenicePushJobConstants {
    *  Enabling this collects metrics for all compression strategies regardless of
    *  the configured compression strategy. This means: zstd dictionary will be
    *  created even if {@link CompressionStrategy#ZSTD_WITH_DICT} is not the configured
-   *  store compression strategy (refer {@link VenicePushJob#shouldBuildZstdCompressionDictionary})
+   *  store compression strategy (refer to {@code VenicePushJob.shouldBuildZstdCompressionDictionary})
    *  <br><br>
    *
-   *  This config also gets evaluated in {@link VenicePushJob#evaluateCompressionMetricCollectionEnabled}
+   *  This config also gets evaluated in {@code VenicePushJob.evaluateCompressionMetricCollectionEnabled}
    *  <br><br>
    */
   public static final String COMPRESSION_METRIC_COLLECTION_ENABLED = "compression.metric.collection.enabled";
@@ -508,6 +510,9 @@ public final class VenicePushJobConstants {
    */
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
+  /** Enables Spark's pre-write quota check. Disabled by default. */
+  public static final String SPARK_PRE_WRITE_QUOTA_CHECK = "spark.pre.write.quota.check";
+
   /**
    * Namespace for the external-storage dual-write subsystem. Every property whose key starts with this
    * prefix is forwarded verbatim from the VPJ driver into the Spark executor's {@code RuntimeConfig} so
@@ -618,14 +623,24 @@ public final class VenicePushJobConstants {
   public static final String NEWER_KME_SCHEMAS_PREFIX = "newer.kme.schemas.prefix.";
 
   /**
-   * Write quota in records per second for incremental pushes.
+   * Global write quota in records per second for incremental pushes.
    * Any value {@code <= 0} disables throttling (unlimited writes). The recommended sentinel for
    * explicitly configuring "unlimited" is {@code -1}.
-   * This quota is enforced per partition-writer task. The effective aggregate write rate across the entire
-   * job is {@code recordsPerSecond * numberOfTasks}.
+   * This quota is split evenly across partition-writer tasks for local enforcement, so the effective aggregate
+   * write rate across the job/store is at or below the configured value.
    */
   public static final String INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND =
       "incremental.push.write.quota.records.per.second";
+
+  /**
+   * Internal, driver-computed per-partition-writer slice of {@link #INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND}.
+   * The driver computes {@code globalQuota / partitionCount} once (after validating splittability) and forwards this
+   * value to the data-writer tasks, so each partition writer enforces it directly without re-deriving the split. A
+   * value {@code <= 0} means throttling does not apply (batch push, separate real-time topic push, or disabled quota).
+   * This is not a user-facing config; it is set by {@link VenicePushJob}.
+   */
+  public static final String INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION =
+      "incremental.push.write.quota.records.per.second.per.partition";
 
   /**
    * Time window in milliseconds over which throttling is measured. Defaults to 1 second.

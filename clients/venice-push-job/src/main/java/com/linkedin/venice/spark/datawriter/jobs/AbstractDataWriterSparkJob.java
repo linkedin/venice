@@ -42,6 +42,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VAL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
@@ -49,7 +50,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -62,7 +62,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -82,12 +81,15 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
+import com.linkedin.venice.hadoop.exceptions.VeniceStorageQuotaExceededException;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.hadoop.task.datawriter.IncrementalPushWriteQuotaUtils;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.spark.chunk.SparkChunkAssembler;
@@ -109,6 +111,7 @@ import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
@@ -125,6 +128,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.LongSupplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -355,13 +359,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // does not live under the push.job.external.storage.* prefix.
     jobConf.set(PUSH_JOB_DUAL_WRITE_TARGET_REGIONS, String.join(",", pushJobSetting.dualWriteTargetRegions));
 
-    // Incremental push throttling configs - pass through to partition writer
+    // Incremental push throttling: the driver computes the per-partition-writer quota once (validating fail-fast here,
+    // before the Spark job runs) and forwards it, so the data-writer tasks consume it directly without re-deriving the
+    // split.
     jobConf.set(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
-    jobConf.set(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
-    jobConf.set(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.versionSeparateRealTimeTopicEnabled);
     jobConf.set(
-        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
-        props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
+        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION,
+        Long.toString(
+            IncrementalPushWriteQuotaUtils.perPartitionQuotaForPush(
+                pushJobSetting.isIncrementalPush,
+                pushJobSetting.pushToSeparateRealtimeTopicEnabled,
+                pushJobSetting.versionSeparateRealTimeTopicEnabled,
+                props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1),
+                pushJobSetting.partitionCount)));
     jobConf.set(
         INCREMENTAL_PUSH_RATE_LIMITER_TYPE,
         props.getString(
@@ -633,7 +643,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             byte[] firstValue = rowsList.get(0).getAs(VALUE_COLUMN_NAME);
             for (int i = 1; i < rowsList.size(); i++) {
               byte[] currentValue = rowsList.get(i).getAs(VALUE_COLUMN_NAME);
-              if (!java.util.Arrays.equals(firstValue, currentValue)) {
+              if (!Arrays.equals(firstValue, currentValue)) {
                 hasDistinctValues = true;
                 break;
               }
@@ -770,7 +780,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     DataWriterAccumulators accumulators = accumulatorsForDataWriterJob;
 
     // Optimization: if strategies and dictionaries are the same and metrics are disabled, skip the map stage
-    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict) && !metricEnabled) {
+    if (sourceStrategy == destStrategy && Arrays.equals(sourceDict, destDict) && !metricEnabled) {
       LOGGER.info("Source and destination compression are identical ({}). Skipping re-encoding stage.", sourceStrategy);
       return dataFrame;
     }
@@ -835,6 +845,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     return taskTracker;
   }
 
+  /**
+   * Spark measures the serialized input size and checks it against the storage quota before writing (see
+   * {@code enforceStorageQuotaBeforeWrite}), so the driver-side post-write quota check is redundant and is
+   * skipped for Spark when the pre-write check is enabled.
+   */
+  @Override
+  public boolean performsPreWriteQuotaCheck() {
+    return pushJobSetting != null && pushJobSetting.sparkPreWriteQuotaCheckEnabled;
+  }
+
   @VisibleForTesting
   protected DataWriterAccumulators getAccumulatorsForDataWriterJob() {
     return accumulatorsForDataWriterJob;
@@ -879,6 +899,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
 
     LOGGER.info("Triggering Spark job for data writer");
+    // Tracks the DataFrame persisted by the pre-write quota check so it can be released after the write.
+    Dataset<Row> quotaCheckedInput = null;
     try {
       if (pushJobSetting.isSourceKafka) {
         // Apply chunk assembly if chunking is enabled
@@ -909,6 +931,12 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       }
 
       // TODO: Add map-side combiner to reduce the data size before shuffling
+
+      if (pushJobSetting.sparkPreWriteQuotaCheckEnabled) {
+        // Optional pre-write quota stage; materializes serialized rows before PubSub writes.
+        quotaCheckedInput = enforceStorageQuotaBeforeWrite(dataFrame);
+        dataFrame = quotaCheckedInput;
+      }
 
       // Partition the data using the custom partitioner and sort the data within that partition
       dataFrame = SparkPartitionUtils.repartitionAndSortWithinPartitions(
@@ -964,12 +992,64 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           topicName,
           perPartitionRecordCounts.size());
     } finally {
+      // Release the DataFrame cached by the pre-write quota check now that the write is done.
+      if (quotaCheckedInput != null) {
+        quotaCheckedInput.unpersist();
+      }
       // No matter what, always log the final accumulator values
       logAccumulatorValues();
       if (stageMetricsRegistry != null) {
         LOGGER.info("VPJ Pipeline Stage Diagnostics:\n{}", stageMetricsRegistry.snapshot().getFormattedReport());
       }
     }
+  }
+
+  /**
+   * Intermediary stage between reading/serializing the input (stage 1) and writing to PubSub (stage 2):
+   * materialize the record-processing pass once, measure the serialized data size, and fail the push before
+   * any data is written if it exceeds the store's storage quota. Failing here avoids writing the entire
+   * dataset only to have it rejected by the driver-side post-write quota check.
+   *
+   * <p>The size is not recomputed: the record-processing pass (the same pass that produces the compression
+   * stats) already accumulates the key size and compressed value size, so we read
+   * {@code getTotalKeySize() + getTotalValueSize()} — the exact quantity the driver-side check uses.
+   * Persisting lets the downstream write reuse the result so that pass runs exactly once (which also keeps
+   * the size accumulators single-counted). Repush (source PubSub) and unlimited-quota stores skip the check.
+   *
+   * @param processedDataFrame the serialized (key, value, ...) rows, before partitioning/sorting
+   * @return the persisted DataFrame to be written, or the original one if the check was skipped
+   */
+  private Dataset<Row> enforceStorageQuotaBeforeWrite(Dataset<Row> processedDataFrame) {
+    // Repush (source PubSub) is not subject to the storage quota check. Also skip when the quota known at
+    // job start is already unlimited — no materialization or controller round-trip is needed.
+    if (pushJobSetting.isSourceKafka || pushJobSetting.storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
+      return processedDataFrame;
+    }
+
+    // Materialize the record-processing pass once so the size is known; the write below reuses the result.
+    Dataset<Row> persistedDataFrame = processedDataFrame.persist();
+    persistedDataFrame.count();
+    long totalInputDataSizeInBytes = taskTracker.getTotalKeySize() + taskTracker.getTotalValueSize();
+
+    // Resolve the quota AFTER the record-processing pass. If the driver injected a supplier, it re-fetches
+    // the quota from the controller here — so a quota changed while the input was being read/serialized
+    // (i.e. during this pass, which can be long) is honored. Otherwise fall back to the job-start value.
+    LongSupplier quotaSupplier = getCurrentStorageQuotaSupplier();
+    long storageQuota = quotaSupplier != null ? quotaSupplier.getAsLong() : pushJobSetting.storeStorageQuota;
+    LOGGER.info(
+        "Measured serialized input data size before writing to PubSub: {} (store quota: {})",
+        ByteUtils.generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+        ByteUtils.generateHumanReadableByteCountString(storageQuota));
+    if (storageQuota != Store.UNLIMITED_STORAGE_QUOTA && totalInputDataSizeInBytes > storageQuota) {
+      persistedDataFrame.unpersist();
+      throw new VeniceStorageQuotaExceededException(
+          String.format(
+              "Storage quota exceeded. Store quota %s, Input data size %s. Please request at least %s additional quota.",
+              ByteUtils.generateHumanReadableByteCountString(storageQuota),
+              ByteUtils.generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+              ByteUtils.generateHumanReadableByteCountString(totalInputDataSizeInBytes - storageQuota)));
+    }
+    return persistedDataFrame;
   }
 
   @Override

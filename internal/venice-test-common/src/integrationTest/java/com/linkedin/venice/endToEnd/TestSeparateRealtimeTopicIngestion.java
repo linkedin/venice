@@ -83,6 +83,7 @@ public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest 
   @Test(timeOut = TEST_TIMEOUT_MS * 3)
   public void testIncrementalPushPartialUpdate() throws IOException {
     final String storeName = Utils.getUniqueString("sepRT_ingestion");
+    final int partitionCount = 1;
     String parentControllerUrl = getParentControllerUrl();
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
@@ -96,8 +97,9 @@ public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest 
     // Set source region to dc-1.
     vpjProperties.put(SOURCE_GRID_FABRIC, "dc-1");
 
-    // Set quota to a small value to ensure no throttling is applied for sep RT
-    vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
+    // Use the partition count as the global quota so each partition writer gets 1 rec/s after quota splitting. This
+    // keeps the quota valid while confirming throttling is skipped for sep RT.
+    vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, partitionCount);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -107,7 +109,7 @@ public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest 
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setActiveActiveReplicationEnabled(true)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
-              .setPartitionCount(1)
+              .setPartitionCount(partitionCount)
               .setWriteComputationEnabled(true)
               .setChunkingEnabled(true)
               .setIncrementalPushEnabled(true)

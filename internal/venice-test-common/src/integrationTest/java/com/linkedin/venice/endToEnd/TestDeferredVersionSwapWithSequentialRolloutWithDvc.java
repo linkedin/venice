@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
@@ -136,6 +137,28 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
       assertNotNull(client1.get(i).get());
     }
 
+    client1.close();
+
+    // Create a DVC client in the non-target region (REGION2) up front, before the target-region
+    // push (v2) even starts. This guarantees client2's backend is fully bootstrapped by the time
+    // v2 is created, so it will observe v2 as a future version (and get created in a paused state)
+    // rather than racing the sequential rollout and picking up v2 as an already-current version.
+    VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
+    VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
+        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(LOCAL_REGION_NAME, REGION2)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DAVINCI_PAUSED_SIT_ENABLED, true)
+        .build();
+    DaVinciClient<Object, Object> client2 =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster2, new DaVinciConfig(), backendConfig2);
+    client2.subscribeAll().get();
+
+    // Check that v1 is ingested in the non-target region as well
+    for (int i = 1; i <= keyCount; i++) {
+      assertNotNull(client2.get(i).get());
+    }
+
     // Do another push with target region enabled
     int keyCount2 = 200;
     File inputDir2 = getTempDataDirectory();
@@ -153,49 +176,10 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           30,
           TimeUnit.SECONDS);
 
-      // Data should be automatically ingested in target region for dvc
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int i = 101; i <= keyCount2; i++) {
-          assertNotNull(client1.get(i).get());
-        }
-      });
-
-      // Close dvc client in target region
-      client1.close();
-
-      // Create dvc client in non target region
-      VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
-      VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
-          .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-          .put(LOCAL_REGION_NAME, REGION2)
-          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-          .build();
-      DaVinciClient<Object, Object> client2 =
-          ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster2, new DaVinciConfig(), backendConfig2);
-      client2.subscribeAll().get();
-
-      // Version should be swapped in all regions
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 2);
-        });
-      });
-
-      // Check that v2 is ingested in dvc non target region
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int i = 101; i <= keyCount2; i++) {
-          assertNotNull(client2.get(i).get());
-        }
-      });
-
-      client2.close();
-
-      // Verify targetRegionPromoted=true on parent and all child controllers.
-      // DeferredVersionSwapService sets the field once the target region's push completes
-      // and propagates it to children via the updateStore admin path.
+      // Verify targetRegionPromoted=true is set on the parent and all child controllers.
+      // DeferredVersionSwapService sets the field once the target-region push completes and
+      // propagates it to child controllers via the updateStore admin message path.
+      // Note: strict ordering (flag set → DVC starts ingesting) is verified in StoreBackendTest.
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Optional<Version> parentVersion = parentControllerClient.getStore(storeName).getStore().getVersion(2);
         Assert.assertTrue(parentVersion.isPresent(), "Version 2 must exist on parent");
@@ -216,6 +200,25 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           });
         }
       }
+
+      // client2 already subscribed to v2 as a future version at version creation (created in a
+      // paused state after START_OF_PUSH). Once targetRegionPromoted=true propagates to REGION2's
+      // child controller, the DVC backend resumes the paused future-slot SIT, so ingestion finishes
+      // and v2 data becomes readable once the sequential rollout makes v2 current in REGION2.
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        for (int i = 101; i <= keyCount2; i++) {
+          assertNotNull(client2.get(i).get());
+        }
+      });
+
+      // Version should now be swapped in all regions (sequential rollout completes after target region).
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+        coloVersions.forEach((colo, version) -> Assert.assertEquals((int) version, 2));
+      });
+
+      client2.close();
     }
   }
 

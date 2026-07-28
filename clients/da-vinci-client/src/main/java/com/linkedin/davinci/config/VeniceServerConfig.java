@@ -26,6 +26,7 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_BLOB_TRANSFER_SERVER_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED;
@@ -33,6 +34,7 @@ import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPP
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -703,6 +705,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  private final boolean daVinciPausedSitEnabled;
+  private final String deferredVersionSwapRegionRollforwardOrder;
   private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
@@ -829,13 +833,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     blobTransferClientCapacityPercent = serverProperties.getInt(SERVER_BLOB_TRANSFER_CLIENT_CAPACITY_PERCENT, 25);
 
     snapshotRetentionTimeInMin = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 60);
-    maxConcurrentSnapshotUser = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER, 15);
+    maxConcurrentSnapshotUser = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER, 30);
     // Default of 2MB preserves prior hardcoded behavior. getSizeInBytes supports human-friendly units
     // (e.g. "512KB") in config sources.
     blobTransferMaxChunkSizeBytes =
         serverProperties.getSizeInBytes(BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES, 2 * 1024 * 1024L);
-    blobTransferMaxTimeoutInMin = serverProperties.getInt(BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN, 20);
-    blobReceiveMaxTimeoutInMin = serverProperties.getInt(BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN, 30);
+    blobTransferMaxTimeoutInMin = serverProperties.getInt(BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN, 60);
+    blobReceiveMaxTimeoutInMin = serverProperties.getInt(BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN, 20);
     blobReceiveReaderIdleTimeInSeconds = serverProperties.getInt(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 60);
     blobTransferPeersConnectivityFreshnessInSeconds =
         serverProperties.getInt(BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS, 30);
@@ -1220,17 +1224,20 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     consumerPoolSizeForNonCurrentVersionNonAAWCLeader =
         serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER, 10);
     useDaVinciSpecificExecutionStatusForError =
-        serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
+        serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, true);
     daVinciPushStatusCheckIntervalInMs = serverProperties.getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, -1L);
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     daVinciCurrentVersionBootstrappingSpeedupEnabled =
-        serverProperties.getBoolean(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, false);
+        serverProperties.getBoolean(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true);
+    daVinciPausedSitEnabled = serverProperties.getBoolean(DAVINCI_PAUSED_SIT_ENABLED, false);
+    deferredVersionSwapRegionRollforwardOrder =
+        serverProperties.getString(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, "");
     daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond =
-        serverProperties.getLong(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND, -1);
-    daVinciCurrentVersionBootstrappingQuotaBytesPerSecond =
-        serverProperties.getSizeInBytes(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND, -1);
+        serverProperties.getLong(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND, 500000);
+    daVinciCurrentVersionBootstrappingQuotaBytesPerSecond = serverProperties
+        .getSizeInBytes(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND, 300L * BYTES_PER_MB);
     resubscriptionTriggeredByVersionIngestionContextChangeEnabled =
         serverProperties.getBoolean(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, false);
     resubscriptionCheckIntervalInSeconds = serverProperties.getInt(SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS, 60);
@@ -2192,6 +2199,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDaVinciCurrentVersionBootstrappingSpeedupEnabled() {
     return daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  }
+
+  public boolean isDaVinciPausedSitEnabled() {
+    return daVinciPausedSitEnabled;
+  }
+
+  /**
+   * The cluster's sequential roll-forward region order (mirrors the controller config
+   * {@link com.linkedin.venice.ConfigKeys#DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER}). When set,
+   * a deferred-swap push is rolled forward region-by-region in this order and the active (unpaused)
+   * region for Da Vinci is its head. Empty string means sequential roll-forward is not configured, in
+   * which case the version's {@code targetSwapRegion} governs the active region (parallel target-region
+   * push).
+   */
+  public String getDeferredVersionSwapRegionRollforwardOrder() {
+    return deferredVersionSwapRegionRollforwardOrder;
   }
 
   public long getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond() {

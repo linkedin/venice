@@ -6,6 +6,8 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -171,6 +173,7 @@ public class StoreGrpcServiceImplTest {
 
   @Test
   public void testUpdateAclForStoreReturnsSuccessfulResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     UpdateAclForStoreGrpcRequest request = UpdateAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
@@ -183,6 +186,7 @@ public class StoreGrpcServiceImplTest {
 
   @Test
   public void testUpdateAclForStoreReturnsErrorResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     UpdateAclForStoreGrpcRequest request = UpdateAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
@@ -200,6 +204,7 @@ public class StoreGrpcServiceImplTest {
 
   @Test
   public void testGetAclForStoreReturnsSuccessfulResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetAclForStoreGrpcRequest request = GetAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
@@ -212,6 +217,7 @@ public class StoreGrpcServiceImplTest {
 
   @Test
   public void testGetAclForStoreReturnsErrorResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetAclForStoreGrpcRequest request = GetAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
@@ -228,6 +234,7 @@ public class StoreGrpcServiceImplTest {
 
   @Test
   public void testDeleteAclForStoreReturnsSuccessfulResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     DeleteAclForStoreGrpcRequest request = DeleteAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
@@ -240,6 +247,7 @@ public class StoreGrpcServiceImplTest {
 
   @Test
   public void testDeleteAclForStoreReturnsErrorResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     DeleteAclForStoreGrpcRequest request = DeleteAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
@@ -253,6 +261,53 @@ public class StoreGrpcServiceImplTest {
     assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
     assertNotNull(errorInfo, "Error info should not be null");
     assertTrue(errorInfo.getErrorMessage().contains("Failed to delete ACL"));
+  }
+
+  @Test
+  public void testUpdateAclForStoreReturnsUnauthorizedResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(false);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    UpdateAclForStoreGrpcRequest request = UpdateAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.updateAclForStore(request));
+    assertEquals(e.getStatus().getCode(), Status.PERMISSION_DENIED.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.UNAUTHORIZED);
+    assertTrue(errorInfo.getErrorMessage().contains("Only admin users are allowed to run"));
+    verify(storeRequestHandler, never()).updateAclForStore(any(UpdateAclForStoreGrpcRequest.class));
+  }
+
+  @Test
+  public void testGetAclForStoreReturnsUnauthorizedResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(false);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetAclForStoreGrpcRequest request = GetAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getAclForStore(request));
+    assertEquals(e.getStatus().getCode(), Status.PERMISSION_DENIED.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.UNAUTHORIZED);
+    assertTrue(errorInfo.getErrorMessage().contains("Only admin users are allowed to run"));
+    verify(storeRequestHandler, never()).getAclForStore(any(GetAclForStoreGrpcRequest.class));
+  }
+
+  @Test
+  public void testDeleteAclForStoreReturnsUnauthorizedResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(false);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    DeleteAclForStoreGrpcRequest request = DeleteAclForStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.deleteAclForStore(request));
+    assertEquals(e.getStatus().getCode(), Status.PERMISSION_DENIED.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.UNAUTHORIZED);
+    assertTrue(errorInfo.getErrorMessage().contains("Only admin users are allowed to run"));
+    verify(storeRequestHandler, never()).deleteAclForStore(any(DeleteAclForStoreGrpcRequest.class));
   }
 
   @Test

@@ -37,6 +37,7 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -1031,5 +1032,14 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     // Verify the record transformer config is removed
     assertNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testCreatePausedThrowsOnNonDaVinciConfig() {
+    // The kafkaStoreIngestionService in setUp() is created with isDaVinciClient=false (line ~162).
+    // Calling startConsumption with createPaused=true must throw VeniceException.
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    kafkaStoreIngestionService
+        .startConsumption(new VeniceStoreVersionConfig("testStore_v1", veniceProperties), 0, Optional.empty(), true);
   }
 }

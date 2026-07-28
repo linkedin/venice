@@ -26,9 +26,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_BATCH_BYTES_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
@@ -79,6 +81,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_PRE_WRITE_QUOTA_CHECK;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -121,6 +124,7 @@ import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
+import com.linkedin.venice.hadoop.exceptions.VeniceStorageQuotaExceededException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
@@ -409,8 +413,10 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-    pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
-    pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
+    pushJobSettingToReturn.controllerRetries =
+        props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS);
+    pushJobSettingToReturn.controllerStatusPollRetries =
+        props.getInt(POLL_STATUS_RETRY_ATTEMPTS, DEFAULT_POLL_STATUS_RETRY_ATTEMPTS);
     pushJobSettingToReturn.pollJobStatusIntervalMs =
         props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
     pushJobSettingToReturn.jobStatusInUnknownStateTimeoutMs =
@@ -486,6 +492,7 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, false);
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
+    pushJobSettingToReturn.sparkPreWriteQuotaCheckEnabled = props.getBoolean(SPARK_PRE_WRITE_QUOTA_CHECK, false);
     pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
         props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
     if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled
@@ -887,13 +894,14 @@ public class VenicePushJob implements AutoCloseable {
           props,
           optionalCompressionDictionary);
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
-      // Fail fast here (driver-side, before the data-writer job launches) if external-storage dual-write
-      // throttling is misconfigured for the partition count just assigned to this version.
-      validateExternalStorageDualWriteQuota(pushJobSetting);
-
       // Fetch the version config for separateRealTimeTopicEnabled after version creation,
       Version createdVersion = getStoreVersion(pushJobSetting.storeName, pushJobSetting.version);
       pushJobSetting.versionSeparateRealTimeTopicEnabled = createdVersion.isSeparateRealTimeTopicEnabled();
+
+      // Fail fast here (driver-side, before the data-writer job launches) if external-storage dual-write
+      // throttling is misconfigured for the partition count just assigned to this version. Incremental-push write
+      // quota is validated later, when the data-writer job config is assembled (also driver-side, pre-launch).
+      validateExternalStorageDualWriteQuota(pushJobSetting);
 
       // Update and send push job details with new info to the controller
       pushJobDetails.partitionCount = pushJobSetting.partitionCount;
@@ -1359,6 +1367,10 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.info("Configuring data writer job");
       dataWriterComputeJob = getDataWriterComputeJob();
       dataWriterComputeJob.configure(props, pushJobSetting);
+      // Give the data writer job a way to read the up-to-date store quota. The Spark pre-write check uses
+      // this to evaluate the input size against the current quota (honoring a quota changed while the push
+      // was running) instead of the value captured at job configuration time.
+      dataWriterComputeJob.setCurrentStorageQuotaSupplier(this::refreshAndGetCurrentStorageQuota);
       LOGGER.info("Triggering data writer job");
       dataWriterComputeJob.runJob();
       if (dataWriterComputeJob.getStatus() != ComputeJob.Status.SUCCEEDED) {
@@ -1376,6 +1388,9 @@ public class VenicePushJob implements AutoCloseable {
         } else {
           if (t instanceof VeniceInvalidInputException) {
             updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+          } else if (t instanceof VeniceStorageQuotaExceededException) {
+            // The Spark data writer's pre-write quota check failed the push before writing.
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
           }
 
           throwVeniceException(t);
@@ -1910,7 +1925,13 @@ public class VenicePushJob implements AutoCloseable {
     // Quota exceeded
     final long totalInputDataSizeInBytes =
         dataWriterTaskTracker.getTotalKeySize() + dataWriterTaskTracker.getTotalValueSize();
-    if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
+    // Skip this post-write quota check for engines that already validate the quota before writing (the
+    // Spark data writer's pre-write intermediary stage). A successful job from such an engine means the
+    // quota was already satisfied, so re-checking here is redundant. MapReduce has no pre-write check, so
+    // it keeps this as the authoritative quota gate.
+    boolean quotaAlreadyCheckedBeforeWrite =
+        dataWriterComputeJob != null && dataWriterComputeJob.performsPreWriteQuotaCheck();
+    if (!quotaAlreadyCheckedBeforeWrite && inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
       Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
       return String.format(
@@ -1957,6 +1978,45 @@ public class VenicePushJob implements AutoCloseable {
           formatRecordTooLargeCompressionStatus());
     }
     return null;
+  }
+
+  /**
+   * Refresh the store storage quota from the controller and return the current value in bytes. Provided to
+   * the data writer job (via {@link DataWriterComputeJob#setCurrentStorageQuotaSupplier}) so the Spark
+   * pre-write quota check evaluates against the up-to-date quota — honoring a quota changed while the push
+   * was running — rather than the value captured at job start. On any error, the job-start value is retained.
+   */
+  long refreshAndGetCurrentStorageQuota() {
+    // Repush disables the quota check via an unlimited quota; don't refresh (and don't re-enable it).
+    if (pushJobSetting.isSourceKafka) {
+      return pushJobSetting.storeStorageQuota;
+    }
+    try {
+      StoreResponse storeResponse = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          c -> c.getStore(pushJobSetting.storeName));
+      if (storeResponse.isError()) {
+        LOGGER.warn(
+            "Failed to refresh storage quota for store {} from controller: {}. Using the value from job start.",
+            pushJobSetting.storeName,
+            storeResponse.getError());
+        return pushJobSetting.storeStorageQuota;
+      }
+      long freshQuota = storeResponse.getStore().getStorageQuotaInByte();
+      if (freshQuota != pushJobSetting.storeStorageQuota) {
+        LOGGER.info(
+            "Storage quota for store {} changed during push from {} to {}.",
+            pushJobSetting.storeName,
+            pushJobSetting.storeStorageQuota,
+            freshQuota);
+        pushJobSetting.storeStorageQuota = freshQuota;
+      }
+      return pushJobSetting.storeStorageQuota;
+    } catch (Exception e) {
+      LOGGER.warn("Failed to refresh storage quota from controller. Using the value from job start.", e);
+      return pushJobSetting.storeStorageQuota;
+    }
   }
 
   /* Helper function to format part of the record too large compression status */
