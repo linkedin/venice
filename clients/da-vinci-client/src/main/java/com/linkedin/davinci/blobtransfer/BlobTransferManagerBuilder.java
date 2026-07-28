@@ -180,6 +180,7 @@ public class BlobTransferManagerBuilder {
               sslFactory,
               aclHandler,
               blobTransferConfig.getMaxConcurrentSnapshotUser(),
+              blobTransferConfig.getMaxChunkSizeBytes(),
               blobTransferConfig.getClientCapacityPercent(),
               blobTransferConfig.isServerAcceptClientBlobRequestEnabled()),
           new NettyFileTransferClient(

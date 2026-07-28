@@ -307,6 +307,7 @@ public class DaVinciBackend implements Closeable {
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
             configLoader.getVeniceServerConfig().getRocksDBPath(),
             backendConfig.getMaxConcurrentSnapshotUser(),
+            backendConfig.getBlobTransferMaxChunkSizeBytes(),
             backendConfig.getSnapshotRetentionTimeInMin(),
             backendConfig.getBlobTransferMaxTimeoutInMin(),
             backendConfig.getBlobReceiveMaxTimeoutInMin(),

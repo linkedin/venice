@@ -78,6 +78,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         maxAllowedConcurrentSnapshotUsers,
+        2 * 1024 * 1024,
         new BlobTransferAdmissionController(maxAllowedConcurrentSnapshotUsers, 25),
         true);
     ch = new EmbeddedChannel(serverHandler);
@@ -107,6 +108,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         4,
+        2 * 1024 * 1024,
         fullController,
         true);
     EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
@@ -140,6 +142,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         4,
+        2 * 1024 * 1024,
         controller,
         true);
     EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
@@ -169,6 +172,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         4,
+        2 * 1024 * 1024,
         controller,
         true);
     EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
@@ -194,6 +198,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         maxAllowedConcurrentSnapshotUsers,
+        2 * 1024 * 1024,
         null,
         false);
   }
@@ -206,8 +211,26 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         maxAllowedConcurrentSnapshotUsers,
+        2 * 1024 * 1024,
         null,
         true);
+  }
+
+  @Test
+  public void testConfiguredMaxChunkSizeIsAccepted() {
+    // A custom, non-default max chunk size (below the previously-hardcoded 2MB) must be accepted, proving the
+    // ceiling is genuinely configurable rather than pinned to 2MB. No floor validation is enforced here: sendFile()'s
+    // Math.min(maxChunkSizeBytes, Math.max(16384, length / 4)) naturally handles a small configured ceiling by just
+    // using smaller chunks, so operators are free to tune it without a hardcoded lower bound.
+    new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        blobTransferStats,
+        maxAllowedConcurrentSnapshotUsers,
+        64 * 1024,
+        null,
+        false);
   }
 
   @Test

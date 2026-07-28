@@ -146,6 +146,7 @@ public class TestNettyP2PBlobTransferManager {
         sslFactory,
         aclHandler,
         20,
+        2 * 1024 * 1024,
         25,
         true);
     client = Mockito.spy(
@@ -576,6 +577,7 @@ public class TestNettyP2PBlobTransferManager {
         sslFactory,
         aclHandler,
         20,
+        2 * 1024 * 1024,
         25,
         true);
 
