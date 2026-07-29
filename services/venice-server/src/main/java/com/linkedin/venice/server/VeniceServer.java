@@ -521,6 +521,7 @@ public class VeniceServer {
           serverConfig.getDvcP2pBlobTransferClientPort(),
           serverConfig.getRocksDBPath(),
           serverConfig.getMaxConcurrentSnapshotUser(),
+          serverConfig.getBlobTransferMaxChunkSizeBytes(),
           serverConfig.getSnapshotRetentionTimeInMin(),
           serverConfig.getBlobTransferMaxTimeoutInMin(),
           serverConfig.getBlobReceiveMaxTimeoutInMin(),

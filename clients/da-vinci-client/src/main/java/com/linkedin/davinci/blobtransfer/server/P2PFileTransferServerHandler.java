@@ -66,6 +66,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private final int blobTransferMaxTimeoutInMin;
   // Max allowed global concurrent snapshot users
   private final int maxAllowedConcurrentSnapshotUsers;
+  // Upper bound (in bytes) on the per-chunk size used when streaming a snapshot file; see sendFile().
+  private final long maxChunkSizeBytes;
   private final BlobSnapshotManager blobSnapshotManager;
   // Global counter for all active transfer requests across all topics and partitions
   private final AtomicInteger globalConcurrentTransferRequests = new AtomicInteger(0);
@@ -87,6 +89,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       BlobSnapshotManager blobSnapshotManager,
       AggBlobTransferStats aggBlobTransferStats,
       int maxAllowedConcurrentSnapshotUsers,
+      long maxChunkSizeBytes,
       BlobTransferAdmissionController admissionController,
       boolean serverAcceptClientBlobRequestEnabled) {
     this.baseDir = baseDir;
@@ -94,6 +97,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     this.blobSnapshotManager = blobSnapshotManager;
     this.aggBlobTransferStats = aggBlobTransferStats;
     this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
+    this.maxChunkSizeBytes = maxChunkSizeBytes;
     if (serverAcceptClientBlobRequestEnabled && admissionController == null) {
       throw new IllegalArgumentException(
           "admissionController is required when client-origin blob requests are enabled");
@@ -382,9 +386,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     ctx.write(response);
 
-    // Use ChunkedFile with adaptive chunk size
-    // It means minimum chunk size: 16 KB (16384 bytes), maximum chunk size: 2 MB (1024 * 1024 bytes)
-    int chunkSize = Math.min(2 * 1024 * 1024, (int) Math.max(16384, length / 4));
+    long clampedMaxChunkSizeBytes = Math.min(Math.max(maxChunkSizeBytes, 1), Integer.MAX_VALUE);
+    int chunkSize = (int) Math.min(clampedMaxChunkSizeBytes, Math.max(16384L, length / 4));
     sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf, 0, length, chunkSize)));
 
     sendFileFuture.addListener(future -> {

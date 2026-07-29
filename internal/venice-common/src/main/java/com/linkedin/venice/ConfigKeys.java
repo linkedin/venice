@@ -2269,6 +2269,11 @@ public class ConfigKeys {
   // this is a config to decide the max allowed concurrent snapshot user per host level, it is used to limit how many
   // requests can be concurrently served for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+  // this is a config to decide the upper bound of the per-chunk size (in bytes) used when streaming a snapshot file
+  // to a peer during blob transfer. The server picks min(this value, max(16KB, fileLength / 4)) as the actual chunk
+  // size, so this config only caps the ceiling; it does not change the 16KB floor. Tune this down to keep large
+  // chunks poolable by Netty's heap arena (see io.netty.allocator.maxOrder) at the cost of more, smaller writes.
+  public static final String BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES = "blob.transfer.max.chunk.size.bytes";
   // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
   // many
   // replicas can be concurrently receiving blobs for a host globally.

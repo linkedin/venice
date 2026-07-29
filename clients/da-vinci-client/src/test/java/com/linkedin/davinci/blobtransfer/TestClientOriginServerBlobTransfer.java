@@ -230,6 +230,7 @@ public class TestClientOriginServerBlobTransfer {
         Optional.of(serverSslFactory),
         aclHandler,
         20,
+        2 * 1024 * 1024,
         25,
         acceptClientRequest);
 

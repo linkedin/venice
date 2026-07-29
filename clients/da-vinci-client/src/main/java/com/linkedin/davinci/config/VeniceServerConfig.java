@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYT
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
@@ -689,6 +690,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int blobTransferClientCapacityPercent;
   private final int snapshotRetentionTimeInMin;
   private final int maxConcurrentSnapshotUser;
+  private final long blobTransferMaxChunkSizeBytes;
   private final int blobTransferMaxTimeoutInMin;
   private final int blobReceiveMaxTimeoutInMin;
   private final int blobReceiveReaderIdleTimeInSeconds;
@@ -832,6 +834,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     snapshotRetentionTimeInMin = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 60);
     maxConcurrentSnapshotUser = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER, 30);
+    // Default of 2MB preserves prior hardcoded behavior. getSizeInBytes supports human-friendly units
+    // (e.g. "512KB") in config sources.
+    blobTransferMaxChunkSizeBytes =
+        serverProperties.getSizeInBytes(BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES, 2 * 1024 * 1024L);
     blobTransferMaxTimeoutInMin = serverProperties.getInt(BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN, 60);
     blobReceiveMaxTimeoutInMin = serverProperties.getInt(BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN, 20);
     blobReceiveReaderIdleTimeInSeconds = serverProperties.getInt(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 60);
@@ -1423,6 +1429,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getMaxConcurrentSnapshotUser() {
     return maxConcurrentSnapshotUser;
+  }
+
+  public long getBlobTransferMaxChunkSizeBytes() {
+    return blobTransferMaxChunkSizeBytes;
   }
 
   public boolean isServerAcceptClientBlobRequestEnabled() {
