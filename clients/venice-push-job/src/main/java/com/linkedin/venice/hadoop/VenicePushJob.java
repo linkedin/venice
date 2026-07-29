@@ -1663,10 +1663,14 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private VeniceProperties getSourceDictionaryConsumerProperties() {
+    return getSourceDictionaryConsumerProperties(pushJobSetting.repushSourcePubsubBroker);
+  }
+
+  private VeniceProperties getSourceDictionaryConsumerProperties(String sourcePubsubBroker) {
     return buildSourceDictionaryConsumerProperties(
         props,
         pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
-        pushJobSetting.repushSourcePubsubBroker);
+        sourcePubsubBroker);
   }
 
   @VisibleForTesting
@@ -1686,7 +1690,6 @@ public class VenicePushJob implements AutoCloseable {
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
         .setNewKMESchemasFromController(pushJobSetting.newKmeSchemasFromController)
-        .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
         .setCompressionDictSize(
             props.getInt(
                 COMPRESSION_DICTIONARY_SIZE_LIMIT,
@@ -1701,6 +1704,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
           paramBuilder.setKafkaInputBroker(pushJobSetting.repushSourcePubsubBroker)
               .setTopicName(pushJobSetting.kafkaInputTopic)
+              .setConsumerProperties(getSourceDictionaryConsumerProperties().toProperties())
               .setSourceVersionCompressionStrategy(pushJobSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
           return ByteBuffer.wrap(dictTrainer.trainDict());
@@ -1749,8 +1753,9 @@ public class VenicePushJob implements AutoCloseable {
           "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
           sourceTopicName,
           sourceKafkaUrl);
-      paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
+      paramBuilder.setKafkaInputBroker(sourceKafkaUrl)
           .setTopicName(sourceTopicName)
+          .setConsumerProperties(getSourceDictionaryConsumerProperties(sourceKafkaUrl).toProperties())
           .setSourceVersionCompressionStrategy(
               repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
       KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());

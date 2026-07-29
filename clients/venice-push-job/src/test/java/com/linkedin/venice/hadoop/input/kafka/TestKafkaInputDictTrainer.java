@@ -1,5 +1,11 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -7,6 +13,10 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -37,6 +47,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.RecordReader;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
 
@@ -52,6 +63,13 @@ public class TestKafkaInputDictTrainer {
   }
 
   private KafkaInputDictTrainer.Param getParam(int sampleSize, CompressionStrategy sourceVersionCompressionStrategy) {
+    return getParam(sampleSize, sourceVersionCompressionStrategy, new Properties());
+  }
+
+  private KafkaInputDictTrainer.Param getParam(
+      int sampleSize,
+      CompressionStrategy sourceVersionCompressionStrategy,
+      Properties consumerProperties) {
     Map<Integer, Schema> allSchemas = Utils.getAllSchemasFromResources(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE);
     Map<Integer, String> allSchemaStr =
         allSchemas.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString()));
@@ -60,14 +78,14 @@ public class TestKafkaInputDictTrainer {
         .setKeySchema("\"string\"")
         .setCompressionDictSize(900 * 1024)
         .setDictSampleSize(sampleSize)
-        .setSslProperties(new Properties())
+        .setConsumerProperties(consumerProperties)
         .setSourceVersionCompressionStrategy(sourceVersionCompressionStrategy)
         .setNewKMESchemasFromController(allSchemaStr)
         .build();
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "No record.*")
-  public void testEmptyTopic() throws IOException {
+  @Test
+  public void testConsumerPropertiesPropagateToEmptyTopicTraining() throws IOException {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
@@ -79,12 +97,48 @@ public class TestKafkaInputDictTrainer {
     doReturn(false).when(mockRecordReader).next(any(), any());
     doReturn(mockRecordReader).when(mockFormat).getRecordReader(any(), any(), any(), any());
 
+    Properties consumerProperties = new Properties();
+    consumerProperties.setProperty(
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
+    consumerProperties.setProperty(
+        PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP,
+        "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
+    consumerProperties.setProperty("xc.pubsub.broker.url.to.region.name.map", "northguard:ei4");
+    consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, "test_url");
+    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "test_url");
+    consumerProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "SSL");
+    consumerProperties.setProperty("ssl.keystore.location", "credential-keystore");
+
     KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(
         mockFormat,
         Optional.empty(),
-        getParam(100),
+        getParam(100, CompressionStrategy.NO_OP, consumerProperties),
         getCompressorBuilder(new NoopCompressor()));
-    trainer.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
+    try {
+      trainer.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
+      fail("Expected training on an empty topic to fail");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().startsWith("No record"));
+    }
+
+    ArgumentCaptor<VeniceProperties> consumerPropertiesCaptor = ArgumentCaptor.forClass(VeniceProperties.class);
+    verify(mockFormat).getSplits(consumerPropertiesCaptor.capture());
+    VeniceProperties actualConsumerProperties = consumerPropertiesCaptor.getValue();
+    assertEquals(
+        actualConsumerProperties.getString(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS),
+        "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
+    assertEquals(
+        actualConsumerProperties.getString(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP),
+        "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
+    assertEquals(actualConsumerProperties.getString("xc.pubsub.broker.url.to.region.name.map"), "northguard:ei4");
+    assertEquals(actualConsumerProperties.getString(PUBSUB_BROKER_ADDRESS), "test_url");
+    assertEquals(actualConsumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "test_url");
+    assertEquals(actualConsumerProperties.getString(PUBSUB_SECURITY_PROTOCOL), "SSL");
+    assertEquals(actualConsumerProperties.getString("ssl.keystore.location"), "credential-keystore");
+    assertFalse(
+        consumerProperties.containsKey(KAFKA_INPUT_TOPIC),
+        "Building trainer properties must not mutate the supplied consumer properties");
   }
 
   interface ResettableRecordReader<K, V> extends RecordReader<K, V> {
