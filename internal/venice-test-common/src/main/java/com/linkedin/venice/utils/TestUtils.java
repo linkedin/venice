@@ -759,6 +759,9 @@ public class TestUtils {
         ApacheKafkaConsumerAdapterFactory.class.getName());
     properties
         .setProperty(ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
+    properties.setProperty(
+        ConfigKeys.PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS,
+        ApacheKafkaAdminAdapterFactory.class.getName());
     return properties;
   }
 
