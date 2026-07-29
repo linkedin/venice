@@ -4,6 +4,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DESTINATION_REGION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_GLOBAL_RT_DIV_ERROR_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_DESTINATION_COMPONENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_FAILURE_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_SOURCE_COMPONENT;
@@ -409,6 +411,50 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
   ACTIVE_KEY_COUNT_INVALIDATION(
       "ingestion.key.active_count_invalidation", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of active key count invalidations due to underflow drift, keyExists failures, leader-propagated invalidation, or corrupt kcs signals",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_SEND_SIZE(
+      "ingestion.global_rt_div.send_size", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.BYTES,
+      "Byte size of each Global RT DIV payload produced to the version topic by the leader. The count aggregation "
+          + "doubles as the number of Global RT DIV messages sent",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_SEND_RT_PRODUCER_COUNT(
+      "ingestion.global_rt_div.send_rt_producer_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Number of RT producers tracked per broker in each Global RT DIV payload sent by the leader",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_PERSIST_COUNT(
+      "ingestion.global_rt_div.persist_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of Global RT DIV states successfully persisted to metadata storage by the drainer",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_VT_SYNC_PRODUCER_COUNT(
+      "ingestion.global_rt_div.vt_sync_producer_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Number of VT producers in the snapshot checkpointed into the OffsetRecord. The count aggregation doubles as "
+          + "the number of VT position syncs",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_ERROR_COUNT(
+      "ingestion.global_rt_div.error_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of errors in any Global RT DIV operation phase (send, persist, vt_sync, delete, load)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_GLOBAL_RT_DIV_ERROR_TYPE)
+  ),
+
+  GLOBAL_RT_DIV_LOAD_COUNT(
+      "ingestion.global_rt_div.load_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of RT DIV load attempts on F→L leader promotion, dimensioned by whether state was found on disk",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME)
+  ),
+
+  GLOBAL_RT_DIV_LOAD_RT_PRODUCER_COUNT(
+      "ingestion.global_rt_div.load_rt_producer_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Number of RT producers restored from disk when loading Global RT DIV state on leader promotion",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 

@@ -115,6 +115,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
@@ -3120,6 +3121,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
     injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
+    AggVersionedIngestionStats mockIngestionStats = mock(AggVersionedIngestionStats.class);
+    injectField(ingestionTask, StoreIngestionTask.class, "versionedIngestionStats", mockIngestionStats);
 
     byte[] testValueBytes = "test-value".getBytes(StandardCharsets.UTF_8);
     Put put = new Put();
@@ -3145,6 +3148,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Assert.assertEquals(stored.length, ValueRecord.SCHEMA_HEADER_LENGTH + testValueBytes.length);
     Assert.assertEquals(ByteUtils.readInt(stored, 0), GLOBAL_RT_DIV_VERSION);
     Assert.assertEquals(Arrays.copyOfRange(stored, ValueRecord.SCHEMA_HEADER_LENGTH, stored.length), testValueBytes);
+    verify(mockIngestionStats, times(1)).recordGlobalRtDivPersisted(any(), anyInt());
   }
 
   /**
@@ -3190,6 +3194,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
     injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
     injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
+    AggVersionedIngestionStats mockIngestionStats = mock(AggVersionedIngestionStats.class);
+    injectField(ingestionTask, StoreIngestionTask.class, "versionedIngestionStats", mockIngestionStats);
 
     // Case 1: non-chunked value present → returns deserialized state
     doReturn(storedNonChunked).when(mockStorageEngine)
@@ -3217,6 +3223,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doThrow(new VeniceException("storage not initialized")).when(mockStorageEngine).getGlobalRtDivMetadata(any());
     Assert.assertNull(
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer));
+    verify(mockIngestionStats, times(1)).recordGlobalRtDivError(any(), anyInt(), eq(VeniceGlobalRtDivErrorType.LOAD));
 
     // Case 5: compressor.get() throws IllegalStateException (dictionary not yet available on
     // secondary-fabric leader before SOP is consumed) → returns null without propagating
