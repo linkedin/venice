@@ -63,8 +63,25 @@ public final class ForkedJavaProcess extends Process {
       Optional<LogContext> logContext) throws IOException {
     LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
     List<String> command = prepareCommandArgList(appClass, classPath, args, jvmArgs);
+    File argFile = writeArgFile(command);
+    List<String> wrappedCommand = Arrays.asList(command.get(0), "@" + argFile.getAbsolutePath());
 
-    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    Process process = new ProcessBuilder(wrappedCommand).redirectErrorStream(true).start();
+    // The argfile is only needed for the JVM launcher to read at startup; once the process has exited (for any
+    // reason), delete it right away instead of leaving it around for the whole lifetime of this (potentially
+    // long-lived, e.g. Gradle daemon) JVM. deleteOnExit() alone is not sufficient here since a single long-lived
+    // JVM can fork many processes over its lifetime, and files would otherwise accumulate until that JVM exits.
+    Thread argFileCleanupThread = new Thread(() -> {
+      try {
+        process.waitFor();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      } finally {
+        deleteQuietly(argFile);
+      }
+    }, "ForkedJavaProcess-argfile-cleanup");
+    argFileCleanupThread.setDaemon(true);
+    argFileCleanupThread.start();
     Logger logger = LogManager.getLogger(
         logContext.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger, killOnExit);
@@ -299,6 +316,58 @@ public final class ForkedJavaProcess extends Process {
       throw new VeniceException(e);
     }
     return configFilePath;
+  }
+
+  /**
+   * Forked processes (in particular, in test environments) can end up with an extremely long classpath, which can
+   * cause the overall command line (as passed to {@link ProcessBuilder#start()}, and ultimately to the OS' exec()
+   * syscall) to exceed the OS-level limit on argument list size (e.g. Linux's {@code ARG_MAX}), leading to a
+   * {@code java.io.IOException: error=7, Argument list too long}.
+   *
+   * To avoid this, we write all the java arguments (i.e. everything except the path to the {@code java} executable
+   * itself) into a JDK {@code @argfile} (supported since Java 9) and invoke {@code java @argfile}. This way, only
+   * the (short) path to the argfile is passed through exec(), regardless of how large the classpath is. The caller
+   * is responsible for deleting the returned file once the forked process no longer needs it (see
+   * {@link #deleteQuietly(File)}).
+   */
+  private static File writeArgFile(List<String> command) {
+    try {
+      File argFile = File.createTempFile("forked-java-process-args", ".txt", Utils.getTempDataDirectory());
+      try (FileWriter fw = new FileWriter(argFile)) {
+        for (int i = 1; i < command.size(); i++) {
+          if (i > 1) {
+            fw.write(System.lineSeparator());
+          }
+          fw.write(quoteArgFileToken(command.get(i)));
+        }
+      }
+      return argFile;
+    } catch (IOException e) {
+      throw new VeniceException("Failed to write java @argfile for forked process", e);
+    }
+  }
+
+  private static void deleteQuietly(File file) {
+    try {
+      if (!file.delete() && file.exists()) {
+        LOGGER.warn("Failed to delete forked process argfile: " + file.getAbsolutePath());
+      }
+    } catch (Exception e) {
+      LOGGER.warn("Failed to delete forked process argfile: " + file.getAbsolutePath(), e);
+    }
+  }
+
+  /**
+   * Quotes a single token for inclusion in a JDK {@code @argfile}, per the rules documented for the {@code java}
+   * launcher: tokens containing whitespace or quote characters must be wrapped in double quotes, with internal
+   * backslashes and double quotes escaped.
+   */
+  private static String quoteArgFileToken(String token) {
+    if (token.chars().noneMatch(c -> Character.isWhitespace(c) || c == '"' || c == '\'')) {
+      return token;
+    }
+    String escaped = token.replace("\\", "\\\\").replace("\"", "\\\"");
+    return "\"" + escaped + "\"";
   }
 
   private static List<String> prepareCommandArgList(
