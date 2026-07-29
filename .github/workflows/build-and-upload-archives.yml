@@ -32,4 +32,4 @@ jobs:
         env:
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
-        run: ./gradlew -Pversion=${{  env.GIT_TAG }} publishAllPublicationsToLinkedInJFrogRepository
+        run: ./gradlew -Pversion="$GIT_TAG" publishAllPublicationsToLinkedInJFrogRepository
