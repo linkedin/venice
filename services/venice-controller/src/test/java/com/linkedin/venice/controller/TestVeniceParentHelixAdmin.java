@@ -8,6 +8,11 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
+import static com.linkedin.venice.meta.VersionStatus.KILLED;
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
+import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -38,6 +43,7 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
@@ -125,12 +131,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1862,6 +1870,135 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 9; i <= 10; ++i) {
       Assert.assertTrue(capturedStore.containsVersion(i));
     }
+  }
+
+  /**
+   * Cross-fabric decision matrix for {@link VeniceParentHelixAdmin#deleteStrandedNonCurrentVersions}. Version 2 is
+   * the candidate under test and version 1 is the serving version everywhere, except where version 2 is ONLINE and
+   * therefore serving in that fabric. A {@code null} region status means the version is already absent in that
+   * fabric. The version is only deleted with positive evidence of abandonment, meaning at least one fabric reports it
+   * as ROLLED_BACK or KILLED, and no fabric is still serving or pushing it.
+   */
+  @DataProvider(name = "strandedVersionEvidence")
+  public static Object[][] strandedVersionEvidence() {
+    return new Object[][] {
+        { "rolled back in one fabric, still PUSHED in the rest", ROLLED_BACK,
+            Arrays.asList(ROLLED_BACK, PUSHED, PUSHED), true },
+        { "killed in one fabric, still PUSHED in the rest", KILLED, Arrays.asList(KILLED, PUSHED, PUSHED), true },
+        { "uniformly PUSHED, so possibly a healthy push awaiting its swap", PUSHED,
+            Arrays.asList(PUSHED, PUSHED, PUSHED), false },
+        { "already cleaned up in one fabric but never abandoned in any", PUSHED, Arrays.asList(null, PUSHED, PUSHED),
+            false },
+        { "rolled back in one fabric but still serving in another", ROLLED_BACK,
+            Arrays.asList(ROLLED_BACK, ONLINE, PUSHED), false },
+        { "rolled back in one fabric but still pushing in another", ROLLED_BACK,
+            Arrays.asList(ROLLED_BACK, STARTED, PUSHED), false } };
+  }
+
+  @Test(dataProvider = "strandedVersionEvidence")
+  public void testDeleteStrandedNonCurrentVersions(
+      String scenario,
+      VersionStatus parentStatus,
+      List<VersionStatus> regionStatuses,
+      boolean expectDelete) {
+    String storeName = "stranded_store";
+    mockParentStoreWithVersions(storeName, parentStatus);
+    doReturn(buildStrandedRegionClients(regionStatuses)).when(internalAdmin).getControllerClientMap(anyString());
+
+    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
+
+    if (!expectDelete) {
+      assertNoAdminMessageSent();
+      return;
+    }
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_OLD_VERSION.getValue(), scenario);
+    DeleteOldVersion deleteOldVersion = (DeleteOldVersion) adminMessage.payloadUnion;
+    assertEquals(deleteOldVersion.versionNum, 2, scenario);
+    assertEquals(deleteOldVersion.storeName.toString(), storeName, scenario);
+  }
+
+  /**
+   * The ways a fabric's state can be unreadable. Each entry sabotages one region's controller client. All of them
+   * must abort the cleanup, since a version cannot be proven abandoned without every fabric's state.
+   */
+  @DataProvider(name = "unreadableRegion")
+  public static Object[][] unreadableRegion() {
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("region unavailable");
+    return new Object[][] {
+        { "read throws",
+            (Consumer<ControllerClient>) client -> doThrow(new VeniceException("child read failed")).when(client)
+                .getStore(anyString()) },
+        { "error response",
+            (Consumer<ControllerClient>) client -> doReturn(errorResponse).when(client).getStore(anyString()) },
+        { "null store payload",
+            (Consumer<ControllerClient>) client -> doReturn(new StoreResponse()).when(client).getStore(anyString()) },
+        { "null response", (Consumer<ControllerClient>) client -> doReturn(null).when(client).getStore(anyString()) } };
+  }
+
+  @Test(dataProvider = "unreadableRegion")
+  public void testDeleteStrandedNonCurrentVersionsSkipsWhenRegionStoreIsUnreadable(
+      String scenario,
+      Consumer<ControllerClient> sabotage) {
+    String storeName = "stranded_store";
+    mockParentStoreWithVersions(storeName, ROLLED_BACK);
+    Map<String, ControllerClient> controllerClientMap =
+        buildStrandedRegionClients(Arrays.asList(ROLLED_BACK, PUSHED, PUSHED));
+    sabotage.accept(controllerClientMap.get("region1"));
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+
+    parentAdmin.deleteStrandedNonCurrentVersions(clusterName, storeName);
+
+    assertNoAdminMessageSent();
+  }
+
+  private void assertNoAdminMessageSent() {
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  /**
+   * Mocks the parent store returned by the internal admin with version 1 ONLINE (serving) and version 2 in the given
+   * status. Version 2 is the stranded/failed-swap version under test.
+   */
+  private void mockParentStoreWithVersions(String storeName, VersionStatus versionTwoStatus) {
+    Version versionOne = mock(Version.class);
+    doReturn(1).when(versionOne).getNumber();
+    doReturn(ONLINE).when(versionOne).getStatus();
+    Version versionTwo = mock(Version.class);
+    doReturn(2).when(versionTwo).getNumber();
+    doReturn(versionTwoStatus).when(versionTwo).getStatus();
+    Store parentStore = mock(Store.class);
+    doReturn(Arrays.asList(versionOne, versionTwo)).when(parentStore).getVersions();
+    doReturn(parentStore).when(internalAdmin).getStore(clusterName, storeName);
+  }
+
+  /**
+   * Builds one mocked controller client per region. Version 2 is present with the given status per region, or absent
+   * when the status entry is {@code null}. A region serves version 2 when its status there is ONLINE, and version 1
+   * otherwise.
+   */
+  private Map<String, ControllerClient> buildStrandedRegionClients(List<VersionStatus> versionTwoStatusPerRegion) {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    for (int i = 0; i < versionTwoStatusPerRegion.size(); i++) {
+      VersionStatus versionTwoStatus = versionTwoStatusPerRegion.get(i);
+      StoreInfo storeInfo = mock(StoreInfo.class);
+      doReturn(versionTwoStatus == ONLINE ? 2 : 1).when(storeInfo).getCurrentVersion();
+      if (versionTwoStatus == null) {
+        doReturn(Optional.empty()).when(storeInfo).getVersion(2);
+      } else {
+        Version regionVersionTwo = mock(Version.class);
+        doReturn(2).when(regionVersionTwo).getNumber();
+        doReturn(versionTwoStatus).when(regionVersionTwo).getStatus();
+        doReturn(Optional.of(regionVersionTwo)).when(storeInfo).getVersion(2);
+      }
+      StoreResponse storeResponse = new StoreResponse();
+      storeResponse.setStore(storeInfo);
+      ControllerClient client = mock(ControllerClient.class);
+      doReturn(storeResponse).when(client).getStore(anyString());
+      controllerClientMap.put("region" + i, client);
+    }
+    return controllerClientMap;
   }
 
   private void mockControllerClients(String storeName) {
