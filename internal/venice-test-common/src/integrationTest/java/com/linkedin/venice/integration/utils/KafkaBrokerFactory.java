@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -286,9 +285,22 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
 
     @Override
     public Map<String, String> getAdditionalConfig() {
-      return Collections.singletonMap(
+      Map<String, String> configs = new HashMap<>();
+      configs.put(
           ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP,
           VeniceProperties.mapToString(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP));
+      // Explicitly advertise the Apache Kafka adapter factories so that clients relying on
+      // getBrokerDetailsForClients() do not depend on the (now disabled by default) implicit Kafka fallback.
+      configs.put(
+          ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+          KAFKA_CLIENTS_FACTORY.getProducerAdapterFactory().getClass().getName());
+      configs.put(
+          ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          KAFKA_CLIENTS_FACTORY.getConsumerAdapterFactory().getClass().getName());
+      configs.put(
+          ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS,
+          KAFKA_CLIENTS_FACTORY.getAdminAdapterFactory().getClass().getName());
+      return configs;
     }
 
     @Override
