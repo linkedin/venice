@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
@@ -866,13 +867,8 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          Properties kafkaConsumerProperties = new Properties();
-          if (pushJobSetting.enableSSL) {
-            kafkaConsumerProperties.putAll(this.sslProperties.get());
-          }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
           ByteBuffer sourceDict = DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -1666,6 +1662,25 @@ public class VenicePushJob implements AutoCloseable {
     return Optional.of(emptyPushZstdDictionary.get());
   }
 
+  private VeniceProperties getSourceDictionaryConsumerProperties() {
+    return buildSourceDictionaryConsumerProperties(
+        props,
+        pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
+        pushJobSetting.repushSourcePubsubBroker);
+  }
+
+  @VisibleForTesting
+  static VeniceProperties buildSourceDictionaryConsumerProperties(
+      VeniceProperties jobProperties,
+      Properties sslProperties,
+      String sourcePubsubBroker) {
+    Properties consumerProperties = jobProperties.toProperties();
+    consumerProperties.putAll(sslProperties);
+    consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, sourcePubsubBroker);
+    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, sourcePubsubBroker);
+    return new VeniceProperties(consumerProperties);
+  }
+
   private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
@@ -1691,14 +1706,8 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          // set up ssl properties and kafka consumer properties
-          Properties kafkaConsumerProperties = new Properties();
-          if (pushJobSetting.enableSSL) {
-            kafkaConsumerProperties.putAll(this.sslProperties.get());
-          }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
           return DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
         }
       }
       LOGGER.info(
