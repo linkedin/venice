@@ -47,8 +47,8 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -256,7 +256,7 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
     byte[] fileContent = new byte[configuredMaxChunkSizeBytes * 5];
-    new Random(42).nextBytes(fileContent);
+    ThreadLocalRandom.current().nextBytes(fileContent);
     Files.write(file1.toAbsolutePath(), fileContent);
 
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
