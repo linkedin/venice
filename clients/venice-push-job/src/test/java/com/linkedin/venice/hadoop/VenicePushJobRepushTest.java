@@ -61,24 +61,23 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     jobProperties.setProperty(PUBSUB_BROKER_ADDRESS, "destination-broker");
     jobProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "legacy-broker");
 
-    VeniceProperties consumerProperties = VenicePushJob.buildSourceDictionaryConsumerProperties(
-        new VeniceProperties(jobProperties),
-        new Properties(),
-        "source-broker");
+    try (VenicePushJob pushJob = getSpyVenicePushJob(jobProperties, null)) {
+      VeniceProperties consumerProperties = pushJob.getSourceDictionaryConsumerProperties("source-broker");
 
-    assertEquals(
-        consumerProperties.getString(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS),
-        "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
-    assertEquals(
-        consumerProperties.getString(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP),
-        "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
-    assertEquals(consumerProperties.getString("xc.pubsub.broker.url.to.region.name.map"), "northguard:ei4");
-    assertEquals(consumerProperties.getString(PUBSUB_BROKER_ADDRESS), "source-broker");
-    assertEquals(consumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "source-broker");
-    assertEquals(
-        jobProperties.getProperty(PUBSUB_BROKER_ADDRESS),
-        "destination-broker",
-        "Building consumer properties must not mutate the job properties");
+      assertEquals(
+          consumerProperties.getString(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS),
+          "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
+      assertEquals(
+          consumerProperties.getString(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP),
+          "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
+      assertEquals(consumerProperties.getString("xc.pubsub.broker.url.to.region.name.map"), "northguard:ei4");
+      assertEquals(consumerProperties.getString(PUBSUB_BROKER_ADDRESS), "source-broker");
+      assertEquals(consumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "source-broker");
+      assertEquals(
+          jobProperties.getProperty(PUBSUB_BROKER_ADDRESS),
+          "destination-broker",
+          "Building consumer properties must not mutate the job properties");
+    }
   }
 
   @Test

@@ -1666,7 +1666,8 @@ public class VenicePushJob implements AutoCloseable {
     return getSourceDictionaryConsumerProperties(pushJobSetting.repushSourcePubsubBroker);
   }
 
-  private VeniceProperties getSourceDictionaryConsumerProperties(String sourcePubsubBroker) {
+  @VisibleForTesting
+  VeniceProperties getSourceDictionaryConsumerProperties(String sourcePubsubBroker) {
     return buildSourceDictionaryConsumerProperties(
         props,
         pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
