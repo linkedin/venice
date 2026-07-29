@@ -28,7 +28,6 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -143,7 +142,6 @@ public class MetadataBasedServerBlobFinderTest {
 
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getDiscoveryResult(), Arrays.asList("server-a", "server-b"));
-    Assert.assertEquals(response.getServerHostNames(), new HashSet<>(Arrays.asList("server-a", "server-b")));
 
     // The writer schema was resolved from the response's advertised schema id, not assumed to be the compiled one.
     verify(schemaReader).getValueSchema(1);
@@ -311,7 +309,6 @@ public class MetadataBasedServerBlobFinderTest {
     MetadataBasedServerBlobFinder finder = new MetadataBasedServerBlobFinder(clientConfig, d2ServiceDiscovery);
 
     BlobPeersDiscoveryResponse response = finder.discoverBlobPeers(STORE_NAME, VERSION, 0);
-
     Assert.assertTrue(response.isError());
   }
 

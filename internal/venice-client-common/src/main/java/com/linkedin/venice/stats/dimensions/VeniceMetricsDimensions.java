@@ -35,9 +35,6 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceBlobTransferSource} */
   VENICE_BLOB_TRANSFER_SOURCE("venice.blob_transfer.source"),
 
-  /** {@link VeniceBlobTransferOutcome} */
-  VENICE_BLOB_TRANSFER_OUTCOME("venice.blob_transfer.outcome"),
-
   /** {@link RequestRetryType} */
   VENICE_REQUEST_RETRY_TYPE("venice.request.retry_type"),
 

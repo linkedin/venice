@@ -18,7 +18,6 @@ import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.dimensions.VeniceBlobTransferOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -211,11 +210,7 @@ public class AggVersionedBlobTransferStatsTest {
           .validateLongPointDataFromCounter(inMemoryMetricReader, 1, failAttrs, otelResponseCount, METRIC_PREFIX);
 
       // --- recordBlobTransferRequest ---
-      stats.recordBlobTransferRequest(
-          storeName,
-          1,
-          VeniceBlobTransferSource.VENICE_SERVER,
-          VeniceBlobTransferOutcome.SUCCESS);
+      stats.recordBlobTransferRequest(storeName, 1, true, true);
       Assert.assertEquals(
           reporter
               .query(
@@ -227,7 +222,7 @@ public class AggVersionedBlobTransferStatsTest {
           CLUSTER_NAME,
           VersionRole.BACKUP,
           VeniceBlobTransferSource.VENICE_SERVER,
-          VeniceBlobTransferOutcome.SUCCESS);
+          VeniceResponseStatusCategory.SUCCESS);
       OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
           inMemoryMetricReader,
           1,

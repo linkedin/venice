@@ -15,6 +15,8 @@ public class BlobPeersDiscoveryResponse {
 
   private Set<String> serverHostNames = Collections.emptySet();
 
+  private boolean sourceAware;
+
   public void setError(boolean error) {
     this.isError = error;
   }
@@ -47,6 +49,14 @@ public class BlobPeersDiscoveryResponse {
 
   public Set<String> getServerHostNames() {
     return this.serverHostNames;
+  }
+
+  public void setSourceAware(boolean sourceAware) {
+    this.sourceAware = sourceAware;
+  }
+
+  public boolean isSourceAware() {
+    return sourceAware;
   }
 
 }

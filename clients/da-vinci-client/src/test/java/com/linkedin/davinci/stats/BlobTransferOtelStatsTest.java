@@ -2,7 +2,6 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.CLUSTER_NAME;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.METRIC_PREFIX;
-import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildKafkaFallbackAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildRequestCountAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildResponseCountAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildVersionRoleAttributes;
@@ -13,7 +12,6 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.dimensions.VeniceBlobTransferOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
@@ -96,9 +94,9 @@ public class BlobTransferOtelStatsTest {
   }
 
   @Test
-  public void testRecordRequestCountBySourceAndOutcome() {
-    stats.recordRequestCount(1, VeniceBlobTransferSource.DAVINCI_PEER, VeniceBlobTransferOutcome.THROTTLED);
-    stats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceBlobTransferOutcome.SUCCESS);
+  public void testRecordRequestCountBySourceAndStatus() {
+    stats.recordRequestCount(1, false, false);
+    stats.recordRequestCount(1, true, true);
 
     validateCounter(
         OTEL_REQUEST_COUNT,
@@ -108,7 +106,7 @@ public class BlobTransferOtelStatsTest {
             CLUSTER_NAME,
             VersionRole.CURRENT,
             VeniceBlobTransferSource.DAVINCI_PEER,
-            VeniceBlobTransferOutcome.THROTTLED));
+            VeniceResponseStatusCategory.FAIL));
     validateCounter(
         OTEL_REQUEST_COUNT,
         1,
@@ -117,7 +115,7 @@ public class BlobTransferOtelStatsTest {
             CLUSTER_NAME,
             VersionRole.CURRENT,
             VeniceBlobTransferSource.VENICE_SERVER,
-            VeniceBlobTransferOutcome.SUCCESS));
+            VeniceResponseStatusCategory.SUCCESS));
   }
 
   @Test
@@ -198,8 +196,8 @@ public class BlobTransferOtelStatsTest {
 
   @Test
   public void testRequestCountAccumulation() {
-    stats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceBlobTransferOutcome.OUT_OF_MEMORY);
-    stats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceBlobTransferOutcome.OUT_OF_MEMORY);
+    stats.recordRequestCount(1, true, false);
+    stats.recordRequestCount(1, true, false);
 
     validateCounter(
         OTEL_REQUEST_COUNT,
@@ -209,21 +207,17 @@ public class BlobTransferOtelStatsTest {
             CLUSTER_NAME,
             VersionRole.CURRENT,
             VeniceBlobTransferSource.VENICE_SERVER,
-            VeniceBlobTransferOutcome.OUT_OF_MEMORY));
+            VeniceResponseStatusCategory.FAIL));
   }
 
   @Test
   public void testRecordTerminalMetric() {
-    stats.recordKafkaFallback(1, VeniceBlobTransferOutcome.THROTTLED);
+    stats.recordKafkaFallback(1, true);
 
     validateCounter(
-        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT.getMetricEntity().getMetricName(),
+        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_NO_CANDIDATES_COUNT.getMetricEntity().getMetricName(),
         1,
-        buildKafkaFallbackAttributes(
-            TEST_STORE_NAME,
-            CLUSTER_NAME,
-            VersionRole.CURRENT,
-            VeniceBlobTransferOutcome.THROTTLED));
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT));
   }
 
   @Test
@@ -370,9 +364,9 @@ public class BlobTransferOtelStatsTest {
 
   private void assertAllMethodsSafe(BlobTransferOtelStats safeStats) {
     safeStats.updateVersionInfo(1, 2);
-    safeStats.recordRequestCount(1, VeniceBlobTransferSource.DAVINCI_PEER, VeniceBlobTransferOutcome.SUCCESS);
-    safeStats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceBlobTransferOutcome.THROTTLED);
-    safeStats.recordKafkaFallback(1, VeniceBlobTransferOutcome.MIXED);
+    safeStats.recordRequestCount(1, false, true);
+    safeStats.recordRequestCount(1, true, false);
+    safeStats.recordKafkaFallback(1, false);
     safeStats.recordResponseCount(1, VeniceResponseStatusCategory.SUCCESS);
     safeStats.recordResponseCount(1, VeniceResponseStatusCategory.FAIL);
     safeStats.recordTime(1, 5.0);

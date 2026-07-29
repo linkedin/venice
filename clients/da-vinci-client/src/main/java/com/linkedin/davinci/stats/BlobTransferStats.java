@@ -1,7 +1,6 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.LongAdderRateGauge;
-import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricConfig;
@@ -124,24 +123,17 @@ public class BlobTransferStats {
     }
   }
 
-  public void recordBlobTransferRequest(VeniceBlobTransferSource source, boolean isSuccess) {
-    switch (source) {
-      case DAVINCI_PEER:
-        if (isSuccess) {
-          blobTransferDaVinciPeerSuccessfulNumRequestsSensor.record();
-        } else {
-          blobTransferDaVinciPeerFailedNumRequestsSensor.record();
-        }
-        break;
-      case VENICE_SERVER:
-        if (isSuccess) {
-          blobTransferVeniceServerSuccessfulNumRequestsSensor.record();
-        } else {
-          blobTransferVeniceServerFailedNumRequestsSensor.record();
-        }
-        break;
-      default:
-        throw new IllegalArgumentException("Unsupported blob transfer source: " + source);
+  public void recordBlobTransferRequest(boolean isVeniceServer, boolean isSuccess) {
+    if (isVeniceServer) {
+      if (isSuccess) {
+        blobTransferVeniceServerSuccessfulNumRequestsSensor.record();
+      } else {
+        blobTransferVeniceServerFailedNumRequestsSensor.record();
+      }
+    } else if (isSuccess) {
+      blobTransferDaVinciPeerSuccessfulNumRequestsSensor.record();
+    } else {
+      blobTransferDaVinciPeerFailedNumRequestsSensor.record();
     }
   }
 
@@ -189,22 +181,12 @@ public class BlobTransferStats {
     }
   }
 
-  public double getBlobTransferRequestCount(VeniceBlobTransferSource source, boolean isSuccess) {
-    Count count;
-    switch (source) {
-      case DAVINCI_PEER:
-        count = isSuccess
-            ? blobTransferDaVinciPeerSuccessfulNumRequestsCount
-            : blobTransferDaVinciPeerFailedNumRequestsCount;
-        break;
-      case VENICE_SERVER:
-        count = isSuccess
+  public double getBlobTransferRequestCount(boolean isVeniceServer, boolean isSuccess) {
+    Count count = isVeniceServer
+        ? isSuccess
             ? blobTransferVeniceServerSuccessfulNumRequestsCount
-            : blobTransferVeniceServerFailedNumRequestsCount;
-        break;
-      default:
-        throw new IllegalArgumentException("Unsupported blob transfer source: " + source);
-    }
+            : blobTransferVeniceServerFailedNumRequestsCount
+        : isSuccess ? blobTransferDaVinciPeerSuccessfulNumRequestsCount : blobTransferDaVinciPeerFailedNumRequestsCount;
     return count.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 

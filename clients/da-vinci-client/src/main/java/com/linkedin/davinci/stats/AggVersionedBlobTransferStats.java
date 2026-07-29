@@ -2,8 +2,6 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.stats.dimensions.VeniceBlobTransferOutcome;
-import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -157,18 +155,16 @@ public class AggVersionedBlobTransferStats
         isBlobTransferSuccess ? VeniceResponseStatusCategory.SUCCESS : VeniceResponseStatusCategory.FAIL);
   }
 
-  public void recordBlobTransferRequest(
-      String storeName,
-      int version,
-      VeniceBlobTransferSource source,
-      VeniceBlobTransferOutcome outcome) {
-    boolean isSuccess = outcome == VeniceBlobTransferOutcome.SUCCESS;
-    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferRequest(source, isSuccess));
-    getBlobTransferOtelStats(storeName).recordRequestCount(version, source, outcome);
+  public void recordBlobTransferRequest(String storeName, int version, boolean isVeniceServer, boolean isSuccess) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stats -> stats.recordBlobTransferRequest(isVeniceServer, isSuccess));
+    getBlobTransferOtelStats(storeName).recordRequestCount(version, isVeniceServer, isSuccess);
   }
 
-  public void recordBlobTransferKafkaFallback(String storeName, int version, VeniceBlobTransferOutcome reason) {
-    getBlobTransferOtelStats(storeName).recordKafkaFallback(version, reason);
+  public void recordBlobTransferKafkaFallback(String storeName, int version, boolean noCandidates) {
+    getBlobTransferOtelStats(storeName).recordKafkaFallback(version, noCandidates);
   }
 
   /**

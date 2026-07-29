@@ -46,6 +46,7 @@ public class ServerAndDaVinciBlobFinder implements BlobFinder {
     discoveredPeers.addAll(serverPeers);
     response.setDiscoveryResult(discoveredPeers);
     response.setServerHostNames(getNormalizedHostNames(serverPeers));
+    response.setSourceAware(true);
 
     if (discoveredPeers.isEmpty() && hasError(daVinciResponse) && hasError(serverResponse)) {
       response.setError(true);

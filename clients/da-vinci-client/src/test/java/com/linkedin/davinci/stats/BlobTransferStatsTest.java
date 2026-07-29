@@ -1,8 +1,5 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
-import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
-
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
@@ -58,15 +55,15 @@ public class BlobTransferStatsTest {
   public void testRecordBlobTransferRequestsBySourceAndOutcome() {
     BlobTransferStats stats = new BlobTransferStats();
 
-    stats.recordBlobTransferRequest(DAVINCI_PEER, true);
-    stats.recordBlobTransferRequest(DAVINCI_PEER, false);
-    stats.recordBlobTransferRequest(VENICE_SERVER, true);
-    stats.recordBlobTransferRequest(VENICE_SERVER, false);
+    stats.recordBlobTransferRequest(false, true);
+    stats.recordBlobTransferRequest(false, false);
+    stats.recordBlobTransferRequest(true, true);
+    stats.recordBlobTransferRequest(true, false);
 
-    Assert.assertEquals(stats.getBlobTransferRequestCount(DAVINCI_PEER, true), 1.0);
-    Assert.assertEquals(stats.getBlobTransferRequestCount(DAVINCI_PEER, false), 1.0);
-    Assert.assertEquals(stats.getBlobTransferRequestCount(VENICE_SERVER, true), 1.0);
-    Assert.assertEquals(stats.getBlobTransferRequestCount(VENICE_SERVER, false), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(false, true), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(false, false), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(true, true), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(true, false), 1.0);
   }
 
   @Test
@@ -151,10 +148,10 @@ public class BlobTransferStatsTest {
     stats.recordBlobTransferResponsesCount();
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(true);
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
-    stats.recordBlobTransferRequest(DAVINCI_PEER, true);
-    stats.recordBlobTransferRequest(DAVINCI_PEER, false);
-    stats.recordBlobTransferRequest(VENICE_SERVER, true);
-    stats.recordBlobTransferRequest(VENICE_SERVER, false);
+    stats.recordBlobTransferRequest(false, true);
+    stats.recordBlobTransferRequest(false, false);
+    stats.recordBlobTransferRequest(true, true);
+    stats.recordBlobTransferRequest(true, false);
 
     blobTransferStatsReporter.setStats(stats);
     Assert.assertEquals(

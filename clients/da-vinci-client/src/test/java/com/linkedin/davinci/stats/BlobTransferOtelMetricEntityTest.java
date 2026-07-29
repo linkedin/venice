@@ -1,6 +1,5 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -31,21 +30,29 @@ public class BlobTransferOtelMetricEntityTest {
             "ingestion.blob_transfer.request.count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of remote blob transfer requests by source and outcome",
+            "Count of blob transfer requests by source and status",
             setOf(
                 VENICE_STORE_NAME,
                 VENICE_CLUSTER_NAME,
                 VENICE_VERSION_ROLE,
                 VENICE_BLOB_TRANSFER_SOURCE,
-                VENICE_BLOB_TRANSFER_OUTCOME)));
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     map.put(
-        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT,
+        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_NO_CANDIDATES_COUNT,
         new MetricEntityExpectation(
-            "ingestion.blob_transfer.kafka_fallback.count",
+            "ingestion.blob_transfer.kafka_fallback.no_candidates.count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of blob transfers abandoned in favor of Kafka bootstrap by reason",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_BLOB_TRANSFER_OUTCOME)));
+            "Count of Kafka fallbacks because no blob candidates were discovered",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)));
+    map.put(
+        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_FAILED_HOSTS_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.blob_transfer.kafka_fallback.failed_hosts.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of Kafka fallbacks after all usable blob hosts failed",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)));
     map.put(
         BlobTransferOtelMetricEntity.RESPONSE_COUNT,
         new MetricEntityExpectation(

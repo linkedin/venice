@@ -2,7 +2,8 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.BYTES_RECEIVED;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.BYTES_SENT;
-import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT;
+import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.KAFKA_FALLBACK_FAILED_HOSTS_COUNT;
+import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.KAFKA_FALLBACK_NO_CANDIDATES_COUNT;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.REQUEST_COUNT;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.RESPONSE_COUNT;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.TIME;
@@ -11,7 +12,6 @@ import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.VeniceBlobTransferOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -38,10 +38,9 @@ public class BlobTransferOtelStats {
 
   private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
-  /** Request count with VersionRole + source + outcome dimensions. */
-  private final MetricEntityStateThreeEnums<VersionRole, VeniceBlobTransferSource, VeniceBlobTransferOutcome> requestCountMetric;
-
-  private final MetricEntityStateTwoEnums<VersionRole, VeniceBlobTransferOutcome> kafkaFallbackCountMetric;
+  private final MetricEntityStateThreeEnums<VersionRole, VeniceBlobTransferSource, VeniceResponseStatusCategory> requestCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> kafkaFallbackNoCandidatesCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> kafkaFallbackFailedHostsCountMetric;
 
   /** Response count with VersionRole + VeniceResponseStatusCategory dimensions. */
   private final MetricEntityStateTwoEnums<VersionRole, VeniceResponseStatusCategory> responseCountMetric;
@@ -83,14 +82,12 @@ public class BlobTransferOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         VeniceBlobTransferSource.class,
-        VeniceBlobTransferOutcome.class);
+        VeniceResponseStatusCategory.class);
 
-    kafkaFallbackCountMetric = MetricEntityStateTwoEnums.create(
-        KAFKA_FALLBACK_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        VeniceBlobTransferOutcome.class);
+    kafkaFallbackNoCandidatesCountMetric =
+        createOneEnumMetric(KAFKA_FALLBACK_NO_CANDIDATES_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap);
+    kafkaFallbackFailedHostsCountMetric =
+        createOneEnumMetric(KAFKA_FALLBACK_FAILED_HOSTS_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap);
 
     responseCountMetric = MetricEntityStateTwoEnums.create(
         RESPONSE_COUNT.getMetricEntity(),
@@ -130,12 +127,18 @@ public class BlobTransferOtelStats {
     responseCountMetric.record(1, OtelVersionedStatsUtils.classifyVersion(version, versionInfo), status);
   }
 
-  public void recordRequestCount(int version, VeniceBlobTransferSource source, VeniceBlobTransferOutcome outcome) {
-    requestCountMetric.record(1, OtelVersionedStatsUtils.classifyVersion(version, versionInfo), source, outcome);
+  public void recordRequestCount(int version, boolean isVeniceServer, boolean isSuccess) {
+    requestCountMetric.record(
+        1,
+        OtelVersionedStatsUtils.classifyVersion(version, versionInfo),
+        isVeniceServer ? VeniceBlobTransferSource.VENICE_SERVER : VeniceBlobTransferSource.DAVINCI_PEER,
+        isSuccess ? VeniceResponseStatusCategory.SUCCESS : VeniceResponseStatusCategory.FAIL);
   }
 
-  public void recordKafkaFallback(int version, VeniceBlobTransferOutcome reason) {
-    kafkaFallbackCountMetric.record(1, OtelVersionedStatsUtils.classifyVersion(version, versionInfo), reason);
+  public void recordKafkaFallback(int version, boolean noCandidates) {
+    MetricEntityStateOneEnum<VersionRole> metric =
+        noCandidates ? kafkaFallbackNoCandidatesCountMetric : kafkaFallbackFailedHostsCountMetric;
+    metric.record(1, OtelVersionedStatsUtils.classifyVersion(version, versionInfo));
   }
 
   /**
