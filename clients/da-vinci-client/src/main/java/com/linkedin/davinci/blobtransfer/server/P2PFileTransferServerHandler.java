@@ -386,11 +386,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     ctx.write(response);
 
-    // Use ChunkedFile with adaptive chunk size
-    // Minimum chunk size is fixed at 16 KB (16384 bytes); maximum chunk size is configurable via
-    // maxChunkSizeBytes (defaults to 2 MB) to allow tuning the ceiling against Netty's poolable allocation
-    // size (io.netty.allocator.maxOrder) without touching the floor.
-    int chunkSize = (int) Math.min(maxChunkSizeBytes, Math.max(16384, length / 4));
+    long clampedMaxChunkSizeBytes = Math.min(Math.max(maxChunkSizeBytes, 1), Integer.MAX_VALUE);
+    int chunkSize = (int) Math.min(clampedMaxChunkSizeBytes, Math.max(16384L, length / 4));
     sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf, 0, length, chunkSize)));
 
     sendFileFuture.addListener(future -> {
