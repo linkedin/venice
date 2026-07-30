@@ -2847,8 +2847,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
+    /**
+     * Resolve the alternative-backend decision from the authoritative store hybrid status rather than
+     * {@code version.isHybrid()}: a freshly constructed {@link Version} may not have its hybrid config populated yet
+     * when this runs (see the version-supplied addVersion path), which would misroute a hybrid store's VT to the
+     * batch backend.
+     */
+    Store store = getStore(clusterConfig.getClusterName(), version.getStoreName());
+    boolean isHybridStore = store != null && store.isHybrid();
     boolean useAltBackend =
-        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, version.isHybrid());
+        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, isHybridStore);
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
