@@ -110,7 +110,6 @@ public class VeniceWriterFactoryTest {
   public void testVeniceWriterFactoryCreatesProducerAdapterFactory() {
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
-    properties.put(ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
 
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, null, null, null);
     assertNotNull(veniceWriterFactory.getProducerAdapterFactory());

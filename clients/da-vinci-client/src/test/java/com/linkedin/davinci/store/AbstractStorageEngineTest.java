@@ -17,7 +17,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RandomGenUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -46,7 +45,6 @@ public abstract class AbstractStorageEngineTest<ASE extends AbstractStorageEngin
         .put(LISTENER_PORT, 7072)
         .put(ADMIN_PORT, 7073)
         .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
-        .put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
         .put(properties)
         .build();
   }

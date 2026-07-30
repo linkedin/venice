@@ -53,31 +53,45 @@ public class PubSubClientsFactoryTest {
   }
 
   /**
-   * By default (no factory-class config and no explicit fallback flag) the factory should fail fast
-   * instead of silently defaulting to the Apache Kafka adapter factories.
+   * By default (no explicit fallback flag) a missing factory-class config resolves to the Apache Kafka
+   * adapter factories, preserving backward compatibility.
    */
   @Test
-  public void testFailFastWhenFactoryClassMissingAndFallbackDisabled() {
-    VeniceProperties emptyProps = new VeniceProperties(new Properties());
-
-    assertFailFast(() -> PubSubClientsFactory.createProducerFactory(emptyProps), PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS);
-    assertFailFast(() -> PubSubClientsFactory.createConsumerFactory(emptyProps), PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS);
-    assertFailFast(() -> PubSubClientsFactory.createAdminFactory(emptyProps), PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS);
-    assertFailFast(
-        () -> PubSubClientsFactory.createSourceOfTruthAdminFactory(emptyProps),
-        PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS);
-    // The instance constructor eagerly builds all three factories, so it should fail fast as well.
-    expectThrows(VeniceException.class, () -> new PubSubClientsFactory(emptyProps));
-
-    // Explicitly disabling the fallback behaves the same as the default.
-    Properties fallbackDisabled = new Properties();
-    fallbackDisabled.put(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "false");
-    expectThrows(VeniceException.class, () -> new PubSubClientsFactory(new VeniceProperties(fallbackDisabled)));
+  public void testDefaultFallsBackToApacheKafka() {
+    verifyFactoryClasses(
+        new Properties(),
+        ApacheKafkaProducerAdapterFactory.class,
+        ApacheKafkaConsumerAdapterFactory.class,
+        ApacheKafkaAdminAdapterFactory.class);
   }
 
   /**
-   * When the Kafka fallback is explicitly enabled, missing factory-class configs should resolve to the
-   * Apache Kafka adapter factories (the legacy behavior).
+   * When the Kafka fallback is explicitly disabled (opt-in fail-fast), a missing factory-class config
+   * throws instead of silently defaulting to the Apache Kafka adapter factories.
+   */
+  @Test
+  public void testFailFastWhenFallbackDisabledAndFactoryClassMissing() {
+    Properties props = new Properties();
+    props.put(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "false");
+    VeniceProperties failFastProps = new VeniceProperties(props);
+
+    assertFailFast(
+        () -> PubSubClientsFactory.createProducerFactory(failFastProps),
+        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS);
+    assertFailFast(
+        () -> PubSubClientsFactory.createConsumerFactory(failFastProps),
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS);
+    assertFailFast(() -> PubSubClientsFactory.createAdminFactory(failFastProps), PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS);
+    assertFailFast(
+        () -> PubSubClientsFactory.createSourceOfTruthAdminFactory(failFastProps),
+        PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS);
+    // The instance constructor eagerly builds all three factories, so it should fail fast as well.
+    expectThrows(VeniceException.class, () -> new PubSubClientsFactory(failFastProps));
+  }
+
+  /**
+   * When the Kafka fallback is explicitly enabled, missing factory-class configs resolve to the
+   * Apache Kafka adapter factories (same as the default).
    */
   @Test
   public void testKafkaFallbackWhenExplicitlyEnabled() {
@@ -88,6 +102,23 @@ public class PubSubClientsFactoryTest {
         ApacheKafkaProducerAdapterFactory.class,
         ApacheKafkaConsumerAdapterFactory.class,
         ApacheKafkaAdminAdapterFactory.class);
+  }
+
+  /**
+   * Explicit factory-class configs are honored regardless of the fallback flag.
+   */
+  @Test
+  public void testExplicitConfigWinsOverFailFast() {
+    Properties props = new Properties();
+    props.put(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "false");
+    props.put(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, TestPubSubProducerAdapterFactory.class.getName());
+    props.put(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, TestPubSubConsumerAdapterFactory.class.getName());
+    props.put(PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, TestPubSubAdminAdapterFactory.class.getName());
+    verifyFactoryClasses(
+        props,
+        TestPubSubProducerAdapterFactory.class,
+        TestPubSubConsumerAdapterFactory.class,
+        TestPubSubAdminAdapterFactory.class);
   }
 
   private static void assertFailFast(org.testng.Assert.ThrowingRunnable runnable, String expectedConfigKeyInMessage) {

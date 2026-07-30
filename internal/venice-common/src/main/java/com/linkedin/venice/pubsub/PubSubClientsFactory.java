@@ -31,12 +31,15 @@ public class PubSubClientsFactory {
   private static final Logger LOGGER = LogManager.getLogger(PubSubClientsFactory.class);
 
   /**
-   * By default the adapter factories do NOT fall back to Apache Kafka when their factory-class config
-   * is missing; callers must configure the factory classes explicitly so that misconfiguration fails
-   * fast. Set {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED} to
-   * {@code true} to restore the legacy implicit-Kafka behavior.
+   * Controls the default behavior when a pub-sub adapter factory-class config is not provided.
+   * <p>
+   * Defaults to {@code true} (fall back to the Apache Kafka adapter factories) to preserve backward
+   * compatibility: existing callers that never set the factory-class configs keep working. Set
+   * {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED} to
+   * {@code false} to opt into fail-fast, where a missing factory-class config raises an exception
+   * instead of silently defaulting to Apache Kafka (recommended for non-Kafka deployments).
    */
-  public static final boolean DEFAULT_KAFKA_FALLBACK_ENABLED = false;
+  public static final boolean DEFAULT_KAFKA_FALLBACK_ENABLED = true;
 
   private enum FactoryType {
     PRODUCER, CONSUMER, ADMIN

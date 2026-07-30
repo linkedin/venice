@@ -46,7 +46,6 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
 import java.security.AccessController;
@@ -86,7 +85,6 @@ public class AvroGenericDaVinciClientTest {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     VeniceProperties backendConfig = new PropertyBuilder().put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false)
         .put(DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED, validateSpecificSchema)
-        .put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
         .build();
 
     AvroGenericDaVinciClient<Integer, String> dvcClient =
@@ -132,7 +130,6 @@ public class AvroGenericDaVinciClientTest {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     VeniceProperties backendConfig = new PropertyBuilder().put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false)
         .put(DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED, validateSpecificSchema)
-        .put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
         .build();
 
     AvroGenericSeekableDaVinciClient<Integer, String> dvcClient = spy(
@@ -213,7 +210,6 @@ public class AvroGenericDaVinciClientTest {
 
     VeniceProperties backendConfig =
         new PropertyBuilder().put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, enableDatabaseChecksumVerification)
-            .put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
             .build();
 
     AvroGenericDaVinciClient<Integer, String> dvcClient =

@@ -79,9 +79,6 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -741,33 +738,8 @@ public class TestUtils {
     return new VeniceControllerMultiClusterConfig(configMap);
   }
 
-  /**
-   * Returns the Apache Kafka pub-sub adapter factory-class configs (producer, consumer, admin).
-   * <p>
-   * Tests that build a {@link VeniceServerConfig} or {@link VeniceControllerClusterConfig} (which
-   * eagerly construct a {@code PubSubClientsFactory}) must supply these now that the implicit Apache
-   * Kafka fallback is disabled by default. See
-   * {@code ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED}.
-   */
-  public static Properties getPubSubApacheKafkaAdapterFactoryConfigs() {
-    Properties properties = new Properties();
-    properties.setProperty(
-        ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
-        ApacheKafkaProducerAdapterFactory.class.getName());
-    properties.setProperty(
-        ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
-        ApacheKafkaConsumerAdapterFactory.class.getName());
-    properties
-        .setProperty(ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
-    properties.setProperty(
-        ConfigKeys.PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS,
-        ApacheKafkaAdminAdapterFactory.class.getName());
-    return properties;
-  }
-
   public static Properties getPropertiesForControllerConfig() {
     Properties properties = new Properties();
-    properties.putAll(getPubSubApacheKafkaAdapterFactoryConfigs());
     properties.put(ConfigKeys.CLUSTER_NAME, "test-cluster");
     properties.put(ConfigKeys.CONTROLLER_NAME, "venice-controller");
     properties.put(ConfigKeys.DEFAULT_REPLICA_FACTOR, "1");

@@ -31,7 +31,6 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.views.MaterializedView;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.charset.StandardCharsets;
@@ -58,7 +57,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
   @Test
   public void testGetChangelogConsumer() throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
-    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
     consumerProperties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
@@ -133,7 +131,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
   public void testGetChangelogConsumerWithConsumerId()
       throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
-    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
@@ -202,7 +199,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
   @Test
   public void testGetChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
-    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
 
@@ -235,7 +231,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
   public void testGetStatefulChangelogConsumer()
       throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
-    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
@@ -317,7 +312,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
   @Test
   public void testGetStatefulChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
-    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
@@ -371,7 +365,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
       boolean expectKmeWithSchemaReaderCall) {
     // Build properties
     Properties props = new Properties();
-    props.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     if (kmeProp != null) {
       props.put(ConfigKeys.KME_SCHEMA_READER_FOR_SCHEMA_EVOLUTION_ENABLED, kmeProp);
     }

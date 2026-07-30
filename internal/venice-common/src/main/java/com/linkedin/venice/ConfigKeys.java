@@ -118,13 +118,13 @@ public class ConfigKeys {
 
   /**
    * Configuration key that controls whether the PubSub producer/consumer/admin adapter factories
-   * silently fall back to the Apache Kafka implementation when their factory-class config keys are
-   * not explicitly provided.
+   * fall back to the Apache Kafka implementation when their factory-class config keys are not
+   * explicitly provided.
    * <p>
-   * When {@code false} (the default), the {@code PubSubClientsFactory} fails fast by throwing an
-   * exception if the corresponding factory-class config is missing. This surfaces misconfiguration
-   * early instead of masking it behind an implicit Kafka default. Set this to {@code true} to
-   * restore the legacy behavior of defaulting to the Apache Kafka adapter factories.
+   * Defaults to {@code true} (fall back to Apache Kafka) for backward compatibility. Set this to
+   * {@code false} to opt into fail-fast: the {@code PubSubClientsFactory} then throws when a
+   * factory-class config is missing, surfacing misconfiguration early instead of masking it behind
+   * an implicit Kafka default. Recommended for non-Kafka (e.g. xinfra) deployments.
    */
   public static final String PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED =
       PUBSUB_CLIENT_CONFIG_PREFIX + "adapter.factory.kafka.fallback.enabled";

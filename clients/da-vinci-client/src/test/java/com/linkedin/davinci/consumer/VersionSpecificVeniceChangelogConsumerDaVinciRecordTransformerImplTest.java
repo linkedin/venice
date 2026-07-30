@@ -47,6 +47,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -102,7 +103,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
         .setStoreName(TEST_STORE_NAME)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-        .setConsumerProperties(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
+        .setConsumerProperties(new Properties())
         .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
         .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
         .setD2Client(mock(D2Client.class))
