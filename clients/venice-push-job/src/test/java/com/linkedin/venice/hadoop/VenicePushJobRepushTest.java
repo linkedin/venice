@@ -1,5 +1,10 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
@@ -26,6 +31,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -42,6 +48,57 @@ import org.testng.annotations.Test;
  */
 
 public class VenicePushJobRepushTest extends VenicePushJobTestBase {
+  @Test
+  public void testSourceDictionaryConsumerPropertiesRetainPubSubConfigAndOverrideBrokers() {
+    Properties jobProperties = new Properties();
+    jobProperties.setProperty(
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
+    jobProperties.setProperty(
+        PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP,
+        "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
+    jobProperties.setProperty("xc.pubsub.broker.url.to.region.name.map", "northguard:ei4");
+    jobProperties.setProperty(PUBSUB_BROKER_ADDRESS, "destination-broker");
+    jobProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "legacy-broker");
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(jobProperties, null)) {
+      VeniceProperties consumerProperties = pushJob.getSourceDictionaryConsumerProperties("source-broker");
+
+      assertEquals(
+          consumerProperties.getString(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS),
+          "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
+      assertEquals(
+          consumerProperties.getString(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP),
+          "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
+      assertEquals(consumerProperties.getString("xc.pubsub.broker.url.to.region.name.map"), "northguard:ei4");
+      assertEquals(consumerProperties.getString(PUBSUB_BROKER_ADDRESS), "source-broker");
+      assertEquals(consumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "source-broker");
+      assertEquals(
+          jobProperties.getProperty(PUBSUB_BROKER_ADDRESS),
+          "destination-broker",
+          "Building consumer properties must not mutate the job properties");
+    }
+  }
+
+  @Test
+  public void testSourceDictionaryConsumerPropertiesApplySslOverrides() {
+    Properties jobProperties = new Properties();
+    jobProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "PLAINTEXT");
+    jobProperties.setProperty("ssl.keystore.location", "stale-keystore");
+    jobProperties.setProperty("xc.tls.key.store.type", "PKCS12");
+
+    Properties sslProperties = new Properties();
+    sslProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "SSL");
+    sslProperties.setProperty("ssl.keystore.location", "credential-keystore");
+
+    VeniceProperties consumerProperties = VenicePushJob
+        .buildSourceDictionaryConsumerProperties(new VeniceProperties(jobProperties), sslProperties, "source-broker");
+
+    assertEquals(consumerProperties.getString(PUBSUB_SECURITY_PROTOCOL), "SSL");
+    assertEquals(consumerProperties.getString("ssl.keystore.location"), "credential-keystore");
+    assertEquals(consumerProperties.getString("xc.tls.key.store.type"), "PKCS12");
+  }
+
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
   public void testRepushTTLJobWithNonKafkaInput() {
     Properties repushProps = new Properties();
