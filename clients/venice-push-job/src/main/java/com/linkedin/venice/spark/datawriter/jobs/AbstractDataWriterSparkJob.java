@@ -357,7 +357,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
         jobConf.set(key, props.getString(key));
       }
-      // The factory receives these task properties through its immutable executor context.
+      // The factory receives these properties when it is initialized in the executor task.
       if (key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
         jobConf.set(key, props.getString(key));
       }

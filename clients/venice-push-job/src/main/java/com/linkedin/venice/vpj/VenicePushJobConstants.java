@@ -515,8 +515,7 @@ public final class VenicePushJobConstants {
 
   /**
    * Namespace for the optional VPJ primary-data-writer hook factory. Every property under this prefix is
-   * forwarded to executor task properties so factory implementations can read their own configuration from
-   * the immutable context passed at initialization.
+   * forwarded to executor task properties and passed to the factory when it is initialized in the task JVM.
    */
   public static final String PUSH_JOB_WRITER_HOOK_PROP_PREFIX = "push.job.writer.hook.";
 

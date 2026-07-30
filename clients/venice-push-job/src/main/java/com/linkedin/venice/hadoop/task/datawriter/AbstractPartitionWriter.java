@@ -1035,23 +1035,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       return;
     }
 
-    EngineTaskConfigProvider taskConfigProvider = getEngineTaskConfigProvider();
-    String jobName = taskConfigProvider.getJobName();
-    if (jobName == null) {
-      throw new VeniceException(
-          "Compute job name is required to initialize " + VeniceWriterHookFactory.class.getName());
-    }
-
     VeniceWriterHookFactory factory = loadWriterHookFactory(factoryClassName);
     String topicName = props.getString(TOPIC_PROP);
-    VeniceWriterHook hook = factory.createWriterHook(
-        new VeniceWriterHookFactory.Context(
-            props,
-            Version.parseStoreFromKafkaTopicName(topicName),
-            topicName,
-            jobName,
-            taskConfigProvider.getTaskId(),
-            getPartitionCount()));
+    VeniceWriterHook hook = factory.createWriterHook(Version.parseStoreFromKafkaTopicName(topicName), props);
     if (hook == null) {
       throw new VeniceException(
           VeniceWriterHookFactory.class.getSimpleName() + " '" + factoryClassName + "' returned a null hook");
