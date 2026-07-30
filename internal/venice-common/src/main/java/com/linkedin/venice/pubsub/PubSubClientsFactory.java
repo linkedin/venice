@@ -31,15 +31,17 @@ public class PubSubClientsFactory {
   private static final Logger LOGGER = LogManager.getLogger(PubSubClientsFactory.class);
 
   /**
-   * Controls the default behavior when a pub-sub adapter factory-class config is not provided.
+   * The hard default for {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED}
+   * when it is not provided in the properties: {@code false}, i.e. fail fast. A missing factory-class
+   * config then raises an exception instead of silently defaulting to Apache Kafka, which surfaces
+   * misconfiguration early (important for non-Kafka deployments).
    * <p>
-   * Defaults to {@code true} (fall back to the Apache Kafka adapter factories) to preserve backward
-   * compatibility: existing callers that never set the factory-class configs keep working. Set
-   * {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED} to
-   * {@code false} to opt into fail-fast, where a missing factory-class config raises an exception
-   * instead of silently defaulting to Apache Kafka (recommended for non-Kafka deployments).
+   * This default can be overridden by the same-named system property. Production never sets it, so it
+   * stays fail-fast; the test JVM sets it to {@code true} (see the root {@code build.gradle} test
+   * configuration) so the large body of existing tests keep resolving to the Apache Kafka adapters
+   * without each having to configure the factory classes explicitly.
    */
-  public static final boolean DEFAULT_KAFKA_FALLBACK_ENABLED = true;
+  public static final boolean DEFAULT_KAFKA_FALLBACK_ENABLED = false;
 
   private enum FactoryType {
     PRODUCER, CONSUMER, ADMIN
@@ -125,7 +127,7 @@ public class PubSubClientsFactory {
       LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
     } else {
       boolean kafkaFallbackEnabled =
-          properties.getBoolean(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, DEFAULT_KAFKA_FALLBACK_ENABLED);
+          properties.getBoolean(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, isKafkaFallbackEnabledByDefault());
       if (!kafkaFallbackEnabled) {
         throw new VeniceException(
             String.format(
@@ -143,6 +145,20 @@ public class PubSubClientsFactory {
     }
 
     return createInstance(className);
+  }
+
+  /**
+   * Resolves the default for {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED}
+   * when the supplied properties do not set it. Returns {@link #DEFAULT_KAFKA_FALLBACK_ENABLED} (fail
+   * fast) unless overridden by the same-named system property. Production leaves the system property
+   * unset; the test JVM sets it to {@code true} so existing tests keep resolving to the Apache Kafka
+   * adapters without configuring the factory classes explicitly.
+   */
+  private static boolean isKafkaFallbackEnabledByDefault() {
+    return Boolean.parseBoolean(
+        System.getProperty(
+            PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED,
+            Boolean.toString(DEFAULT_KAFKA_FALLBACK_ENABLED)));
   }
 
   public static <T> T createInstance(String className) {

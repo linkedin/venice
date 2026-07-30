@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -53,16 +54,14 @@ public class PubSubClientsFactoryTest {
   }
 
   /**
-   * By default (no explicit fallback flag) a missing factory-class config resolves to the Apache Kafka
-   * adapter factories, preserving backward compatibility.
+   * The hard default is fail-fast (no implicit Kafka fallback). The test JVM overrides this to
+   * {@code true} via a system property (see the root {@code build.gradle}) so the rest of the suite
+   * keeps resolving to the Apache Kafka adapters; the mode tests below set the flag explicitly so they
+   * are independent of that ambient default.
    */
   @Test
-  public void testDefaultFallsBackToApacheKafka() {
-    verifyFactoryClasses(
-        new Properties(),
-        ApacheKafkaProducerAdapterFactory.class,
-        ApacheKafkaConsumerAdapterFactory.class,
-        ApacheKafkaAdminAdapterFactory.class);
+  public void testDefaultIsFailFast() {
+    assertFalse(PubSubClientsFactory.DEFAULT_KAFKA_FALLBACK_ENABLED);
   }
 
   /**

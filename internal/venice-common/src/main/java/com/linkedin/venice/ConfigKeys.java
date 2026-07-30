@@ -121,10 +121,11 @@ public class ConfigKeys {
    * fall back to the Apache Kafka implementation when their factory-class config keys are not
    * explicitly provided.
    * <p>
-   * Defaults to {@code true} (fall back to Apache Kafka) for backward compatibility. Set this to
-   * {@code false} to opt into fail-fast: the {@code PubSubClientsFactory} then throws when a
-   * factory-class config is missing, surfacing misconfiguration early instead of masking it behind
-   * an implicit Kafka default. Recommended for non-Kafka (e.g. xinfra) deployments.
+   * Defaults to {@code false} (fail fast): the {@code PubSubClientsFactory} throws when a factory-class
+   * config is missing, surfacing misconfiguration early instead of masking it behind an implicit Kafka
+   * default. Set this to {@code true} to fall back to Apache Kafka. The default may also be overridden
+   * via the same-named system property (the test JVM sets it to {@code true} so existing tests keep
+   * resolving to the Apache Kafka adapters without configuring the factory classes explicitly).
    */
   public static final String PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED =
       PUBSUB_CLIENT_CONFIG_PREFIX + "adapter.factory.kafka.fallback.enabled";

@@ -23,15 +23,16 @@ import org.testng.annotations.Test;
 
 
 /**
- * End-to-end coverage for the opt-in fail-fast behavior of the pub-sub adapter factories, exercised
- * through a real production config object ({@link VeniceServerConfig}) rather than the factory in
- * isolation. {@link VeniceServerConfig} eagerly constructs a {@link PubSubClientsFactory} from its
- * properties, so it is representative of how a Venice component resolves its pub-sub clients at
- * startup.
+ * End-to-end coverage for the fail-fast behavior of the pub-sub adapter factories, exercised through a
+ * real production config object ({@link VeniceServerConfig}) rather than the factory in isolation.
+ * {@link VeniceServerConfig} eagerly constructs a {@link PubSubClientsFactory} from its properties, so
+ * it is representative of how a Venice component resolves its pub-sub clients at startup.
  * <p>
- * The behavior is opt-in via {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED}:
- * by default the config keeps working (Apache Kafka fallback); with the fallback disabled it fails
- * fast when the adapter factory class is not configured.
+ * Fail-fast is the production default: when the adapter factory class is not configured,
+ * {@link PubSubClientsFactory} throws instead of silently defaulting to Apache Kafka. The default can be
+ * flipped with {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED}; the
+ * test JVM sets that flag to {@code true} by default, so these tests set it explicitly to assert each
+ * mode independently of the ambient test default.
  */
 public class PubSubAdapterFactoryFailFastTest {
   private static Properties baseServerProperties() {
@@ -44,14 +45,19 @@ public class PubSubAdapterFactoryFailFastTest {
   }
 
   @Test
-  public void serverConfigDefaultsToApacheKafkaWhenFallbackNotConfigured() {
-    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(baseServerProperties()));
+  public void serverConfigUsesApacheKafkaWhenFallbackEnabled() {
+    Properties props = baseServerProperties();
+    props.setProperty(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "true");
+
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
     assertNotNull(config.getPubSubClientsFactory());
     assertNotNull(config.getPubSubClientsFactory().getProducerAdapterFactory());
   }
 
   @Test
   public void serverConfigFailsFastWhenFallbackDisabledAndFactoryClassMissing() {
+    // Represents the production default (fail fast). Set explicitly because the test JVM defaults the
+    // flag to true.
     Properties props = baseServerProperties();
     props.setProperty(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "false");
 

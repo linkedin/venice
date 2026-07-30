@@ -434,6 +434,11 @@ subprojects {
 
     systemProperty 'pubSubBrokerFactory', System.getProperty('pubSubBrokerFactory', "com.linkedin.venice.integration.utils.KafkaBrokerFactory")
 
+    // Default the pub-sub adapter factories to the Apache Kafka fallback for tests, so the existing
+    // test suite does not need to configure the factory classes explicitly. Production leaves this
+    // unset and therefore fails fast when the factory class is missing (see PubSubClientsFactory).
+    systemProperty 'pubsub.adapter.factory.kafka.fallback.enabled', System.getProperty('pubsub.adapter.factory.kafka.fallback.enabled', 'true')
+
     System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
     doFirst {
