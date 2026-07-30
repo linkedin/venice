@@ -1445,7 +1445,12 @@ public class VeniceControllerClusterConfig {
       String storeName,
       boolean isRealTime,
       boolean isHybridStore) {
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    // BATCH_JOB_HEARTBEAT_STORE is a non-per-user shared system store whose full name is its prefix, for which
+    // VeniceSystemStoreType.getSystemStoreType() returns null; detect it explicitly here.
+    VeniceSystemStoreType systemStoreType =
+        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)
+            ? VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE
+            : VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType != null) {
       switch (systemStoreType) {
         case META_STORE:

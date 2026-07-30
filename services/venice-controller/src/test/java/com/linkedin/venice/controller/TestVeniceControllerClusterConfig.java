@@ -753,8 +753,8 @@ public class TestVeniceControllerClusterConfig {
   public void testShouldUseAlternativePubSubBackend_BatchJobHeartbeatStore() {
     // The batch-job-heartbeat system store must route through its own topic type, not the user-store batch/hybrid
     // config. Enabling the user-store batch VT flag alone must NOT enable the heartbeat store's VT.
-    String heartbeatStore =
-        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getSystemStoreName("BATCH_JOB_HEARTBEAT_STORE");
+    // The batch-job-heartbeat system store is a non-per-user shared store whose full name is its prefix.
+    String heartbeatStore = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
     Properties userBatchOnly = getBaseSingleRegionProperties(false);
     userBatchOnly.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
     VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(userBatchOnly));
