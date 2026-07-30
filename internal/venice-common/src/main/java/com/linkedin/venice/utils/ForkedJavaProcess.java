@@ -64,36 +64,31 @@ public final class ForkedJavaProcess extends Process {
     LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
     List<String> command = prepareCommandArgList(appClass, classPath, args, jvmArgs);
 
-    File argFile = null;
-    List<String> commandToRun = command;
     // The `java` launcher only understands `@argfile` syntax starting with JDK 9 (JEP 293); on JDK 8 (still used by
     // some of our test/runtime environments) it would literally try to load a main class named "@<path>" and fail.
     // Fall back to passing the arguments directly on JDK 8, accepting the pre-existing risk of hitting the OS
     // "Argument list too long" error in that case.
-    if (isArgFileSupported()) {
-      argFile = writeArgFile(command);
-      commandToRun = Arrays.asList(command.get(0), "@" + argFile.getAbsolutePath());
-    }
+    File argFile = writeArgFile(command);
+    List<String> commandToRun =
+        isArgFileSupported() ? Arrays.asList(command.get(0), "@" + argFile.getAbsolutePath()) : command;
 
     Process process = new ProcessBuilder(commandToRun).redirectErrorStream(true).start();
-    if (argFile != null) {
-      // The argfile is only needed for the JVM launcher to read at startup; once the process has exited (for any
-      // reason), delete it right away instead of leaving it around for the whole lifetime of this (potentially
-      // long-lived, e.g. Gradle daemon) JVM. deleteOnExit() alone is not sufficient here since a single long-lived
-      // JVM can fork many processes over its lifetime, and files would otherwise accumulate until that JVM exits.
-      File argFileToDelete = argFile;
-      Thread argFileCleanupThread = new Thread(() -> {
-        try {
-          process.waitFor();
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-        } finally {
-          deleteQuietly(argFileToDelete);
-        }
-      }, "ForkedJavaProcess-argfile-cleanup");
-      argFileCleanupThread.setDaemon(true);
-      argFileCleanupThread.start();
-    }
+    // The argfile is only needed for the JVM launcher to read at startup (if used at all); once the process has
+    // exited (for any reason), delete it right away instead of leaving it around for the whole lifetime of this
+    // (potentially long-lived, e.g. Gradle daemon) JVM. deleteOnExit() alone is not sufficient here since a single
+    // long-lived JVM can fork many processes over its lifetime, and files would otherwise accumulate until that JVM
+    // exits.
+    Thread argFileCleanupThread = new Thread(() -> {
+      try {
+        process.waitFor();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      } finally {
+        deleteQuietly(argFile);
+      }
+    }, "ForkedJavaProcess-argfile-cleanup");
+    argFileCleanupThread.setDaemon(true);
+    argFileCleanupThread.start();
     Logger logger = LogManager.getLogger(
         logContext.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger, killOnExit);
