@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
@@ -315,6 +317,13 @@ public final class ForkedJavaProcess extends Process {
     command.add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
     // Inherit IPv6 preference setting from parent process.
     command.add("-Djava.net.preferIPv6Addresses=" + System.getProperty("java.net.preferIPv6Addresses", "false"));
+    // Inherit the pub-sub adapter-factory fallback setting so forked Venice processes (e.g. isolated
+    // ingestion or test apps) resolve their pub-sub clients the same way as this process. No-op when the
+    // property is unset (e.g. in production, where the factory classes come from config instead).
+    String pubSubAdapterFallback = System.getProperty(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED);
+    if (pubSubAdapterFallback != null) {
+      command.add("-D" + PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED + "=" + pubSubAdapterFallback);
+    }
 
     /**
      Add log4j2 configuration file and JVM arguments.
