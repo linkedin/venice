@@ -367,6 +367,28 @@ public final class PubSubUtil {
       ByteBuffer wireFormatBytes,
       long offset,
       PubSubPositionDeserializer pubSubPositionDeserializer) {
+    return deserializePositionWithOffsetFallback(wireFormatBytes, offset, pubSubPositionDeserializer, null);
+  }
+
+  /**
+   * Same as {@link #deserializePositionWithOffsetFallback(ByteBuffer, long, PubSubPositionDeserializer)}, but also
+   * accepts a {@code replicaId} (canonical {@code <store>_v<version>-<partition>} identity, e.g. as produced by
+   * {@code Utils.getReplicaId}) that is included in the warning logged on deserialization failure. This makes it
+   * possible to attribute "Failed to deserialize PubSubPosition" warnings to a specific store-version/partition
+   * instead of only the raw offset, which is otherwise insufficient to identify the affected replica.
+   *
+   * @param wireFormatBytes the serialized position bytes (can be null or empty)
+   * @param offset the fallback offset to use if deserialization fails or buffer is empty
+   * @param pubSubPositionDeserializer the deserializer to convert wire format to position
+   * @param replicaId canonical store-version/partition identity for logging context; may be {@code null} when the
+   *                  caller doesn't have replica context (e.g. off-server tooling), in which case "N/A" is logged
+   * @return a valid PubSubPosition, either deserialized or offset-based
+   */
+  public static PubSubPosition deserializePositionWithOffsetFallback(
+      ByteBuffer wireFormatBytes,
+      long offset,
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      String replicaId) {
     // Fast path: nothing to deserialize
     if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
       return fromKafkaOffset(offset);
@@ -387,7 +409,8 @@ public final class PubSubUtil {
           offset);
     } catch (RuntimeException e) {
       LOGGER.warn(
-          "Failed to deserialize PubSubPosition. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          "Failed to deserialize PubSubPosition for replica: {}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          replicaId == null ? "N/A" : replicaId,
           offset,
           wireFormatBytes.remaining(),
           wireFormatBytes.capacity(),

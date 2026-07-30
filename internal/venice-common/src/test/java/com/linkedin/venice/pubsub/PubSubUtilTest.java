@@ -25,7 +25,17 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.config.Property;
 import org.testng.annotations.Test;
 
 
@@ -621,5 +631,61 @@ public class PubSubUtilTest {
     ByteBuffer zeroBuffer = ApacheKafkaOffsetPosition.of(0L).toWireFormatBuffer();
     actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(zeroBuffer, 0L, deserializer);
     assertEquals(actualPosition.getNumericOffset(), 0L, "Should handle zero offset correctly");
+  }
+
+  @Test
+  public void testDeserializePositionWithOffsetFallbackLogsReplicaIdOnDeserializationFailure() {
+    PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
+    // Malformed / truncated wire format bytes, mirroring the legacy malformed upstream position payloads
+    // that trigger the "Failed to deserialize PubSubPosition" warning in production.
+    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 });
+
+    List<String> capturedMessages = new ArrayList<>();
+    Appender appender =
+        new AbstractAppender("testDeserializePositionAppender", null, null, false, Property.EMPTY_ARRAY) {
+          @Override
+          public void append(LogEvent event) {
+            capturedMessages.add(event.getMessage().getFormattedMessage());
+          }
+        };
+    appender.start();
+
+    LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
+    Configuration configuration = loggerContext.getConfiguration();
+    LoggerConfig loggerConfig = configuration.getLoggerConfig(PubSubUtil.class.getName());
+    loggerConfig.addAppender(appender, null, null);
+    loggerContext.updateLoggers();
+
+    try {
+      // Happy path for the new overload: replicaId is supplied and should be embedded in the warning
+      // so that the affected store-version/partition can be attributed without guesswork.
+      String replicaId = "cert1-histogram-hybrid_v43-7";
+      PubSubPosition positionWithReplicaId =
+          PubSubUtil.deserializePositionWithOffsetFallback(invalidBuffer, 42L, deserializer, replicaId);
+      assertEquals(
+          positionWithReplicaId.getNumericOffset(),
+          42L,
+          "Invalid buffer should still fall back to offset-based position");
+      assertTrue(
+          capturedMessages.stream().anyMatch(message -> message.contains(replicaId)),
+          "Warning log should include the supplied replicaId for debugging: " + capturedMessages);
+
+      // Edge case (R14): caller omits replica context (e.g. legacy 3-arg overload used by non-server callers).
+      // The warning must still be well-formed and clearly indicate the identity is unavailable ("N/A"),
+      // instead of throwing, logging null, or dropping the placeholder silently.
+      capturedMessages.clear();
+      PubSubPosition positionWithoutReplicaId =
+          PubSubUtil.deserializePositionWithOffsetFallback(invalidBuffer, 99L, deserializer);
+      assertEquals(
+          positionWithoutReplicaId.getNumericOffset(),
+          99L,
+          "Invalid buffer should still fall back to offset-based position");
+      assertTrue(
+          capturedMessages.stream().anyMatch(message -> message.contains("N/A")),
+          "Warning log should fall back to N/A when no replicaId context is available: " + capturedMessages);
+    } finally {
+      loggerConfig.removeAppender("testDeserializePositionAppender");
+      loggerContext.updateLoggers();
+    }
   }
 }
