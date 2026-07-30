@@ -165,7 +165,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
         conf.set(key, props.getString(key));
       }
-      // The provider receives these task properties through its immutable executor context.
+      // The factory receives these task properties through its immutable executor context.
       if (key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
         conf.set(key, props.getString(key));
       }

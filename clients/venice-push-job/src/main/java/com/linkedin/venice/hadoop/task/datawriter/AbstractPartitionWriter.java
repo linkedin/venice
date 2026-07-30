@@ -22,7 +22,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_S
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
@@ -252,7 +252,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
   private ComplexVeniceWriter[] childWriters = null;
-  private VeniceWriterHookProvider writerHookProvider = null;
   private VeniceWriterHook writerHook = null;
   private int valueSchemaId = -1;
 
@@ -842,7 +841,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   @Override
   public void close() throws IOException {
-    Throwable closeFailure = null;
     try {
       LOGGER.info("Kafka message progress before flushing and closing producer:");
       logMessageProgress();
@@ -920,24 +918,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       if (compressorFactory.isPresent()) {
         compressorFactory.get().close();
       }
-    } catch (IOException | RuntimeException | Error e) {
-      closeFailure = e;
-      throw e;
     } finally {
-      try {
-        if (writerHookProvider != null) {
-          writerHookProvider.close();
-        }
-      } catch (IOException | RuntimeException | Error e) {
-        if (closeFailure != null) {
-          closeFailure.addSuppressed(e);
-        } else {
-          throw e;
-        }
-      } finally {
-        Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
-        taskProgressHeartbeatScheduler.shutdownNow();
-      }
+      Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
+      taskProgressHeartbeatScheduler.shutdownNow();
     }
     if (dataWriterTaskTracker == null) {
       LOGGER.warn("No TaskTracker set");
@@ -995,7 +978,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
     initStorageQuotaFields(props);
     initIncrementalPushThrottlers(props);
-    initWriterHookProvider();
+    initWriterHookFactory();
     /**
      * A dummy background task that reports progress every 5 minutes.
      */
@@ -1046,9 +1029,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     });
   }
 
-  private void initWriterHookProvider() {
-    String providerClassName = props.getString(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, "").trim();
-    if (providerClassName.isEmpty()) {
+  private void initWriterHookFactory() {
+    String factoryClassName = props.getString(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, "").trim();
+    if (factoryClassName.isEmpty()) {
       return;
     }
 
@@ -1056,56 +1039,48 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     String jobName = taskConfigProvider.getJobName();
     if (jobName == null) {
       throw new VeniceException(
-          "Compute job name is required to initialize " + VeniceWriterHookProvider.class.getName());
+          "Compute job name is required to initialize " + VeniceWriterHookFactory.class.getName());
     }
 
-    VeniceWriterHookProvider provider = loadWriterHookProvider(providerClassName);
-    try {
-      String topicName = props.getString(TOPIC_PROP);
-      VeniceWriterHook hook = provider.createWriterHook(
-          new VeniceWriterHookProvider.Context(
-              props,
-              Version.parseStoreFromKafkaTopicName(topicName),
-              topicName,
-              jobName,
-              taskConfigProvider.getTaskId(),
-              getPartitionCount()));
-      if (hook == null) {
-        throw new VeniceException(
-            VeniceWriterHookProvider.class.getSimpleName() + " '" + providerClassName + "' returned a null hook");
-      }
-      this.writerHookProvider = provider;
-      this.writerHook = hook;
-    } catch (RuntimeException | Error e) {
-      try {
-        provider.close();
-      } catch (IOException | RuntimeException | Error closeException) {
-        e.addSuppressed(closeException);
-      }
-      throw e;
+    VeniceWriterHookFactory factory = loadWriterHookFactory(factoryClassName);
+    String topicName = props.getString(TOPIC_PROP);
+    VeniceWriterHook hook = factory.createWriterHook(
+        new VeniceWriterHookFactory.Context(
+            props,
+            Version.parseStoreFromKafkaTopicName(topicName),
+            topicName,
+            jobName,
+            taskConfigProvider.getTaskId(),
+            getPartitionCount()));
+    if (hook == null) {
+      throw new VeniceException(
+          VeniceWriterHookFactory.class.getSimpleName() + " '" + factoryClassName + "' returned a null hook");
     }
+    this.writerHook = hook;
   }
 
-  private VeniceWriterHookProvider loadWriterHookProvider(String className) {
+  private VeniceWriterHookFactory loadWriterHookFactory(String className) {
     Class<?> loadedClass;
     try {
       loadedClass = ReflectUtils.loadClass(className);
     } catch (Exception e) {
       throw new VeniceException(
-          "Failed to load " + VeniceWriterHookProvider.class.getSimpleName() + " class '" + className + "'",
+          "Failed to load " + VeniceWriterHookFactory.class.getSimpleName() + " class '" + className + "'",
           e);
     }
-    if (!VeniceWriterHookProvider.class.isAssignableFrom(loadedClass)) {
+    Class<? extends VeniceWriterHookFactory> factoryClass;
+    try {
+      factoryClass = loadedClass.asSubclass(VeniceWriterHookFactory.class);
+    } catch (ClassCastException e) {
       throw new VeniceException(
-          "Configured class '" + className + "' does not implement " + VeniceWriterHookProvider.class.getName());
+          "Configured class '" + className + "' does not implement " + VeniceWriterHookFactory.class.getName(),
+          e);
     }
     try {
-      @SuppressWarnings("unchecked")
-      Class<VeniceWriterHookProvider> typedClass = (Class<VeniceWriterHookProvider>) loadedClass;
-      return ReflectUtils.callConstructor(typedClass, new Class<?>[0], new Object[0]);
+      return ReflectUtils.callConstructor(factoryClass, new Class<?>[0], new Object[0]);
     } catch (Exception e) {
       throw new VeniceException(
-          "Failed to instantiate " + VeniceWriterHookProvider.class.getSimpleName() + " '" + className + "'",
+          "Failed to instantiate " + VeniceWriterHookFactory.class.getSimpleName() + " '" + className + "'",
           e);
     }
   }

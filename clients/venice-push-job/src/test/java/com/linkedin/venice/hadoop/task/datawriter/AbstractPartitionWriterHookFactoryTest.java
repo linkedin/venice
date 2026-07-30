@@ -1,8 +1,8 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
@@ -41,16 +41,15 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class AbstractPartitionWriterHookProviderTest {
+public class AbstractPartitionWriterHookFactoryTest {
   private static final String TOPIC_NAME = "testStore_v1";
   private static final String JOB_NAME = "test-job";
   private static final int TASK_ID = 3;
   private static final int PARTITIONS = 8;
 
   @BeforeMethod
-  public void resetProviders() {
-    RecordingProvider.reset();
-    NullHookProvider.CLOSE_COUNT.set(0);
+  public void resetFactories() {
+    RecordingFactory.reset();
   }
 
   @Test
@@ -65,36 +64,50 @@ public class AbstractPartitionWriterHookProviderTest {
   }
 
   @Test
-  public void testConfiguredProviderInjectsHookAndReceivesContext() throws IOException {
+  public void testWhitespaceOnlyFactoryConfigurationHasNoHook() throws IOException {
     Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, " " + RecordingProvider.class.getName() + " ");
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, " \t ");
+
+    TestablePartitionWriter partitionWriter = configureWriter(properties);
+    try {
+      VeniceWriterOptions options = createAndCaptureMainWriterOptions(partitionWriter);
+      assertNull(options.getWriterHook());
+      assertEquals(RecordingFactory.CREATE_COUNT.get(), 0);
+    } finally {
+      partitionWriter.close();
+    }
+  }
+
+  @Test
+  public void testConfiguredFactoryInjectsHookAndReceivesContext() throws IOException {
+    Properties properties = createBaseProperties();
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, " " + RecordingFactory.class.getName() + " ");
     properties.setProperty(PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting", "test-value");
 
     TestablePartitionWriter partitionWriter = configureWriter(properties);
     try {
       VeniceWriterOptions options = createAndCaptureMainWriterOptions(partitionWriter);
-      assertSame(options.getWriterHook(), RecordingProvider.HOOK);
-      assertEquals(RecordingProvider.CREATE_COUNT.get(), 1);
-      assertEquals(RecordingProvider.CONTEXT.get().getStoreName(), "testStore");
-      assertEquals(RecordingProvider.CONTEXT.get().getTopicName(), TOPIC_NAME);
-      assertEquals(RecordingProvider.CONTEXT.get().getJobName(), JOB_NAME);
-      assertEquals(RecordingProvider.CONTEXT.get().getTaskId(), TASK_ID);
-      assertEquals(RecordingProvider.CONTEXT.get().getPartitionCount(), PARTITIONS);
+      assertSame(options.getWriterHook(), RecordingFactory.HOOK);
+      assertEquals(RecordingFactory.CREATE_COUNT.get(), 1);
+      assertEquals(RecordingFactory.CONTEXT.get().getStoreName(), "testStore");
+      assertEquals(RecordingFactory.CONTEXT.get().getTopicName(), TOPIC_NAME);
+      assertEquals(RecordingFactory.CONTEXT.get().getJobName(), JOB_NAME);
+      assertEquals(RecordingFactory.CONTEXT.get().getTaskId(), TASK_ID);
+      assertEquals(RecordingFactory.CONTEXT.get().getPartitionCount(), PARTITIONS);
       assertEquals(
-          RecordingProvider.CONTEXT.get()
-              .getJobProperties()
+          RecordingFactory.CONTEXT.get()
+              .getTaskProperties()
               .getString(PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting"),
           "test-value");
     } finally {
       partitionWriter.close();
     }
-    assertEquals(RecordingProvider.CLOSE_COUNT.get(), 1);
   }
 
   @Test
   public void testHookIsNotAttachedToMaterializedViewChildWriter() throws IOException {
     Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, RecordingProvider.class.getName());
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, RecordingFactory.class.getName());
     MaterializedViewParameters.Builder viewParametersBuilder = new MaterializedViewParameters.Builder("testView");
     viewParametersBuilder.setPartitionCount(4);
     viewParametersBuilder.setPartitioner(DefaultVenicePartitioner.class.getName());
@@ -115,7 +128,7 @@ public class AbstractPartitionWriterHookProviderTest {
       ArgumentCaptor<VeniceWriterOptions> childOptions = ArgumentCaptor.forClass(VeniceWriterOptions.class);
       verify(writerFactory).createVeniceWriter(mainOptions.capture());
       verify(writerFactory).createComplexVeniceWriter(childOptions.capture());
-      assertSame(mainOptions.getValue().getWriterHook(), RecordingProvider.HOOK);
+      assertSame(mainOptions.getValue().getWriterHook(), RecordingFactory.HOOK);
       assertNull(childOptions.getValue().getWriterHook());
     } finally {
       partitionWriter.close();
@@ -123,31 +136,29 @@ public class AbstractPartitionWriterHookProviderTest {
   }
 
   @Test
-  public void testProviderReturningNullHookFailsAndIsClosed() {
+  public void testFactoryReturningNullHookFails() {
     Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, NullHookProvider.class.getName());
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, NullHookFactory.class.getName());
 
     VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties));
     assertTrue(exception.getMessage().contains("returned a null hook"));
-    assertEquals(NullHookProvider.CLOSE_COUNT.get(), 1);
   }
 
   @Test
-  public void testMissingJobNameFailsBeforeProviderInitialization() {
+  public void testMissingJobNameFailsBeforeFactoryInitialization() {
     Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, RecordingProvider.class.getName());
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, RecordingFactory.class.getName());
 
     VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties, null));
     assertTrue(exception.getMessage().contains("Compute job name is required"));
-    assertEquals(RecordingProvider.CREATE_COUNT.get(), 0);
-    assertEquals(RecordingProvider.CLOSE_COUNT.get(), 0);
+    assertEquals(RecordingFactory.CREATE_COUNT.get(), 0);
   }
 
   @Test
-  public void testProviderContextRejectsNullJobName() {
+  public void testFactoryContextRejectsNullJobName() {
     NullPointerException exception = Assert.expectThrows(
         NullPointerException.class,
-        () -> new VeniceWriterHookProvider.Context(
+        () -> new VeniceWriterHookFactory.Context(
             new VeniceProperties(createBaseProperties()),
             "testStore",
             TOPIC_NAME,
@@ -158,22 +169,30 @@ public class AbstractPartitionWriterHookProviderTest {
   }
 
   @Test
-  public void testConfiguredClassMustImplementProvider() {
+  public void testInvalidFactoryClassNameFailsClearly() {
     Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, String.class.getName());
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, "com.example.DoesNotExist");
 
     VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties));
-    assertTrue(exception.getMessage().contains("does not implement " + VeniceWriterHookProvider.class.getName()));
+    assertTrue(exception.getMessage().contains("Failed to load VeniceWriterHookFactory class"));
   }
 
   @Test
-  public void testProviderCloseFailurePropagates() {
+  public void testConfiguredClassMustImplementFactory() {
     Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, ThrowingCloseProvider.class.getName());
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, String.class.getName());
 
-    TestablePartitionWriter partitionWriter = configureWriter(properties);
-    IOException exception = Assert.expectThrows(IOException.class, partitionWriter::close);
-    assertEquals(exception.getMessage(), "provider close failed");
+    VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties));
+    assertTrue(exception.getMessage().contains("does not implement " + VeniceWriterHookFactory.class.getName()));
+  }
+
+  @Test
+  public void testFactoryMustHavePublicNoArgConstructor() {
+    Properties properties = createBaseProperties();
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, FactoryWithoutNoArgConstructor.class.getName());
+
+    VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties));
+    assertTrue(exception.getMessage().contains("Failed to instantiate VeniceWriterHookFactory"));
   }
 
   private TestablePartitionWriter configureWriter(Properties properties) {
@@ -214,16 +233,14 @@ public class AbstractPartitionWriterHookProviderTest {
   private static class TestablePartitionWriter extends AbstractPartitionWriter {
   }
 
-  public static class RecordingProvider implements VeniceWriterHookProvider {
+  public static class RecordingFactory implements VeniceWriterHookFactory {
     private static final VeniceWriterHook HOOK = (operationType, keySizeBytes, valueSizeBytes) -> {};
     private static final AtomicReference<Context> CONTEXT = new AtomicReference<>();
     private static final AtomicInteger CREATE_COUNT = new AtomicInteger();
-    private static final AtomicInteger CLOSE_COUNT = new AtomicInteger();
 
     private static void reset() {
       CONTEXT.set(null);
       CREATE_COUNT.set(0);
-      CLOSE_COUNT.set(0);
     }
 
     @Override
@@ -232,36 +249,22 @@ public class AbstractPartitionWriterHookProviderTest {
       CREATE_COUNT.incrementAndGet();
       return HOOK;
     }
-
-    @Override
-    public void close() {
-      CLOSE_COUNT.incrementAndGet();
-    }
   }
 
-  public static class NullHookProvider implements VeniceWriterHookProvider {
-    private static final AtomicInteger CLOSE_COUNT = new AtomicInteger();
-
+  public static class NullHookFactory implements VeniceWriterHookFactory {
     @Override
     public VeniceWriterHook createWriterHook(Context context) {
       return null;
     }
-
-    @Override
-    public void close() {
-      CLOSE_COUNT.incrementAndGet();
-    }
   }
 
-  public static class ThrowingCloseProvider implements VeniceWriterHookProvider {
-    @Override
-    public VeniceWriterHook createWriterHook(Context context) {
-      return RecordingProvider.HOOK;
+  public static class FactoryWithoutNoArgConstructor implements VeniceWriterHookFactory {
+    public FactoryWithoutNoArgConstructor(String ignored) {
     }
 
     @Override
-    public void close() throws IOException {
-      throw new IOException("provider close failed");
+    public VeniceWriterHook createWriterHook(Context context) {
+      return RecordingFactory.HOOK;
     }
   }
 }
