@@ -29,6 +29,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -576,7 +577,49 @@ public class AdminExecutionTaskTest {
         "updateStore must not be called with targetRegionPromoted=true when message.targetRegionPromoted=false");
   }
 
+  @Test
+  public void testHandleSetStore_ThroughputQuota_PropagatedToParams() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, false, 123456L, 789L));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        /* isParentController= */ false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertTrue(
+        captor.getAllValues()
+            .stream()
+            .anyMatch(
+                p -> p.getThroughputQuotaInBytes().equals(Optional.of(123456L))
+                    && p.getThroughputQuotaInRecords().equals(Optional.of(789L))),
+        "updateStore must be called with throughput quota values propagated from the UpdateStore message");
+  }
+
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {
+    return createUpdateStoreWrapper(executionId, targetRegionPromoted, -1L, -1L);
+  }
+
+  private AdminOperationWrapper createUpdateStoreWrapper(
+      long executionId,
+      boolean targetRegionPromoted,
+      long throughputQuotaInBytes,
+      long throughputQuotaInRecords) {
     AdminOperation adminOperation = new AdminOperation();
     adminOperation.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminOperation.executionId = executionId;
@@ -629,8 +672,8 @@ public class AdminExecutionTaskTest {
     updateStore.storeLifecycleHooks = new java.util.ArrayList<>();
     updateStore.keyUrnCompressionEnabled = false;
     updateStore.keyUrnFields = new java.util.ArrayList<>();
-    updateStore.throughputQuotaInBytes = -1L;
-    updateStore.throughputQuotaInRecords = -1L;
+    updateStore.throughputQuotaInBytes = throughputQuotaInBytes;
+    updateStore.throughputQuotaInRecords = throughputQuotaInRecords;
     updateStore.previousCurrentVersion = -1;
     updateStore.transientRecordCacheEnabled = false;
     updateStore.mergedValueRmdColumnFamilyEnabled = false;

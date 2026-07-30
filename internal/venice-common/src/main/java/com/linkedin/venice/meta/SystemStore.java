@@ -793,6 +793,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public long getThroughputQuotaInBytes() {
+    return zkSharedStore.getThroughputQuotaInBytes();
+  }
+
+  @Override
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    throwUnsupportedOperationException("setThroughputQuotaInBytes");
+  }
+
+  @Override
+  public long getThroughputQuotaInRecords() {
+    return zkSharedStore.getThroughputQuotaInRecords();
+  }
+
+  @Override
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    throwUnsupportedOperationException("setThroughputQuotaInRecords");
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return zkSharedStore.isNearlineProducerCompressionEnabled();
   }

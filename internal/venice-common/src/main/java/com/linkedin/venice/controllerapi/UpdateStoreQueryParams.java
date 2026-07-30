@@ -82,6 +82,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
@@ -178,6 +180,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobDbEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
+            .setThroughputQuotaInBytes(srcStore.getThroughputQuotaInBytes())
+            .setThroughputQuotaInRecords(srcStore.getThroughputQuotaInRecords())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
@@ -879,6 +883,22 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getMaxNearlineRecordSizeBytes() {
     return getInteger(MAX_NEARLINE_RECORD_SIZE_BYTES);
+  }
+
+  public UpdateStoreQueryParams setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    return putLong(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
+  }
+
+  public Optional<Long> getThroughputQuotaInBytes() {
+    return getLong(THROUGHPUT_QUOTA_IN_BYTES);
+  }
+
+  public UpdateStoreQueryParams setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    return putLong(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
+  }
+
+  public Optional<Long> getThroughputQuotaInRecords() {
+    return getLong(THROUGHPUT_QUOTA_IN_RECORDS);
   }
 
   public UpdateStoreQueryParams setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
