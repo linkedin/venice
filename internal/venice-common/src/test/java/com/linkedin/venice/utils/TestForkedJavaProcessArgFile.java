@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 
@@ -38,6 +39,12 @@ public class TestForkedJavaProcessArgFile {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testForkWithHugeClasspathPropagatesArgsAndJvmProperties() throws Exception {
+    if (!isArgFileSupported()) {
+      // On JDK 8, the java launcher doesn't understand @argfile syntax at all, so ForkedJavaProcess falls back to
+      // passing arguments directly; a huge classpath is then expected to still hit the OS argument-length limit,
+      // same as it always has on JDK 8.
+      throw new SkipException("The @argfile mechanism is only supported on JDK 9+.");
+    }
     String hugeClasspath = buildHugeClasspath();
     File outputFile = File.createTempFile("forked-java-process-argfile-test-output", ".txt");
     outputFile.deleteOnExit();
@@ -86,5 +93,21 @@ public class TestForkedJavaProcessArgFile {
   private static long countArgFiles(File tempDir) {
     File[] files = tempDir.listFiles((dir, name) -> name.startsWith("forked-java-process-args"));
     return files == null ? 0 : files.length;
+  }
+
+  /**
+   * Mirrors {@code ForkedJavaProcess.isArgFileSupported()}: the java launcher only understands {@code @argfile}
+   * syntax starting with JDK 9.
+   */
+  private static boolean isArgFileSupported() {
+    String specVersion = System.getProperty("java.specification.version", "");
+    if (specVersion.startsWith("1.")) {
+      return false;
+    }
+    try {
+      return Integer.parseInt(specVersion) >= 9;
+    } catch (NumberFormatException e) {
+      return true;
+    }
   }
 }

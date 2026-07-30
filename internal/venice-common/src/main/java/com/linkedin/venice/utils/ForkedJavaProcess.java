@@ -63,25 +63,37 @@ public final class ForkedJavaProcess extends Process {
       Optional<LogContext> logContext) throws IOException {
     LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
     List<String> command = prepareCommandArgList(appClass, classPath, args, jvmArgs);
-    File argFile = writeArgFile(command);
-    List<String> wrappedCommand = Arrays.asList(command.get(0), "@" + argFile.getAbsolutePath());
 
-    Process process = new ProcessBuilder(wrappedCommand).redirectErrorStream(true).start();
-    // The argfile is only needed for the JVM launcher to read at startup; once the process has exited (for any
-    // reason), delete it right away instead of leaving it around for the whole lifetime of this (potentially
-    // long-lived, e.g. Gradle daemon) JVM. deleteOnExit() alone is not sufficient here since a single long-lived
-    // JVM can fork many processes over its lifetime, and files would otherwise accumulate until that JVM exits.
-    Thread argFileCleanupThread = new Thread(() -> {
-      try {
-        process.waitFor();
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      } finally {
-        deleteQuietly(argFile);
-      }
-    }, "ForkedJavaProcess-argfile-cleanup");
-    argFileCleanupThread.setDaemon(true);
-    argFileCleanupThread.start();
+    File argFile = null;
+    List<String> commandToRun = command;
+    // The `java` launcher only understands `@argfile` syntax starting with JDK 9 (JEP 293); on JDK 8 (still used by
+    // some of our test/runtime environments) it would literally try to load a main class named "@<path>" and fail.
+    // Fall back to passing the arguments directly on JDK 8, accepting the pre-existing risk of hitting the OS
+    // "Argument list too long" error in that case.
+    if (isArgFileSupported()) {
+      argFile = writeArgFile(command);
+      commandToRun = Arrays.asList(command.get(0), "@" + argFile.getAbsolutePath());
+    }
+
+    Process process = new ProcessBuilder(commandToRun).redirectErrorStream(true).start();
+    if (argFile != null) {
+      // The argfile is only needed for the JVM launcher to read at startup; once the process has exited (for any
+      // reason), delete it right away instead of leaving it around for the whole lifetime of this (potentially
+      // long-lived, e.g. Gradle daemon) JVM. deleteOnExit() alone is not sufficient here since a single long-lived
+      // JVM can fork many processes over its lifetime, and files would otherwise accumulate until that JVM exits.
+      File argFileToDelete = argFile;
+      Thread argFileCleanupThread = new Thread(() -> {
+        try {
+          process.waitFor();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        } finally {
+          deleteQuietly(argFileToDelete);
+        }
+      }, "ForkedJavaProcess-argfile-cleanup");
+      argFileCleanupThread.setDaemon(true);
+      argFileCleanupThread.start();
+    }
     Logger logger = LogManager.getLogger(
         logContext.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger, killOnExit);
@@ -330,6 +342,26 @@ public final class ForkedJavaProcess extends Process {
    * is responsible for deleting the returned file once the forked process no longer needs it (see
    * {@link #deleteQuietly(File)}).
    */
+  /**
+   * The {@code java} launcher only understands {@code @argfile} syntax starting with JDK 9 (JEP 293). On JDK 8 (and
+   * earlier), {@code java @somefile} is interpreted as an attempt to run a main class literally named
+   * {@code @somefile}, which fails immediately. We fork using the same {@code java.home} as the current JVM (see
+   * {@link #JAVA_PATH}), so checking the current JVM's version tells us what the forked JVM will support.
+   */
+  private static boolean isArgFileSupported() {
+    // Pre-JDK9, java.specification.version was formatted as "1.<major>" (e.g. "1.8"); JDK9+ uses just "<major>".
+    String specVersion = System.getProperty("java.specification.version", "");
+    if (specVersion.startsWith("1.")) {
+      return false;
+    }
+    try {
+      return Integer.parseInt(specVersion) >= 9;
+    } catch (NumberFormatException e) {
+      // Unrecognized/unparseable version format; assume it's a modern JVM using the new-style version scheme.
+      return true;
+    }
+  }
+
   private static File writeArgFile(List<String> command) {
     try {
       File argFile = File.createTempFile("forked-java-process-args", ".txt", Utils.getTempDataDirectory());
