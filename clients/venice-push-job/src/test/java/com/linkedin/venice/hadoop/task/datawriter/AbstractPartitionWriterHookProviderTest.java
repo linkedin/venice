@@ -22,6 +22,7 @@ import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
@@ -32,6 +33,8 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -47,7 +50,7 @@ public class AbstractPartitionWriterHookProviderTest {
   @BeforeMethod
   public void resetProviders() {
     RecordingProvider.reset();
-    NullHookProvider.closeCount = 0;
+    NullHookProvider.CLOSE_COUNT.set(0);
   }
 
   @Test
@@ -64,26 +67,28 @@ public class AbstractPartitionWriterHookProviderTest {
   @Test
   public void testConfiguredProviderInjectsHookAndReceivesContext() throws IOException {
     Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, RecordingProvider.class.getName());
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, " " + RecordingProvider.class.getName() + " ");
     properties.setProperty(PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting", "test-value");
 
     TestablePartitionWriter partitionWriter = configureWriter(properties);
     try {
       VeniceWriterOptions options = createAndCaptureMainWriterOptions(partitionWriter);
       assertSame(options.getWriterHook(), RecordingProvider.HOOK);
-      assertEquals(RecordingProvider.createCount, 1);
-      assertEquals(RecordingProvider.context.getStoreName(), "testStore");
-      assertEquals(RecordingProvider.context.getTopicName(), TOPIC_NAME);
-      assertEquals(RecordingProvider.context.getJobName(), JOB_NAME);
-      assertEquals(RecordingProvider.context.getTaskId(), TASK_ID);
-      assertEquals(RecordingProvider.context.getPartitionCount(), PARTITIONS);
+      assertEquals(RecordingProvider.CREATE_COUNT.get(), 1);
+      assertEquals(RecordingProvider.CONTEXT.get().getStoreName(), "testStore");
+      assertEquals(RecordingProvider.CONTEXT.get().getTopicName(), TOPIC_NAME);
+      assertEquals(RecordingProvider.CONTEXT.get().getJobName(), JOB_NAME);
+      assertEquals(RecordingProvider.CONTEXT.get().getTaskId(), TASK_ID);
+      assertEquals(RecordingProvider.CONTEXT.get().getPartitionCount(), PARTITIONS);
       assertEquals(
-          RecordingProvider.context.getJobProperties().getString(PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting"),
+          RecordingProvider.CONTEXT.get()
+              .getJobProperties()
+              .getString(PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting"),
           "test-value");
     } finally {
       partitionWriter.close();
     }
-    assertEquals(RecordingProvider.closeCount, 1);
+    assertEquals(RecordingProvider.CLOSE_COUNT.get(), 1);
   }
 
   @Test
@@ -124,7 +129,32 @@ public class AbstractPartitionWriterHookProviderTest {
 
     VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties));
     assertTrue(exception.getMessage().contains("returned a null hook"));
-    assertEquals(NullHookProvider.closeCount, 1);
+    assertEquals(NullHookProvider.CLOSE_COUNT.get(), 1);
+  }
+
+  @Test
+  public void testMissingJobNameFailsBeforeProviderInitialization() {
+    Properties properties = createBaseProperties();
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, RecordingProvider.class.getName());
+
+    VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties, null));
+    assertTrue(exception.getMessage().contains("Compute job name is required"));
+    assertEquals(RecordingProvider.CREATE_COUNT.get(), 0);
+    assertEquals(RecordingProvider.CLOSE_COUNT.get(), 0);
+  }
+
+  @Test
+  public void testProviderContextRejectsNullJobName() {
+    NullPointerException exception = Assert.expectThrows(
+        NullPointerException.class,
+        () -> new VeniceWriterHookProvider.Context(
+            new VeniceProperties(createBaseProperties()),
+            "testStore",
+            TOPIC_NAME,
+            null,
+            TASK_ID,
+            PARTITIONS));
+    assertEquals(exception.getMessage(), "jobName");
   }
 
   @Test
@@ -147,9 +177,13 @@ public class AbstractPartitionWriterHookProviderTest {
   }
 
   private TestablePartitionWriter configureWriter(Properties properties) {
+    return configureWriter(properties, JOB_NAME);
+  }
+
+  private TestablePartitionWriter configureWriter(Properties properties, String jobName) {
     EngineTaskConfigProvider taskConfigProvider = mock(EngineTaskConfigProvider.class);
     when(taskConfigProvider.getJobProps()).thenReturn(properties);
-    when(taskConfigProvider.getJobName()).thenReturn(JOB_NAME);
+    when(taskConfigProvider.getJobName()).thenReturn(jobName);
     when(taskConfigProvider.getTaskId()).thenReturn(TASK_ID);
     TestablePartitionWriter partitionWriter = new TestablePartitionWriter();
     partitionWriter.configure(taskConfigProvider);
@@ -182,31 +216,31 @@ public class AbstractPartitionWriterHookProviderTest {
 
   public static class RecordingProvider implements VeniceWriterHookProvider {
     private static final VeniceWriterHook HOOK = (operationType, keySizeBytes, valueSizeBytes) -> {};
-    private static Context context;
-    private static int createCount;
-    private static int closeCount;
+    private static final AtomicReference<Context> CONTEXT = new AtomicReference<>();
+    private static final AtomicInteger CREATE_COUNT = new AtomicInteger();
+    private static final AtomicInteger CLOSE_COUNT = new AtomicInteger();
 
     private static void reset() {
-      context = null;
-      createCount = 0;
-      closeCount = 0;
+      CONTEXT.set(null);
+      CREATE_COUNT.set(0);
+      CLOSE_COUNT.set(0);
     }
 
     @Override
     public VeniceWriterHook createWriterHook(Context context) {
-      RecordingProvider.context = context;
-      createCount++;
+      CONTEXT.set(context);
+      CREATE_COUNT.incrementAndGet();
       return HOOK;
     }
 
     @Override
     public void close() {
-      closeCount++;
+      CLOSE_COUNT.incrementAndGet();
     }
   }
 
   public static class NullHookProvider implements VeniceWriterHookProvider {
-    private static int closeCount;
+    private static final AtomicInteger CLOSE_COUNT = new AtomicInteger();
 
     @Override
     public VeniceWriterHook createWriterHook(Context context) {
@@ -215,7 +249,7 @@ public class AbstractPartitionWriterHookProviderTest {
 
     @Override
     public void close() {
-      closeCount++;
+      CLOSE_COUNT.incrementAndGet();
     }
   }
 

@@ -47,7 +47,7 @@ public interface VeniceWriterHookProvider extends Closeable {
       this.jobProperties = Objects.requireNonNull(jobProperties, "jobProperties");
       this.storeName = Objects.requireNonNull(storeName, "storeName");
       this.topicName = Objects.requireNonNull(topicName, "topicName");
-      this.jobName = jobName;
+      this.jobName = Objects.requireNonNull(jobName, "jobName");
       this.taskId = taskId;
       this.partitionCount = partitionCount;
     }
