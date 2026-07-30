@@ -22,6 +22,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_S
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
@@ -66,6 +67,7 @@ import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -82,6 +84,7 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.Closeable;
 import java.io.IOException;
@@ -249,6 +252,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
   private ComplexVeniceWriter[] childWriters = null;
+  private VeniceWriterHookProvider writerHookProvider = null;
+  private VeniceWriterHook writerHook = null;
   private int valueSchemaId = -1;
 
   private int rmdSchemaId = -1;
@@ -562,7 +567,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
 
     String topicName = props.getString(TOPIC_PROP);
-    VeniceWriterOptions options =
+    VeniceWriterOptions.Builder optionsBuilder =
         new VeniceWriterOptions.Builder(topicName).setKeyPayloadSerializer(new DefaultSerializer())
             .setValuePayloadSerializer(new DefaultSerializer())
             .setWriteComputePayloadSerializer(new DefaultSerializer())
@@ -571,8 +576,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
             .setTime(SystemTime.INSTANCE)
             .setPartitionCount(getPartitionCount())
             .setPartitioner(partitioner)
-            .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr))
-            .build();
+            .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr));
+    if (writerHook != null) {
+      optionsBuilder.setWriterHook(writerHook);
+    }
+    VeniceWriterOptions options = optionsBuilder.build();
     String flatViewConfigMapString = props.getString(PUSH_JOB_VIEW_CONFIGS, "");
     AbstractVeniceWriter<byte[], byte[], byte[]> baseWriter;
     if (!flatViewConfigMapString.isEmpty()) {
@@ -834,6 +842,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   @Override
   public void close() throws IOException {
+    Throwable closeFailure = null;
     try {
       LOGGER.info("Kafka message progress before flushing and closing producer:");
       logMessageProgress();
@@ -911,9 +920,24 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       if (compressorFactory.isPresent()) {
         compressorFactory.get().close();
       }
+    } catch (IOException | RuntimeException | Error e) {
+      closeFailure = e;
+      throw e;
     } finally {
-      Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
-      taskProgressHeartbeatScheduler.shutdownNow();
+      try {
+        if (writerHookProvider != null) {
+          writerHookProvider.close();
+        }
+      } catch (IOException | RuntimeException | Error e) {
+        if (closeFailure != null) {
+          closeFailure.addSuppressed(e);
+        } else {
+          throw e;
+        }
+      } finally {
+        Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
+        taskProgressHeartbeatScheduler.shutdownNow();
+      }
     }
     if (dataWriterTaskTracker == null) {
       LOGGER.warn("No TaskTracker set");
@@ -971,6 +995,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
     initStorageQuotaFields(props);
     initIncrementalPushThrottlers(props);
+    initWriterHookProvider();
     /**
      * A dummy background task that reports progress every 5 minutes.
      */
@@ -1019,6 +1044,64 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         }
       }
     });
+  }
+
+  private void initWriterHookProvider() {
+    String providerClassName = props.getString(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, "");
+    if (providerClassName.isEmpty()) {
+      return;
+    }
+
+    VeniceWriterHookProvider provider = loadWriterHookProvider(providerClassName);
+    try {
+      EngineTaskConfigProvider taskConfigProvider = getEngineTaskConfigProvider();
+      String topicName = props.getString(TOPIC_PROP);
+      VeniceWriterHook hook = provider.createWriterHook(
+          new VeniceWriterHookProvider.Context(
+              props,
+              Version.parseStoreFromKafkaTopicName(topicName),
+              topicName,
+              taskConfigProvider.getJobName(),
+              taskConfigProvider.getTaskId(),
+              getPartitionCount()));
+      if (hook == null) {
+        throw new VeniceException(
+            VeniceWriterHookProvider.class.getSimpleName() + " '" + providerClassName + "' returned a null hook");
+      }
+      this.writerHookProvider = provider;
+      this.writerHook = hook;
+    } catch (RuntimeException | Error e) {
+      try {
+        provider.close();
+      } catch (IOException | RuntimeException | Error closeException) {
+        e.addSuppressed(closeException);
+      }
+      throw e;
+    }
+  }
+
+  private VeniceWriterHookProvider loadWriterHookProvider(String className) {
+    Class<?> loadedClass;
+    try {
+      loadedClass = ReflectUtils.loadClass(className);
+    } catch (Exception e) {
+      throw new VeniceException(
+          "Failed to load " + VeniceWriterHookProvider.class.getSimpleName() + " class '" + className + "'",
+          e);
+    }
+    if (!VeniceWriterHookProvider.class.isAssignableFrom(loadedClass)) {
+      throw new VeniceException(
+          "Configured class '" + className + "' does not implement " + VeniceWriterHookProvider.class.getName());
+    }
+    try {
+      @SuppressWarnings("unchecked")
+      Class<VeniceWriterHookProvider> typedClass = (Class<VeniceWriterHookProvider>) loadedClass;
+      return ReflectUtils.callConstructor(typedClass, new Class<?>[0], new Object[0]);
+    } catch (Exception e) {
+      throw new VeniceException(
+          "Failed to instantiate " + VeniceWriterHookProvider.class.getSimpleName() + " '" + className + "'",
+          e);
+    }
   }
 
   private void initStorageQuotaFields(VeniceProperties props) {

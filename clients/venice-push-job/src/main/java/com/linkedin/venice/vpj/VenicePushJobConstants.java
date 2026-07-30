@@ -514,6 +514,20 @@ public final class VenicePushJobConstants {
   public static final String SPARK_PRE_WRITE_QUOTA_CHECK = "spark.pre.write.quota.check";
 
   /**
+   * Namespace for the optional VPJ primary-data-writer hook provider. Every property under this prefix is
+   * forwarded to executor task properties so provider implementations can read their own configuration from
+   * the immutable context passed at initialization.
+   */
+  public static final String PUSH_JOB_WRITER_HOOK_PROP_PREFIX = "push.job.writer.hook.";
+
+  /**
+   * Fully-qualified class name of the optional
+   * {@code com.linkedin.venice.hadoop.task.datawriter.VeniceWriterHookProvider}. The class must have a public
+   * no-arg constructor. When absent or empty, VPJ creates writers exactly as before, without a writer hook.
+   */
+  public static final String PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "provider.class";
+
+  /**
    * Namespace for the external-storage dual-write subsystem. Every property whose key starts with this
    * prefix is forwarded verbatim from the VPJ driver into the Spark executor's {@code RuntimeConfig} so
    * that impls of {@code ExternalStorageWriter} can read their own configuration (cluster endpoints,

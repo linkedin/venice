@@ -50,6 +50,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -350,6 +351,10 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // impl-specific keys beyond the two gating ones; everything else is opaque pass-through.
     for (String key: props.keySet()) {
       if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
+        jobConf.set(key, props.getString(key));
+      }
+      // The provider receives these task properties through its immutable executor context.
+      if (key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
         jobConf.set(key, props.getString(key));
       }
     }

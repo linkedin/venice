@@ -17,6 +17,7 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.IntegerType;
@@ -89,11 +90,13 @@ public class AbstractDataWriterSparkJobTest {
     String dummyKafkaConfigValue = "dummy.kafka.config.value";
     String dummyConfig = "some.dummy.config";
     String dummyConfigValue = "some.dummy.config.value";
+    String writerHookProviderClass = "com.example.WriterHookProvider";
 
     Properties properties = new Properties();
     properties.setProperty(SPARK_SESSION_CONF_PREFIX + SPARK_APP_NAME_CONFIG, sparkAppNameOverride);
     properties.setProperty(KAFKA_CONFIG_PREFIX + dummyKafkaConfig, dummyKafkaConfigValue);
     properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + dummyConfig, dummyConfigValue);
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, writerHookProviderClass);
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
@@ -107,6 +110,9 @@ public class AbstractDataWriterSparkJobTest {
 
       // Properties with SPARK_DATA_WRITER_CONF_PREFIX should get applied after stripping the prefix
       Assert.assertEquals(jobConf.get(dummyConfig), dummyConfigValue);
+
+      // VPJ writer-hook provider config should reach executor task properties.
+      Assert.assertEquals(jobConf.get(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS), writerHookProviderClass);
     }
   }
 
