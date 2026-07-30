@@ -158,8 +158,8 @@ public class PulsarVeniceSinkTest {
 
     // Wait for the store to become queryable before proceeding
     LOGGER.info("Waiting for Venice store to be ready");
-    String readinessCmd = "java -jar " + jar + " --describe-store --url " + veniceControllerUrl + " --cluster "
-        + clusterName + " --store " + storeName;
+    String readinessCmd = "java -Dpubsub.adapter.factory.kafka.fallback.enabled=true -jar " + jar
+        + " --describe-store --url " + veniceControllerUrl + " --cluster " + clusterName + " --store " + storeName;
     Awaitility.await().atMost(30, TimeUnit.SECONDS).pollInterval(2, TimeUnit.SECONDS).untilAsserted(() -> {
       ExecResult res = execByService("venice-client", "bash", "-c", readinessCmd);
       String stdout = res.getStdout();
@@ -269,8 +269,9 @@ public class PulsarVeniceSinkTest {
         "venice-client",
         "bash",
         "-c",
-        "java -jar " + jar + " --empty-push --url " + veniceControllerUrl + " --cluster " + clusterName + " --store "
-            + storeName + " --push-id init --store-size 1000");
+        "java -Dpubsub.adapter.factory.kafka.fallback.enabled=true -jar " + jar + " --empty-push --url "
+            + veniceControllerUrl + " --cluster " + clusterName + " --store " + storeName
+            + " --push-id init --store-size 1000");
   }
 
   private void updateVeniceStoreQuotas(String veniceControllerUrl, String jar, String clusterName, String storeName)
@@ -279,15 +280,16 @@ public class PulsarVeniceSinkTest {
         "venice-client",
         "bash",
         "-c",
-        "java -jar " + jar + " --update-store --url " + veniceControllerUrl + " --cluster " + clusterName + " --store "
-            + storeName + " --storage-quota -1 --incremental-push-enabled true");
+        "java -Dpubsub.adapter.factory.kafka.fallback.enabled=true -jar " + jar + " --update-store --url "
+            + veniceControllerUrl + " --cluster " + clusterName + " --store " + storeName
+            + " --storage-quota -1 --incremental-push-enabled true");
 
     execByServiceAsssertNoStdErr(
         "venice-client",
         "bash",
         "-c",
-        "java -jar " + jar + " --update-store --url " + veniceControllerUrl + " --cluster " + clusterName + " --store "
-            + storeName + " --read-quota 1000000");
+        "java -Dpubsub.adapter.factory.kafka.fallback.enabled=true -jar " + jar + " --update-store --url "
+            + veniceControllerUrl + " --cluster " + clusterName + " --store " + storeName + " --read-quota 1000000");
   }
 
   private void createVeniceStore(
@@ -301,8 +303,9 @@ public class PulsarVeniceSinkTest {
         "venice-client",
         "bash",
         "-c",
-        "java -jar " + jar + " --new-store --url " + veniceControllerUrl + " --cluster " + clusterName + " --store "
-            + storeName + " --key-schema-file " + keyFile + " --value-schema-file " + valueFile);
+        "java -Dpubsub.adapter.factory.kafka.fallback.enabled=true -jar " + jar + " --new-store --url "
+            + veniceControllerUrl + " --cluster " + clusterName + " --store " + storeName + " --key-schema-file "
+            + keyFile + " --value-schema-file " + valueFile);
   }
 
   private void saveKeyValueSchemaFiles(String keyAsvc, String valueAsvc, String keyFile, String valueFile)
