@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
@@ -28,8 +29,8 @@ public class TestPushJobHeartbeatSender {
   public void testHeartbeatSenderCreation() {
     String kafkaUrl = "localhost:1234";
     String heartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
-    VeniceProperties properties = VeniceProperties.empty();
-    Optional<Properties> sslProperties = Optional.empty();
+    VeniceProperties properties = new VeniceProperties(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    Optional<Properties> sslProperties = Optional.of(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     DefaultPushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
 
     // Prepare controller client.

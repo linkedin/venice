@@ -1020,7 +1020,7 @@ public class TestHybrid {
 
       try (VeniceProducer veniceOnlineProducer = OnlineProducerFactory.createProducer(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()),
-          VeniceProperties.empty(),
+          new VeniceProperties(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs()),
           null)) {
         for (int i = keyCount; i < keyCount * 2; i++) {
           veniceOnlineProducer.asyncPut(i, i * 2).get();

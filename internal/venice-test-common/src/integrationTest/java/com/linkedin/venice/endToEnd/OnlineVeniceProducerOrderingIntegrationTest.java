@@ -186,7 +186,8 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
       int callbackThreadCount,
       int callbackQueueCapacity,
       MetricsRepository metricsRepository) {
-    VeniceProperties producerConfig = new PropertyBuilder().put(CLIENT_PRODUCER_WORKER_COUNT, workerCount)
+    VeniceProperties producerConfig = new PropertyBuilder().put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
+        .put(CLIENT_PRODUCER_WORKER_COUNT, workerCount)
         .put(CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY, workerQueueCapacity)
         .put(CLIENT_PRODUCER_CALLBACK_THREAD_COUNT, callbackThreadCount)
         .put(CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY, callbackQueueCapacity)

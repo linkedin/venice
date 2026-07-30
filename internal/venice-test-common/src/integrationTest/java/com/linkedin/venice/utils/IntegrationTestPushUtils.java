@@ -286,6 +286,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
+    addPubSubApacheKafkaAdapterFactoryConfigs(samzaConfig);
     samzaConfig.putAll(
         PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
     return samzaConfig;
@@ -306,6 +307,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
     samzaConfig.put(DEPLOYMENT_ID, "DC_" + index + "_" + storeName);
     samzaConfig.put(SSL_ENABLED, "false");
+    samzaConfig.putAll(clusterWrapper.getChildRegions().get(index).getPubSubClientProperties());
     return samzaConfig;
   }
 
@@ -324,7 +326,13 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
     samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
+    samzaConfig.putAll(clusterWrapper.getChildRegions().get(0).getPubSubClientProperties());
     return samzaConfig;
+  }
+
+  private static void addPubSubApacheKafkaAdapterFactoryConfigs(Map<String, String> config) {
+    TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs()
+        .forEach((key, value) -> config.put(key.toString(), value.toString()));
   }
 
   /**
@@ -602,6 +610,7 @@ public class IntegrationTestPushUtils {
       PubSubBrokerWrapper pubSubBrokerWrapper,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     veniceWriterProperties
         .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
