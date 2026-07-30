@@ -2060,6 +2060,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
     storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
+    storeVersion.setTargetRegionPromoted(version.isTargetRegionPromoted());
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
     storeVersion.setGlobalRtDivEnabled(version.isGlobalRtDivEnabled());
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
