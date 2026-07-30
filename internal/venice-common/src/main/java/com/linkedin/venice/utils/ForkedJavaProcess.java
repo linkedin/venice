@@ -1,10 +1,5 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
@@ -320,14 +315,6 @@ public final class ForkedJavaProcess extends Process {
     command.add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
     // Inherit IPv6 preference setting from parent process.
     command.add("-Djava.net.preferIPv6Addresses=" + System.getProperty("java.net.preferIPv6Addresses", "false"));
-    // Forward the pub-sub adapter factory classes (when provided as system properties) so forked Venice
-    // processes (e.g. isolated ingestion or test apps) resolve their pub-sub clients the same way as this
-    // process. There is no implicit default, so a fork that neither inherits these nor sets them in its
-    // config will fail fast.
-    forwardSystemPropertyIfSet(command, PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS);
-    forwardSystemPropertyIfSet(command, PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS);
-    forwardSystemPropertyIfSet(command, PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS);
-    forwardSystemPropertyIfSet(command, PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS);
 
     /**
      Add log4j2 configuration file and JVM arguments.
@@ -353,19 +340,6 @@ public final class ForkedJavaProcess extends Process {
     command.add(appClass.getCanonicalName());
     command.addAll(args);
     return command;
-  }
-
-  /**
-   * Forwards a system property to the forked process command as a {@code -D} argument, but only when it
-   * is set in this (parent) process. This lets forked Venice processes inherit values that are supplied
-   * at runtime (e.g. the pub-sub adapter factory classes in tests) without injecting anything when the
-   * property is unset (e.g. in production, where such values come from config).
-   */
-  private static void forwardSystemPropertyIfSet(List<String> command, String propertyKey) {
-    String value = System.getProperty(propertyKey);
-    if (value != null) {
-      command.add("-D" + propertyKey + "=" + value);
-    }
   }
 
   public long pid() {

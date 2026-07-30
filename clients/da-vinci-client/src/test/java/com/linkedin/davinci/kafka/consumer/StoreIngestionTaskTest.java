@@ -3298,6 +3298,7 @@ public abstract class StoreIngestionTaskTest {
 
   private VeniceServerConfig buildVeniceServerConfig(Map<String, Object> extraProperties) {
     PropertyBuilder propertyBuilder = new PropertyBuilder();
+    propertyBuilder.put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     propertyBuilder.put(CLUSTER_NAME, "");
     propertyBuilder.put(ZOOKEEPER_ADDRESS, "");
     propertyBuilder.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 500L);
