@@ -155,6 +155,7 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.LongAccumulator;
+import scala.collection.JavaConverters;
 
 
 /**
@@ -237,6 +238,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     sparkContext.setCallSite(jobGroupId);
 
     RuntimeConfig jobConf = sparkSession.conf();
+    new ArrayList<>(JavaConverters.mapAsJavaMap(jobConf.getAll()).keySet()).stream()
+        .filter(key -> key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX))
+        .forEach(jobConf::unset);
     setupCommonSparkConf(props, jobConf, pushJobSetting);
     jobConf.set(BATCH_NUM_BYTES_PROP, pushJobSetting.batchNumBytes);
     jobConf.set(TOPIC_PROP, pushJobSetting.topic);

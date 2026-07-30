@@ -17,6 +17,7 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
@@ -91,12 +92,14 @@ public class AbstractDataWriterSparkJobTest {
     String dummyConfig = "some.dummy.config";
     String dummyConfigValue = "some.dummy.config.value";
     String writerHookProviderClass = "com.example.WriterHookProvider";
+    String writerHookSetting = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting";
 
     Properties properties = new Properties();
     properties.setProperty(SPARK_SESSION_CONF_PREFIX + SPARK_APP_NAME_CONFIG, sparkAppNameOverride);
     properties.setProperty(KAFKA_CONFIG_PREFIX + dummyKafkaConfig, dummyKafkaConfigValue);
     properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + dummyConfig, dummyConfigValue);
     properties.setProperty(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS, writerHookProviderClass);
+    properties.setProperty(writerHookSetting, "test-value");
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
@@ -113,6 +116,15 @@ public class AbstractDataWriterSparkJobTest {
 
       // VPJ writer-hook provider config should reach executor task properties.
       Assert.assertEquals(jobConf.get(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS), writerHookProviderClass);
+      Assert.assertEquals(jobConf.get(writerHookSetting), "test-value");
+    }
+
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(VeniceProperties.empty(), setting);
+
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertTrue(jobConf.getOption(PUSH_JOB_WRITER_HOOK_PROVIDER_CLASS).isEmpty());
+      Assert.assertTrue(jobConf.getOption(writerHookSetting).isEmpty());
     }
   }
 
