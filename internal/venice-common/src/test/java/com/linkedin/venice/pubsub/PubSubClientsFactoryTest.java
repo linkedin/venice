@@ -1,22 +1,17 @@
 package com.linkedin.venice.pubsub;
 
-import static com.linkedin.venice.ConfigKeys.PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -54,80 +49,92 @@ public class PubSubClientsFactoryTest {
   }
 
   /**
-   * The hard default is fail-fast (no implicit Kafka fallback). The test JVM overrides this to
-   * {@code true} via a system property (see the root {@code build.gradle}) so the rest of the suite
-   * keeps resolving to the Apache Kafka adapters; the mode tests below set the flag explicitly so they
-   * are independent of that ambient default.
+   * When the factory class is not present in the config, it is resolved from a JVM system property
+   * (the mechanism by which the value is "provided at runtime" — see the root {@code build.gradle},
+   * which sets these for the whole test suite). There is no implicit Apache Kafka default.
    */
   @Test
-  public void testDefaultIsFailFast() {
-    assertFalse(PubSubClientsFactory.DEFAULT_KAFKA_FALLBACK_ENABLED);
+  public void testResolvesFactoryClassFromSystemProperty() {
+    String key = PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+    String saved = System.getProperty(key);
+    try {
+      System.setProperty(key, TestPubSubProducerAdapterFactory.class.getName());
+      PubSubProducerAdapterFactory factory =
+          PubSubClientsFactory.createProducerFactory(new VeniceProperties(new Properties()));
+      assertNotNull(factory);
+      assertEquals(factory.getClass().getName(), TestPubSubProducerAdapterFactory.class.getName());
+    } finally {
+      restoreProperty(key, saved);
+    }
   }
 
   /**
-   * When the Kafka fallback is explicitly disabled (opt-in fail-fast), a missing factory-class config
-   * throws instead of silently defaulting to the Apache Kafka adapter factories.
+   * When the factory class is provided neither in the config nor as a system property, factory
+   * creation fails fast instead of silently defaulting to the Apache Kafka adapter factories.
    */
   @Test
-  public void testFailFastWhenFallbackDisabledAndFactoryClassMissing() {
-    Properties props = new Properties();
-    props.put(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "false");
-    VeniceProperties failFastProps = new VeniceProperties(props);
-
+  public void testFailFastWhenFactoryClassNotProvided() {
     assertFailFast(
-        () -> PubSubClientsFactory.createProducerFactory(failFastProps),
-        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS);
+        () -> PubSubClientsFactory.createProducerFactory(new VeniceProperties(new Properties())),
+        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+        PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS);
     assertFailFast(
-        () -> PubSubClientsFactory.createConsumerFactory(failFastProps),
-        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS);
-    assertFailFast(() -> PubSubClientsFactory.createAdminFactory(failFastProps), PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS);
+        () -> PubSubClientsFactory.createConsumerFactory(new VeniceProperties(new Properties())),
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS);
     assertFailFast(
-        () -> PubSubClientsFactory.createSourceOfTruthAdminFactory(failFastProps),
-        PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS);
-    // The instance constructor eagerly builds all three factories, so it should fail fast as well.
-    expectThrows(VeniceException.class, () -> new PubSubClientsFactory(failFastProps));
+        () -> PubSubClientsFactory.createAdminFactory(new VeniceProperties(new Properties())),
+        PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS,
+        PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS);
   }
 
   /**
-   * When the Kafka fallback is explicitly enabled, missing factory-class configs resolve to the
-   * Apache Kafka adapter factories (same as the default).
+   * An explicit factory-class config takes precedence over a system property.
    */
   @Test
-  public void testKafkaFallbackWhenExplicitlyEnabled() {
-    Properties fallbackEnabled = new Properties();
-    fallbackEnabled.put(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "true");
-    verifyFactoryClasses(
-        fallbackEnabled,
-        ApacheKafkaProducerAdapterFactory.class,
-        ApacheKafkaConsumerAdapterFactory.class,
-        ApacheKafkaAdminAdapterFactory.class);
+  public void testExplicitConfigWinsOverSystemProperty() {
+    String key = PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+    String saved = System.getProperty(key);
+    try {
+      System.setProperty(key, ApacheKafkaProducerAdapterFactory.class.getName());
+      Properties props = new Properties();
+      props.put(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, TestPubSubProducerAdapterFactory.class.getName());
+      PubSubProducerAdapterFactory factory = PubSubClientsFactory.createProducerFactory(new VeniceProperties(props));
+      assertEquals(factory.getClass().getName(), TestPubSubProducerAdapterFactory.class.getName());
+    } finally {
+      restoreProperty(key, saved);
+    }
   }
 
   /**
-   * Explicit factory-class configs are honored regardless of the fallback flag.
+   * Invokes {@code runnable} with the given factory-class system properties cleared, and asserts it
+   * fails fast with a message naming the missing config key.
    */
-  @Test
-  public void testExplicitConfigWinsOverFailFast() {
-    Properties props = new Properties();
-    props.put(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "false");
-    props.put(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, TestPubSubProducerAdapterFactory.class.getName());
-    props.put(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, TestPubSubConsumerAdapterFactory.class.getName());
-    props.put(PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, TestPubSubAdminAdapterFactory.class.getName());
-    verifyFactoryClasses(
-        props,
-        TestPubSubProducerAdapterFactory.class,
-        TestPubSubConsumerAdapterFactory.class,
-        TestPubSubAdminAdapterFactory.class);
+  private static void assertFailFast(
+      org.testng.Assert.ThrowingRunnable runnable,
+      String configKey,
+      String legacyConfigKey) {
+    String saved = System.getProperty(configKey);
+    String savedLegacy = System.getProperty(legacyConfigKey);
+    try {
+      System.clearProperty(configKey);
+      System.clearProperty(legacyConfigKey);
+      VeniceException e = expectThrows(VeniceException.class, runnable);
+      assertTrue(
+          e.getMessage().contains(configKey),
+          "Expected fail-fast message to reference '" + configKey + "' but was: " + e.getMessage());
+    } finally {
+      restoreProperty(configKey, saved);
+      restoreProperty(legacyConfigKey, savedLegacy);
+    }
   }
 
-  private static void assertFailFast(org.testng.Assert.ThrowingRunnable runnable, String expectedConfigKeyInMessage) {
-    VeniceException e = expectThrows(VeniceException.class, runnable);
-    assertTrue(
-        e.getMessage().contains(expectedConfigKeyInMessage),
-        "Expected fail-fast message to reference '" + expectedConfigKeyInMessage + "' but was: " + e.getMessage());
-    assertTrue(
-        e.getMessage().contains(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED),
-        "Expected fail-fast message to reference the fallback config key but was: " + e.getMessage());
+  private static void restoreProperty(String key, String value) {
+    if (value == null) {
+      System.clearProperty(key);
+    } else {
+      System.setProperty(key, value);
+    }
   }
 
   private void verifyFactoryClasses(

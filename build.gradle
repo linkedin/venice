@@ -434,10 +434,14 @@ subprojects {
 
     systemProperty 'pubSubBrokerFactory', System.getProperty('pubSubBrokerFactory', "com.linkedin.venice.integration.utils.KafkaBrokerFactory")
 
-    // Default the pub-sub adapter factories to the Apache Kafka fallback for tests, so the existing
-    // test suite does not need to configure the factory classes explicitly. Production leaves this
-    // unset and therefore fails fast when the factory class is missing (see PubSubClientsFactory).
-    systemProperty 'pubsub.adapter.factory.kafka.fallback.enabled', System.getProperty('pubsub.adapter.factory.kafka.fallback.enabled', 'true')
+    // Provide the pub-sub adapter factory classes to the test JVMs at runtime. The factory fails fast
+    // when these are not supplied (there is no implicit default); passing them here means the existing
+    // test suite runs against the Apache Kafka adapters without each test having to set them, while a
+    // missing value still throws in any context that does not provide it (e.g. containers, production).
+    systemProperty 'pubsub.producer.adapter.factory.class', System.getProperty('pubsub.producer.adapter.factory.class', 'com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory')
+    systemProperty 'pubsub.consumer.adapter.factory.class', System.getProperty('pubsub.consumer.adapter.factory.class', 'com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory')
+    systemProperty 'pubsub.admin.adapter.factory.class', System.getProperty('pubsub.admin.adapter.factory.class', 'com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory')
+    systemProperty 'pubsub.source.of.truth.admin.adapter.factory.class', System.getProperty('pubsub.source.of.truth.admin.adapter.factory.class', 'com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory')
 
     System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
