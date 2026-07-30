@@ -40,6 +40,7 @@ public class VeniceControllerContext {
   private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
   private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
   private ExternalETLService externalETLService;
+  private StoreUpdateHandler storeUpdateHandler;
 
   public List<VeniceProperties> getPropertiesList() {
     return propertiesList;
@@ -97,6 +98,10 @@ public class VeniceControllerContext {
     return externalETLService;
   }
 
+  public StoreUpdateHandler getStoreUpdateHandler() {
+    return storeUpdateHandler;
+  }
+
   public VeniceControllerContext(Builder builder) {
     this.propertiesList = builder.propertiesList;
     this.metricsRepository = builder.metricsRepository;
@@ -112,6 +117,8 @@ public class VeniceControllerContext {
     this.versionLifecycleEventListeners = builder.versionLifecycleEventListeners;
     this.valueSchemaCreatedListeners = builder.valueSchemaCreatedListeners;
     this.externalETLService = builder.externalETLService;
+    this.storeUpdateHandler =
+        builder.storeUpdateHandler == null ? StoreUpdateHandler.NO_OP : builder.storeUpdateHandler;
   }
 
   public static class Builder {
@@ -132,6 +139,7 @@ public class VeniceControllerContext {
     private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
     private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
     private ExternalETLService externalETLService;
+    private StoreUpdateHandler storeUpdateHandler;
 
     public Builder setPropertiesList(List<VeniceProperties> propertiesList) {
       this.propertiesList = propertiesList;
@@ -207,6 +215,11 @@ public class VeniceControllerContext {
       return this;
     }
 
+    public Builder setStoreUpdateHandler(StoreUpdateHandler storeUpdateHandler) {
+      this.storeUpdateHandler = storeUpdateHandler;
+      return this;
+    }
+
     private void addDefaultValues() {
       if (metricsRepository == null && !isMetricsRepositorySet) {
 
@@ -222,6 +235,9 @@ public class VeniceControllerContext {
       }
       if (serviceDiscoveryAnnouncers == null && !isServiceDiscoveryAnnouncerSet) {
         serviceDiscoveryAnnouncers = Collections.emptyList();
+      }
+      if (storeUpdateHandler == null) {
+        storeUpdateHandler = StoreUpdateHandler.NO_OP;
       }
     }
 

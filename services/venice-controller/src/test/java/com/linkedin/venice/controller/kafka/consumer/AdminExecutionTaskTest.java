@@ -6,6 +6,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,9 +16,11 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -25,6 +30,8 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
@@ -40,6 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -609,6 +617,122 @@ public class AdminExecutionTaskTest {
                 p -> p.getThroughputQuotaInBytes().equals(Optional.of(123456L))
                     && p.getThroughputQuotaInRecords().equals(Optional.of(789L))),
         "updateStore must be called with throughput quota values propagated from the UpdateStore message");
+  }
+
+  @Test
+  public void testParentStoreUpdateHandlerReceivesFinalStoreBeforeCheckpoint() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    Store mutableStore = mock(Store.class);
+    Store finalStoreSnapshot = mock(Store.class);
+    when(mockAdmin.getStore(clusterName, storeName)).thenReturn(mutableStore);
+    when(mutableStore.cloneStore()).thenReturn(finalStoreSnapshot);
+    when(finalStoreSnapshot.getName()).thenReturn(storeName);
+    when(finalStoreSnapshot.getOwner()).thenReturn("final-owner");
+    StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
+    doAnswer(invocation -> {
+      assertNull(lastSucceededExecutionIdMap.get(storeName));
+      return null;
+    }).when(storeUpdateHandler).handleStoreUpdate(eq(clusterName), any(Store.class));
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, false));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        true,
+        mockStats,
+        regionName,
+        inflightThreadsByStore,
+        storeUpdateHandler);
+
+    task.call();
+
+    ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
+    InOrder inOrder = inOrder(mockAdmin, mutableStore, storeUpdateHandler, mockExecutionIdAccessor);
+    inOrder.verify(mockAdmin).updateStore(eq(clusterName), eq(storeName), any(UpdateStoreQueryParams.class));
+    inOrder.verify(mockAdmin).getStore(clusterName, storeName);
+    inOrder.verify(mutableStore).cloneStore();
+    inOrder.verify(storeUpdateHandler).handleStoreUpdate(eq(clusterName), storeCaptor.capture());
+    inOrder.verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
+
+    Store callbackStore = storeCaptor.getValue();
+    assertEquals(callbackStore.getName(), storeName);
+    assertEquals(callbackStore.getOwner(), "final-owner");
+    assertThrows(UnsupportedOperationException.class, () -> callbackStore.setOwner("new-owner"));
+    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
+  }
+
+  @Test
+  public void testChildControllerDoesNotInvokeStoreUpdateHandlerOrFetchStore() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, false));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore,
+        storeUpdateHandler);
+
+    task.call();
+
+    verify(storeUpdateHandler, never()).handleStoreUpdate(anyString(), any(Store.class));
+    verify(mockAdmin, never()).getStore(anyString(), anyString());
+    verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
+  }
+
+  @Test
+  public void testStoreUpdateHandlerFailureLeavesExecutionIdUnadvanced() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    Store mutableStore = mock(Store.class);
+    Store finalStoreSnapshot = mock(Store.class);
+    when(mockAdmin.getStore(clusterName, storeName)).thenReturn(mutableStore);
+    when(mutableStore.cloneStore()).thenReturn(finalStoreSnapshot);
+    StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
+    doThrow(new VeniceUnsupportedOperationException("store update callback")).when(storeUpdateHandler)
+        .handleStoreUpdate(eq(clusterName), any(Store.class));
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, false));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        true,
+        mockStats,
+        regionName,
+        inflightThreadsByStore,
+        storeUpdateHandler);
+
+    assertThrows(VeniceUnsupportedOperationException.class, task::call);
+
+    verify(mockExecutionIdAccessor, never()).updateLastSucceededExecutionIdMap(anyString(), anyString(), anyLong());
+    assertNull(lastSucceededExecutionIdMap.get(storeName));
+    assertEquals(queue.size(), 1);
   }
 
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {

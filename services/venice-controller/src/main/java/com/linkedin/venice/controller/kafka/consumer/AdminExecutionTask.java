@@ -7,6 +7,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
@@ -53,6 +54,7 @@ import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceETLStrategy;
@@ -95,6 +97,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private final long lastPersistedExecutionId;
 
   private final ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore;
+  private final StoreUpdateHandler storeUpdateHandler;
 
   AdminExecutionTask(
       Logger LOGGER,
@@ -109,6 +112,36 @@ public class AdminExecutionTask implements Callable<Void> {
       AdminConsumptionStats stats,
       String regionName,
       ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore) {
+    this(
+        LOGGER,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        internalTopic,
+        admin,
+        executionIdAccessor,
+        isParentController,
+        stats,
+        regionName,
+        inflightThreadsByStore,
+        StoreUpdateHandler.NO_OP);
+  }
+
+  AdminExecutionTask(
+      Logger LOGGER,
+      String clusterName,
+      String storeName,
+      ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap,
+      long lastPersistedExecutionId,
+      Queue<AdminOperationWrapper> internalTopic,
+      VeniceHelixAdmin admin,
+      ExecutionIdAccessor executionIdAccessor,
+      boolean isParentController,
+      AdminConsumptionStats stats,
+      String regionName,
+      ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore,
+      StoreUpdateHandler storeUpdateHandler) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -121,6 +154,7 @@ public class AdminExecutionTask implements Callable<Void> {
     this.stats = stats;
     this.regionName = regionName;
     this.inflightThreadsByStore = inflightThreadsByStore;
+    this.storeUpdateHandler = storeUpdateHandler;
   }
 
   @Override
@@ -250,6 +284,7 @@ public class AdminExecutionTask implements Callable<Void> {
           lastSucceededExecutionId);
       return;
     }
+    boolean storeUpdated = false;
     try {
       switch (AdminMessageType.valueOf(adminOperation)) {
         case STORE_CREATION:
@@ -287,6 +322,7 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case UPDATE_STORE:
           handleSetStore((UpdateStore) adminOperation.payloadUnion);
+          storeUpdated = true;
           break;
         case DELETE_STORE:
           handleDeleteStore((DeleteStore) adminOperation.payloadUnion);
@@ -353,6 +389,11 @@ public class AdminExecutionTask implements Callable<Void> {
           e.getClass().getSimpleName(),
           AdminMessageType.valueOf(adminOperation),
           e.getMessage());
+    }
+    if (storeUpdated && isParentController) {
+      Store finalStore = admin.getStore(clusterName, storeName).cloneStore();
+      // Invoke before advancing checkpoints so callback failures leave the admin operation eligible for retry.
+      storeUpdateHandler.handleStoreUpdate(clusterName, new ReadOnlyStore(finalStore));
     }
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
     lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);

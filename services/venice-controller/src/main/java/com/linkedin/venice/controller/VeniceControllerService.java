@@ -73,6 +73,46 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
       Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
+    this(
+        multiClusterConfigs,
+        metricsRepository,
+        sslEnabled,
+        sslConfig,
+        accessController,
+        authorizerService,
+        d2Client,
+        d2Clients,
+        routerClientConfig,
+        icProvider,
+        externalSupersetSchemaGenerator,
+        pubSubTopicRepository,
+        pubSubClientsFactory,
+        pubSubPositionTypeRegistry,
+        versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
+        externalETLService,
+        StoreUpdateHandler.NO_OP);
+  }
+
+  public VeniceControllerService(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository,
+      boolean sslEnabled,
+      Optional<SSLConfig> sslConfig,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
+      Map<String, D2Client> d2Clients,
+      Optional<ClientConfig> routerClientConfig,
+      Optional<ICProvider> icProvider,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubClientsFactory pubSubClientsFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
+      Optional<ExternalETLService> externalETLService,
+      StoreUpdateHandler storeUpdateHandler) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -207,7 +247,8 @@ public class VeniceControllerService extends AbstractVeniceService {
             metricsRepository,
             pubSubClientsFactory.getConsumerAdapterFactory(),
             pubSubTopicRepository,
-            pubSubMessageDeserializer);
+            pubSubMessageDeserializer,
+            storeUpdateHandler);
         this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
         this.admin.setAdminConsumerService(cluster, adminConsumerService);
