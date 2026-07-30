@@ -1,5 +1,9 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
@@ -26,6 +30,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -42,6 +47,65 @@ import org.testng.annotations.Test;
  */
 
 public class VenicePushJobRepushTest extends VenicePushJobTestBase {
+  @Test
+  public void testBuildRepushDictionaryConsumerPropertiesRetainsAdapterConfigAndOverridesBrokers() {
+    Properties jobProperties = new Properties();
+    jobProperties.setProperty(
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
+    jobProperties.setProperty("xc.pubsub.broker.url.to.region.name.map", "northguard:ei4");
+    jobProperties.setProperty(PUBSUB_BROKER_ADDRESS, "destination-broker");
+    jobProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "legacy-broker");
+
+    Properties consumerProperties = VenicePushJob.buildRepushDictionaryConsumerProperties(
+        new VeniceProperties(jobProperties),
+        new Properties(),
+        "source-broker");
+
+    // The configured pub-sub adapter factory and its client-specific configs must survive so the source
+    // dictionary is read with the same adapter as the rest of the repush instead of the implicit Kafka default.
+    assertEquals(
+        consumerProperties.getProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS),
+        "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
+    assertEquals(consumerProperties.getProperty("xc.pubsub.broker.url.to.region.name.map"), "northguard:ei4");
+    // Both broker properties are pointed at the repush source broker.
+    assertEquals(consumerProperties.getProperty(PUBSUB_BROKER_ADDRESS), "source-broker");
+    assertEquals(consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS), "source-broker");
+  }
+
+  @Test
+  public void testBuildRepushDictionaryConsumerPropertiesAppliesSslOverrides() {
+    Properties jobProperties = new Properties();
+    jobProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "PLAINTEXT");
+    jobProperties.setProperty("ssl.keystore.location", "stale-keystore");
+
+    Properties sslProperties = new Properties();
+    sslProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "SSL");
+    sslProperties.setProperty("ssl.keystore.location", "credential-keystore");
+
+    Properties consumerProperties = VenicePushJob
+        .buildRepushDictionaryConsumerProperties(new VeniceProperties(jobProperties), sslProperties, "source-broker");
+
+    assertEquals(consumerProperties.getProperty(PUBSUB_SECURITY_PROTOCOL), "SSL");
+    assertEquals(consumerProperties.getProperty("ssl.keystore.location"), "credential-keystore");
+  }
+
+  @Test
+  public void testBuildRepushDictionaryConsumerPropertiesDoesNotMutateJobProperties() {
+    Properties jobProperties = new Properties();
+    jobProperties.setProperty(PUBSUB_BROKER_ADDRESS, "destination-broker");
+
+    VenicePushJob.buildRepushDictionaryConsumerProperties(
+        new VeniceProperties(jobProperties),
+        new Properties(),
+        "source-broker");
+
+    assertEquals(
+        jobProperties.getProperty(PUBSUB_BROKER_ADDRESS),
+        "destination-broker",
+        "Building consumer properties must not mutate the job properties");
+  }
+
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
   public void testRepushTTLJobWithNonKafkaInput() {
     Properties repushProps = new Properties();

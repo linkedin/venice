@@ -50,7 +50,7 @@ public class KafkaInputDictTrainer {
     private final String kafkaInputBroker;
     private final String topicName;
     private final String keySchema;
-    private final Properties sslProperties;
+    private final Properties consumerProperties;
     private final int compressionDictSize;
     private final int dictSampleSize;
     private final CompressionStrategy sourceVersionCompressionStrategy;
@@ -62,7 +62,7 @@ public class KafkaInputDictTrainer {
       this.kafkaInputBroker = builder.kafkaInputBroker;
       this.topicName = builder.topicName;
       this.keySchema = builder.keySchema;
-      this.sslProperties = builder.sslProperties;
+      this.consumerProperties = builder.consumerProperties;
       this.compressionDictSize = builder.compressionDictSize;
       this.dictSampleSize = builder.dictSampleSize;
       this.sourceVersionCompressionStrategy = builder.sourceVersionCompressionStrategy;
@@ -75,7 +75,7 @@ public class KafkaInputDictTrainer {
     private String kafkaInputBroker;
     private String topicName;
     private String keySchema;
-    private Properties sslProperties;
+    private Properties consumerProperties;
     private int compressionDictSize;
     private int dictSampleSize;
     private CompressionStrategy sourceVersionCompressionStrategy;
@@ -97,8 +97,14 @@ public class KafkaInputDictTrainer {
       return this;
     }
 
-    public ParamBuilder setSslProperties(Properties sslProperties) {
-      this.sslProperties = sslProperties;
+    /**
+     * Properties the source-topic consumer is built from. These must include the job's pub-sub client
+     * configuration (e.g. {@code pubsub.consumer.adapter.factory.class} and any client-specific configs such as
+     * xinfra's) so the dictionary is read with the same pub-sub client as the rest of the repush; otherwise
+     * {@code PubSubClientsFactory.createConsumerFactory(...)} silently defaults to the Apache Kafka consumer.
+     */
+    public ParamBuilder setConsumerProperties(Properties consumerProperties) {
+      this.consumerProperties = consumerProperties;
       return this;
     }
 
@@ -170,7 +176,7 @@ public class KafkaInputDictTrainer {
     properties.setProperty(KAFKA_INPUT_TOPIC, param.topicName);
     properties.setProperty(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, param.keySchema);
     this.sourceTopicName = param.topicName;
-    properties.putAll(param.sslProperties);
+    properties.putAll(param.consumerProperties);
     properties.setProperty(COMPRESSION_DICTIONARY_SIZE_LIMIT, Integer.toString(param.compressionDictSize));
     properties.setProperty(COMPRESSION_DICTIONARY_SAMPLE_SIZE, Integer.toString(param.dictSampleSize));
     properties

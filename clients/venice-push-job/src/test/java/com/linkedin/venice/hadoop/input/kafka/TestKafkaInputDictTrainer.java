@@ -60,7 +60,7 @@ public class TestKafkaInputDictTrainer {
         .setKeySchema("\"string\"")
         .setCompressionDictSize(900 * 1024)
         .setDictSampleSize(sampleSize)
-        .setSslProperties(new Properties())
+        .setConsumerProperties(new Properties())
         .setSourceVersionCompressionStrategy(sourceVersionCompressionStrategy)
         .setNewKMESchemasFromController(allSchemaStr)
         .build();

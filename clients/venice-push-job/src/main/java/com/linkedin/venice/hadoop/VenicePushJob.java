@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
@@ -866,13 +867,9 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          Properties kafkaConsumerProperties = new Properties();
-          if (pushJobSetting.enableSSL) {
-            kafkaConsumerProperties.putAll(this.sslProperties.get());
-          }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
-          ByteBuffer sourceDict = DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+          ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(
+              pushJobSetting.kafkaInputTopic,
+              new VeniceProperties(getRepushDictionaryConsumerProperties()));
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -1666,12 +1663,46 @@ public class VenicePushJob implements AutoCloseable {
     return Optional.of(emptyPushZstdDictionary.get());
   }
 
+  /**
+   * Build the pub-sub consumer properties used to read the repush source topic's compression dictionary.
+   * Seeds from the full job config so the configured pub-sub consumer adapter factory (e.g. xinfra) and its
+   * client configs are honored, then overlays SSL and the repush source broker. Seeding only SSL + broker would
+   * drop {@code pubsub.consumer.adapter.factory.class} and silently fall back to the default Apache Kafka
+   * consumer, which cannot read the source topic on a non-Kafka (e.g. xinfra) deployment.
+   */
+  private Properties getRepushDictionaryConsumerProperties() {
+    return buildRepushDictionaryConsumerProperties(
+        props,
+        pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
+        pushJobSetting.repushSourcePubsubBroker);
+  }
+
+  /**
+   * Assemble the pub-sub consumer properties used to read the repush source topic's compression dictionary. The
+   * source dictionary must be read with the same pub-sub client as the rest of the repush, so seed from the full
+   * job configuration (which carries {@code pubsub.consumer.adapter.factory.class} and any client-specific
+   * settings, such as xinfra's routing maps), overlay SSL, and point the broker properties at the repush source
+   * broker. Seeding only SSL and the broker address drops the adapter-factory class and silently falls back to
+   * the default Apache Kafka consumer, which cannot read the source topic on a non-Kafka (e.g. xinfra) deployment.
+   */
+  @VisibleForTesting
+  static Properties buildRepushDictionaryConsumerProperties(
+      VeniceProperties jobProperties,
+      Properties sslProperties,
+      String repushSourcePubsubBroker) {
+    Properties consumerProperties = jobProperties.toProperties();
+    consumerProperties.putAll(sslProperties);
+    consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, repushSourcePubsubBroker);
+    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, repushSourcePubsubBroker);
+    return consumerProperties;
+  }
+
   private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
         .setNewKMESchemasFromController(pushJobSetting.newKmeSchemasFromController)
-        .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
+        .setConsumerProperties(getRepushDictionaryConsumerProperties())
         .setCompressionDictSize(
             props.getInt(
                 COMPRESSION_DICTIONARY_SIZE_LIMIT,
@@ -1691,14 +1722,9 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          // set up ssl properties and kafka consumer properties
-          Properties kafkaConsumerProperties = new Properties();
-          if (pushJobSetting.enableSSL) {
-            kafkaConsumerProperties.putAll(this.sslProperties.get());
-          }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
-          return DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+          return DictionaryUtils.readDictionaryFromKafka(
+              pushJobSetting.kafkaInputTopic,
+              new VeniceProperties(getRepushDictionaryConsumerProperties()));
         }
       }
       LOGGER.info(
