@@ -22,6 +22,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOP
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
@@ -769,6 +770,32 @@ public class TestVeniceControllerClusterConfig {
     assertFalse(config2.shouldUseAlternativePubSubBackend(heartbeatStore, true, false));
     // A user store must not be affected by the heartbeat flag.
     assertFalse(config2.shouldUseAlternativePubSubBackend("userStore", false, false));
+
+    // Symmetric case: enabling only the heartbeat RT flag routes the heartbeat RT while its VT stays disabled.
+    Properties heartbeatRtOn = getBaseSingleRegionProperties(false);
+    heartbeatRtOn.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_RT, "true");
+    VeniceControllerClusterConfig config3 = new VeniceControllerClusterConfig(new VeniceProperties(heartbeatRtOn));
+    assertTrue(config3.shouldUseAlternativePubSubBackend(heartbeatStore, true, false));
+    assertFalse(config3.shouldUseAlternativePubSubBackend(heartbeatStore, false, false));
+    // A user store must not be affected by the heartbeat RT flag.
+    assertFalse(config3.shouldUseAlternativePubSubBackend("userStore", true, false));
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_ListEntriesAreTrimmedAndEmptiesDropped() {
+    // Leading/trailing whitespace around entries (and stray empty entries) must not cause silent match failures.
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, "  includedStore ,, ,  anotherIncluded  ");
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, " excludedStore ,");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    // Both inclusion entries match despite surrounding whitespace and the empty tokens between commas.
+    assertTrue(config.shouldUseAlternativePubSubBackend("includedStore", false, false));
+    assertTrue(config.shouldUseAlternativePubSubBackend("anotherIncluded", true, true));
+    // The trailing-comma exclusion entry still matches after trimming.
+    assertFalse(config.shouldUseAlternativePubSubBackend("excludedStore", true, false));
+    // The empty token must not have been added as a matchable (blank) store name.
+    assertFalse(config.shouldUseAlternativePubSubBackend("", false, false));
   }
 
   @Test

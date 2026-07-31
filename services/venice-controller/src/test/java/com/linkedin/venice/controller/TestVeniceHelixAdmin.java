@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
 import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionGrpcWireFormat;
@@ -87,6 +88,7 @@ import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
@@ -344,6 +346,77 @@ public class TestVeniceHelixAdmin {
         anyBoolean(),
         anyBoolean(),
         eq(Optional.empty()));
+  }
+
+  @Test
+  public void testCreateBatchTopicsUsesStoreHybridStatusNotVersion() {
+    // Regression (NG routing): createBatchTopics must resolve the alternative-backend decision from the store's hybrid
+    // status, not from the freshly constructed Version (whose isHybrid() is not yet populated in the version-supplied
+    // addVersion path). With only batch.user.store.vt enabled, a hybrid store's VT must STAY on the primary backend,
+    // while a batch store's VT moves to the alternative backend.
+    int partitionCount = 10;
+    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    String configCluster = clusterConfig.getClusterName();
+
+    TopicManager topicManager = mock(TopicManager.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceHelixAdmin.getPubSubTopicRepository()).thenReturn(PUB_SUB_TOPIC_REPOSITORY);
+    doCallRealMethod().when(veniceHelixAdmin)
+        .createBatchTopics(
+            any(Version.class),
+            any(PushType.class),
+            eq(topicManager),
+            anyInt(),
+            eq(clusterConfig),
+            anyBoolean());
+
+    // Case 1: hybrid store, fresh version reports non-hybrid (mock default) -> HYBRID_USER_STORE_VT (disabled) ->
+    // primary.
+    Version hybridVersion = mock(Version.class);
+    when(hybridVersion.getStoreName()).thenReturn(storeName);
+    when(hybridVersion.kafkaTopicName()).thenReturn(storeName + "_v1");
+    PubSubTopic hybridVt = PUB_SUB_TOPIC_REPOSITORY.getTopic(storeName + "_v1");
+    Store hybridStore = mock(Store.class);
+    when(hybridStore.isHybrid()).thenReturn(true);
+    doReturn(hybridStore).when(veniceHelixAdmin).getStore(configCluster, storeName);
+
+    veniceHelixAdmin
+        .createBatchTopics(hybridVersion, PushType.BATCH, topicManager, partitionCount, clusterConfig, false);
+    verify(topicManager).createTopic(
+        eq(hybridVt),
+        eq(partitionCount),
+        anyInt(),
+        anyBoolean(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        eq(false));
+
+    // Case 2 (positive control): a non-hybrid store under the same config -> BATCH_USER_STORE_VT (enabled) ->
+    // alternative.
+    reset(topicManager);
+    String batchStoreName = "batch-store";
+    Version batchVersion = mock(Version.class);
+    when(batchVersion.getStoreName()).thenReturn(batchStoreName);
+    when(batchVersion.kafkaTopicName()).thenReturn(batchStoreName + "_v1");
+    PubSubTopic batchVt = PUB_SUB_TOPIC_REPOSITORY.getTopic(batchStoreName + "_v1");
+    Store batchStore = mock(Store.class);
+    when(batchStore.isHybrid()).thenReturn(false);
+    doReturn(batchStore).when(veniceHelixAdmin).getStore(configCluster, batchStoreName);
+
+    veniceHelixAdmin
+        .createBatchTopics(batchVersion, PushType.BATCH, topicManager, partitionCount, clusterConfig, false);
+    verify(topicManager).createTopic(
+        eq(batchVt),
+        eq(partitionCount),
+        anyInt(),
+        anyBoolean(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        eq(true));
   }
 
   @Test

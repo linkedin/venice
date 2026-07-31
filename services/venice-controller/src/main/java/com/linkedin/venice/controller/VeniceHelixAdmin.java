@@ -2833,7 +2833,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void createBatchTopics(
+  void createBatchTopics(
       Version version,
       PushType pushType,
       TopicManager topicManager,
@@ -2841,9 +2841,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerClusterConfig clusterConfig,
       boolean useFastKafkaOperationTimeout) {
     List<PubSubTopic> topicNamesToCreate = new ArrayList<>(2);
-    topicNamesToCreate.add(pubSubTopicRepository.getTopic(version.kafkaTopicName()));
+    topicNamesToCreate.add(getPubSubTopicRepository().getTopic(version.kafkaTopicName()));
     if (pushType.isStreamReprocessing()) {
-      PubSubTopic streamReprocessingTopic = pubSubTopicRepository
+      PubSubTopic streamReprocessingTopic = getPubSubTopicRepository()
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
@@ -2854,7 +2854,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * batch backend.
      */
     Store store = getStore(clusterConfig.getClusterName(), version.getStoreName());
-    boolean isHybridStore = store != null && store.isHybrid();
+    if (store == null) {
+      throw new VeniceNoStoreException(version.getStoreName(), clusterConfig.getClusterName());
+    }
+    boolean isHybridStore = store.isHybrid();
     boolean useAltBackend =
         clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, isHybridStore);
     topicNamesToCreate.forEach(

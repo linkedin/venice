@@ -1372,16 +1372,30 @@ public class VeniceControllerClusterConfig {
       flags.put(topic, props.getBoolean(topic.configKey, enableAll));
     }
     this.alternativePubSubBackendEnabled = flags;
-    String exclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "");
-    this.alternativeBackendExclusionList = exclusionListStr.isEmpty()
-        ? Collections.emptySet()
-        : Collections.unmodifiableSet(new HashSet<>(Arrays.asList(exclusionListStr.split("\\s*,\\s*"))));
-    String inclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, "");
-    this.alternativeBackendInclusionList = inclusionListStr.isEmpty()
-        ? Collections.emptySet()
-        : Collections.unmodifiableSet(new HashSet<>(Arrays.asList(inclusionListStr.split("\\s*,\\s*"))));
+    this.alternativeBackendExclusionList =
+        parseStoreNameSet(props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, ""));
+    this.alternativeBackendInclusionList =
+        parseStoreNameSet(props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, ""));
 
     this.logClusterConfig();
+  }
+
+  /**
+   * Parses a comma-separated store-name list into an immutable set, trimming whitespace around each entry and
+   * dropping empty values so leading/trailing whitespace or stray commas do not cause silent match failures.
+   */
+  private static Set<String> parseStoreNameSet(String csv) {
+    if (csv == null || csv.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<String> result = new HashSet<>();
+    for (String entry: csv.split(",")) {
+      String trimmed = entry.trim();
+      if (!trimmed.isEmpty()) {
+        result.add(trimmed);
+      }
+    }
+    return result.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet(result);
   }
 
   private void logClusterConfig() {
