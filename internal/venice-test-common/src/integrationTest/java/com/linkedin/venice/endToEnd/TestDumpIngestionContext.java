@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Store;
@@ -39,13 +40,13 @@ public class TestDumpIngestionContext extends AbstractMultiRegionTest {
 
   @BeforeClass(alwaysRun = true)
   public void setUpAdminToolSystemProperties() {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
   }
 
   @AfterClass(alwaysRun = true)
   public void restoreAdminToolSystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

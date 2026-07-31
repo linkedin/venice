@@ -52,7 +52,7 @@ public class TestAdminToolDataOperations {
 
   @BeforeClass
   public void setUp() {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Properties properties = new Properties();
     String regionName = "dc-0";
     properties.setProperty(LOCAL_REGION_NAME, regionName);
@@ -88,7 +88,7 @@ public class TestAdminToolDataOperations {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

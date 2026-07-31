@@ -15,7 +15,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.utils.TestUtils;
 import java.util.Properties;
 import org.testng.annotations.Test;
 
@@ -32,7 +31,7 @@ public class TestBatchForRocksDB extends TestBatch {
     VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options);
 
     Properties serverProperties = new Properties();
-    serverProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    serverProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");

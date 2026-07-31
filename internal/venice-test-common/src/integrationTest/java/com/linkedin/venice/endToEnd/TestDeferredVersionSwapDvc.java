@@ -79,7 +79,7 @@ public class TestDeferredVersionSwapDvc {
 
   @BeforeClass
   public void setUp() {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
@@ -110,7 +110,7 @@ public class TestDeferredVersionSwapDvc {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

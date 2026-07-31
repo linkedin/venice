@@ -82,7 +82,7 @@ public class DaVinciClusterAgnosticTest {
    */
   @BeforeClass
   public void setUp() {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Utils.thisIsLocalhost();
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
@@ -119,7 +119,7 @@ public class DaVinciClusterAgnosticTest {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

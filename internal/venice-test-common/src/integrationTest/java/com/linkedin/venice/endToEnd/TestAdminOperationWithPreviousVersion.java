@@ -220,7 +220,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Utils.thisIsLocalhost();
 
     // Validate that all operations have test coverage BEFORE running any tests
@@ -301,7 +301,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

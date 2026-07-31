@@ -57,7 +57,7 @@ public class AdminToolE2ETest {
 
   @BeforeClass
   public void setUp() {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     // Disable auto materialization here as we need to test the back-fill command.
     Properties parentControllerProperties = new Properties();
     parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
@@ -87,7 +87,7 @@ public class AdminToolE2ETest {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

@@ -51,6 +51,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.integration.utils.KafkaTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -331,8 +332,7 @@ public class IntegrationTestPushUtils {
   }
 
   private static void addPubSubApacheKafkaAdapterFactoryConfigs(Map<String, String> config) {
-    TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs()
-        .forEach((key, value) -> config.put(key.toString(), value.toString()));
+    ServiceFactory.getPubSubClientConfigs().forEach((key, value) -> config.put(key.toString(), value.toString()));
   }
 
   /**
@@ -610,7 +610,7 @@ public class IntegrationTestPushUtils {
       PubSubBrokerWrapper pubSubBrokerWrapper,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    veniceWriterProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     veniceWriterProperties
         .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));

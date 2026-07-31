@@ -172,7 +172,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
           ClientConfig.defaultGenericClientConfig(storeName)
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
-          new VeniceProperties(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs()),
+          new VeniceProperties(ServiceFactory.getPubSubClientConfigs()),
           null)) {
         producer.asyncDelete(getKey(1)).get();
       }

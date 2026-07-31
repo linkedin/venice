@@ -46,6 +46,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -307,7 +308,7 @@ public class TestRepushCore extends AbstractTestRepush {
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
-        .put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
+        .put(ServiceFactory.getPubSubClientConfigs())
         .build();
 
     MetricsRepository metricsRepository = new VeniceMetricsRepository();

@@ -17,6 +17,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -90,7 +91,7 @@ public class ChangelogConsumerTestUtils {
       String zkAddress) {
     Properties consumerProperties = new Properties();
     consumerProperties.putAll(pubSubClientProperties);
-    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    consumerProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);

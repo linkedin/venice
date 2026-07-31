@@ -53,7 +53,7 @@ public class TestFabricBuildout {
 
   @BeforeClass
   public void setUp() {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     Properties serverProperties = new Properties();
@@ -86,7 +86,7 @@ public class TestFabricBuildout {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

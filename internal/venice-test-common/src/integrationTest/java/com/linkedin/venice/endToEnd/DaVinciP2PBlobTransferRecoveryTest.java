@@ -50,6 +50,7 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -120,7 +121,7 @@ public class DaVinciP2PBlobTransferRecoveryTest {
     File configDir = Utils.getTempDataDirectory();
     File configFile = new File(configDir, "dvc-config.properties");
     Properties props = new Properties();
-    props.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    props.putAll(ServiceFactory.getPubSubClientConfigs());
     props.setProperty("zk.hosts", zkHosts);
     props.setProperty("base.data.path", dvcPath1);
     props.setProperty("store.name", storeName);
@@ -266,7 +267,7 @@ public class DaVinciP2PBlobTransferRecoveryTest {
     File configDir = Utils.getTempDataDirectory();
     File configFile = new File(configDir, "dvc-config.properties");
     Properties props = new Properties();
-    props.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    props.putAll(ServiceFactory.getPubSubClientConfigs());
     props.setProperty("zk.hosts", zkHosts);
     props.setProperty("base.data.path", dvcPath1);
     props.setProperty("store.name", storeName);

@@ -133,7 +133,7 @@ public class TestStoreMigration {
 
   @BeforeClass
   public void setUp() throws Exception {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Utils.thisIsLocalhost();
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
@@ -186,7 +186,7 @@ public class TestStoreMigration {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 

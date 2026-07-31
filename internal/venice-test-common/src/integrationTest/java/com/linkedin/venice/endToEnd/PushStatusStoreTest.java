@@ -94,7 +94,7 @@ public class PushStatusStoreTest {
   @BeforeClass
   public void setUp() {
     Properties extraProperties = new Properties();
-    extraProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    extraProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     // all tests in this class will be reading incremental push status from push status store
     extraProperties.setProperty(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, String.valueOf(true));
     extraProperties.setProperty(

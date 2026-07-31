@@ -56,6 +56,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -463,7 +464,7 @@ public class DaVinciClientRecordTransformerFilterTest {
     // Consume all the RT messages and validated how many data records were produced.
     PubSubBrokerWrapper pubSubBrokerWrapper = cluster.getPubSubBrokerWrapper();
     Properties properties = new Properties();
-    properties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    properties.putAll(ServiceFactory.getPubSubClientConfigs());
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     List<DefaultPubSubMessage> messages = new ArrayList<>();
 

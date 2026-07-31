@@ -24,6 +24,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -239,7 +240,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       File outputDir = new File(tempRoot, "output");
       try {
         Properties jobProps = new Properties();
-        jobProps.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+        jobProps.putAll(ServiceFactory.getPubSubClientConfigs());
         jobProps.setProperty(
             VTConsistencyCheckerJob.DC0_BROKER_URL,
             childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());

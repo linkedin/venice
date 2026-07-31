@@ -765,30 +765,6 @@ public class TestUtils {
     return properties;
   }
 
-  public static Properties setPubSubApacheKafkaAdapterFactorySystemProperties() {
-    Properties originalProperties = new Properties();
-    Properties factoryConfigs = getPubSubApacheKafkaAdapterFactoryConfigs();
-    for (String key: factoryConfigs.stringPropertyNames()) {
-      String originalValue = System.getProperty(key);
-      if (originalValue != null) {
-        originalProperties.setProperty(key, originalValue);
-      }
-      System.setProperty(key, factoryConfigs.getProperty(key));
-    }
-    return originalProperties;
-  }
-
-  public static void restorePubSubApacheKafkaAdapterFactorySystemProperties(Properties originalProperties) {
-    for (String key: getPubSubApacheKafkaAdapterFactoryConfigs().stringPropertyNames()) {
-      if (originalProperties.containsKey(key)) {
-        System.setProperty(key, originalProperties.getProperty(key));
-      } else {
-        System.clearProperty(key);
-      }
-    }
-    originalProperties.clear();
-  }
-
   public static Properties getPropertiesForControllerConfig() {
     Properties properties = new Properties();
     properties.putAll(getPubSubApacheKafkaAdapterFactoryConfigs());

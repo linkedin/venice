@@ -49,7 +49,7 @@ public class StoreMetadataRecoveryTest {
 
   @BeforeClass
   public void setUp() {
-    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Utils.thisIsLocalhost();
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
@@ -95,7 +95,7 @@ public class StoreMetadataRecoveryTest {
 
   private void restorePubSubAdapterFactorySystemProperties() {
     if (originalPubSubAdapterFactorySystemProperties != null) {
-      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
     }
   }
 
