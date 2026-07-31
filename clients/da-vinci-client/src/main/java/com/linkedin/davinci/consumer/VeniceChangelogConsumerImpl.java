@@ -5,6 +5,10 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
@@ -235,6 +239,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, changelogClientConfig.getRocksDBBlockCacheSizeInBytes());
       rocksDBBufferProperties
           .put(KAFKA_BOOTSTRAP_SERVERS, changelogClientConfig.getConsumerProperties().get(KAFKA_BOOTSTRAP_SERVERS));
+      // VeniceServerConfig below eagerly builds a PubSubClientsFactory, which fails fast when the adapter
+      // factory classes are not configured. Forward them from the consumer properties even though the local
+      // RocksDB buffer does not itself use a pub-sub client.
+      for (String factoryClassConfigKey: new String[] { PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+          PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS,
+          PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS }) {
+        Object factoryClassName = changelogClientConfig.getConsumerProperties().get(factoryClassConfigKey);
+        if (factoryClassName != null) {
+          rocksDBBufferProperties.put(factoryClassConfigKey, factoryClassName);
+        }
+      }
       VeniceProperties rocksDBBufferVeniceProperties = new VeniceProperties(rocksDBBufferProperties);
       VeniceServerConfig serverConfig = new VeniceServerConfig(rocksDBBufferVeniceProperties);
       rocksDBStorageEngineFactory = new RocksDBStorageEngineFactory(serverConfig);
