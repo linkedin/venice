@@ -667,7 +667,9 @@ public class PubSubUtilTest {
           42L,
           "Invalid buffer should still fall back to offset-based position");
       assertTrue(
-          capturedMessages.stream().anyMatch(message -> message.contains(replicaId)),
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains(replicaId)),
           "Warning log should include the supplied replicaId for debugging: " + capturedMessages);
 
       // positionSource is intentionally free-form: callers without a replica handle (e.g. OffsetRecord's
@@ -681,7 +683,9 @@ public class PubSubUtilTest {
           55L,
           "Invalid buffer should still fall back to offset-based position");
       assertTrue(
-          capturedMessages.stream().anyMatch(message -> message.contains(fieldLabel)),
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains(fieldLabel)),
           "Warning log should include the supplied field-scoped label for debugging: " + capturedMessages);
 
       // Edge case (R14): caller omits all context (e.g. legacy 3-arg overload retained only for tests/truly
@@ -695,11 +699,13 @@ public class PubSubUtilTest {
           99L,
           "Invalid buffer should still fall back to offset-based position");
       assertTrue(
-          capturedMessages.stream().anyMatch(message -> message.contains("N/A")),
+          capturedMessages.stream()
+              .anyMatch(message -> message.contains("Failed to deserialize PubSubPosition") && message.contains("N/A")),
           "Warning log should fall back to N/A when no context at all is available: " + capturedMessages);
     } finally {
       loggerConfig.removeAppender("testDeserializePositionAppender");
       loggerContext.updateLoggers();
+      appender.stop();
     }
   }
 }

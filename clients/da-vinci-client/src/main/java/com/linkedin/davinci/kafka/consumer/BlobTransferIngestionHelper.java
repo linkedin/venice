@@ -138,6 +138,7 @@ public class BlobTransferIngestionHelper {
       LOGGER.warn("Offset record not found for: {}", replicaId);
       return true;
     }
+    offsetRecord.setReplicaId(replicaId);
     // TODO: Remove offset lag threshold entirely in the future — no offset lag should be allowed.
     long blobTransferDisabledOffsetLagThreshold = serverConfig.getBlobTransferDisabledOffsetLagThreshold();
     if (blobTransferDisabledOffsetLagThreshold < 0) {
@@ -165,7 +166,7 @@ public class BlobTransferIngestionHelper {
       return isLagged;
     }
     if (offsetRecord.getOffsetLag() == 0
-        && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition(replicaId))) {
+        && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
       return true;
     }
     if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {

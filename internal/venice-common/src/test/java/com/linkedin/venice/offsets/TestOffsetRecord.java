@@ -125,9 +125,8 @@ public class TestOffsetRecord {
   /**
    * R14 edge/failure case: when the wire-format bytes for a checkpointed position are malformed,
    * {@link OffsetRecord} must never let the deserialization-failure warning attribute the failure to a bare
-   * {@code null}/"N/A". It should either forward the caller-supplied replicaId, or -- when the caller has no
-   * replica context (e.g. {@link OffsetRecord#toString()}) -- fall back to a stable, field-scoped label that at
-   * least identifies which checkpoint accessor/field is affected.
+   * {@code null}/"N/A". It should use its bound replicaId or, before it is associated with a replica, fall back to a
+   * stable field-scoped label that identifies which checkpoint accessor/field is affected.
    */
   @Test
   public void testCheckpointedPositionsLogNonNullSourceOnDeserializationFailure() {
@@ -165,44 +164,67 @@ public class TestOffsetRecord {
     loggerContext.updateLoggers();
 
     try {
-      // No caller context supplied: must still fall back to a field-scoped label, not null/"N/A".
+      // Before replica association, use a field-scoped label rather than null/"N/A".
       assertEquals(corruptRecord.getCheckpointedLocalVtPosition().getNumericOffset(), 777L);
       assertTrue(
           capturedMessages.stream()
-              .anyMatch(message -> message.contains("OffsetRecord.lastProcessedVersionTopicPubSubPosition")),
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition")
+                      && message.contains("OffsetRecord.lastProcessedVersionTopicPubSubPosition")),
           "Expected field-scoped fallback label in: " + capturedMessages);
       assertTrue(
-          capturedMessages.stream().noneMatch(message -> message.contains("N/A")),
+          capturedMessages.stream()
+              .noneMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains("N/A")),
           "Should not need the N/A sentinel when a field-scoped label is available: " + capturedMessages);
 
       capturedMessages.clear();
-      // Caller-supplied replicaId takes precedence over the static field label.
-      String replicaId = "myStore_v3-5";
-      assertEquals(corruptRecord.getCheckpointedLocalVtPosition(replicaId).getNumericOffset(), 777L);
-      assertTrue(
-          capturedMessages.stream().anyMatch(message -> message.contains(replicaId)),
-          "Expected replicaId in: " + capturedMessages);
-
-      capturedMessages.clear();
-      // RT checkpoint without caller context falls back to a broker-qualified label so the affected
-      // checkpoint entry can still be pinpointed even without a replica identity.
       assertEquals(corruptRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1).getNumericOffset(), 888L);
       assertTrue(
           capturedMessages.stream()
               .anyMatch(
-                  message -> message
-                      .contains("OffsetRecord.upstreamRealTimeTopicPubSubPosition[" + TEST_KAFKA_URL1 + "]")),
+                  message -> message.contains("Failed to deserialize PubSubPosition")
+                      && message.contains("OffsetRecord.upstreamRealTimeTopicPubSubPosition[" + TEST_KAFKA_URL1 + "]")),
           "Expected broker-qualified fallback label in: " + capturedMessages);
 
+      String replicaId = "myStore_v3-5";
+      corruptRecord.setReplicaId(replicaId);
       capturedMessages.clear();
-      assertEquals(corruptRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1, replicaId).getNumericOffset(), 888L);
+      assertEquals(corruptRecord.getCheckpointedLocalVtPosition().getNumericOffset(), 777L);
       assertTrue(
-          capturedMessages.stream().anyMatch(message -> message.contains(replicaId)),
-          "Expected replicaId in: " + capturedMessages);
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains(replicaId)),
+          "Expected bound replicaId in: " + capturedMessages);
+
+      capturedMessages.clear();
+      assertEquals(corruptRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1).getNumericOffset(), 888L);
+      assertTrue(
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains(replicaId)),
+          "Expected bound replicaId in: " + capturedMessages);
     } finally {
       loggerConfig.removeAppender("testCheckpointedPositionsLogNonNullSourceAppender");
       loggerContext.updateLoggers();
+      appender.stop();
     }
+  }
+
+  @Test
+  public void testReplicaIdBindingIsRuntimeOnlyAndCannotChange() {
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    byte[] serializedBeforeBinding = record.toBytes();
+
+    record.setReplicaId("myStore_v3-5");
+    record.setReplicaId("myStore_v3-5");
+
+    assertTrue(
+        Arrays.equals(serializedBeforeBinding, record.toBytes()),
+        "Runtime replica identity must not alter serialized PartitionState");
+    Assert.expectThrows(IllegalStateException.class, () -> record.setReplicaId("anotherStore_v1-0"));
   }
 
   @Test

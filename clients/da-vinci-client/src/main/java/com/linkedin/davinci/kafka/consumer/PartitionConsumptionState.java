@@ -426,6 +426,7 @@ public class PartitionConsumptionState {
     }
     this.hybrid = hybrid;
     this.offsetRecord = offsetRecord;
+    this.offsetRecord.setReplicaId(getReplicaId());
     this.pubSubContext = pubSubContext;
     this.errorReported = false;
     this.lagCaughtUp = false;
@@ -453,8 +454,8 @@ public class PartitionConsumptionState {
       divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
       latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
       if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-        offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions, getReplicaId());
-        offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions, getReplicaId());
+        offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
+        offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
       }
       trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
     } else {
@@ -469,8 +470,8 @@ public class PartitionConsumptionState {
     this.localRegionName = localRegionName;
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
-    this.latestProcessedVtPosition = offsetRecord.getCheckpointedLocalVtPosition(getReplicaId());
-    this.latestProcessedRemoteVtPosition = offsetRecord.getCheckpointedRemoteVtPosition(getReplicaId());
+    this.latestProcessedVtPosition = offsetRecord.getCheckpointedLocalVtPosition();
+    this.latestProcessedRemoteVtPosition = offsetRecord.getCheckpointedRemoteVtPosition();
     this.leaderHostId = offsetRecord.getLeaderHostId();
     this.leaderGUID = offsetRecord.getLeaderGUID();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
@@ -1351,7 +1352,7 @@ public class PartitionConsumptionState {
        * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very
        * first time, there are no records in {@link #latestProcessedRtPositions} yet.
        */
-      return getOffsetRecord().getCheckpointedRtPosition(pubSubBrokerAddress, getReplicaId());
+      return getOffsetRecord().getCheckpointedRtPosition(pubSubBrokerAddress);
     }
     return rtPosition;
   }
