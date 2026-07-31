@@ -1094,6 +1094,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
     storeProperties.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
+    storeProperties.setThroughputQuotaInBytes(getThroughputQuotaInBytes());
+    storeProperties.setThroughputQuotaInRecords(getThroughputQuotaInRecords());
     storeProperties.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
     storeProperties.setVersions(convertVersions(getVersions()));
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
@@ -1746,6 +1748,26 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public long getThroughputQuotaInBytes() {
+    return this.delegate.getThroughputQuotaInBytes();
+  }
+
+  @Override
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getThroughputQuotaInRecords() {
+    return this.delegate.getThroughputQuotaInRecords();
+  }
+
+  @Override
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     throw new UnsupportedOperationException();
   }
@@ -2060,6 +2082,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
     storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
+    storeVersion.setTargetRegionPromoted(version.isTargetRegionPromoted());
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
     storeVersion.setGlobalRtDivEnabled(version.isGlobalRtDivEnabled());
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));

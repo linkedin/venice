@@ -37,6 +37,7 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
       Optional<SSLFactory> sslFactory,
       Optional<BlobTransferAclHandler> aclHandler,
       int maxAllowedConcurrentSnapshotUsers,
+      long maxChunkSizeBytes,
       BlobTransferAdmissionController admissionController,
       boolean serverAcceptClientBlobRequestEnabled) {
     this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
@@ -49,6 +50,7 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
         blobSnapshotManager,
         aggBlobTransferStats,
         maxAllowedConcurrentSnapshotUsers,
+        maxChunkSizeBytes,
         admissionController,
         serverAcceptClientBlobRequestEnabled);
   }

@@ -1258,6 +1258,114 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * Reap "stranded" bootstrapped versions at the start of a new push using the DELETE_OLD_VERSION admin message.
+   * PUSHED can mean a colo is awaiting its swap, so a version is only deleted when we know it has been abandoned
+   * (at least one fabric reports it as ROLLED_BACK or KILLED).
+   *
+   * A version that is uniformly PUSHED/STARTED across the fabrics with none rolled back or killed is left untouched,
+   * since that can be an in-progress or healthy push pending a deferred swap. The version is never touched if it is
+   * the current (serving) version in any fabric.
+   */
+  void deleteStrandedNonCurrentVersions(String clusterName, String storeName) {
+    Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
+    if (store == null) {
+      return;
+    }
+    // Filter for PUSHED, ROLLED_BACK, and KILLED. Only further check multiple child fabrics if there are candidates.
+    List<Integer> candidateVersionNums = new ArrayList<>();
+    for (Version version: store.getVersions()) {
+      VersionStatus parentStatus = version.getStatus();
+      if (parentStatus == PUSHED || parentStatus == ROLLED_BACK || parentStatus == KILLED) {
+        candidateVersionNums.add(version.getNumber());
+      }
+    }
+    if (candidateVersionNums.isEmpty()) {
+      return;
+    }
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClientMap.isEmpty()) {
+      return;
+    }
+    Map<String, StoreInfo> regionStores = new HashMap<>();
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      String region = entry.getKey();
+      StoreResponse storeResponse;
+      try {
+        storeResponse = entry.getValue().getStore(storeName);
+      } catch (Exception e) {
+        // Cannot determine this fabric's state; be conservative and skip the delete entirely.
+        LOGGER.warn(
+            "Skipping stranded-version cleanup for store: {} version: {}; failed to read store from region: {}",
+            storeName,
+            candidateVersionNums,
+            region,
+            e);
+        return;
+      }
+      if (storeResponse == null || storeResponse.isError() || storeResponse.getStore() == null) {
+        // Cannot determine this fabric's state; be conservative and skip the delete entirely.
+        LOGGER.warn(
+            "Skipping stranded-version cleanup for store: {} version: {}; failed to read store from region: {} ({})",
+            storeName,
+            candidateVersionNums,
+            region,
+            storeResponse == null
+                ? "null response"
+                : storeResponse.isError() ? storeResponse.getError() : "store payload was null");
+        return;
+      }
+      regionStores.put(region, storeResponse.getStore());
+    }
+    for (int versionNum: candidateVersionNums) {
+      if (!isVersionStrandedAcrossFabrics(versionNum, regionStores)) {
+        continue;
+      }
+      try {
+        LOGGER.info(
+            "Deleting stranded non-current version: {} for store: {} in cluster: {}",
+            versionNum,
+            storeName,
+            clusterName);
+        deleteOldVersionInStore(clusterName, storeName, versionNum);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Failed to delete stranded version: {} for store: {} in cluster: {}",
+            versionNum,
+            storeName,
+            clusterName,
+            e);
+      }
+    }
+  }
+
+  /**
+   * Returns {@code true} only when the given version has positive cross-fabric evidence of being an
+   * abandoned, stranded version that is safe to delete fleet-wide. See
+   * {@link #deleteStrandedNonCurrentVersions} for the guardrail rationale. Returns {@code false}
+   * (conservatively skipping the delete) if any fabric's state cannot be read, if the version is
+   * current or actively pushing (STARTED) in any fabric, or if there is no evidence of abandonment.
+   */
+  private boolean isVersionStrandedAcrossFabrics(int versionNum, Map<String, StoreInfo> regionStores) {
+    boolean abandonedInSomeFabric = false;
+    for (StoreInfo storeInfo: regionStores.values()) {
+      Optional<Version> regionVersion = storeInfo.getVersion(versionNum);
+      if (!regionVersion.isPresent()) {
+        continue;
+      }
+      VersionStatus regionStatus = regionVersion.get().getStatus();
+      // Never delete a version that is serving (current) or still actively pushing in any fabric.
+      if (storeInfo.getCurrentVersion() == versionNum || regionStatus == STARTED) {
+        return false;
+      }
+      if (regionStatus == ROLLED_BACK || regionStatus == KILLED) {
+        abandonedInSomeFabric = true;
+      }
+    }
+    // Delete only with positive evidence of abandonment: rolled back or killed in at least one fabric.
+    return abandonedInSomeFabric;
+  }
+
+  /**
   * Check whether any topic for this store exists or not.
   * The existing topic could be introduced by two cases:
   * 1. The previous job push is still running;
@@ -2061,6 +2169,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
     }
+    deleteStrandedNonCurrentVersions(clusterName, storeName);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }

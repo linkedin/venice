@@ -69,6 +69,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
@@ -175,6 +177,18 @@ public final class StoreConfigUpdater {
   private static final Logger LOGGER = LogManager.getLogger(StoreConfigUpdater.class);
 
   private StoreConfigUpdater() {
+  }
+
+  /**
+   * The throughput write-quota fields use {@code -1} as the "no limit" sentinel; any value below
+   * {@code -1} is invalid. Validate before applying, mirroring how the storage/read quota setters
+   * reject invalid negatives.
+   */
+  private static void validateThroughputQuota(String configName, Optional<Long> quota) {
+    if (quota.isPresent() && quota.get() < -1) {
+      throw new VeniceException(
+          configName + " must be greater than or equal to -1 (where -1 means no limit), but was: " + quota.get());
+    }
   }
 
   /**
@@ -289,6 +303,10 @@ public final class StoreConfigUpdater {
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
+    Optional<Long> throughputQuotaInBytes = params.getThroughputQuotaInBytes();
+    Optional<Long> throughputQuotaInRecords = params.getThroughputQuotaInRecords();
+    validateThroughputQuota(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
+    validateThroughputQuota(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
@@ -715,6 +733,18 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
+      throughputQuotaInBytes
+          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setThroughputQuotaInBytes(aLong);
+            return store;
+          }));
+
+      throughputQuotaInRecords
+          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setThroughputQuotaInRecords(aLong);
+            return store;
+          }));
+
       unusedSchemaDeletionEnabled
           .ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setUnusedSchemaDeletionEnabled(aBoolean);
@@ -933,6 +963,10 @@ public final class StoreConfigUpdater {
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
+    Optional<Long> throughputQuotaInBytes = params.getThroughputQuotaInBytes();
+    Optional<Long> throughputQuotaInRecords = params.getThroughputQuotaInRecords();
+    validateThroughputQuota(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
+    validateThroughputQuota(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
     boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
     List<CharSequence> updatedConfigsList = new LinkedList<>();
     String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
@@ -1323,6 +1357,12 @@ public final class StoreConfigUpdater {
     setStore.maxNearlineRecordSizeBytes =
         maxNearlineRecordSizeBytes.map(admin.addToUpdatedConfigList(updatedConfigsList, MAX_NEARLINE_RECORD_SIZE_BYTES))
             .orElseGet(currStore::getMaxNearlineRecordSizeBytes);
+    setStore.throughputQuotaInBytes =
+        throughputQuotaInBytes.map(admin.addToUpdatedConfigList(updatedConfigsList, THROUGHPUT_QUOTA_IN_BYTES))
+            .orElseGet(currStore::getThroughputQuotaInBytes);
+    setStore.throughputQuotaInRecords =
+        throughputQuotaInRecords.map(admin.addToUpdatedConfigList(updatedConfigsList, THROUGHPUT_QUOTA_IN_RECORDS))
+            .orElseGet(currStore::getThroughputQuotaInRecords);
 
     // Key URN compression runtime logic has been removed, but the Avro UpdateStore message
     // still requires these fields to be non-null for serialization.

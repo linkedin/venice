@@ -76,6 +76,27 @@ public class PubSubClientsFactoryTest {
   }
 
   /**
+   * A present-but-blank factory-class config is treated the same as a missing one: it fails fast with a
+   * message naming the key (instead of attempting to instantiate an empty class name), and resolves to
+   * the Apache Kafka default when the fallback is explicitly enabled.
+   */
+  @Test
+  public void testBlankFactoryClassTreatedAsMissing() {
+    Properties blankProps = new Properties();
+    blankProps.put(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, "   ");
+    assertFailFast(
+        () -> PubSubClientsFactory.createProducerFactory(new VeniceProperties(blankProps)),
+        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS);
+
+    Properties blankWithFallback = new Properties();
+    blankWithFallback.put(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, "");
+    blankWithFallback.put(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "true");
+    PubSubProducerAdapterFactory producerFactory =
+        PubSubClientsFactory.createProducerFactory(new VeniceProperties(blankWithFallback));
+    assertEquals(producerFactory.getClass().getName(), ApacheKafkaProducerAdapterFactory.class.getName());
+  }
+
+  /**
    * When the Kafka fallback is explicitly enabled, missing factory-class configs should resolve to the
    * Apache Kafka adapter factories (the legacy behavior).
    */

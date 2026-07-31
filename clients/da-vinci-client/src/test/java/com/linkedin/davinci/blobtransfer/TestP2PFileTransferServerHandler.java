@@ -32,10 +32,12 @@ import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpChunkedInput;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.handler.timeout.IdleStateEvent;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -46,6 +48,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -78,6 +81,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         maxAllowedConcurrentSnapshotUsers,
+        2 * 1024 * 1024,
         new BlobTransferAdmissionController(maxAllowedConcurrentSnapshotUsers, 25),
         true);
     ch = new EmbeddedChannel(serverHandler);
@@ -107,6 +111,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         4,
+        2 * 1024 * 1024,
         fullController,
         true);
     EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
@@ -140,6 +145,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         4,
+        2 * 1024 * 1024,
         controller,
         true);
     EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
@@ -169,6 +175,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         4,
+        2 * 1024 * 1024,
         controller,
         true);
     EmbeddedChannel clientChannel = new EmbeddedChannel(clientHandler);
@@ -194,6 +201,7 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         maxAllowedConcurrentSnapshotUsers,
+        2 * 1024 * 1024,
         null,
         false);
   }
@@ -206,8 +214,91 @@ public class TestP2PFileTransferServerHandler {
         blobSnapshotManager,
         blobTransferStats,
         maxAllowedConcurrentSnapshotUsers,
+        2 * 1024 * 1024,
         null,
         true);
+  }
+
+  @Test
+  public void testSendFileHonorsConfiguredMaxChunkSize() throws IOException {
+    // Exercise a real transfer through ChunkedWriteHandler (as production pipelines do; the default `ch` in this
+    // class has no ChunkedWriteHandler so it never materializes actual HttpContent chunks) and assert every emitted
+    // chunk respects the configured ceiling. This proves sendFile() actually honors maxChunkSizeBytes rather than
+    // silently keeping the old hardcoded 2MB limit.
+    int configuredMaxChunkSizeBytes = 16384; // smallest legal ceiling (the chunk-size floor used in sendFile())
+    P2PFileTransferServerHandler smallChunkHandler = new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        blobTransferStats,
+        maxAllowedConcurrentSnapshotUsers,
+        configuredMaxChunkSizeBytes,
+        new BlobTransferAdmissionController(maxAllowedConcurrentSnapshotUsers, 25),
+        true);
+    EmbeddedChannel smallChunkChannel = new EmbeddedChannel(new ChunkedWriteHandler(), smallChunkHandler);
+
+    StorageEngine localStorageEngine = Mockito.mock(StorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+    // File large enough (5x the configured ceiling) to force multiple chunks: sendFile()'s chunkSize formula is
+    // min(maxChunkSizeBytes, max(16384, length / 4)), so at length = 5 * 16384, length / 4 = 20480 >= 16384, meaning
+    // the configured ceiling (16384) -- not the floor -- determines chunkSize, and the file requires 5 chunks.
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Path file1 = snapshotDir.resolve("file1");
+    byte[] fileContent = new byte[configuredMaxChunkSizeBytes * 5];
+    ThreadLocalRandom.current().nextBytes(fileContent);
+    Files.write(file1.toAbsolutePath(), fileContent);
+
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
+
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    smallChunkChannel.writeInbound(request);
+
+    // start of file1 headers
+    Object response = smallChunkChannel.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+
+    // Drain the actual HttpContent chunks that ChunkedWriteHandler pulled from the ChunkedFile and wrote downstream.
+    // The metadata and STATUS responses that follow are DefaultFullHttpResponse, which also implements HttpContent
+    // (via LastHttpContent), so stop as soon as a FullHttpResponse appears -- that marks the end of the file's
+    // chunked stream and the start of the next, separately-written response.
+    int totalBytesReceived = 0;
+    int chunkCount = 0;
+    Object outbound;
+    while ((outbound = smallChunkChannel.readOutbound()) != null && !(outbound instanceof FullHttpResponse)) {
+      Assert.assertTrue(outbound instanceof HttpContent, "Unexpected outbound message: " + outbound);
+      HttpContent httpContent = (HttpContent) outbound;
+      int chunkBytes = httpContent.content().readableBytes();
+      Assert.assertTrue(
+          chunkBytes <= configuredMaxChunkSizeBytes,
+          "Chunk " + chunkCount + " was " + chunkBytes + " bytes, exceeding the configured ceiling of "
+              + configuredMaxChunkSizeBytes);
+      totalBytesReceived += chunkBytes;
+      chunkCount++;
+      httpContent.release();
+    }
+
+    Assert.assertEquals(totalBytesReceived, fileContent.length, "All file bytes must be transferred");
+    // Expect 5 full-size chunks; HttpChunkedInput may emit an additional trailing empty chunk to mark end-of-input,
+    // so allow for that without weakening the core claim that the file was actually split into multiple chunks
+    // bounded by the configured ceiling (a single 2MB-sized write would have produced just 1-2 chunks here).
+    Assert.assertTrue(
+        chunkCount >= 5,
+        "File of 5x the configured chunk size must be split into at least 5 chunks when the ceiling, not the "
+            + "floor, is the binding constraint; got " + chunkCount);
+
+    smallChunkChannel.close();
   }
 
   @Test

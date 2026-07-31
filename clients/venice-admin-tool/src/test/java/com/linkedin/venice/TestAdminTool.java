@@ -189,6 +189,42 @@ public class TestAdminTool {
   }
 
   @Test
+  public void testAdminUpdateStoreArgThroughputQuota() throws ParseException, IOException {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--throughput-quota-in-bytes", "123456", "--throughput-quota-in-records", "789" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    assertEquals(params.getThroughputQuotaInBytes(), Optional.of(123456L));
+    assertEquals(params.getThroughputQuotaInRecords(), Optional.of(789L));
+  }
+
+  @Test
+  public void testAdminUpdateStoreArgThroughputQuotaNoLimit() throws ParseException, IOException {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--throughput-quota-in-bytes", "-1", "--throughput-quota-in-records", "-1" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    assertEquals(params.getThroughputQuotaInBytes(), Optional.of(-1L));
+    assertEquals(params.getThroughputQuotaInRecords(), Optional.of(-1L));
+  }
+
+  @Test
+  public void testAdminUpdateStoreArgThroughputQuotaUnset() throws ParseException, IOException {
+    String[] args =
+        { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store", "testStore" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    Assert.assertFalse(params.getThroughputQuotaInBytes().isPresent());
+    Assert.assertFalse(params.getThroughputQuotaInRecords().isPresent());
+  }
+
+  @Test
   public void testAdminUpdateStoreArgEtlActiveFabrics() throws ParseException, IOException {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--etl-active-fabrics", "dc-0,dc-1" };

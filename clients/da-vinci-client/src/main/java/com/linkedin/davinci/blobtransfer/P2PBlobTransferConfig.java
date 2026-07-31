@@ -12,6 +12,8 @@ public class P2PBlobTransferConfig {
   private final String baseDir;
   // Max concurrent snapshot user, if the number of snapshot user exceeds this limit, the request will be rejected.
   private final int maxConcurrentSnapshotUser;
+  // Upper bound (in bytes) on the per-chunk size used when streaming a snapshot file to a peer.
+  private final long maxChunkSizeBytes;
   // Snapshot retention time in minutes, if exceeded, the snapshot need to recreate
   private final int snapshotRetentionTimeInMin;
   // Max timeout for blob transfer in minutes in server side, to avoid endless sending files.
@@ -44,6 +46,7 @@ public class P2PBlobTransferConfig {
       int p2pTransferClientPort,
       String baseDir,
       int maxConcurrentSnapshotUser,
+      long maxChunkSizeBytes,
       int snapshotRetentionTimeInMin,
       int blobTransferMaxTimeoutInMin,
       int blobReceiveMaxTimeoutInMin,
@@ -61,6 +64,7 @@ public class P2PBlobTransferConfig {
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
     this.maxConcurrentSnapshotUser = maxConcurrentSnapshotUser;
+    this.maxChunkSizeBytes = maxChunkSizeBytes;
     this.snapshotRetentionTimeInMin = snapshotRetentionTimeInMin;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobReceiveMaxTimeoutInMin = blobReceiveMaxTimeoutInMin;
@@ -90,6 +94,10 @@ public class P2PBlobTransferConfig {
 
   public int getMaxConcurrentSnapshotUser() {
     return maxConcurrentSnapshotUser;
+  }
+
+  public long getMaxChunkSizeBytes() {
+    return maxChunkSizeBytes;
   }
 
   public int getSnapshotRetentionTimeInMin() {

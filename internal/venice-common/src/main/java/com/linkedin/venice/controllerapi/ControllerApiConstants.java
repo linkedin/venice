@@ -275,6 +275,9 @@ public class ControllerApiConstants {
   public static final String MAX_RECORD_SIZE_BYTES = "max_record_size_bytes";
   public static final String MAX_NEARLINE_RECORD_SIZE_BYTES = "max_nearline_record_size_bytes";
 
+  public static final String THROUGHPUT_QUOTA_IN_BYTES = "throughput_quota_in_bytes";
+  public static final String THROUGHPUT_QUOTA_IN_RECORDS = "throughput_quota_in_records";
+
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";

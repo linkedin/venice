@@ -346,6 +346,41 @@ public class ReadOnlyStoreTest {
   }
 
   @Test
+  public void testCloneStorePropertiesPreservesVersionTargetRegionPromoted() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+    store.addVersion(new VersionImpl(store.getName(), 1, "push1"));
+    store.setVersionTargetRegionPromoted(1, true);
+    assertTrue(store.getVersion(1).isTargetRegionPromoted());
+
+    // Regression: ReadOnlyStore.convertVersion previously dropped targetRegionPromoted, so a
+    // Store -> StoreProperties round-trip via cloneStoreProperties emitted the schema default
+    // (false) for every version. Non-target DaVinci clients read this field (via the meta system
+    // store / request-based store_properties, both built from cloneStoreProperties) to know when
+    // to resume paused ingestion, so losing it here deadlocked paused-SIT resume.
+    StoreProperties promoted = new ReadOnlyStore(store).cloneStoreProperties();
+    assertEquals(promoted.getVersions().size(), 1);
+    assertTrue(promoted.getVersions().get(0).getTargetRegionPromoted());
+  }
+
+  @Test
+  public void testCloneStorePropertiesTargetRegionPromotedDefaultsFalse() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+    store.addVersion(new VersionImpl(store.getName(), 1, "push1"));
+    assertFalse(store.getVersion(1).isTargetRegionPromoted());
+
+    // Unpromoted versions must round-trip as false (not silently flipped).
+    StoreProperties cloned = new ReadOnlyStore(store).cloneStoreProperties();
+    assertEquals(cloned.getVersions().size(), 1);
+    assertFalse(cloned.getVersions().get(0).getTargetRegionPromoted());
+  }
+
+  @Test
   public void testReadOnlyEtlConfigDelegatesGetEtlActiveFabrics() {
     ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
     store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, 2, Arrays.asList("dc-0", "dc-1")));

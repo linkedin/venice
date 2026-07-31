@@ -53,6 +53,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       Optional<SSLFactory> sslFactory,
       Optional<BlobTransferAclHandler> aclHandler,
       int maxAllowedConcurrentSnapshotUsers,
+      long maxChunkSizeBytes,
       int clientCapacityPercent,
       boolean serverAcceptClientBlobRequestEnabled) {
     this.port = port;
@@ -91,6 +92,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
                 sslFactory,
                 aclHandler,
                 maxAllowedConcurrentSnapshotUsers,
+                maxChunkSizeBytes,
                 serverAcceptClientBlobRequestEnabled
                     ? new BlobTransferAdmissionController(maxAllowedConcurrentSnapshotUsers, clientCapacityPercent)
                     : null,

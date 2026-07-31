@@ -367,6 +367,14 @@ public interface Store {
 
   void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes);
 
+  long getThroughputQuotaInBytes();
+
+  void setThroughputQuotaInBytes(long throughputQuotaInBytes);
+
+  long getThroughputQuotaInRecords();
+
+  void setThroughputQuotaInRecords(long throughputQuotaInRecords);
+
   void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
 
   boolean isUnusedSchemaDeletionEnabled();

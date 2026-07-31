@@ -30,7 +30,9 @@ public class TestPushJobHeartbeatSender {
     String kafkaUrl = "localhost:1234";
     String heartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
     VeniceProperties properties = new VeniceProperties(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
-    Optional<Properties> sslProperties = Optional.of(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    // No SSL properties: the heartbeat writer must still resolve the pub-sub producer factory class from
+    // the job properties (see DefaultPushJobHeartbeatSenderFactory), which is the sslEnabled=false path.
+    Optional<Properties> sslProperties = Optional.empty();
     DefaultPushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
 
     // Prepare controller client.

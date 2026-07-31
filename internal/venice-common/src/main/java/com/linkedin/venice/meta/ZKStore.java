@@ -242,6 +242,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
+    setThroughputQuotaInBytes(store.getThroughputQuotaInBytes());
+    setThroughputQuotaInRecords(store.getThroughputQuotaInRecords());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
     setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     setBlobDbEnabled(store.getBlobDbEnabled());
@@ -1029,6 +1031,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
     this.storeProperties.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
+  }
+
+  @Override
+  public long getThroughputQuotaInBytes() {
+    return this.storeProperties.throughputQuotaInBytes;
+  }
+
+  @Override
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    this.storeProperties.throughputQuotaInBytes = throughputQuotaInBytes;
+  }
+
+  @Override
+  public long getThroughputQuotaInRecords() {
+    return this.storeProperties.throughputQuotaInRecords;
+  }
+
+  @Override
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    this.storeProperties.throughputQuotaInRecords = throughputQuotaInRecords;
   }
 
   @Override

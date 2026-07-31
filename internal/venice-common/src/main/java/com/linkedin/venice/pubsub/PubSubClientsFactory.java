@@ -116,11 +116,10 @@ public class PubSubClientsFactory {
       String alternateConfigKey,
       String defaultClassName,
       FactoryType factoryType) {
-    String className;
-    if (properties.containsKey(preferredConfigKey) || properties.containsKey(alternateConfigKey)) {
-      className = properties.getStringWithAlternative(preferredConfigKey, alternateConfigKey);
-      LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
-    } else {
+    String className = properties.getStringWithAlternative(preferredConfigKey, alternateConfigKey, null);
+    if (className == null || className.trim().isEmpty()) {
+      // A missing or blank value is treated as "not configured": either fall back to the Apache Kafka
+      // adapter factory (when explicitly enabled) or fail fast with a message naming the missing key.
       boolean kafkaFallbackEnabled =
           properties.getBoolean(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, DEFAULT_KAFKA_FALLBACK_ENABLED);
       if (!kafkaFallbackEnabled) {
@@ -137,6 +136,8 @@ public class PubSubClientsFactory {
       }
       className = defaultClassName;
       LOGGER.debug("Creating pub-sub {} adapter factory instance with default class: {}", factoryType, className);
+    } else {
+      LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
     }
 
     return createInstance(className);
