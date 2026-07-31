@@ -190,6 +190,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.store.write_type");
           break;
+        case VENICE_PUBSUB_HEALTH_CATEGORY:
+          assertEquals(dimension.getDimensionName(format), "venice.pubsub.health.category");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -378,6 +381,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.store.writeType");
           break;
+        case VENICE_PUBSUB_HEALTH_CATEGORY:
+          assertEquals(dimension.getDimensionName(format), "venice.pubsub.health.category");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -565,6 +571,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Store.WriteType");
+          break;
+        case VENICE_PUBSUB_HEALTH_CATEGORY:
+          assertEquals(dimension.getDimensionName(format), "Venice.Pubsub.Health.Category");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
