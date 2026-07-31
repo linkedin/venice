@@ -7,8 +7,20 @@ public interface BlobFinder extends AutoCloseable {
    */
   BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partitionId);
 
-  default boolean shouldPreservePeerOrder() {
+  /** Returns whether the transfer manager should attempt fallback discovery after primary peers are exhausted. */
+  default boolean supportsFallback() {
     return false;
+  }
+
+  /** Discovers fallback peers after primary peers are exhausted, if fallback discovery is enabled. */
+  default BlobPeersDiscoveryResponse discoverFallbackBlobPeersIfEnabled(
+      String storeName,
+      int version,
+      int partitionId) {
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setError(true);
+    response.setErrorMessage("Fallback blob peer discovery is not supported");
+    return response;
   }
 
 }

@@ -125,8 +125,9 @@ public class BlobTransferManagerBuilder {
   }
 
   /**
-   * Enable the client-side fallback to include Venice servers after Da Vinci peers in the discovered host list. Defaults
-   * to false; typically set only on the Da Vinci / Stateful CDC client path.
+   * Enable the client-side fallback to Venice servers once the Da Vinci peers are exhausted. Server discovery is lazy:
+   * it only runs when no Da Vinci peer is available or every Da Vinci peer transfer fails. Defaults to false; typically
+   * set only on the Da Vinci / Stateful CDC client path.
    */
   public BlobTransferManagerBuilder setServerFallbackEnabled(boolean serverFallbackEnabled) {
     this.serverFallbackEnabled = serverFallbackEnabled;
