@@ -91,6 +91,9 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
 
     Properties consumerProperties = new Properties();
+    // This forked process must configure the pub-sub adapter factory classes explicitly; the factory
+    // fails fast otherwise (there is no implicit default).
+    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);
