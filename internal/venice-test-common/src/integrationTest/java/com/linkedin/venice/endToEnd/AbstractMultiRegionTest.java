@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Properties;
@@ -85,12 +86,15 @@ public abstract class AbstractMultiRegionTest {
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.putAll(getExtraServerProperties());
+    serverProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
     parentControllerProps.putAll(getExtraParentControllerProperties());
+    parentControllerProps.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     Properties childControllerProps = new Properties();
     childControllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
     childControllerProps.putAll(getExtraChildControllerProperties());
+    childControllerProps.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(getNumberOfRegions())
             .numberOfClusters(getNumberOfClusters())

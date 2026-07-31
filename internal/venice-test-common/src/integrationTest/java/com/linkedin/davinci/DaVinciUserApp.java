@@ -30,6 +30,7 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.endToEnd.TestStringRecordTransformer;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -100,6 +101,10 @@ public class DaVinciUserApp {
     D2ClientUtils.startClient(d2Client);
 
     Map<String, Object> extraBackendConfig = new HashMap<>();
+    // This forked DaVinci process must configure the pub-sub adapter factory classes explicitly; the
+    // factory fails fast otherwise (there is no implicit default).
+    TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs()
+        .forEach((key, value) -> extraBackendConfig.put(key.toString(), value));
     extraBackendConfig.put(DATA_BASE_PATH, baseDataPath);
     extraBackendConfig.put(PUSH_STATUS_STORE_ENABLED, true);
 
