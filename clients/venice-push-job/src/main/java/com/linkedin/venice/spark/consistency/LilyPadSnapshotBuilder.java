@@ -11,6 +11,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -80,7 +81,8 @@ public final class LilyPadSnapshotBuilder {
         PubSubPosition rawPosition = PubSubUtil.deserializePositionWithOffsetFallback(
             leaderMetadata.upstreamPubSubPosition,
             leaderMetadata.upstreamOffset,
-            pubSubPositionDeserializer);
+            pubSubPositionDeserializer,
+            Utils.getReplicaId(topicPartition));
         ComparablePubSubPosition upstreamPosition = new ComparablePubSubPosition(rawPosition, consumer, topicPartition);
         ComparablePubSubPosition currentHw = runningHighWatermark.get(regionId);
         if (currentHw == null || upstreamPosition.compareTo(currentHw) > 0) {

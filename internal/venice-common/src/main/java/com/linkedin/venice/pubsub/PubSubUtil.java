@@ -362,7 +362,11 @@ public final class PubSubUtil {
    * @param offset the fallback offset to use if deserialization fails or buffer is empty
    * @param pubSubPositionDeserializer the deserializer to convert wire format to position
    * @return a valid PubSubPosition, either deserialized or offset-based
+   * @deprecated Prefer {@link #deserializePositionWithOffsetFallback(ByteBuffer, long, PubSubPositionDeserializer, String)}
+   * so that a failure warning can be attributed to its source. This overload is retained only for tests and
+   * truly context-free callers; it logs {@code "N/A"} as the position source.
    */
+  @Deprecated
   public static PubSubPosition deserializePositionWithOffsetFallback(
       ByteBuffer wireFormatBytes,
       long offset,
@@ -372,23 +376,38 @@ public final class PubSubUtil {
 
   /**
    * Same as {@link #deserializePositionWithOffsetFallback(ByteBuffer, long, PubSubPositionDeserializer)}, but also
-   * accepts a {@code replicaId} (canonical {@code <store>_v<version>-<partition>} identity, e.g. as produced by
-   * {@code Utils.getReplicaId}) that is included in the warning logged on deserialization failure. This makes it
-   * possible to attribute "Failed to deserialize PubSubPosition" warnings to a specific store-version/partition
-   * instead of only the raw offset, which is otherwise insufficient to identify the affected replica.
+   * accepts a {@code positionSource} that is included in the warning logged on deserialization failure. This makes
+   * it possible to attribute "Failed to deserialize PubSubPosition" warnings to a specific origin instead of only
+   * the raw offset, which is otherwise insufficient to identify what emitted the malformed payload.
+   *
+   * <p>{@code positionSource} is intentionally a free-form string rather than a strongly-typed replica handle,
+   * because not every caller has a replica (store-version/partition) to point to. Callers should supply the most
+   * specific stable identifier they have, in this order of preference:
+   * <ol>
+   *   <li>a canonical replica ID, e.g. {@code <store>_v<version>-<partition>} as produced by
+   *       {@code Utils.getReplicaId}, when ingesting/consuming a specific partition</li>
+   *   <li>a broker/field-qualified label (e.g. {@code "OffsetRecord.upstreamRealTimeTopicPubSubPosition[<broker>]"})
+   *       when the caller only has a checkpoint field and no partition context</li>
+   *   <li>a static, descriptive call-site label (e.g. {@code "OffsetRecord.lastProcessedVersionTopicPubSubPosition"})
+   *       for utility code that has no per-call context at all</li>
+   * </ol>
+   * Fabricating an identifier that doesn't reflect real context (e.g. reusing an unrelated ID) defeats the purpose
+   * and must be avoided; passing {@code null} is only acceptable when no caller-supplied context is possible, in
+   * which case {@code "N/A"} is logged.
    *
    * @param wireFormatBytes the serialized position bytes (can be null or empty)
    * @param offset the fallback offset to use if deserialization fails or buffer is empty
    * @param pubSubPositionDeserializer the deserializer to convert wire format to position
-   * @param replicaId canonical store-version/partition identity for logging context; may be {@code null} when the
-   *                  caller doesn't have replica context (e.g. off-server tooling), in which case "N/A" is logged
+   * @param positionSource a stable, non-fabricated diagnostic label identifying the origin of {@code wireFormatBytes}
+   *                       for logging context; may be {@code null} when no context is available, in which case
+   *                       "N/A" is logged
    * @return a valid PubSubPosition, either deserialized or offset-based
    */
   public static PubSubPosition deserializePositionWithOffsetFallback(
       ByteBuffer wireFormatBytes,
       long offset,
       PubSubPositionDeserializer pubSubPositionDeserializer,
-      String replicaId) {
+      String positionSource) {
     // Fast path: nothing to deserialize
     if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
       return fromKafkaOffset(offset);
@@ -409,8 +428,8 @@ public final class PubSubUtil {
           offset);
     } catch (RuntimeException e) {
       LOGGER.warn(
-          "Failed to deserialize PubSubPosition for replica: {}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
-          replicaId == null ? "N/A" : replicaId,
+          "Failed to deserialize PubSubPosition for: {}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          positionSource == null ? "N/A" : positionSource,
           offset,
           wireFormatBytes.remaining(),
           wireFormatBytes.capacity(),

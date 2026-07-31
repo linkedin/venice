@@ -287,7 +287,7 @@ class IngestionNotificationDispatcher {
         notifier -> notifier.dataRecoveryCompleted(
             topic,
             pcs.getPartition(),
-            pcs.getOffsetRecord().getCheckpointedLocalVtPosition(),
+            pcs.getOffsetRecord().getCheckpointedLocalVtPosition(pcs.getReplicaId()),
             ""));
   }
 

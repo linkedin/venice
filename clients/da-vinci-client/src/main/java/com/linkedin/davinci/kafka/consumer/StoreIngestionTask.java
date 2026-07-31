@@ -1142,7 +1142,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private boolean checkDatabaseIntegrity(OffsetRecord offsetRecord, PartitionConsumptionState pcs) {
     boolean returnStatus = true;
-    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition(pcs.getReplicaId()))) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         LOGGER.info("Found storeVersionState for replica: {}: checkDatabaseIntegrity will proceed", pcs.getReplicaId());
@@ -2630,7 +2630,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
-    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
+    if (!PubSubSymbolicPosition.EARLIEST
+        .equals(offsetRecord.getCheckpointedLocalVtPosition(newPartitionConsumptionState.getReplicaId()))) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         boolean sorted = storeVersionState.sorted;
@@ -2900,7 +2901,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         serverConfig.getRegionName());
     if (uniqueIngestedKeyCountHllEnabled) {
       int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
-      boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
+      boolean isNewSubscription =
+          PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition(freshPcs.getReplicaId()));
       if (isNewSubscription) {
         freshPcs.initializeUniqueKeyCountHll(lgK);
       } else if (offsetRecord.getUniqueIngestedKeyCountHllSketch() != null) {
@@ -3704,7 +3706,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       final PubSubPosition position = (isGlobalRtDivEnabled())
           ? offsetRecord.getLatestConsumedVtPosition()
-          : offsetRecord.getCheckpointedLocalVtPosition();
+          : offsetRecord.getCheckpointedLocalVtPosition(pcs.getReplicaId());
       int percentage = -1;
       if (getServerConfig().isIngestionProgressLoggingEnabled()) {
         final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();

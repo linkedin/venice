@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -15,11 +16,21 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.config.Property;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -109,6 +120,89 @@ public class TestOffsetRecord {
     // no upstream found for it so fall back to use the leaderOffset which is 1
     Assert.assertEquals(offsetRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1), p1);
     Assert.assertEquals(offsetRecord.getCheckpointedRtPosition(TEST_KAFKA_URL2), p2);
+  }
+
+  /**
+   * R14 edge/failure case: when the wire-format bytes for a checkpointed position are malformed,
+   * {@link OffsetRecord} must never let the deserialization-failure warning attribute the failure to a bare
+   * {@code null}/"N/A". It should either forward the caller-supplied replicaId, or -- when the caller has no
+   * replica context (e.g. {@link OffsetRecord#toString()}) -- fall back to a stable, field-scoped label that at
+   * least identifies which checkpoint accessor/field is affected.
+   */
+  @Test
+  public void testCheckpointedPositionsLogNonNullSourceOnDeserializationFailure() {
+    ByteBuffer malformedBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 });
+    PartitionState corruptState = new PartitionState();
+    corruptState.offset = 777L;
+    corruptState.lastProcessedVersionTopicPubSubPosition = malformedBuffer.duplicate();
+    corruptState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
+    corruptState.upstreamOffsetMap.put(TEST_KAFKA_URL1, 888L);
+    corruptState.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
+    corruptState.upstreamRealTimeTopicPubSubPositionMap.put(TEST_KAFKA_URL1, malformedBuffer.duplicate());
+    OffsetRecord corruptRecord = new OffsetRecord(
+        corruptState,
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    List<String> capturedMessages = new ArrayList<>();
+    Appender appender = new AbstractAppender(
+        "testCheckpointedPositionsLogNonNullSourceAppender",
+        null,
+        null,
+        false,
+        Property.EMPTY_ARRAY) {
+      @Override
+      public void append(LogEvent event) {
+        capturedMessages.add(event.getMessage().getFormattedMessage());
+      }
+    };
+    appender.start();
+
+    LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
+    Configuration configuration = loggerContext.getConfiguration();
+    LoggerConfig loggerConfig = configuration.getLoggerConfig(PubSubUtil.class.getName());
+    loggerConfig.addAppender(appender, null, null);
+    loggerContext.updateLoggers();
+
+    try {
+      // No caller context supplied: must still fall back to a field-scoped label, not null/"N/A".
+      assertEquals(corruptRecord.getCheckpointedLocalVtPosition().getNumericOffset(), 777L);
+      assertTrue(
+          capturedMessages.stream()
+              .anyMatch(message -> message.contains("OffsetRecord.lastProcessedVersionTopicPubSubPosition")),
+          "Expected field-scoped fallback label in: " + capturedMessages);
+      assertTrue(
+          capturedMessages.stream().noneMatch(message -> message.contains("N/A")),
+          "Should not need the N/A sentinel when a field-scoped label is available: " + capturedMessages);
+
+      capturedMessages.clear();
+      // Caller-supplied replicaId takes precedence over the static field label.
+      String replicaId = "myStore_v3-5";
+      assertEquals(corruptRecord.getCheckpointedLocalVtPosition(replicaId).getNumericOffset(), 777L);
+      assertTrue(
+          capturedMessages.stream().anyMatch(message -> message.contains(replicaId)),
+          "Expected replicaId in: " + capturedMessages);
+
+      capturedMessages.clear();
+      // RT checkpoint without caller context falls back to a broker-qualified label so the affected
+      // checkpoint entry can still be pinpointed even without a replica identity.
+      assertEquals(corruptRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1).getNumericOffset(), 888L);
+      assertTrue(
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message
+                      .contains("OffsetRecord.upstreamRealTimeTopicPubSubPosition[" + TEST_KAFKA_URL1 + "]")),
+          "Expected broker-qualified fallback label in: " + capturedMessages);
+
+      capturedMessages.clear();
+      assertEquals(corruptRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1, replicaId).getNumericOffset(), 888L);
+      assertTrue(
+          capturedMessages.stream().anyMatch(message -> message.contains(replicaId)),
+          "Expected replicaId in: " + capturedMessages);
+    } finally {
+      loggerConfig.removeAppender("testCheckpointedPositionsLogNonNullSourceAppender");
+      loggerContext.updateLoggers();
+    }
   }
 
   @Test

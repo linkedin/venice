@@ -3592,7 +3592,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
     // Offset lag below threshold — should bootstrap from Kafka
     when(mockOffset.getOffsetLag()).thenReturn(500L);
-    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+    when(mockOffset.getCheckpointedLocalVtPosition(anyString())).thenReturn(new ApacheKafkaOffsetPosition(100L));
 
     assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
@@ -3609,7 +3609,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
     // Offset lag above threshold — should use blob transfer
     when(mockOffset.getOffsetLag()).thenReturn(5000L);
-    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+    when(mockOffset.getCheckpointedLocalVtPosition(anyString())).thenReturn(new ApacheKafkaOffsetPosition(100L));
 
     assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
@@ -3626,7 +3626,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
     // Zero offset lag but EARLIEST position — needs blob transfer
     when(mockOffset.getOffsetLag()).thenReturn(0L);
-    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
+    when(mockOffset.getCheckpointedLocalVtPosition(anyString())).thenReturn(PubSubSymbolicPosition.EARLIEST);
 
     assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }

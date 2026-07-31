@@ -165,7 +165,7 @@ public class BlobTransferIngestionHelper {
       return isLagged;
     }
     if (offsetRecord.getOffsetLag() == 0
-        && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
+        && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition(replicaId))) {
       return true;
     }
     if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
