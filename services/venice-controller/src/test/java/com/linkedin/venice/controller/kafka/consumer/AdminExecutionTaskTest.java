@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -7,7 +10,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -36,8 +38,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -632,7 +637,7 @@ public class AdminExecutionTaskTest {
     doAnswer(invocation -> {
       assertNull(lastSucceededExecutionIdMap.get(storeName));
       return null;
-    }).when(storeUpdateHandler).handleStoreUpdate(eq(clusterName), any(Store.class));
+    }).when(storeUpdateHandler).handleStoreUpdate(eq(clusterName), any(Store.class), any());
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
     queue.add(createUpdateStoreWrapper(1L, false));
@@ -655,17 +660,22 @@ public class AdminExecutionTaskTest {
     task.call();
 
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
+    ArgumentCaptor<Set<String>> updatedConfigsCaptor = ArgumentCaptor.forClass(Set.class);
     InOrder inOrder = inOrder(mockAdmin, mutableStore, storeUpdateHandler, mockExecutionIdAccessor);
     inOrder.verify(mockAdmin).updateStore(eq(clusterName), eq(storeName), any(UpdateStoreQueryParams.class));
     inOrder.verify(mockAdmin).getStore(clusterName, storeName);
     inOrder.verify(mutableStore).cloneStore();
-    inOrder.verify(storeUpdateHandler).handleStoreUpdate(eq(clusterName), storeCaptor.capture());
+    inOrder.verify(storeUpdateHandler)
+        .handleStoreUpdate(eq(clusterName), storeCaptor.capture(), updatedConfigsCaptor.capture());
     inOrder.verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
 
     Store callbackStore = storeCaptor.getValue();
     assertEquals(callbackStore.getName(), storeName);
     assertEquals(callbackStore.getOwner(), "final-owner");
     assertThrows(UnsupportedOperationException.class, () -> callbackStore.setOwner("new-owner"));
+    Set<String> updatedConfigs = updatedConfigsCaptor.getValue();
+    assertEquals(updatedConfigs, Collections.singleton(READ_QUOTA_IN_CU));
+    assertThrows(UnsupportedOperationException.class, () -> updatedConfigs.add("another-config"));
     assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
   }
 
@@ -694,7 +704,7 @@ public class AdminExecutionTaskTest {
 
     task.call();
 
-    verify(storeUpdateHandler, never()).handleStoreUpdate(anyString(), any(Store.class));
+    verify(storeUpdateHandler, never()).handleStoreUpdate(anyString(), any(Store.class), any());
     verify(mockAdmin, never()).getStore(anyString(), anyString());
     verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
   }
@@ -707,8 +717,15 @@ public class AdminExecutionTaskTest {
     when(mockAdmin.getStore(clusterName, storeName)).thenReturn(mutableStore);
     when(mutableStore.cloneStore()).thenReturn(finalStoreSnapshot);
     StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
-    doThrow(new VeniceUnsupportedOperationException("store update callback")).when(storeUpdateHandler)
-        .handleStoreUpdate(eq(clusterName), any(Store.class));
+    AtomicInteger handlerInvocationCount = new AtomicInteger();
+    List<Set<String>> receivedUpdatedConfigs = new java.util.concurrent.CopyOnWriteArrayList<>();
+    doAnswer(invocation -> {
+      receivedUpdatedConfigs.add(invocation.getArgument(2));
+      if (handlerInvocationCount.incrementAndGet() == 1) {
+        throw new VeniceUnsupportedOperationException("store update callback");
+      }
+      return null;
+    }).when(storeUpdateHandler).handleStoreUpdate(eq(clusterName), any(Store.class), any());
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
     queue.add(createUpdateStoreWrapper(1L, false));
@@ -733,6 +750,16 @@ public class AdminExecutionTaskTest {
     verify(mockExecutionIdAccessor, never()).updateLastSucceededExecutionIdMap(anyString(), anyString(), anyLong());
     assertNull(lastSucceededExecutionIdMap.get(storeName));
     assertEquals(queue.size(), 1);
+
+    task.call();
+
+    assertEquals(handlerInvocationCount.get(), 2);
+    assertEquals(
+        receivedUpdatedConfigs,
+        Arrays.asList(Collections.singleton(READ_QUOTA_IN_CU), Collections.singleton(READ_QUOTA_IN_CU)));
+    assertThrows(UnsupportedOperationException.class, () -> receivedUpdatedConfigs.get(0).add("another-config"));
+    verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
+    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
   }
 
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {
@@ -792,6 +819,13 @@ public class AdminExecutionTaskTest {
     updateStore.flinkVeniceViewsEnabled = false;
     updateStore.unusedSchemaDeletionEnabled = false;
     updateStore.updatedConfigsList = new java.util.ArrayList<>();
+    updateStore.updatedConfigsList.add(READ_QUOTA_IN_CU);
+    if (throughputQuotaInBytes >= 0) {
+      updateStore.updatedConfigsList.add(THROUGHPUT_QUOTA_IN_BYTES);
+    }
+    if (throughputQuotaInRecords >= 0) {
+      updateStore.updatedConfigsList.add(THROUGHPUT_QUOTA_IN_RECORDS);
+    }
     updateStore.replicateAllConfigs = true;
     updateStore.storeLifecycleHooks = new java.util.ArrayList<>();
     updateStore.keyUrnCompressionEnabled = false;

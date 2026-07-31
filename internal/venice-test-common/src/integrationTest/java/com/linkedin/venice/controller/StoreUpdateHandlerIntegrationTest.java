@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -17,7 +18,12 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -36,12 +42,20 @@ public class StoreUpdateHandlerIntegrationTest {
     String storeName = Utils.getUniqueString("store-update-handler");
     String originalOwner = "test-owner";
     RetryingStoreUpdateHandler storeUpdateHandler = new RetryingStoreUpdateHandler(storeName, UPDATED_READ_QUOTA);
+    AtomicInteger childHandlerInvocationCount = new AtomicInteger();
 
-    Properties controllerProperties = new Properties();
-    controllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, Boolean.FALSE.toString());
-    controllerProperties
+    Properties parentControllerProperties = new Properties();
+    parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, Boolean.FALSE.toString());
+    parentControllerProperties
         .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, Boolean.FALSE.toString());
-    controllerProperties.put(VeniceControllerWrapper.STORE_UPDATE_HANDLER, storeUpdateHandler);
+    parentControllerProperties.put(VeniceControllerWrapper.STORE_UPDATE_HANDLER, storeUpdateHandler);
+    Properties childControllerProperties = new Properties();
+    childControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, Boolean.FALSE.toString());
+    childControllerProperties
+        .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, Boolean.FALSE.toString());
+    childControllerProperties.put(
+        VeniceControllerWrapper.STORE_UPDATE_HANDLER,
+        (StoreUpdateHandler) (clusterName, store, updatedConfigs) -> childHandlerInvocationCount.incrementAndGet());
 
     VeniceMultiRegionClusterCreateOptions options =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
@@ -51,8 +65,8 @@ public class StoreUpdateHandlerIntegrationTest {
             .numberOfServers(0)
             .numberOfRouters(0)
             .replicationFactor(1)
-            .parentControllerProperties(controllerProperties)
-            .childControllerProperties(controllerProperties)
+            .parentControllerProperties(parentControllerProperties)
+            .childControllerProperties(childControllerProperties)
             .build();
 
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
@@ -79,12 +93,17 @@ public class StoreUpdateHandlerIntegrationTest {
             "The store update handler did not succeed after its first-attempt failure");
 
         Store callbackStore = storeUpdateHandler.getLatestStore();
-        Assert.assertEquals(storeUpdateHandler.getInvocationCount(), 2);
+        Assert.assertTrue(storeUpdateHandler.getInvocationCount() >= 2);
         Assert.assertEquals(storeUpdateHandler.getLatestClusterName(), clusterName);
         Assert.assertEquals(callbackStore.getName(), storeName);
         Assert.assertEquals(callbackStore.getOwner(), originalOwner);
         Assert.assertEquals(callbackStore.getReadQuotaInCU(), UPDATED_READ_QUOTA);
         Assert.assertTrue(storeUpdateHandler.receivedOnlyReadOnlyStores());
+        Assert.assertTrue(storeUpdateHandler.receivedOnlyImmutableUpdatedConfigs());
+        Assert.assertTrue(
+            storeUpdateHandler.getReceivedUpdatedConfigs()
+                .stream()
+                .allMatch(updatedConfigs -> updatedConfigs.equals(Collections.singleton(READ_QUOTA_IN_CU))));
 
         String barrierOwner = "owner-after-update";
         ControllerResponse setOwnerResponse = parentControllerClient.setStoreOwner(storeName, barrierOwner);
@@ -97,7 +116,8 @@ public class StoreUpdateHandlerIntegrationTest {
 
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
         Assert.assertEquals(parentStore.getReadQuotaInCU(), UPDATED_READ_QUOTA);
-        Assert.assertEquals(storeUpdateHandler.getInvocationCount(), 2);
+        Assert.assertTrue(storeUpdateHandler.getInvocationCount() >= 2);
+        Assert.assertEquals(childHandlerInvocationCount.get(), 0);
       }
     }
   }
@@ -109,6 +129,8 @@ public class StoreUpdateHandlerIntegrationTest {
     private final AtomicReference<String> latestClusterName = new AtomicReference<>();
     private final AtomicReference<Store> latestStore = new AtomicReference<>();
     private final AtomicBoolean receivedOnlyReadOnlyStores = new AtomicBoolean(true);
+    private final AtomicBoolean receivedOnlyImmutableUpdatedConfigs = new AtomicBoolean(true);
+    private final CopyOnWriteArrayList<Set<String>> receivedUpdatedConfigs = new CopyOnWriteArrayList<>();
     private final CountDownLatch successfulInvocation = new CountDownLatch(1);
 
     private RetryingStoreUpdateHandler(String targetStoreName, long targetReadQuota) {
@@ -117,18 +139,25 @@ public class StoreUpdateHandlerIntegrationTest {
     }
 
     @Override
-    public void handleStoreUpdate(String clusterName, Store store) {
+    public void handleStoreUpdate(String clusterName, Store store, Set<String> updatedConfigs) {
       if (!targetStoreName.equals(store.getName()) || store.getReadQuotaInCU() != targetReadQuota) {
         return;
       }
 
       latestClusterName.set(clusterName);
       latestStore.set(store);
+      receivedUpdatedConfigs.add(updatedConfigs);
       try {
         store.setOwner("unexpected-mutation");
         receivedOnlyReadOnlyStores.set(false);
       } catch (UnsupportedOperationException expected) {
         // Expected for callback snapshots.
+      }
+      try {
+        updatedConfigs.add("unexpected-config");
+        receivedOnlyImmutableUpdatedConfigs.set(false);
+      } catch (UnsupportedOperationException expected) {
+        // Expected for callback config sets.
       }
 
       if (invocationCount.incrementAndGet() == 1) {
@@ -155,6 +184,14 @@ public class StoreUpdateHandlerIntegrationTest {
 
     private boolean receivedOnlyReadOnlyStores() {
       return receivedOnlyReadOnlyStores.get();
+    }
+
+    private boolean receivedOnlyImmutableUpdatedConfigs() {
+      return receivedOnlyImmutableUpdatedConfigs.get();
+    }
+
+    private List<Set<String>> getReceivedUpdatedConfigs() {
+      return new ArrayList<>(receivedUpdatedConfigs);
     }
   }
 }

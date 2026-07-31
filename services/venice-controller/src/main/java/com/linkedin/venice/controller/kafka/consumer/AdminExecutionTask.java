@@ -65,6 +65,7 @@ import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -285,6 +286,7 @@ public class AdminExecutionTask implements Callable<Void> {
       return;
     }
     boolean storeUpdated = false;
+    Set<String> updatedConfigs = Collections.emptySet();
     try {
       switch (AdminMessageType.valueOf(adminOperation)) {
         case STORE_CREATION:
@@ -321,7 +323,9 @@ public class AdminExecutionTask implements Callable<Void> {
           handleSetStorePartitionCount((SetStorePartitionCount) adminOperation.payloadUnion);
           break;
         case UPDATE_STORE:
-          handleSetStore((UpdateStore) adminOperation.payloadUnion);
+          UpdateStore updateStore = (UpdateStore) adminOperation.payloadUnion;
+          updatedConfigs = extractUpdatedConfigs(updateStore);
+          handleSetStore(updateStore);
           storeUpdated = true;
           break;
         case DELETE_STORE:
@@ -393,10 +397,25 @@ public class AdminExecutionTask implements Callable<Void> {
     if (storeUpdated && isParentController) {
       Store finalStore = admin.getStore(clusterName, storeName).cloneStore();
       // Invoke before advancing checkpoints so callback failures leave the admin operation eligible for retry.
-      storeUpdateHandler.handleStoreUpdate(clusterName, new ReadOnlyStore(finalStore));
+      storeUpdateHandler.handleStoreUpdate(clusterName, new ReadOnlyStore(finalStore), updatedConfigs);
     }
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
     lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);
+  }
+
+  /**
+   * Copies the config keys from the durable UPDATE_STORE message so callbacks cannot mutate the Avro collection.
+   * The durable message is retried unchanged, so the returned set is deterministic and stable across retry attempts.
+   */
+  private Set<String> extractUpdatedConfigs(UpdateStore updateStore) {
+    if (updateStore.updatedConfigsList == null || updateStore.updatedConfigsList.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<String> updatedConfigs = new LinkedHashSet<>();
+    for (CharSequence config: updateStore.updatedConfigsList) {
+      updatedConfigs.add(config.toString());
+    }
+    return Collections.unmodifiableSet(updatedConfigs);
   }
 
   private void handleStoreCreation(StoreCreation message) {
