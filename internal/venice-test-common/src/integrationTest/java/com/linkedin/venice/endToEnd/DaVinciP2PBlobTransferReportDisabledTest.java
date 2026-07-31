@@ -109,6 +109,7 @@ public class DaVinciP2PBlobTransferReportDisabledTest {
     File configDir = Utils.getTempDataDirectory();
     File configFile = new File(configDir, "dvc-config.properties");
     Properties props = new Properties();
+    props.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     props.setProperty("zk.hosts", zkHosts);
     props.setProperty("base.data.path", dvcPath1);
     props.setProperty("store.name", storeName);

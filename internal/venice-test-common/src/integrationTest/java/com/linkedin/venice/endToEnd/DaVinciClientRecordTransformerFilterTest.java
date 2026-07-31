@@ -463,6 +463,7 @@ public class DaVinciClientRecordTransformerFilterTest {
     // Consume all the RT messages and validated how many data records were produced.
     PubSubBrokerWrapper pubSubBrokerWrapper = cluster.getPubSubBrokerWrapper();
     Properties properties = new Properties();
+    properties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     List<DefaultPubSubMessage> messages = new ArrayList<>();
 

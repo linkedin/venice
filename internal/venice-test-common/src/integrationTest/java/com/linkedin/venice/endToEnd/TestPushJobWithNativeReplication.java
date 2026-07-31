@@ -104,6 +104,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
   @Override
   protected Properties getExtraServerProperties() {
     Properties serverProperties = new Properties();
+    serverProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     return serverProperties;
   }
@@ -111,6 +112,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
   @Override
   protected Properties getExtraControllerProperties() {
     Properties controllerProps = new Properties();
+    controllerProps.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     // This property is required for test stores that have 10 partitions
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), SYSTEM_STORE_CLUSTER);

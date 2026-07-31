@@ -37,9 +37,11 @@ public class TestAdminToolClusterConfig {
 
   String clusterName;
   VeniceClusterWrapper venice;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
     Properties properties = new Properties();
     String regionName = "dc-0";
     properties.setProperty(LOCAL_REGION_NAME, regionName);
@@ -67,9 +69,16 @@ public class TestAdminToolClusterConfig {
     clusterName = venice.getClusterName();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     venice.close();
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -48,6 +48,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemStream;
 import org.apache.spark.sql.Dataset;
@@ -143,6 +144,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       // 2. RT writes from both DCs via Samza
       VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDatacenters.get(0).getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -162,6 +164,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
 
       VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDatacenters.get(1).getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -205,6 +208,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       // 5. Send more RT writes after injection to advance HW and make the scenario more realistic
       VeniceSystemProducer postInjectionProducer = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDatacenters.get(0).getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))

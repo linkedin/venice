@@ -75,12 +75,14 @@ public class DaVinciClusterAgnosticTest {
   private VeniceMultiClusterWrapper multiClusterVenice;
   private String[] clusterNames;
   private String parentControllerURLs;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   /**
    * Set up a multi-cluster Venice environment with meta system store enabled Venice stores.
    */
   @BeforeClass
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = TestUtils.setPubSubApacheKafkaAdapterFactorySystemProperties();
     Utils.thisIsLocalhost();
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
@@ -109,9 +111,16 @@ public class DaVinciClusterAgnosticTest {
     IntegrationTestUtils.waitForParticipantStorePush(clusterNames, multiClusterVenice.getControllerConnectString());
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      TestUtils.restorePubSubApacheKafkaAdapterFactorySystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)

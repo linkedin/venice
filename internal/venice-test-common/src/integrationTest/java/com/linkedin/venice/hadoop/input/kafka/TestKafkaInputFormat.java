@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -136,6 +137,8 @@ public class TestKafkaInputFormat {
     KafkaInputFormat kafkaInputFormat = new KafkaInputFormat();
     PubSubTopic topic = getTopic(1000, 3);
     JobConf conf = new JobConf();
+    TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs()
+        .forEach((key, value) -> conf.set(key.toString(), value.toString()));
     conf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, pubSubBrokerWrapper.getAddress());
     conf.set(KAFKA_INPUT_TOPIC, topic.getName());
 
