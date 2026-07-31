@@ -394,7 +394,7 @@ public class AdminExecutionTask implements Callable<Void> {
           AdminMessageType.valueOf(adminOperation),
           e.getMessage());
     }
-    if (storeUpdated && isParentController) {
+    if (storeUpdated && isParentController && !storeUpdateHandler.isNoOp()) {
       Store finalStore = admin.getStore(clusterName, storeName).cloneStore();
       // Invoke before advancing checkpoints so callback failures leave the admin operation eligible for retry.
       storeUpdateHandler.handleStoreUpdate(clusterName, new ReadOnlyStore(finalStore), updatedConfigs);

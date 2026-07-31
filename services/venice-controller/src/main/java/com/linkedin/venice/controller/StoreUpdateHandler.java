@@ -9,7 +9,16 @@ import java.util.Set;
  */
 @FunctionalInterface
 public interface StoreUpdateHandler {
-  StoreUpdateHandler NO_OP = (clusterName, store, updatedConfigs) -> {};
+  StoreUpdateHandler NO_OP = new StoreUpdateHandler() {
+    @Override
+    public void handleStoreUpdate(String clusterName, Store store, Set<String> updatedConfigs) {
+    }
+
+    @Override
+    public boolean isNoOp() {
+      return true;
+    }
+  };
 
   /**
    * @param clusterName the cluster containing the updated store
@@ -18,4 +27,11 @@ public interface StoreUpdateHandler {
    *        stable across retries of the same admin operation
    */
   void handleStoreUpdate(String clusterName, Store store, Set<String> updatedConfigs);
+
+  /**
+   * @return whether callback-specific work, including fetching the final store snapshot, should be skipped
+   */
+  default boolean isNoOp() {
+    return false;
+  }
 }

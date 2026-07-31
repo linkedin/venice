@@ -680,6 +680,34 @@ public class AdminExecutionTaskTest {
   }
 
   @Test
+  public void testParentStoreUpdateWithDefaultNoOpHandlerDoesNotFetchStore() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, false));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        true,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    verify(mockAdmin, never()).getStore(anyString(), anyString());
+    verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
+    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
+    assertTrue(queue.isEmpty());
+  }
+
+  @Test
   public void testChildControllerDoesNotInvokeStoreUpdateHandlerOrFetchStore() {
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
     StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
