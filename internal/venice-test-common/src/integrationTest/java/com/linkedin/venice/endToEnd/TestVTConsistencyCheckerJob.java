@@ -239,6 +239,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       File outputDir = new File(tempRoot, "output");
       try {
         Properties jobProps = new Properties();
+        jobProps.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
         jobProps.setProperty(
             VTConsistencyCheckerJob.DC0_BROKER_URL,
             childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());

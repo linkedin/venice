@@ -455,6 +455,7 @@ public abstract class TestBatch {
     // Verify that v1 and v2 have different dictionaries (different data produces different dictionaries)
     Properties props = new Properties();
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    props.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(props);
     ByteBuffer v1Dict =
         DictionaryUtils.readDictionaryFromKafka(Version.composeKafkaTopic(storeName, 1), veniceProperties);

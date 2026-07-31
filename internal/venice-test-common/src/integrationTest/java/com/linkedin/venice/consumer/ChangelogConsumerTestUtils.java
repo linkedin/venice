@@ -13,7 +13,6 @@ import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -90,6 +89,7 @@ public class ChangelogConsumerTestUtils {
       String zkAddress) {
     Properties consumerProperties = new Properties();
     consumerProperties.putAll(pubSubClientProperties);
+    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
