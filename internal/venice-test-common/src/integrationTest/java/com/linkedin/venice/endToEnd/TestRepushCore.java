@@ -307,6 +307,7 @@ public class TestRepushCore extends AbstractTestRepush {
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
         .build();
 
     MetricsRepository metricsRepository = new VeniceMetricsRepository();
