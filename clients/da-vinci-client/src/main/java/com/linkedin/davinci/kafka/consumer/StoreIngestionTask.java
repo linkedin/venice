@@ -9,6 +9,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
@@ -4932,7 +4933,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
-    aggKafkaConsumerService
+    AbstractKafkaConsumerService kafkaConsumerService = aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, resolvedKafkaURL, consumeRemotely));
     PartitionConsumptionState pcs = pubSubTopicPartition == null
         ? null
@@ -4947,6 +4948,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
     // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
     aggKafkaConsumerService.subscribeConsumerFor(
+        kafkaConsumerService,
         kafkaURL,
         this,
         partitionReplicaIngestionContext,
@@ -5797,7 +5799,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Properties localConsumerProps,
       String remoteKafkaSourceAddress,
       boolean consumeRemotely) {
-    Properties newConsumerProps = serverConfig.getClusterProperties().getPropertiesCopy();
+    VeniceProperties clusterProperties = serverConfig.getClusterProperties();
+    Properties newConsumerProps = clusterProperties.getPropertiesCopy();
     newConsumerProps.putAll(localConsumerProps);
     newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
     VeniceProperties customizedConsumerConfigs = consumeRemotely
@@ -5806,7 +5809,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!customizedConsumerConfigs.isEmpty()) {
       newConsumerProps.putAll(customizedConsumerConfigs.toProperties());
     }
+    newConsumerProps.setProperty(
+        CLUSTER_ENCRYPTION_ENABLED,
+        Boolean.toString(resolveConsumerEncryptionEnabled(clusterProperties, storeRepository.getStore(storeName))));
     return newConsumerProps;
+  }
+
+  static boolean resolveConsumerEncryptionEnabled(VeniceProperties clusterProperties, Store store) {
+    return clusterProperties.containsKey(CLUSTER_ENCRYPTION_ENABLED)
+        ? clusterProperties.getBoolean(CLUSTER_ENCRYPTION_ENABLED)
+        : store != null && store.isEncryptionEnabled();
   }
 
   /**
