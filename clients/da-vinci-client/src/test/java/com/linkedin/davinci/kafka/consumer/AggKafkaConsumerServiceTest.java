@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -16,6 +17,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
@@ -40,7 +42,9 @@ import io.tehuti.metrics.Sensor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
@@ -91,6 +95,7 @@ public class AggKafkaConsumerServiceTest {
     when(serverConfig.getKafkaClusterUrlToIdMap()).thenReturn(Object2IntMaps.unmodifiable(tmpKafkaClusterUrlToIdMap));
     // note that this isn't the exact same as the one in VeniceClusterConfig, but it should be sufficient for most cases
     when(serverConfig.getKafkaClusterUrlResolver()).thenReturn(Utils::resolveKafkaUrlForSepTopic);
+    when(serverConfig.getClusterProperties()).thenReturn(VeniceProperties.empty());
     when(serverConfig.getConsumerPoolStrategyType()).thenReturn(DEFAULT);
     when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(5);
     when(serverConfig.isUnregisterMetricForDeletedStoreEnabled()).thenReturn(Boolean.FALSE);
@@ -123,6 +128,89 @@ public class AggKafkaConsumerServiceTest {
   }
 
   // test subscribeConsumerFor
+  @Test
+  public void testConsumerEncryptionConfigPrecedence() {
+    Store encryptedStore = mock(Store.class);
+    when(encryptedStore.isEncryptionEnabled()).thenReturn(true);
+    Store plaintextStore = mock(Store.class);
+
+    VeniceProperties absentClusterProperty = VeniceProperties.empty();
+    Assert.assertTrue(StoreIngestionTask.resolveConsumerEncryptionEnabled(absentClusterProperty, encryptedStore));
+    Assert.assertFalse(StoreIngestionTask.resolveConsumerEncryptionEnabled(absentClusterProperty, plaintextStore));
+    Assert.assertFalse(StoreIngestionTask.resolveConsumerEncryptionEnabled(absentClusterProperty, null));
+
+    Properties clusterProperties = new Properties();
+    clusterProperties.setProperty(CLUSTER_ENCRYPTION_ENABLED, Boolean.FALSE.toString());
+    Assert.assertFalse(
+        StoreIngestionTask.resolveConsumerEncryptionEnabled(new VeniceProperties(clusterProperties), encryptedStore));
+
+    clusterProperties.setProperty(CLUSTER_ENCRYPTION_ENABLED, Boolean.TRUE.toString());
+    Assert.assertTrue(
+        StoreIngestionTask.resolveConsumerEncryptionEnabled(new VeniceProperties(clusterProperties), plaintextStore));
+  }
+
+  @Test
+  public void testEncryptedAndPlaintextStoresUseIsolatedConsumerServices() throws Exception {
+    doReturn(VeniceProperties.empty()).when(pubSubPropertiesSupplier).get(PUBSUB_URL);
+
+    Properties plaintextProperties = getConsumerProperties(false);
+    Properties encryptedProperties = getConsumerProperties(true);
+
+    AbstractKafkaConsumerService plaintextService =
+        aggKafkaConsumerService.createKafkaConsumerService(plaintextProperties);
+    AbstractKafkaConsumerService encryptedService =
+        aggKafkaConsumerService.createKafkaConsumerService(encryptedProperties);
+
+    Assert.assertNotSame(plaintextService, encryptedService);
+    Assert.assertSame(plaintextService, aggKafkaConsumerService.createKafkaConsumerService(plaintextProperties));
+    Assert.assertSame(encryptedService, aggKafkaConsumerService.createKafkaConsumerService(encryptedProperties));
+    Assert.assertSame(plaintextService, aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL, false));
+    Assert.assertSame(encryptedService, aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL, true));
+
+    ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
+        ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    verify(consumerFactory, times(10)).create(contextCaptor.capture());
+    List<PubSubConsumerAdapterContext> contexts = contextCaptor.getAllValues();
+    Assert.assertTrue(
+        contexts.subList(0, 5)
+            .stream()
+            .noneMatch(context -> context.getVeniceProperties().getBoolean(CLUSTER_ENCRYPTION_ENABLED, false)));
+    Assert.assertTrue(
+        contexts.subList(5, 10)
+            .stream()
+            .allMatch(context -> context.getVeniceProperties().getBoolean(CLUSTER_ENCRYPTION_ENABLED, false)));
+
+    aggKafkaConsumerService.stopInner();
+    Assert.assertFalse(plaintextService.isRunning());
+    Assert.assertFalse(encryptedService.isRunning());
+  }
+
+  @Test
+  public void testEncryptedConsumerCreationFailureIsPropagatedAndRetryable() {
+    doReturn(VeniceProperties.empty()).when(pubSubPropertiesSupplier).get(PUBSUB_URL);
+    RuntimeException creationFailure = new RuntimeException("KMS initialization failed");
+    PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
+    when(consumerFactory.create(any(PubSubConsumerAdapterContext.class))).thenThrow(creationFailure)
+        .thenReturn(adapter);
+
+    Properties encryptedProperties = getConsumerProperties(true);
+    RuntimeException exception = Assert.expectThrows(
+        RuntimeException.class,
+        () -> aggKafkaConsumerService.createKafkaConsumerService(encryptedProperties));
+    Assert.assertSame(exception, creationFailure);
+    Assert.assertNull(aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL, true));
+
+    Assert.assertNotNull(aggKafkaConsumerService.createKafkaConsumerService(encryptedProperties));
+    Assert.assertNotNull(aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL, true));
+  }
+
+  private Properties getConsumerProperties(boolean encryptionEnabled) {
+    Properties properties = new Properties();
+    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, PUBSUB_URL);
+    properties.setProperty(CLUSTER_ENCRYPTION_ENABLED, Boolean.toString(encryptionEnabled));
+    return properties;
+  }
+
   @Test
   public void testSubscribeConsumerFor() {
     doReturn(new VeniceProperties(new Properties())).when(pubSubPropertiesSupplier).get(PUBSUB_URL);
@@ -393,7 +481,8 @@ public class AggKafkaConsumerServiceTest {
     AggKafkaConsumerService serviceSpy = spy(testService);
 
     AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
-    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl, false);
+    doReturn(null).when(serviceSpy).getKafkaConsumerService(kafkaUrl, true);
 
     TopicPartitionIngestionInfo mockIngestionInfo =
         new TopicPartitionIngestionInfo(1000L, 50L, 10.5, 1024.0, "consumer-1", 100L, 200L, topic.getName());
@@ -411,6 +500,39 @@ public class AggKafkaConsumerServiceTest {
     Assert.assertTrue(result.contains("consumer-1"));
 
     verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
+  }
+
+  @Test
+  public void testGetIngestionInfoReportsBothConsumerModes() {
+    String regionName = "region1";
+    String kafkaUrl = "kafka://test-cluster:9092";
+    PubSubTopicPartition encryptedTopicPartition = new PubSubTopicPartitionImpl(topic, 1);
+
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put(kafkaUrl, regionName);
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService serviceSpy = spy(createTestService());
+    AbstractKafkaConsumerService plaintextService = mock(AbstractKafkaConsumerService.class);
+    AbstractKafkaConsumerService encryptedService = mock(AbstractKafkaConsumerService.class);
+    doReturn(plaintextService).when(serviceSpy).getKafkaConsumerService(kafkaUrl, false);
+    doReturn(encryptedService).when(serviceSpy).getKafkaConsumerService(kafkaUrl, true);
+
+    TopicPartitionIngestionInfo plaintextInfo =
+        new TopicPartitionIngestionInfo(10L, 1L, 1.0, 10.0, "plaintext-consumer", 1L, 2L, topic.getName());
+    TopicPartitionIngestionInfo encryptedInfo =
+        new TopicPartitionIngestionInfo(20L, 2L, 2.0, 20.0, "encrypted-consumer", 2L, 3L, topic.getName());
+    when(plaintextService.getIngestionInfoFor(topic, topicPartition, true))
+        .thenReturn(Collections.singletonMap(topicPartition, plaintextInfo));
+    when(encryptedService.getIngestionInfoFor(topic, topicPartition, true))
+        .thenReturn(Collections.singletonMap(encryptedTopicPartition, encryptedInfo));
+
+    String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
+
+    Assert.assertTrue(result.contains("plaintext-consumer"));
+    Assert.assertTrue(result.contains("encrypted-consumer"));
+    verify(plaintextService).getIngestionInfoFor(topic, topicPartition, true);
+    verify(encryptedService).getIngestionInfoFor(topic, topicPartition, true);
   }
 
   @Test
@@ -442,7 +564,8 @@ public class AggKafkaConsumerServiceTest {
     AggKafkaConsumerService testService = createTestService();
     AggKafkaConsumerService serviceSpy = spy(testService);
 
-    doReturn(null).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+    doReturn(null).when(serviceSpy).getKafkaConsumerService(kafkaUrl, false);
+    doReturn(null).when(serviceSpy).getKafkaConsumerService(kafkaUrl, true);
 
     String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
     Assert.assertTrue(result.contains("Kafka consumer service is not found"));
@@ -461,7 +584,8 @@ public class AggKafkaConsumerServiceTest {
     AggKafkaConsumerService serviceSpy = spy(testService);
 
     AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
-    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl, false);
+    doReturn(null).when(serviceSpy).getKafkaConsumerService(kafkaUrl, true);
 
     when(mockConsumerService.getIngestionInfoFor(topic, topicPartition, true)).thenReturn(new HashMap<>());
 
