@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Properties;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,10 +62,17 @@ public class VPJSSLUtils {
       return config;
     }
     try {
+      String tokenFilePath = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
+      if (tokenFilePath == null) {
+        tokenFilePath = System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
+      }
+      if (tokenFilePath == null) {
+        throw new VeniceException("Hadoop token file location is not configured");
+      }
       Properties mergedProperties = config.toProperties();
       mergedProperties.putAll(getSslProperties(config));
       return new VeniceProperties(mergedProperties);
-    } catch (IOException | VeniceException | NullPointerException e) {
+    } catch (IOException | VeniceException e) {
       throw new VeniceException(
           "Failed to setup SSL for executor-side PubSub client creation. "
               + "Ensure the Hadoop token file is accessible and SSL certificates are valid. SSL configurator class: "
