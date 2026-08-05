@@ -2935,6 +2935,16 @@ public class ConfigKeys {
       "server.require.leader.complete.for.catch.up.vt.rts";
 
   /**
+   * How long a hybrid follower or DaVinci replica waits without observing a fresh leader-complete heartbeat before
+   * presuming the leader dead and falling back to offset catch-up alone for the ready-to-serve check. The silence
+   * window is anchored on the later of the last observed signal and the consumption start time. Default is 3 hours;
+   * {@code 0} or less disables the fallback. Must exceed
+   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}.
+   */
+  public static final String SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS =
+      "server.dead.leader.ready.to.serve.fallback.threshold.ms";
+
+  /**
    * Whether to enable stuck consumer repair in Server.
    */
   public static final String SERVER_STUCK_CONSUMER_REPAIR_ENABLED = "server.stuck.consumer.repair.enabled";

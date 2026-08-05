@@ -114,6 +114,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_MEMORY_STATS_ENABLE
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEBUG_LOGGING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
@@ -658,6 +659,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean batchPushRecordCountVerificationFailOnMismatchEnabled;
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
   private final boolean requireLeaderCompleteForCatchUpVtRts;
+  private final long deadLeaderReadyToServeFallbackThresholdMs;
   private final boolean stuckConsumerRepairEnabled;
   private final int stuckConsumerRepairIntervalSecond;
   private final int stuckConsumerDetectionRepairThresholdSecond;
@@ -1185,6 +1187,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      */
     requireLeaderCompleteForCatchUpVtRts =
         serverProperties.getBoolean(SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS, false);
+    deadLeaderReadyToServeFallbackThresholdMs =
+        serverProperties.getLong(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, TimeUnit.HOURS.toMillis(3));
+    if (deadLeaderReadyToServeFallbackThresholdMs > 0
+        && deadLeaderReadyToServeFallbackThresholdMs <= leaderCompleteStateCheckInFollowerValidIntervalMs) {
+      LOGGER.warn(
+          "{}: {} is not greater than {}: {}. The dead-leader ready-to-serve fallback will engage almost as soon as "
+              + "the leader-complete freshness window lapses, which defeats the purpose of the freshness check.",
+          SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS,
+          deadLeaderReadyToServeFallbackThresholdMs,
+          SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS,
+          leaderCompleteStateCheckInFollowerValidIntervalMs);
+    }
     consumerPoolStrategyType = KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.valueOf(
         serverProperties.getString(
             SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
@@ -2105,6 +2119,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isRequireLeaderCompleteForCatchUpVtRts() {
     return requireLeaderCompleteForCatchUpVtRts;
+  }
+
+  public long getDeadLeaderReadyToServeFallbackThresholdMs() {
+    return deadLeaderReadyToServeFallbackThresholdMs;
   }
 
   public boolean isStuckConsumerRepairEnabled() {
