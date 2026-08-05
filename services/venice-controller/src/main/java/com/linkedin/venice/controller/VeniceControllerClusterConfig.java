@@ -57,6 +57,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENAB
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
@@ -334,6 +335,7 @@ public class VeniceControllerClusterConfig {
   private final int adminConsumptionMaxWorkerThreadPoolSize;
   private final double storageEngineOverheadRatio;
   private final long deprecatedJobTopicRetentionMs;
+  private final long failedPushRetryCooldownMs;
 
   private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
@@ -788,6 +790,11 @@ public class VeniceControllerClusterConfig {
     // this so the request_topic call does not expire client-side and retry the non-idempotent create
     // while the controller is still waiting.
     this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(16));
+    this.failedPushRetryCooldownMs =
+        props.getLong(CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS, TimeUnit.MINUTES.toMillis(10));
+    if (failedPushRetryCooldownMs < 0) {
+      throw new ConfigurationException(CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS + " cannot be negative.");
+    }
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -1591,6 +1598,10 @@ public class VeniceControllerClusterConfig {
 
   public long getOffLineJobWaitTimeInMilliseconds() {
     return offLineJobWaitTimeInMilliseconds;
+  }
+
+  public long getFailedPushRetryCooldownMs() {
+    return failedPushRetryCooldownMs;
   }
 
   public long getDelayToRebalanceMS() {

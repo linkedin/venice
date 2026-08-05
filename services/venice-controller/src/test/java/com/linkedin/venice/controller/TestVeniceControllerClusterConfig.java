@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
@@ -80,6 +81,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang.StringUtils;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.model.CloudConfig;
@@ -262,6 +264,20 @@ public class TestVeniceControllerClusterConfig {
       VeniceProperties controllerPropsInvalid = new VeniceProperties(properties);
       assertThrows(IllegalArgumentException.class, () -> parsePushJobUserErrorCheckpoints(controllerPropsInvalid));
     }
+  }
+
+  @Test
+  public void testFailedPushRetryCooldownConfig() {
+    Properties props = getBaseSingleRegionProperties(true);
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    assertEquals(clusterConfig.getFailedPushRetryCooldownMs(), TimeUnit.MINUTES.toMillis(10));
+
+    props.put(CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS, 0);
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    assertEquals(clusterConfig.getFailedPushRetryCooldownMs(), 0);
+
+    props.put(CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS, -1);
+    assertThrows(ConfigurationException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
   }
 
   @Test
