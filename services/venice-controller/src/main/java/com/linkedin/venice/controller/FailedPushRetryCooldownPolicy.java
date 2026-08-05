@@ -49,7 +49,7 @@ final class FailedPushRetryCooldownPolicy {
     }
 
     Version version = mostRecentTerminalVersion.get();
-    if (version.getStatus() != VersionStatus.ERROR && version.getStatus() != VersionStatus.KILLED) {
+    if (version.getStatus() != VersionStatus.ERROR) {
       return;
     }
 
