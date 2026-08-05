@@ -29,7 +29,7 @@ public class FailedPushRetryCooldownPolicyTest {
 
   @DataProvider(name = "failed-push-types-and-statuses")
   public static Object[][] failedPushTypesAndStatuses() {
-    return new Object[][] { { PushType.BATCH, VersionStatus.ERROR }, { PushType.BATCH, VersionStatus.KILLED },
+    return new Object[][] { { PushType.BATCH, VersionStatus.ERROR },
         { PushType.STREAM_REPROCESSING, VersionStatus.ERROR } };
   }
 
@@ -70,7 +70,7 @@ public class FailedPushRetryCooldownPolicyTest {
   @DataProvider(name = "non-failed-terminal-statuses")
   public static Object[][] nonFailedTerminalStatuses() {
     return new Object[][] { { VersionStatus.PUSHED }, { VersionStatus.ONLINE }, { VersionStatus.PARTIALLY_ONLINE },
-        { VersionStatus.ROLLED_BACK } };
+        { VersionStatus.KILLED }, { VersionStatus.ROLLED_BACK } };
   }
 
   @Test(dataProvider = "non-failed-terminal-statuses")
