@@ -49,6 +49,7 @@ public class ReadOnlyStoreTest {
     List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
     storeLifecycleHooks.add(new LifecycleHooksRecordImpl("testLifecycleHooksClassName", Collections.emptyMap()));
     store.setStoreLifecycleHooks(storeLifecycleHooks);
+    store.setPubSubEncryptionKeyUrn("urn:li:kmsKeyLineage:read-only-store-test");
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
 
@@ -111,6 +112,7 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getVersions().size(), store.getVersions().size());
     assertEqualsSystemStores(storeProperties.getSystemStores(), store.getSystemStores());
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
+    assertEquals(storeProperties.getPubSubEncryptionKeyUrn(), store.getPubSubEncryptionKeyUrn());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());

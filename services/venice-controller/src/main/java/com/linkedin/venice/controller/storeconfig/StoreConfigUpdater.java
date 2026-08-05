@@ -52,6 +52,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -191,6 +192,24 @@ public final class StoreConfigUpdater {
     }
   }
 
+  private static void validatePubSubEncryptionKeyUrn(Store store, Optional<String> pubSubEncryptionKeyUrn) {
+    if (!pubSubEncryptionKeyUrn.isPresent()) {
+      return;
+    }
+    if (pubSubEncryptionKeyUrn.get().trim().isEmpty()) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "PubSub encryption key URN must be non-blank",
+          ErrorType.BAD_REQUEST);
+    }
+    if (!store.isEncryptionEnabled()) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "PubSub encryption key URN can only be configured for an encryption-enabled store",
+          ErrorType.BAD_REQUEST);
+    }
+  }
+
   /**
    * Child-side update-store: mutates the store metadata in this region. Lifted from the body of
    * {@code VeniceHelixAdmin.updateStore}; the public wrapper there still performs the
@@ -299,6 +318,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThresholdMilliseconds = params.getCompactionThresholdMilliseconds();
+    Optional<String> pubSubEncryptionKeyUrn = params.getPubSubEncryptionKeyUrn();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -307,6 +327,7 @@ public final class StoreConfigUpdater {
     Optional<Long> throughputQuotaInRecords = params.getThroughputQuotaInRecords();
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
+    validatePubSubEncryptionKeyUrn(originalStore, pubSubEncryptionKeyUrn);
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
@@ -708,6 +729,12 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
+      pubSubEncryptionKeyUrn
+          .ifPresent(value -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setPubSubEncryptionKeyUrn(value);
+            return store;
+          }));
+
       if (minCompactionLagSeconds.isPresent()) {
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
@@ -959,6 +986,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
+    Optional<String> pubSubEncryptionKeyUrn = params.getPubSubEncryptionKeyUrn();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -976,6 +1004,7 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
+    validatePubSubEncryptionKeyUrn(currStore, pubSubEncryptionKeyUrn);
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
@@ -1340,6 +1369,9 @@ public final class StoreConfigUpdater {
         compactionThreshold.map(admin.addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
             .orElseGet(currStore::getCompactionThresholdMilliseconds);
     setStore.encryptionEnabled = currStore.isEncryptionEnabled();
+    setStore.pubSubEncryptionKeyUrn =
+        pubSubEncryptionKeyUrn.map(admin.addToUpdatedConfigList(updatedConfigsList, PUB_SUB_ENCRYPTION_KEY_URN))
+            .orElseGet(currStore::getPubSubEncryptionKeyUrn);
     setStore.minCompactionLagSeconds =
         minCompactionLagSeconds.map(admin.addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
             .orElseGet(currStore::getMinCompactionLagSeconds);

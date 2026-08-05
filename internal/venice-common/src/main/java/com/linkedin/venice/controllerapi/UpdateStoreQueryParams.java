@@ -58,6 +58,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -200,6 +201,11 @@ public class UpdateStoreQueryParams extends QueryParams {
                     .stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())))
             .setFlinkVeniceViewsEnabled(srcStore.isFlinkVeniceViewsEnabled());
+
+    String pubSubEncryptionKeyUrn = srcStore.getPubSubEncryptionKeyUrn();
+    if (srcStore.isEncryptionEnabled() && pubSubEncryptionKeyUrn != null && !pubSubEncryptionKeyUrn.trim().isEmpty()) {
+      updateStoreQueryParams.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    }
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -811,6 +817,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Long> getMinCompactionLagSeconds() {
     return getLong(MIN_COMPACTION_LAG_SECONDS);
+  }
+
+  public UpdateStoreQueryParams setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    return putString(PUB_SUB_ENCRYPTION_KEY_URN, pubSubEncryptionKeyUrn);
+  }
+
+  public Optional<String> getPubSubEncryptionKeyUrn() {
+    return getString(PUB_SUB_ENCRYPTION_KEY_URN);
   }
 
   public Optional<String> getViewName() {

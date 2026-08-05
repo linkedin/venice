@@ -17,6 +17,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
@@ -36,10 +37,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -469,6 +472,59 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     if (!failures.isEmpty()) {
       fail("Parent round-trip failed for " + failures.size() + " field(s):\n  - " + String.join("\n  - ", failures));
     }
+  }
+
+  @Test
+  public void testApplyOnParentPubSubEncryptionKeyUrnRoundTrip() {
+    String storeName = Utils.getUniqueString("encryption-key-parent");
+    String pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:parent-round-trip";
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setEncryptionEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.pubSubEncryptionKeyUrn.toString(), pubSubEncryptionKeyUrn);
+    assertTrue(
+        message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(PUB_SUB_ENCRYPTION_KEY_URN::equals));
+  }
+
+  @Test
+  public void testApplyOnParentRejectsPubSubEncryptionKeyUrnForUnencryptedStore() {
+    String storeName = Utils.getUniqueString("unencrypted-key-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("urn:li:kmsKeyLineage:invalid")));
+
+    assertTrue(exception.getMessage().contains("encryption-enabled store"));
+  }
+
+  @Test
+  public void testApplyOnParentRejectsBlankPubSubEncryptionKeyUrn() {
+    String storeName = Utils.getUniqueString("blank-encryption-key-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setEncryptionEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin
+            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("   ")));
+
+    assertTrue(exception.getMessage().contains("non-blank"));
   }
 
   /**

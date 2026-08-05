@@ -158,6 +158,17 @@ public class TestAdminTool {
   }
 
   @Test
+  public void testAdminUpdateStoreAcceptsPubSubEncryptionKeyUrn() throws ParseException, IOException {
+    String pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:admin-tool-test";
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--pub-sub-encryption-key-urn", pubSubEncryptionKeyUrn };
+
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(args));
+
+    assertEquals(params.getPubSubEncryptionKeyUrn(), Optional.of(pubSubEncryptionKeyUrn));
+  }
+
+  @Test
   public void testAdminUpdateStoreArgThroughputQuota() throws ParseException, IOException {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--throughput-quota-in-bytes", "123456", "--throughput-quota-in-records", "789" };
