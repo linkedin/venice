@@ -45,7 +45,10 @@ public class ServerAndDaVinciBlobFinder implements BlobFinder {
     discoveredPeers.addAll(daVinciPeers);
     discoveredPeers.addAll(serverPeers);
     response.setDiscoveryResult(discoveredPeers);
-    response.setServerHostNames(getNormalizedHostNames(serverPeers));
+    Set<String> serverHostNames = getNormalizedHostNames(serverPeers);
+    // The transfer manager dedupes by normalized host with Da Vinci peers first, so overlapping hosts stay Da Vinci.
+    serverHostNames.removeAll(getNormalizedHostNames(daVinciPeers));
+    response.setServerHostNames(serverHostNames);
     response.setSourceAware(true);
 
     if (discoveredPeers.isEmpty() && hasError(daVinciResponse) && hasError(serverResponse)) {
