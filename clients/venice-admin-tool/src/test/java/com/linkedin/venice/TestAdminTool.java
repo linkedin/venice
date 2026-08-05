@@ -159,7 +159,7 @@ public class TestAdminTool {
 
   @Test
   public void testAdminUpdateStoreAcceptsPubSubEncryptionKeyUrn() throws ParseException, IOException {
-    String pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:admin-tool-test";
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--pub-sub-encryption-key-urn", pubSubEncryptionKeyUrn };
 

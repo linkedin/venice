@@ -82,7 +82,7 @@ public class TestEncryptionClusterStoreConfig {
           "A newly created store in an encryption cluster must default to encryptionEnabled=true");
       Assert.assertEquals(storeResponse.getStore().getPubSubEncryptionKeyUrn(), "");
 
-      String pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:encryption-cluster-test";
+      String pubSubEncryptionKeyUrn = "keyUrn:abc";
       ControllerResponse keyUpdate = controllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn));
       Assert.assertFalse(
