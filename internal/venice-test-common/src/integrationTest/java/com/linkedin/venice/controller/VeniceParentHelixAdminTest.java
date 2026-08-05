@@ -25,6 +25,8 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -36,6 +38,7 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -240,10 +243,15 @@ public class VeniceParentHelixAdminTest {
             parentAdmin.getStore(clusterName, storeName).getVersion(firstPush.getVersion()).getStatus();
         assertTrue(status == VersionStatus.ERROR || status == VersionStatus.KILLED);
       });
-      parentAdmin.updateStoreVersionStatus(clusterName, storeName, firstPush.getVersion(), VersionStatus.ERROR);
-      Assert.assertEquals(
-          parentAdmin.getStore(clusterName, storeName).getVersion(firstPush.getVersion()).getStatus(),
-          VersionStatus.ERROR);
+      try (AutoCloseableLock ignore = parentAdmin.getHelixVeniceClusterResources(clusterName)
+          .getClusterLockManager()
+          .createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository storeRepository =
+            parentAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+        Store store = storeRepository.getStore(storeName);
+        store.updateVersionStatus(firstPush.getVersion(), VersionStatus.ERROR);
+        storeRepository.updateStore(store);
+      }
 
       VersionCreationResponse retryResponse = parentControllerClient.requestTopicForWrites(
           storeName,
