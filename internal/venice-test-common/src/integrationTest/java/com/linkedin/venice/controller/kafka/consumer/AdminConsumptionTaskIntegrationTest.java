@@ -429,6 +429,7 @@ public class AdminConsumptionTaskIntegrationTest {
     updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     updateStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     updateStore.ingestionPausedRegions = Collections.emptyList();
+    updateStore.pubSubEncryptionKeyUrn = "";
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 

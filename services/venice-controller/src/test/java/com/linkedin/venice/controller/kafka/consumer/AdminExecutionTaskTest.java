@@ -714,6 +714,7 @@ public class AdminExecutionTaskTest {
     updateStore.storeLifecycleHooks = new java.util.ArrayList<>();
     updateStore.keyUrnCompressionEnabled = false;
     updateStore.keyUrnFields = new java.util.ArrayList<>();
+    updateStore.pubSubEncryptionKeyUrn = "";
     updateStore.throughputQuotaInBytes = throughputQuotaInBytes;
     updateStore.throughputQuotaInRecords = throughputQuotaInRecords;
     updateStore.previousCurrentVersion = -1;

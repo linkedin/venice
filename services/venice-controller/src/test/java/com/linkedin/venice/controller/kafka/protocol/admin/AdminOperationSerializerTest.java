@@ -55,6 +55,7 @@ public class AdminOperationSerializerTest {
     updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
     updateStore.blobDbEnabled = "NOT_SPECIFIED";
     updateStore.ingestionPausedRegions = Collections.emptyList();
+    updateStore.pubSubEncryptionKeyUrn = "";
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
@@ -111,6 +112,7 @@ public class AdminOperationSerializerTest {
     updateStore.storeLifecycleHooks = Collections.emptyList();
     updateStore.keyUrnFields = Collections.emptyList();
     updateStore.ingestionPausedRegions = Collections.emptyList();
+    updateStore.pubSubEncryptionKeyUrn = "";
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
