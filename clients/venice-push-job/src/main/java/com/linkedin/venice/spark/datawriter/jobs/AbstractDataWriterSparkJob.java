@@ -86,6 +86,7 @@ import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.IncrementalPushWriteQuotaUtils;
+import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -522,8 +523,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     // Apply filter using mapPartitions for efficiency (one filter instance per partition)
     dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
-      SparkKafkaInputTTLFilter ttlFilter =
-          new SparkKafkaInputTTLFilter(new VeniceProperties(broadcastFilterProps.value()));
+      VeniceProperties filterProperties =
+          VPJSSLUtils.setupSSLForExecutor(new VeniceProperties(broadcastFilterProps.value()));
+      SparkKafkaInputTTLFilter ttlFilter = new SparkKafkaInputTTLFilter(filterProperties);
       try {
         CountingIterator countedInput = new CountingIterator(
             iterator,

@@ -3,7 +3,6 @@ package com.linkedin.venice.spark.input.pubsub;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
@@ -19,7 +18,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
-import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -52,7 +50,7 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
     }
 
     // Setup SSL on the executor side
-    VeniceProperties configWithSsl = setupSSLForExecutor(jobConfig);
+    VeniceProperties configWithSsl = VPJSSLUtils.setupSSLForExecutor(jobConfig);
 
     final SparkPubSubInputPartition inputPartition = (SparkPubSubInputPartition) genericInputPartition;
     final PubSubPartitionSplit partitionSplit = inputPartition.getPubSubPartitionSplit();
@@ -103,27 +101,6 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
         regionName,
         isChunkingEnabled);
     return reader;
-  }
-
-  /**
-   * Sets up SSL on the executor side before creating the PubSub consumer.
-   */
-  private VeniceProperties setupSSLForExecutor(VeniceProperties config) {
-    if (!config.containsKey(SSL_CONFIGURATOR_CLASS_CONFIG)) {
-      return config;
-    }
-    try {
-      Properties sslProps = VPJSSLUtils.getSslProperties(config);
-      Properties merged = config.toProperties();
-      merged.putAll(sslProps);
-      return new VeniceProperties(merged);
-    } catch (Exception e) {
-      String msg = "Failed to setup SSL for executor-side consumer creation. "
-          + "Ensure the Hadoop token file is accessible and SSL certificates are valid. " + "SSL configurator class: "
-          + config.getString(SSL_CONFIGURATOR_CLASS_CONFIG);
-      LOGGER.error(msg, e);
-      throw new RuntimeException(msg, e);
-    }
   }
 
   // Make it explicit that this reader does not support columnar reads.

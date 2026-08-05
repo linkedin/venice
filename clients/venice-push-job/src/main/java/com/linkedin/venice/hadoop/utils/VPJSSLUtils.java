@@ -53,6 +53,26 @@ public class VPJSSLUtils {
     return newSslProperties;
   }
 
+  /**
+   * Materializes executor-local SSL properties from Hadoop credentials when an SSL configurator is present.
+   */
+  public static VeniceProperties setupSSLForExecutor(VeniceProperties config) {
+    if (!config.containsKey(SSL_CONFIGURATOR_CLASS_CONFIG)) {
+      return config;
+    }
+    try {
+      Properties mergedProperties = config.toProperties();
+      mergedProperties.putAll(getSslProperties(config));
+      return new VeniceProperties(mergedProperties);
+    } catch (IOException | VeniceException | NullPointerException e) {
+      throw new VeniceException(
+          "Failed to setup SSL for executor-side PubSub client creation. "
+              + "Ensure the Hadoop token file is accessible and SSL certificates are valid. SSL configurator class: "
+              + config.getString(SSL_CONFIGURATOR_CLASS_CONFIG),
+          e);
+    }
+  }
+
   public static void validateSslProperties(VeniceProperties props) {
     String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
         SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
