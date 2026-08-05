@@ -72,7 +72,8 @@ public class VeniceControllerService extends AbstractVeniceService {
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
       Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
-      Optional<ExternalETLService> externalETLService) {
+      Optional<ExternalETLService> externalETLService,
+      Optional<PubSubEncryptionKeyProvider> pubSubEncryptionKeyProvider) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -125,6 +126,7 @@ public class VeniceControllerService extends AbstractVeniceService {
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
           WriteComputeSchemaConverter.getInstance(),
           externalSupersetSchemaGenerator,
+          pubSubEncryptionKeyProvider,
           pubSubTopicRepository,
           initRoutineForPushJobDetailsSystemStore,
           initRoutineForHeartbeatSystemStore,

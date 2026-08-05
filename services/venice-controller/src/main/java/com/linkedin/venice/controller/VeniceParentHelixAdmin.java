@@ -287,6 +287,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private Optional<DynamicAccessController> accessController;
 
   private final Optional<AuthorizerService> authorizerService;
+  private final Optional<PubSubEncryptionKeyProvider> pubSubEncryptionKeyProvider;
 
   private final ExecutorService systemStoreAclSynchronizationExecutor;
 
@@ -322,9 +323,35 @@ public class VeniceParentHelixAdmin implements Admin {
         multiClusterConfigs,
         sslEnabled,
         sslConfig,
+        authorizerService,
+        Optional.empty(),
+        metricsRepository);
+  }
+
+  // Visible for testing
+  public VeniceParentHelixAdmin(
+      VeniceHelixAdmin veniceHelixAdmin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      boolean sslEnabled,
+      Optional<SSLConfig> sslConfig,
+      Optional<AuthorizerService> authorizerService,
+      Optional<PubSubEncryptionKeyProvider> pubSubEncryptionKeyProvider,
+      MetricsRepository metricsRepository) {
+    this(
+        veniceHelixAdmin,
+        multiClusterConfigs,
+        sslEnabled,
+        sslConfig,
         Optional.empty(),
         authorizerService,
         new DefaultLingeringStoreVersionChecker(),
+        WriteComputeSchemaConverter.getInstance(),
+        Optional.empty(),
+        pubSubEncryptionKeyProvider,
+        new PubSubTopicRepository(),
+        null,
+        null,
+        null,
         metricsRepository);
   }
 
@@ -348,6 +375,7 @@ public class VeniceParentHelixAdmin implements Admin {
         lingeringStoreVersionChecker,
         WriteComputeSchemaConverter.getInstance(), // TODO: make it an input param
         Optional.empty(),
+        Optional.empty(),
         new PubSubTopicRepository(),
         null,
         null,
@@ -365,6 +393,7 @@ public class VeniceParentHelixAdmin implements Admin {
       LingeringStoreVersionChecker lingeringStoreVersionChecker,
       WriteComputeSchemaConverter writeComputeSchemaConverter,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      Optional<PubSubEncryptionKeyProvider> pubSubEncryptionKeyProvider,
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
       DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
@@ -386,6 +415,7 @@ public class VeniceParentHelixAdmin implements Admin {
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.accessController = accessController;
     this.authorizerService = authorizerService;
+    this.pubSubEncryptionKeyProvider = pubSubEncryptionKeyProvider;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.systemStoreAclSynchronizationExecutor =
         authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
@@ -1154,25 +1184,35 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       int repushSourceVersion,
       int repushTtlSeconds) {
-    // Parent controller will always pick the replicationMetadataVersionId from configs.
-    final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
-    int largestUsedRTVersionNumber = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
-    Version version = getVeniceHelixAdmin().addVersionOnly(
-        clusterName,
-        storeName,
-        pushJobId,
-        versionNumber,
-        numberOfPartitions,
-        pushType,
-        remoteKafkaBootstrapServers,
-        rewindTimeInSecondsOverride,
-        replicationMetadataVersionId,
-        largestUsedRTVersionNumber);
-    if (version.isActiveActiveReplicationEnabled()) {
-      parentSchemaOrchestrator.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
-    }
     acquireAdminMessageLock(clusterName, storeName);
     try {
+      Store store = getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName, clusterName);
+      }
+      boolean willCreateVersion =
+          versionNumber >= store.getLargestUsedVersionNumber() && !store.containsVersion(versionNumber);
+      if (willCreateVersion) {
+        ensurePubSubEncryptionKeyUrn(clusterName, storeName);
+      }
+
+      // Parent controller will always pick the replicationMetadataVersionId from configs.
+      final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
+      int largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
+      Version version = getVeniceHelixAdmin().addVersionOnly(
+          clusterName,
+          storeName,
+          pushJobId,
+          versionNumber,
+          numberOfPartitions,
+          pushType,
+          remoteKafkaBootstrapServers,
+          rewindTimeInSecondsOverride,
+          replicationMetadataVersionId,
+          largestUsedRTVersionNumber);
+      if (version.isActiveActiveReplicationEnabled()) {
+        parentSchemaOrchestrator.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
+      }
       sendAddVersionAdminMessage(
           clusterName,
           storeName,
@@ -2123,37 +2163,48 @@ public class VeniceParentHelixAdmin implements Admin {
       int largestUsedRTVersionNumber,
       int repushTtlSeconds,
       boolean isDegradedPush) {
-    final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
-    Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
-        clusterName,
-        storeName,
-        pushJobId,
-        versionNumber,
-        numberOfPartitions,
-        replicationFactor,
-        sendStartOfPush,
-        sorted,
-        pushType,
-        compressionDictionary,
-        null,
-        sourceGridFabric,
-        rewindTimeInSecondsOverride,
-        replicationMetadataVersionId,
-        emergencySourceRegion,
-        versionSwapDeferred,
-        targetedRegions,
-        repushSourceVersion,
-        largestUsedRTVersionNumber,
-        repushTtlSeconds,
-        isDegradedPush);
-    Version newVersion = result.getSecond();
-    if (result.getFirst()) {
-      if (newVersion.isActiveActiveReplicationEnabled()) {
-        parentSchemaOrchestrator.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
+    Pair<Boolean, Version> result;
+    acquireAdminMessageLock(clusterName, storeName);
+    try {
+      Store store = getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName, clusterName);
       }
-      // Send admin message if the version is newly created.
-      acquireAdminMessageLock(clusterName, storeName);
-      try {
+      boolean existingPushId =
+          store.getVersions().stream().anyMatch(version -> pushJobId.equals(version.getPushJobId()));
+      boolean existingVersionNumber = versionNumber != VERSION_ID_UNSET && store.containsVersion(versionNumber);
+      if (!existingPushId && !existingVersionNumber) {
+        ensurePubSubEncryptionKeyUrn(clusterName, storeName);
+      }
+
+      final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
+      result = getVeniceHelixAdmin().addVersionAndTopicOnly(
+          clusterName,
+          storeName,
+          pushJobId,
+          versionNumber,
+          numberOfPartitions,
+          replicationFactor,
+          sendStartOfPush,
+          sorted,
+          pushType,
+          compressionDictionary,
+          null,
+          sourceGridFabric,
+          rewindTimeInSecondsOverride,
+          replicationMetadataVersionId,
+          emergencySourceRegion,
+          versionSwapDeferred,
+          targetedRegions,
+          repushSourceVersion,
+          largestUsedRTVersionNumber,
+          repushTtlSeconds,
+          isDegradedPush);
+      Version newVersion = result.getSecond();
+      if (result.getFirst()) {
+        if (newVersion.isActiveActiveReplicationEnabled()) {
+          parentSchemaOrchestrator.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
+        }
         sendAddVersionAdminMessage(
             clusterName,
             storeName,
@@ -2164,14 +2215,48 @@ public class VeniceParentHelixAdmin implements Admin {
             targetedRegions,
             repushSourceVersion,
             largestUsedRTVersionNumber);
-      } finally {
-        releaseAdminMessageLock(clusterName, storeName);
       }
+    } finally {
+      releaseAdminMessageLock(clusterName, storeName);
+    }
+    Version newVersion = result.getSecond();
+    if (result.getFirst()) {
       getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
     }
     deleteStrandedNonCurrentVersions(clusterName, storeName);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
+  }
+
+  private void ensurePubSubEncryptionKeyUrn(String clusterName, String storeName) {
+    if (VeniceSystemStoreType.getSystemStoreType(storeName) != null) {
+      return;
+    }
+
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    if (!store.isEncryptionEnabled() || StringUtils.isNotBlank(store.getPubSubEncryptionKeyUrn())) {
+      return;
+    }
+
+    PubSubEncryptionKeyProvider provider = pubSubEncryptionKeyProvider.orElseThrow(
+        () -> new VeniceException(
+            "Cannot create a version for encryption-enabled store " + storeName + " in cluster " + clusterName
+                + " without a PubSub encryption key provider"));
+    String provisionedUrn = provider.getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
+    if (StringUtils.isBlank(provisionedUrn)) {
+      throw new VeniceException(
+          "PubSub encryption key provider returned a blank URN for store " + storeName + " in cluster " + clusterName);
+    }
+
+    updateStore(clusterName, storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(provisionedUrn));
+    Store updatedStore = getStore(clusterName, storeName);
+    if (updatedStore == null || !provisionedUrn.equals(updatedStore.getPubSubEncryptionKeyUrn())) {
+      throw new VeniceException(
+          "PubSub encryption key URN was not persisted for store " + storeName + " in cluster " + clusterName);
+    }
   }
 
   void sendAddVersionAdminMessage(

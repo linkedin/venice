@@ -4,6 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -24,6 +25,7 @@ public class VeniceControllerContextTest {
     assertNotNull(veniceControllerContext.getMetricsRepository());
     assertNotNull(veniceControllerContext.getServiceDiscoveryAnnouncers());
     assertEquals(veniceControllerContext.getServiceDiscoveryAnnouncers(), Collections.emptyList());
+    assertNull(veniceControllerContext.getPubSubEncryptionKeyProvider());
   }
 
   @Test
@@ -36,6 +38,7 @@ public class VeniceControllerContextTest {
     ClientConfig routerClientConfig = mock(ClientConfig.class);
     ICProvider icProvider = mock(ICProvider.class);
     SupersetSchemaGenerator externalSupersetSchemaGenerator = mock(SupersetSchemaGenerator.class);
+    PubSubEncryptionKeyProvider pubSubEncryptionKeyProvider = mock(PubSubEncryptionKeyProvider.class);
 
     VeniceControllerContext veniceControllerContext =
         new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
@@ -45,6 +48,7 @@ public class VeniceControllerContextTest {
             .setRouterClientConfig(routerClientConfig)
             .setIcProvider(icProvider)
             .setExternalSupersetSchemaGenerator(externalSupersetSchemaGenerator)
+            .setPubSubEncryptionKeyProvider(pubSubEncryptionKeyProvider)
             .setMetricsRepository(null)
             .setServiceDiscoveryAnnouncers(null)
             .build();
@@ -57,5 +61,6 @@ public class VeniceControllerContextTest {
     assertEquals(veniceControllerContext.getD2Client(), d2Client);
     assertEquals(veniceControllerContext.getRouterClientConfig(), routerClientConfig);
     assertEquals(veniceControllerContext.getIcProvider(), icProvider);
+    assertSame(veniceControllerContext.getPubSubEncryptionKeyProvider(), pubSubEncryptionKeyProvider);
   }
 }

@@ -197,12 +197,20 @@ public class AbstractTestVeniceParentHelixAdmin {
   public void initializeParentAdmin(
       Optional<AuthorizerService> authorizerService,
       Optional<MetricsRepository> metricsRepository) {
+    initializeParentAdmin(authorizerService, Optional.empty(), metricsRepository);
+  }
+
+  public void initializeParentAdmin(
+      Optional<AuthorizerService> authorizerService,
+      Optional<PubSubEncryptionKeyProvider> pubSubEncryptionKeyProvider,
+      Optional<MetricsRepository> metricsRepository) {
     parentAdmin = new VeniceParentHelixAdmin(
         internalAdmin,
         TestUtils.getMultiClusterConfigFromOneCluster(config),
         false,
         Optional.empty(),
         authorizerService,
+        pubSubEncryptionKeyProvider,
         metricsRepository.orElseGet(() -> mock(MetricsRepository.class)));
     ControllerClient mockControllerClient = mock(ControllerClient.class);
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());

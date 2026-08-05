@@ -303,6 +303,10 @@ public enum Arg {
   COMPACTION_THRESHOLD_MILLISECONDS(
       "compaction-threshold-milliseconds", "ctms", true, "Set compaction threshold in milliseconds"
   ),
+  PUB_SUB_ENCRYPTION_KEY_URN(
+      "pub-sub-encryption-key-urn", "psekurn", true,
+      "Set the KMS-defined PubSub encryption key URN for an encryption-enabled store"
+  ),
   MIN_COMPACTION_LAG_SECONDS(
       "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
   ),

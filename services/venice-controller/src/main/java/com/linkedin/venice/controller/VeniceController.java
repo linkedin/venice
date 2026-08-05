@@ -156,6 +156,7 @@ public class VeniceController {
   private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
   private final Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners;
   private final Optional<ExternalETLService> externalETLService;
+  private final Optional<PubSubEncryptionKeyProvider> pubSubEncryptionKeyProvider;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -226,6 +227,7 @@ public class VeniceController {
     this.versionLifecycleEventListeners = Optional.ofNullable(ctx.getVersionLifecycleEventListeners());
     this.valueSchemaCreatedListeners = Optional.ofNullable(ctx.getValueSchemaCreatedListeners());
     this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
+    this.pubSubEncryptionKeyProvider = Optional.ofNullable(ctx.getPubSubEncryptionKeyProvider());
     this.controllerService = createControllerService();
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
@@ -262,7 +264,8 @@ public class VeniceController {
         pubSubPositionTypeRegistry,
         versionLifecycleEventListeners,
         valueSchemaCreatedListeners,
-        externalETLService);
+        externalETLService,
+        pubSubEncryptionKeyProvider);
     Admin admin = veniceControllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
       throw new VeniceException(
