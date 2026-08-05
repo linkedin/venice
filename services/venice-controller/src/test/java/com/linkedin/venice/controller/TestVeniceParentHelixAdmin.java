@@ -19,13 +19,11 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -138,7 +136,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 import org.mockito.verification.VerificationMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -166,179 +163,51 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     super.cleanupTestCase();
   }
 
-  @DataProvider(name = "storesNotRequiringPubSubEncryptionKeyProvisioning")
-  public Object[][] storesNotRequiringPubSubEncryptionKeyProvisioning() {
+  @DataProvider(name = "validPubSubEncryptionKeyConfigurations")
+  public Object[][] validPubSubEncryptionKeyConfigurations() {
     return new Object[][] { { false, "" }, { true, PUB_SUB_ENCRYPTION_KEY_URN } };
   }
 
-  @Test(dataProvider = "storesNotRequiringPubSubEncryptionKeyProvisioning")
-  public void testAddVersionAndTopicOnlySkipsPubSubEncryptionKeyProvider(
+  @Test(dataProvider = "validPubSubEncryptionKeyConfigurations")
+  public void testAddVersionAndTopicOnlyAcceptsValidPubSubEncryptionKeyConfiguration(
       boolean encryptionEnabled,
-      String existingKeyUrn) {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    reinitializeParentAdmin(Optional.of(provider));
-    Store testStore = createPubSubEncryptionTestStore(storeName, encryptionEnabled, existingKeyUrn);
+      String keyUrn) {
+    Store testStore = createPubSubEncryptionTestStore(storeName, encryptionEnabled, keyUrn);
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    List<AdminOperation> adminOperations = captureAdminOperationsAndPersistPubSubEncryptionKey(testStore);
     Version newVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
     stubAddVersionAndTopicOnly(new Pair<>(true, newVersion));
 
     Version result = addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET);
 
     assertSame(result, newVersion);
-    verify(provider, never()).getOrCreatePubSubEncryptionKeyUrn(anyString(), anyString());
     verifyAddVersionAndTopicOnly(times(1));
-    assertAdminOperationTypes(adminOperations, AdminMessageType.ADD_VERSION);
   }
 
-  @Test
-  public void testAddVersionAndTopicOnlyProvisionsAndPersistsPubSubEncryptionKeyBeforeVersionCreation() {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    doReturn(PUB_SUB_ENCRYPTION_KEY_URN).when(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    reinitializeParentAdmin(Optional.of(provider));
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    List<AdminOperation> adminOperations = captureAdminOperationsAndPersistPubSubEncryptionKey(testStore);
-    Version newVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    stubAddVersionAndTopicOnly(new Pair<>(true, newVersion));
-
-    Version result = addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET);
-
-    assertSame(result, newVersion);
-    assertEquals(testStore.getPubSubEncryptionKeyUrn(), PUB_SUB_ENCRYPTION_KEY_URN);
-    assertAdminOperationTypes(adminOperations, AdminMessageType.UPDATE_STORE, AdminMessageType.ADD_VERSION);
-    UpdateStore updateStore = (UpdateStore) adminOperations.get(0).payloadUnion;
-    assertEquals(updateStore.pubSubEncryptionKeyUrn.toString(), PUB_SUB_ENCRYPTION_KEY_URN);
-    verify(provider, times(1)).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    verify(veniceWriter, times(2)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-
-    InOrder inOrder = inOrder(provider, veniceWriter, internalAdmin);
-    inOrder.verify(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    verifyAdminMessageWrite(inOrder);
-    verifyAddVersionAndTopicOnly(inOrder);
-    verifyAdminMessageWrite(inOrder);
+  @DataProvider(name = "blankPubSubEncryptionKeyUrns")
+  public Object[][] blankPubSubEncryptionKeyUrns() {
+    return new Object[][] { { "" }, { "   " } };
   }
 
-  @Test
-  public void testAddVersionAndTopicOnlyWithoutProviderAbortsBeforeVersionCreation() {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
+  @Test(dataProvider = "blankPubSubEncryptionKeyUrns")
+  public void testAddVersionAndTopicOnlyRejectsEncryptedStoreWithoutKeyUrn(String keyUrn) {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, keyUrn);
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
 
     VeniceException exception = expectThrows(
         VeniceException.class,
         () -> addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET));
 
-    assertTrue(exception.getMessage().contains("without a PubSub encryption key provider"));
+    assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
     verifyAddVersionAndTopicOnly(never());
     verifyNoAdminMessageWrite();
   }
 
-  @Test
-  public void testAddVersionAndTopicOnlyWhenProviderThrowsAbortsBeforeVersionCreation() {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    VeniceException providerException = new VeniceException("key provisioning failed");
-    doThrow(providerException).when(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    reinitializeParentAdmin(Optional.of(provider));
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
+  @Test(dataProvider = "validPubSubEncryptionKeyConfigurations")
+  public void testAddVersionAndStartIngestionAcceptsValidPubSubEncryptionKeyConfiguration(
+      boolean encryptionEnabled,
+      String keyUrn) {
+    Store testStore = createPubSubEncryptionTestStore(storeName, encryptionEnabled, keyUrn);
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-
-    VeniceException exception = expectThrows(
-        VeniceException.class,
-        () -> addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET));
-
-    assertSame(exception, providerException);
-    verify(provider, times(1)).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    verifyAddVersionAndTopicOnly(never());
-    verifyNoAdminMessageWrite();
-  }
-
-  @DataProvider(name = "invalidPubSubEncryptionKeyUrns")
-  public Object[][] invalidPubSubEncryptionKeyUrns() {
-    return new Object[][] { { null }, { "" }, { "   " } };
-  }
-
-  @Test(dataProvider = "invalidPubSubEncryptionKeyUrns")
-  public void testAddVersionAndTopicOnlyWhenProviderReturnsInvalidUrnAbortsBeforeVersionCreation(
-      String provisionedKeyUrn) {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    doReturn(provisionedKeyUrn).when(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    reinitializeParentAdmin(Optional.of(provider));
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-
-    VeniceException exception = expectThrows(
-        VeniceException.class,
-        () -> addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET));
-
-    assertTrue(exception.getMessage().contains("returned a blank URN"));
-    verify(provider, times(1)).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    verifyAddVersionAndTopicOnly(never());
-    verifyNoAdminMessageWrite();
-  }
-
-  @Test
-  public void testAddVersionAndTopicOnlyRetryReusesPersistedPubSubEncryptionKey() {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    doReturn(PUB_SUB_ENCRYPTION_KEY_URN).when(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    reinitializeParentAdmin(Optional.of(provider));
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    List<AdminOperation> adminOperations = captureAdminOperationsAndPersistPubSubEncryptionKey(testStore);
-    Version newVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    doThrow(new VeniceException("low-level version creation failed")).doReturn(new Pair<>(true, newVersion))
-        .when(internalAdmin)
-        .addVersionAndTopicOnly(
-            anyString(),
-            anyString(),
-            anyString(),
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            anyBoolean(),
-            anyBoolean(),
-            any(),
-            any(),
-            any(),
-            any(),
-            anyLong(),
-            anyInt(),
-            any(),
-            anyBoolean(),
-            any(),
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            anyBoolean());
-
-    VeniceException firstFailure = expectThrows(
-        VeniceException.class,
-        () -> addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET));
-    assertTrue(firstFailure.getMessage().contains("low-level version creation failed"));
-    assertEquals(testStore.getPubSubEncryptionKeyUrn(), PUB_SUB_ENCRYPTION_KEY_URN);
-
-    Version result = addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET);
-
-    assertSame(result, newVersion);
-    verify(provider, times(1)).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    verifyAddVersionAndTopicOnly(times(2));
-    assertAdminOperationTypes(adminOperations, AdminMessageType.UPDATE_STORE, AdminMessageType.ADD_VERSION);
-
-    InOrder inOrder = inOrder(provider, veniceWriter, internalAdmin);
-    inOrder.verify(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    verifyAdminMessageWrite(inOrder);
-    verifyAddVersionAndTopicOnly(inOrder);
-    verifyAddVersionAndTopicOnly(inOrder);
-    verifyAdminMessageWrite(inOrder);
-  }
-
-  @Test
-  public void testAddVersionAndStartIngestionProvisionsPubSubEncryptionKeyBeforeAddVersionOnly() {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    doReturn(PUB_SUB_ENCRYPTION_KEY_URN).when(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    reinitializeParentAdmin(Optional.of(provider));
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    List<AdminOperation> adminOperations = captureAdminOperationsAndPersistPubSubEncryptionKey(testStore);
     Version newVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
     doReturn(newVersion).when(internalAdmin)
         .addVersionOnly(
@@ -355,37 +224,25 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     addBatchVersionAndStartIngestion(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, 1);
 
-    assertEquals(testStore.getPubSubEncryptionKeyUrn(), PUB_SUB_ENCRYPTION_KEY_URN);
-    assertAdminOperationTypes(adminOperations, AdminMessageType.UPDATE_STORE, AdminMessageType.ADD_VERSION);
-    verify(provider, times(1)).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
     verifyAddVersionOnly(times(1));
-    verify(veniceWriter, times(2)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-
-    InOrder inOrder = inOrder(provider, veniceWriter, internalAdmin);
-    inOrder.verify(provider).getOrCreatePubSubEncryptionKeyUrn(clusterName, storeName);
-    verifyAdminMessageWrite(inOrder);
-    verifyAddVersionOnly(inOrder);
-    verifyAdminMessageWrite(inOrder);
   }
 
-  @Test
-  public void testAddVersionAndStartIngestionWithoutProviderAbortsBeforeAddVersionOnly() {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
+  @Test(dataProvider = "blankPubSubEncryptionKeyUrns")
+  public void testAddVersionAndStartIngestionRejectsEncryptedStoreWithoutKeyUrn(String keyUrn) {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, keyUrn);
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
 
     VeniceException exception = expectThrows(
         VeniceException.class,
         () -> addBatchVersionAndStartIngestion(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, 1));
 
-    assertTrue(exception.getMessage().contains("without a PubSub encryption key provider"));
+    assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
     verifyAddVersionOnly(never());
     verifyNoAdminMessageWrite();
   }
 
   @Test
-  public void testIncrementalPushSkipsPubSubEncryptionKeyProvider() {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    reinitializeParentAdmin(Optional.of(provider));
+  public void testIncrementalPushDoesNotRequirePubSubEncryptionKeyUrn() {
     Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(Collections.emptyMap()).when(internalAdmin).getControllerClientMap(clusterName);
@@ -413,7 +270,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         -1);
 
     assertSame(result, incrementalVersion);
-    verify(provider, never()).getOrCreatePubSubEncryptionKeyUrn(anyString(), anyString());
     verify(internalAdmin, times(1)).getIncrementalPushVersion(clusterName, storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
     verifyAddVersionAndTopicOnly(never());
     verifyAddVersionOnly(never());
@@ -426,11 +282,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test(dataProvider = "idempotentExistingVersionRequests")
-  public void testIdempotentExistingVersionRequestSkipsPubSubEncryptionKeyProvider(
+  public void testIdempotentExistingVersionRequestDoesNotRequirePubSubEncryptionKeyUrn(
       String requestedPushJobId,
       int requestedVersionNumber) {
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    reinitializeParentAdmin(Optional.of(provider));
     Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
     Version existingVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
     testStore.addVersion(existingVersion);
@@ -440,23 +294,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version result = addBatchVersionAndTopicOnly(storeName, requestedPushJobId, requestedVersionNumber);
 
     assertSame(result, existingVersion);
-    verify(provider, never()).getOrCreatePubSubEncryptionKeyUrn(anyString(), anyString());
     verifyAddVersionAndTopicOnly(times(1));
     verifyNoAdminMessageWrite();
   }
 
   @Test
-  public void testSystemStoreVersionPathsSkipPubSubEncryptionKeyProviderAndSetter() {
+  public void testSystemStoreVersionPathsDoNotRequirePubSubEncryptionKeyUrn() {
     String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    PubSubEncryptionKeyProvider provider = mock(PubSubEncryptionKeyProvider.class);
-    reinitializeParentAdmin(Optional.of(provider));
     Store systemStore = mock(Store.class);
     doReturn(Collections.emptyList()).when(systemStore).getVersions();
     doReturn(true).when(systemStore).isEncryptionEnabled();
     doReturn("").when(systemStore).getPubSubEncryptionKeyUrn();
     doReturn(false).when(systemStore).containsVersion(anyInt());
     doReturn(systemStore).when(internalAdmin).getStore(clusterName, systemStoreName);
-    List<AdminOperation> adminOperations = captureAdminOperationsAndPersistPubSubEncryptionKey(systemStore);
     Version topicOnlyVersion = new VersionImpl(systemStoreName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
     Version ingestionVersion = new VersionImpl(systemStoreName, 2, PUB_SUB_ENCRYPTION_PUSH_JOB_ID + "-ingestion");
     stubAddVersionAndTopicOnly(new Pair<>(false, topicOnlyVersion));
@@ -476,16 +326,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     addBatchVersionAndTopicOnly(systemStoreName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET);
     addBatchVersionAndStartIngestion(systemStoreName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID + "-ingestion", 2);
 
-    verify(provider, never()).getOrCreatePubSubEncryptionKeyUrn(anyString(), anyString());
     verify(systemStore, never()).setPubSubEncryptionKeyUrn(any());
     verifyAddVersionAndTopicOnly(times(1));
     verifyAddVersionOnly(times(1));
-    assertAdminOperationTypes(adminOperations, AdminMessageType.ADD_VERSION);
-  }
-
-  private void reinitializeParentAdmin(Optional<PubSubEncryptionKeyProvider> pubSubEncryptionKeyProvider) {
-    parentAdmin.close();
-    initializeParentAdmin(Optional.empty(), pubSubEncryptionKeyProvider, Optional.empty());
+    verify(veniceWriter, times(1)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
 
   private Store createPubSubEncryptionTestStore(
@@ -504,23 +348,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     testStore.setEncryptionEnabled(encryptionEnabled);
     testStore.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
     return testStore;
-  }
-
-  private List<AdminOperation> captureAdminOperationsAndPersistPubSubEncryptionKey(Store testStore) {
-    List<AdminOperation> adminOperations = new ArrayList<>();
-    doAnswer(invocation -> {
-      byte[] serializedValue = invocation.getArgument(1);
-      int schemaId = invocation.getArgument(2);
-      AdminOperation adminOperation = adminOperationSerializer.deserialize(ByteBuffer.wrap(serializedValue), schemaId);
-      adminOperations.add(adminOperation);
-      if (adminOperation.operationType == AdminMessageType.UPDATE_STORE.getValue()) {
-        UpdateStore updateStore = (UpdateStore) adminOperation.payloadUnion;
-        testStore.setPubSubEncryptionKeyUrn(updateStore.pubSubEncryptionKeyUrn.toString());
-      }
-      return CompletableFuture
-          .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1));
-    }).when(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-    return adminOperations;
   }
 
   private void stubAddVersionAndTopicOnly(Pair<Boolean, Version> result) {
@@ -613,32 +440,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         anyBoolean());
   }
 
-  private void verifyAddVersionAndTopicOnly(InOrder inOrder) {
-    inOrder.verify(internalAdmin)
-        .addVersionAndTopicOnly(
-            anyString(),
-            anyString(),
-            anyString(),
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            anyBoolean(),
-            anyBoolean(),
-            any(),
-            any(),
-            any(),
-            any(),
-            anyLong(),
-            anyInt(),
-            any(),
-            anyBoolean(),
-            any(),
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            anyBoolean());
-  }
-
   private void verifyAddVersionOnly(VerificationMode verificationMode) {
     verify(internalAdmin, verificationMode).addVersionOnly(
         anyString(),
@@ -653,36 +454,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         anyInt());
   }
 
-  private void verifyAddVersionOnly(InOrder inOrder) {
-    inOrder.verify(internalAdmin)
-        .addVersionOnly(
-            anyString(),
-            anyString(),
-            anyString(),
-            anyInt(),
-            anyInt(),
-            any(),
-            anyString(),
-            anyLong(),
-            anyInt(),
-            anyInt());
-  }
-
-  private void verifyAdminMessageWrite(InOrder inOrder) {
-    inOrder.verify(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-  }
-
   private void verifyNoAdminMessageWrite() {
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-  }
-
-  private void assertAdminOperationTypes(
-      List<AdminOperation> adminOperations,
-      AdminMessageType... expectedAdminMessageTypes) {
-    assertEquals(adminOperations.size(), expectedAdminMessageTypes.length);
-    for (int i = 0; i < expectedAdminMessageTypes.length; i++) {
-      assertEquals(adminOperations.get(i).operationType, expectedAdminMessageTypes[i].getValue());
-    }
   }
 
   @Test

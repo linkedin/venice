@@ -15,7 +15,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -24,7 +23,6 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -150,19 +148,13 @@ public class TestEncryptionClusterStoreConfig {
   }
 
   @Test(timeOut = 4 * TEST_TIMEOUT)
-  public void testParentProvisionsPubSubEncryptionKeyBeforeCreatingVersion() {
-    String expectedKeyUrn = "urn:test:pub-sub-encryption-key";
-    AtomicInteger providerInvocationCount = new AtomicInteger();
-    PubSubEncryptionKeyProvider provider = (requestedClusterName, requestedStoreName) -> {
-      providerInvocationCount.incrementAndGet();
-      return expectedKeyUrn;
-    };
+  public void testParentRequiresPubSubEncryptionKeyBeforeCreatingVersion() {
+    String keyUrn = "keyUrn:abc";
     Properties parentControllerProperties = new Properties();
     parentControllerProperties.setProperty(CLUSTER_ENCRYPTION_ENABLED, "true");
     parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     parentControllerProperties
         .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
-    parentControllerProperties.put(VeniceControllerWrapper.PUB_SUB_ENCRYPTION_KEY_PROVIDER, provider);
 
     VeniceMultiRegionClusterCreateOptions options =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
@@ -181,11 +173,33 @@ public class TestEncryptionClusterStoreConfig {
       String childControllerUrl = multiRegionVenice.getChildRegions().get(0).getControllerConnectString();
       try (ControllerClient parentControllerClient = new ControllerClient(testClusterName, parentControllerUrl);
           ControllerClient childControllerClient = new ControllerClient(testClusterName, childControllerUrl)) {
-        String storeName = Utils.getUniqueString("auto-key-provisioning-store");
+        String storeName = Utils.getUniqueString("key-required-store");
         NewStoreResponse newStoreResponse =
             parentControllerClient.createNewStore(storeName, "test-owner", "\"string\"", "\"string\"");
         Assert.assertFalse(newStoreResponse.isError(), "Store creation should succeed: " + newStoreResponse.getError());
         Assert.assertEquals(parentControllerClient.getStore(storeName).getStore().getPubSubEncryptionKeyUrn(), "");
+
+        VersionCreationResponse missingKeyResponse = parentControllerClient.requestTopicForWrites(
+            storeName,
+            1,
+            Version.PushType.BATCH,
+            Version.numberBasedDummyPushId(1),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1);
+
+        Assert.assertTrue(missingKeyResponse.isError(), "Version creation must fail before the key URN is configured");
+        Assert.assertTrue(missingKeyResponse.getError().contains("pubSubEncryptionKeyUrn"));
+        Assert.assertFalse(parentControllerClient.getStore(storeName).getStore().getVersion(1).isPresent());
+
+        ControllerResponse keyUpdate = parentControllerClient
+            .updateStore(storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(keyUrn));
+        Assert.assertFalse(keyUpdate.isError(), "Updating the key URN should succeed: " + keyUpdate.getError());
 
         VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
             storeName,
@@ -204,14 +218,13 @@ public class TestEncryptionClusterStoreConfig {
         Assert.assertFalse(
             versionCreationResponse.isError(),
             "Version creation should succeed: " + versionCreationResponse.getError());
-        Assert.assertEquals(providerInvocationCount.get(), 1);
         StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
-        Assert.assertEquals(parentStoreResponse.getStore().getPubSubEncryptionKeyUrn(), expectedKeyUrn);
+        Assert.assertEquals(parentStoreResponse.getStore().getPubSubEncryptionKeyUrn(), keyUrn);
         Assert.assertTrue(parentStoreResponse.getStore().getVersion(1).isPresent());
         waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
           Assert.assertFalse(childStoreResponse.isError());
-          Assert.assertEquals(childStoreResponse.getStore().getPubSubEncryptionKeyUrn(), expectedKeyUrn);
+          Assert.assertEquals(childStoreResponse.getStore().getPubSubEncryptionKeyUrn(), keyUrn);
           Assert.assertTrue(childStoreResponse.getStore().getVersion(1).isPresent());
         });
       }

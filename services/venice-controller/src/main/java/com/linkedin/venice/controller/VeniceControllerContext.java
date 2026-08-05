@@ -40,7 +40,6 @@ public class VeniceControllerContext {
   private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
   private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
   private ExternalETLService externalETLService;
-  private PubSubEncryptionKeyProvider pubSubEncryptionKeyProvider;
 
   public List<VeniceProperties> getPropertiesList() {
     return propertiesList;
@@ -98,10 +97,6 @@ public class VeniceControllerContext {
     return externalETLService;
   }
 
-  public PubSubEncryptionKeyProvider getPubSubEncryptionKeyProvider() {
-    return pubSubEncryptionKeyProvider;
-  }
-
   public VeniceControllerContext(Builder builder) {
     this.propertiesList = builder.propertiesList;
     this.metricsRepository = builder.metricsRepository;
@@ -117,7 +112,6 @@ public class VeniceControllerContext {
     this.versionLifecycleEventListeners = builder.versionLifecycleEventListeners;
     this.valueSchemaCreatedListeners = builder.valueSchemaCreatedListeners;
     this.externalETLService = builder.externalETLService;
-    this.pubSubEncryptionKeyProvider = builder.pubSubEncryptionKeyProvider;
   }
 
   public static class Builder {
@@ -138,7 +132,6 @@ public class VeniceControllerContext {
     private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
     private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
     private ExternalETLService externalETLService;
-    private PubSubEncryptionKeyProvider pubSubEncryptionKeyProvider;
 
     public Builder setPropertiesList(List<VeniceProperties> propertiesList) {
       this.propertiesList = propertiesList;
@@ -211,11 +204,6 @@ public class VeniceControllerContext {
 
     public Builder setExternalETLService(ExternalETLService externalETLService) {
       this.externalETLService = externalETLService;
-      return this;
-    }
-
-    public Builder setPubSubEncryptionKeyProvider(PubSubEncryptionKeyProvider pubSubEncryptionKeyProvider) {
-      this.pubSubEncryptionKeyProvider = pubSubEncryptionKeyProvider;
       return this;
     }
 
