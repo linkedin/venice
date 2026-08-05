@@ -3052,6 +3052,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
           }
+          if (versionNumber == VERSION_ID_UNSET && startIngestion && clusterConfig.getFailedPushRetryCooldownMs() > 0) {
+            FailedPushRetryCooldownPolicy.enforce(
+                store,
+                pushType,
+                pushJobId,
+                clusterConfig.getFailedPushRetryCooldownMs(),
+                System.currentTimeMillis(),
+                resources.getVeniceAdminStats());
+          }
           currentVersionBeforePush = store.getCurrentVersion();
 
           // Dest child controllers skip the version whose kafka topic is truncated

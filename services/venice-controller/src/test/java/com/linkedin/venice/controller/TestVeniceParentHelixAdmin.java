@@ -8,6 +8,7 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
+import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
@@ -939,6 +940,36 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
+  @Test
+  public void testRecentFailedPushRetryIsRejected() {
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = "new_push_id";
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    Version failedVersion = new VersionImpl(storeName, 1, "failed_push_id");
+    failedVersion.setStatus(ERROR);
+    store.addVersion(failedVersion);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(Collections.emptyMap()).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getFailedPushRetryCooldownMs();
+    parentAdmin.setTimer(new TestMockTime(failedVersion.getCreatedTime() + TimeUnit.MINUTES.toMillis(1)));
+
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1));
+
+    assertEquals(exception.getHttpStatusCode(), HttpStatus.SC_TOO_MANY_REQUESTS);
+    assertTrue(exception.getMessage().contains("Retry in " + TimeUnit.MINUTES.toMillis(9) + " ms"));
+    verify(adminStats).recordFailedPushRetryCooldownRejection(Version.PushType.BATCH);
+  }
+
   /**
    * Idempotent increment version should work because existing topic uses the same push ID as the request
    */
@@ -1141,8 +1172,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
     Version version = new VersionImpl(storeName, 1, pushJobId);
+    version.setStatus(ERROR);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getFailedPushRetryCooldownMs();
     doReturn(new Pair<>(false, version)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
