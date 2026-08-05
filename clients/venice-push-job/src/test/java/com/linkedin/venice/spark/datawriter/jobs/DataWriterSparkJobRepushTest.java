@@ -2,9 +2,14 @@ package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
@@ -18,6 +23,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.spark.SparkExecutorTestUtils;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.writer.TestSparkPartitionWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -214,30 +220,21 @@ public class DataWriterSparkJobRepushTest {
     assertTrue(Arrays.equals(record.rmd, "rmd".getBytes()), "DELETE RMD should match");
   }
 
-  /**
-   * Test applyTTLFilter with TTL enabled to verify the transformation is set up correctly.
-   * This exercises the enabled path in AbstractDataWriterSparkJob.applyTTLFilter().
-   * We verify the filter transformation is applied (returns a transformed Dataset) without
-   * executing the full Spark pipeline to avoid test infrastructure conflicts.
-   */
   @Test
-  public void testApplyTTLFilterEnabledSetup() throws Exception {
-    String testName = "testApplyTTLFilterEnabledSetup";
+  public void testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary() throws Exception {
+    String testName = "testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary";
 
-    // Create temp directories and schema files
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
     File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
 
     try {
-      // Create simple schemas for testing
       String valueSchemaStr =
           "{\"type\":\"record\",\"name\":\"TestValue\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}";
       String rmdSchemaStr =
           "{\"type\":\"record\",\"name\":\"RmdRecord\",\"fields\":[{\"name\":\"timestamp\",\"type\":\"long\"}]}";
 
-      // Write schema files (schema ID 1, RMD version 1)
       File valueSchemaFile = new File(valueSchemaTempDir, "1");
-      File rmdSchemaFile = new File(rmdSchemaTempDir, "1");
+      File rmdSchemaFile = new File(rmdSchemaTempDir, "1_1");
 
       Files.write(valueSchemaFile.toPath(), valueSchemaStr.getBytes());
       Files.write(rmdSchemaFile.toPath(), rmdSchemaStr.getBytes());
@@ -252,10 +249,20 @@ public class DataWriterSparkJobRepushTest {
       props.setProperty("repush.ttl.start.timestamp", String.valueOf(ttlStartTime));
       props.setProperty("value.schema.dir", valueSchemaTempDir.getAbsolutePath());
       props.setProperty("rmd.schema.dir", rmdSchemaTempDir.getAbsolutePath());
-      props.setProperty("kafka.input.source.compression.strategy", "NO_OP");
+      props.setProperty("kafka.input.source.compression.strategy", CompressionStrategy.ZSTD_WITH_DICT.name());
+      props.setProperty(SSL_CONFIGURATOR_CLASS_CONFIG, SparkExecutorTestUtils.RecordingSSLConfigurator.class.getName());
+      props.setProperty(
+          PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          SparkExecutorTestUtils.AssertingPubSubConsumerAdapterFactory.class.getName());
+      props.setProperty("pass.through.config.prefixes.list", "pubsub.");
+      props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test-keystore-credential");
+      props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test-truststore-credential");
+      props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test-key-password-credential");
 
       PushJobSetting setting = new PushJobSetting();
       setting.isSourceKafka = true;
+      setting.enableSSL = true;
+      setting.sslToKafka = true;
       setting.kafkaInputTopic = "test_store_v1";
       setting.repushSourcePubsubBroker = "localhost:9092";
       setting.repushTTLEnabled = true; // TTL enabled
@@ -266,25 +273,25 @@ public class DataWriterSparkJobRepushTest {
       setting.pushDestinationPubsubBroker = "localhost:9092";
       setting.partitionerClass = DefaultVenicePartitioner.class.getName();
       setting.partitionCount = 1;
-      setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+      Version sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
+      sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      setting.sourceKafkaInputVersionInfo = sourceVersion;
 
       job.configure(new VeniceProperties(props), setting);
 
-      // Create test DataFrame with chunked records (these skip TTL filtering)
       List<Row> rows =
           Arrays.asList(createChunkedRow("key1", "chunk1", -1, 1L), createChunkedRow("key2", "chunk2", -20, 2L));
       Dataset<Row> inputDF = job.getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
 
-      // Apply TTL filter - should return a transformed Dataset
-      Dataset<Row> outputDF = job.testableApplyTTLFilter(inputDF);
-
-      // Verify the transformation was applied (outputDF is not null and is a different object)
-      assertNotNull(outputDF, "TTL filter should return a DataFrame");
-      // Don't call count() to avoid Spark execution issues in test environment
-      // The transformation setup itself provides code coverage
-
+      SparkExecutorTestUtils.resetInvocations();
+      SparkExecutorTestUtils.withTokenFile(() -> {
+        List<Row> outputRows = job.testableApplyTTLFilter(inputDF).collectAsList();
+        assertEquals(outputRows.size(), rows.size());
+        assertTrue(SparkExecutorTestUtils.getSslConfiguratorInvocations() > 0);
+        assertTrue(SparkExecutorTestUtils.getConsumerFactoryInvocations() > 0);
+        assertTrue(SparkExecutorTestUtils.getDictionaryConsumerInvocations() > 0);
+      });
     } finally {
-      // Cleanup temp directories
       deleteDirectory(valueSchemaTempDir);
       deleteDirectory(rmdSchemaTempDir);
     }

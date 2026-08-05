@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
@@ -53,6 +54,41 @@ public class VPJSSLUtilsTest {
     });
   }
 
+  @Test
+  public void testSetupSSLForExecutorFailsWhenTokenFileIsMissing() {
+    String tokenFileProperty = UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
+    String previousTokenFile = System.getProperty(tokenFileProperty);
+    try {
+      System.clearProperty(tokenFileProperty);
+      VeniceException exception =
+          expectThrows(VeniceException.class, () -> VPJSSLUtils.setupSSLForExecutor(configWithTestConfigurator()));
+      assertEquals(exception.getMessage().contains("Hadoop token file is accessible"), true);
+    } finally {
+      restoreSystemProperty(tokenFileProperty, previousTokenFile);
+    }
+  }
+
+  @Test
+  public void testSetupSSLForExecutorFailsWhenTokenFileIsInvalid() throws Exception {
+    File tokenFile = Files.createTempFile("vpj-ssl-utils-invalid", ".tokens").toFile();
+    String tokenFileProperty = UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
+    String previousTokenFile = System.getProperty(tokenFileProperty);
+    try {
+      Files.write(tokenFile.toPath(), "not-a-token-file".getBytes(StandardCharsets.UTF_8));
+      System.setProperty(tokenFileProperty, tokenFile.getAbsolutePath());
+      expectThrows(VeniceException.class, () -> VPJSSLUtils.setupSSLForExecutor(configWithTestConfigurator()));
+    } finally {
+      restoreSystemProperty(tokenFileProperty, previousTokenFile);
+      Files.deleteIfExists(tokenFile.toPath());
+    }
+  }
+
+  private VeniceProperties configWithTestConfigurator() {
+    Properties properties = new Properties();
+    properties.setProperty(SSL_CONFIGURATOR_CLASS_CONFIG, TestSSLConfigurator.class.getName());
+    return new VeniceProperties(properties);
+  }
+
   private void withTokenFile(ThrowingRunnable runnable) throws Exception {
     File tokenFile = Files.createTempFile("vpj-ssl-utils", ".tokens").toFile();
     String tokenFileProperty = UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
@@ -72,6 +108,14 @@ public class VPJSSLUtilsTest {
         System.setProperty(tokenFileProperty, previousTokenFile);
       }
       Files.deleteIfExists(tokenFile.toPath());
+    }
+  }
+
+  private void restoreSystemProperty(String propertyName, String previousValue) {
+    if (previousValue == null) {
+      System.clearProperty(propertyName);
+    } else {
+      System.setProperty(propertyName, previousValue);
     }
   }
 
