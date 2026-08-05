@@ -621,7 +621,7 @@ public class AdminExecutionTaskTest {
     AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
     UpdateStore updateStore = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
     updateStore.encryptionEnabled = encryptionEnabled;
-    updateStore.pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:admin-execution-task-test";
+    updateStore.pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:admin-execution-task-test";
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
     queue.add(wrapper);
@@ -649,7 +649,7 @@ public class AdminExecutionTaskTest {
 
   @DataProvider(name = "pubSubEncryptionKeyUrnCases")
   public Object[][] pubSubEncryptionKeyUrnCases() {
-    String pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:admin-execution-task-test";
+    String pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:admin-execution-task-test";
     return new Object[][] { { true, Optional.of(pubSubEncryptionKeyUrn) }, { false, Optional.empty() } };
   }
 

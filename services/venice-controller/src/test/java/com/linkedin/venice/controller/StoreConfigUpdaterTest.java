@@ -477,7 +477,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   @Test
   public void testApplyOnParentPubSubEncryptionKeyUrnRoundTrip() {
     String storeName = Utils.getUniqueString("encryption-key-parent");
-    String pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:parent-round-trip";
+    String pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:parent-round-trip";
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
     store.setEncryptionEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -506,7 +506,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
-            new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("urn:li:kmsKeyLineage:invalid")));
+            new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("urn:li:pubSubEncryptionKey:invalid")));
 
     assertTrue(exception.getMessage().contains("encryption-enabled store"));
   }

@@ -152,7 +152,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   static final int NUM_REGIONS = 3;
   static final long LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
-  private static final String PUB_SUB_ENCRYPTION_KEY_URN = "urn:li:kms:test-pub-sub-key";
+  private static final String PUB_SUB_ENCRYPTION_KEY_URN = "urn:li:pubSubEncryptionKey:test-pub-sub-key";
   private static final String PUB_SUB_ENCRYPTION_PUSH_JOB_ID = "pub-sub-encryption-push";
 
   @BeforeMethod

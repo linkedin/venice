@@ -49,7 +49,7 @@ public class ReadOnlyStoreTest {
     List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
     storeLifecycleHooks.add(new LifecycleHooksRecordImpl("testLifecycleHooksClassName", Collections.emptyMap()));
     store.setStoreLifecycleHooks(storeLifecycleHooks);
-    store.setPubSubEncryptionKeyUrn("urn:li:kmsKeyLineage:read-only-store-test");
+    store.setPubSubEncryptionKeyUrn("urn:li:pubSubEncryptionKey:read-only-store-test");
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
 

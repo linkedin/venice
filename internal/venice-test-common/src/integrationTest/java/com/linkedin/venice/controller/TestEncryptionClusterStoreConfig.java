@@ -34,7 +34,7 @@ import org.testng.annotations.Test;
 /**
  * Verifies encryption-cluster ({@code cluster.encryption.enabled=true}) store behavior: a newly
  * created store defaults to {@code encryptionEnabled=true} (via {@code configureNewStore}), and
- * update-store accepts and preserves its KMS-defined PubSub encryption key URN.
+ * update-store accepts and preserves its externally provisioned PubSub encryption key URN.
  */
 public class TestEncryptionClusterStoreConfig {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
@@ -82,12 +82,12 @@ public class TestEncryptionClusterStoreConfig {
           "A newly created store in an encryption cluster must default to encryptionEnabled=true");
       Assert.assertEquals(storeResponse.getStore().getPubSubEncryptionKeyUrn(), "");
 
-      String pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:encryption-cluster-test";
+      String pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:encryption-cluster-test";
       ControllerResponse keyUpdate = controllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn));
       Assert.assertFalse(
           keyUpdate.isError(),
-          "Setting a KMS PubSub encryption key URN must succeed: " + keyUpdate.getError());
+          "Setting a PubSub encryption key URN must succeed: " + keyUpdate.getError());
       Assert.assertEquals(
           controllerClient.getStore(storeName).getStore().getPubSubEncryptionKeyUrn(),
           pubSubEncryptionKeyUrn);
@@ -108,7 +108,7 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertEquals(
           storeAfterUpdate.getStore().getPubSubEncryptionKeyUrn(),
           pubSubEncryptionKeyUrn,
-          "Omitting pubSubEncryptionKeyUrn must preserve the existing KMS value");
+          "Omitting pubSubEncryptionKeyUrn must preserve the existing value");
 
       ControllerResponse replicateAllUpdate = controllerClient.updateStore(
           storeName,

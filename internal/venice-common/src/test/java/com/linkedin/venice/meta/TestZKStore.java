@@ -126,7 +126,7 @@ public class TestZKStore {
     Store store = TestUtils.createTestStore("encryptionStore", "owner", System.currentTimeMillis());
     Assert.assertEquals(store.getPubSubEncryptionKeyUrn(), "");
 
-    String pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:test-encryption-key";
+    String pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:test-encryption-key";
     store.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
     Assert.assertEquals(store.getPubSubEncryptionKeyUrn(), pubSubEncryptionKeyUrn);
     Assert.assertEquals(store.cloneStore().getPubSubEncryptionKeyUrn(), pubSubEncryptionKeyUrn);

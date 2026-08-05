@@ -82,7 +82,7 @@ public class UpdateStoreQueryParamsTest {
 
   @Test
   public void testPubSubEncryptionKeyUrnRoundTripAndStoreInfoCopy() {
-    String pubSubEncryptionKeyUrn = "urn:li:kmsKeyLineage:update-store-test";
+    String pubSubEncryptionKeyUrn = "urn:li:pubSubEncryptionKey:update-store-test";
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
     assertEquals(params.getPubSubEncryptionKeyUrn(), Optional.of(pubSubEncryptionKeyUrn));
 
@@ -107,7 +107,7 @@ public class UpdateStoreQueryParamsTest {
   @Test
   public void testStoreInfoCopyOmitsPubSubEncryptionKeyUrnWhenEncryptionIsDisabled() {
     StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setPubSubEncryptionKeyUrn("urn:li:kmsKeyLineage:stale-disabled-store");
+    storeInfo.setPubSubEncryptionKeyUrn("urn:li:pubSubEncryptionKey:stale-disabled-store");
     storeInfo.setReplicationMetadataVersionId(-1);
 
     UpdateStoreQueryParams copiedParams = new UpdateStoreQueryParams(storeInfo, false);
