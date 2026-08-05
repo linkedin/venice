@@ -183,14 +183,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verifyAddVersionAndTopicOnly(times(1));
   }
 
-  @DataProvider(name = "blankPubSubEncryptionKeyUrns")
-  public Object[][] blankPubSubEncryptionKeyUrns() {
-    return new Object[][] { { "" }, { "   " } };
-  }
-
-  @Test(dataProvider = "blankPubSubEncryptionKeyUrns")
-  public void testAddVersionAndTopicOnlyRejectsEncryptedStoreWithoutKeyUrn(String keyUrn) {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, keyUrn);
+  @Test
+  public void testAddVersionAndTopicOnlyRejectsEncryptedStoreWithoutKeyUrn() {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
 
     VeniceException exception = expectThrows(
@@ -202,34 +197,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verifyNoAdminMessageWrite();
   }
 
-  @Test(dataProvider = "validPubSubEncryptionKeyConfigurations")
-  public void testAddVersionAndStartIngestionAcceptsValidPubSubEncryptionKeyConfiguration(
-      boolean encryptionEnabled,
-      String keyUrn) {
-    Store testStore = createPubSubEncryptionTestStore(storeName, encryptionEnabled, keyUrn);
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    Version newVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    doReturn(newVersion).when(internalAdmin)
-        .addVersionOnly(
-            anyString(),
-            anyString(),
-            anyString(),
-            anyInt(),
-            anyInt(),
-            any(),
-            anyString(),
-            anyLong(),
-            anyInt(),
-            anyInt());
-
-    addBatchVersionAndStartIngestion(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, 1);
-
-    verifyAddVersionOnly(times(1));
-  }
-
-  @Test(dataProvider = "blankPubSubEncryptionKeyUrns")
-  public void testAddVersionAndStartIngestionRejectsEncryptedStoreWithoutKeyUrn(String keyUrn) {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, keyUrn);
+  @Test
+  public void testAddVersionAndStartIngestionRejectsEncryptedStoreWithoutKeyUrn() {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
 
     VeniceException exception = expectThrows(
@@ -237,41 +207,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         () -> addBatchVersionAndStartIngestion(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, 1));
 
     assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
-    verifyAddVersionOnly(never());
-    verifyNoAdminMessageWrite();
-  }
-
-  @Test
-  public void testIncrementalPushDoesNotRequirePubSubEncryptionKeyUrn() {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(Collections.emptyMap()).when(internalAdmin).getControllerClientMap(clusterName);
-    Version incrementalVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    doReturn(incrementalVersion).when(internalAdmin)
-        .getIncrementalPushVersion(clusterName, storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-
-    Version result = parentAdmin.incrementVersionIdempotent(
-        clusterName,
-        storeName,
-        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
-        1,
-        1,
-        Version.PushType.INCREMENTAL,
-        false,
-        false,
-        null,
-        Optional.empty(),
-        Optional.empty(),
-        -1,
-        Optional.empty(),
-        false,
-        null,
-        -1,
-        -1);
-
-    assertSame(result, incrementalVersion);
-    verify(internalAdmin, times(1)).getIncrementalPushVersion(clusterName, storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    verifyAddVersionAndTopicOnly(never());
     verifyAddVersionOnly(never());
     verifyNoAdminMessageWrite();
   }

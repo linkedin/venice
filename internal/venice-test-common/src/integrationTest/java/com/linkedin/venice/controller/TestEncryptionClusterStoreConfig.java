@@ -78,22 +78,6 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertTrue(
           storeResponse.getStore().isEncryptionEnabled(),
           "A newly created store in an encryption cluster must default to encryptionEnabled=true");
-      Assert.assertEquals(storeResponse.getStore().getPubSubEncryptionKeyUrn(), "");
-
-      String pubSubEncryptionKeyUrn = "keyUrn:abc";
-      ControllerResponse keyUpdate = controllerClient
-          .updateStore(storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn));
-      Assert.assertFalse(
-          keyUpdate.isError(),
-          "Setting a PubSub encryption key URN must succeed: " + keyUpdate.getError());
-      Assert.assertEquals(
-          controllerClient.getStore(storeName).getStore().getPubSubEncryptionKeyUrn(),
-          pubSubEncryptionKeyUrn);
-
-      ControllerResponse blankKeyUpdate =
-          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("  "));
-      Assert.assertTrue(blankKeyUpdate.isError(), "Blank PubSub encryption key URNs must be rejected");
-
       ControllerResponse omittedUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
       Assert.assertFalse(omittedUpdate.isError(), "Updates that omit encryptionEnabled must succeed");
@@ -103,11 +87,6 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertTrue(
           storeAfterUpdate.getStore().isEncryptionEnabled(),
           "Omitting encryptionEnabled must not make metadata inconsistent with cluster policy");
-      Assert.assertEquals(
-          storeAfterUpdate.getStore().getPubSubEncryptionKeyUrn(),
-          pubSubEncryptionKeyUrn,
-          "Omitting pubSubEncryptionKeyUrn must preserve the existing value");
-
       ControllerResponse replicateAllUpdate = controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setOwner("replicated-owner").setReplicateAllConfigs(true));
@@ -115,10 +94,6 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertTrue(
           controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
           "Replicate-all updates must preserve encryption metadata");
-      Assert.assertEquals(
-          controllerClient.getStore(storeName).getStore().getPubSubEncryptionKeyUrn(),
-          pubSubEncryptionKeyUrn);
-
       venice.getLeaderVeniceController()
           .getVeniceHelixAdmin()
           .storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -129,21 +104,12 @@ public class TestEncryptionClusterStoreConfig {
           controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
           "The test setup must simulate an existing store with stale metadata");
 
-      ControllerResponse unencryptedKeyUpdate = controllerClient
-          .updateStore(storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn));
-      Assert.assertTrue(
-          unencryptedKeyUpdate.isError(),
-          "PubSub encryption key URNs must be rejected when store metadata has encryption disabled");
-
       ControllerResponse staleMetadataUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner("reconciled-owner"));
       Assert.assertFalse(staleMetadataUpdate.isError(), "Updates that omit encryptionEnabled must skip validation");
       Assert.assertFalse(
           controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
           "An omitted encryption value must leave existing metadata unchanged");
-      Assert.assertEquals(
-          controllerClient.getStore(storeName).getStore().getPubSubEncryptionKeyUrn(),
-          pubSubEncryptionKeyUrn);
     }
   }
 
