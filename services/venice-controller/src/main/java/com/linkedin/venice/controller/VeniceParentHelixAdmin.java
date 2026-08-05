@@ -1154,9 +1154,19 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       int repushSourceVersion,
       int repushTtlSeconds) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    boolean willCreateVersion =
+        versionNumber >= store.getLargestUsedVersionNumber() && !store.containsVersion(versionNumber);
+    if (willCreateVersion) {
+      validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, storeName, store);
+    }
+
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
-    int largestUsedRTVersionNumber = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
+    int largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
     Version version = getVeniceHelixAdmin().addVersionOnly(
         clusterName,
         storeName,
@@ -2123,6 +2133,16 @@ public class VeniceParentHelixAdmin implements Admin {
       int largestUsedRTVersionNumber,
       int repushTtlSeconds,
       boolean isDegradedPush) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    boolean existingPushId = store.getVersions().stream().anyMatch(version -> pushJobId.equals(version.getPushJobId()));
+    boolean existingVersionNumber = versionNumber != VERSION_ID_UNSET && store.containsVersion(versionNumber);
+    if (!existingPushId && !existingVersionNumber) {
+      validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, storeName, store);
+    }
+
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -2172,6 +2192,17 @@ public class VeniceParentHelixAdmin implements Admin {
     deleteStrandedNonCurrentVersions(clusterName, storeName);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
+  }
+
+  private void validatePubSubEncryptionKeyUrnForVersionCreation(String clusterName, String storeName, Store store) {
+    if (VeniceSystemStoreType.getSystemStoreType(storeName) != null || !store.isEncryptionEnabled()) {
+      return;
+    }
+    if (StringUtils.isBlank(store.getPubSubEncryptionKeyUrn())) {
+      throw new VeniceException(
+          "Cannot create a version for encryption-enabled store " + storeName + " in cluster " + clusterName
+              + " because pubSubEncryptionKeyUrn is empty; set pubSubEncryptionKeyUrn through update-store first");
+    }
   }
 
   void sendAddVersionAdminMessage(

@@ -713,6 +713,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public String getPubSubEncryptionKeyUrn() {
+    return zkSharedStore.getPubSubEncryptionKeyUrn();
+  }
+
+  @Override
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    throwUnsupportedOperationException("setPubSubEncryptionKeyUrn");
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return zkSharedStore.getMinCompactionLagSeconds();
   }

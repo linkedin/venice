@@ -659,6 +659,10 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
     params.setCompactionEnabled(message.compactionEnabled);
     params.setCompactionThresholdMilliseconds(message.compactionThresholdMilliseconds);
+    if (message.encryptionEnabled && message.pubSubEncryptionKeyUrn != null
+        && message.pubSubEncryptionKeyUrn.length() > 0) {
+      params.setPubSubEncryptionKeyUrn(message.pubSubEncryptionKeyUrn.toString());
+    }
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
     params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);

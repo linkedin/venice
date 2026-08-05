@@ -121,6 +121,17 @@ public class TestZKStore {
     Assert.assertEquals(store, clonedStore);
   }
 
+  @Test
+  public void testPubSubEncryptionKeyUrnDefaultSetAndClone() {
+    Store store = TestUtils.createTestStore("encryptionStore", "owner", System.currentTimeMillis());
+    Assert.assertEquals(store.getPubSubEncryptionKeyUrn(), "");
+
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
+    store.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    Assert.assertEquals(store.getPubSubEncryptionKeyUrn(), pubSubEncryptionKeyUrn);
+    Assert.assertEquals(store.cloneStore().getPubSubEncryptionKeyUrn(), pubSubEncryptionKeyUrn);
+  }
+
   private static void assertVersionsEquals(
       Store store,
       int versionToPreserve,
