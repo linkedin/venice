@@ -31,7 +31,7 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
  * Converts Spark Rows to the format expected by ChunkAssembler, assembles chunks,
  * and returns the result as a Spark Row.
  */
-public class SparkChunkAssembler implements Serializable {
+public class SparkChunkAssembler implements Serializable, AutoCloseable {
   private static final long serialVersionUID = 1L;
 
   private static final RecordSerializer<KafkaInputMapperValue> SERIALIZER =
@@ -146,6 +146,19 @@ public class SparkChunkAssembler implements Serializable {
     }
 
     return assembledRow;
+  }
+
+  /**
+   * The assembler is safe to reuse sequentially across key groups because all record-specific
+   * assembly state is local to {@link ChunkAssembler#assembleAndGetValue(byte[], Iterator)}.
+   */
+  @Override
+  public void close() {
+    if (ttlFilter != null) {
+      ttlFilter.close();
+      ttlFilter = null;
+    }
+    chunkAssembler = null;
   }
 
   /**

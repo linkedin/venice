@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -37,6 +38,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -51,7 +53,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 public final class SparkExecutorTestUtils {
   public static final String TEST_KEYSTORE_TYPE = "PKCS12";
   public static final String TEST_TRUSTSTORE_TYPE = "JKS";
-  private static final byte[] TEST_DICTIONARY = "spark-ttl-test-dictionary".getBytes(StandardCharsets.UTF_8);
+  private static final byte[] TEST_DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
   private static final AtomicInteger SSL_CONFIGURATOR_INVOCATIONS = new AtomicInteger();
   private static final AtomicInteger CONSUMER_FACTORY_INVOCATIONS = new AtomicInteger();
   private static final AtomicInteger DICTIONARY_CONSUMER_INVOCATIONS = new AtomicInteger();
@@ -75,6 +77,10 @@ public final class SparkExecutorTestUtils {
 
   public static int getDictionaryConsumerInvocations() {
     return DICTIONARY_CONSUMER_INVOCATIONS.get();
+  }
+
+  public static byte[] getTestDictionary() {
+    return Arrays.copyOf(TEST_DICTIONARY, TEST_DICTIONARY.length);
   }
 
   public static void withTokenFile(ThrowingRunnable runnable) throws Exception {
