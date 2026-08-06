@@ -193,26 +193,51 @@ public final class StoreConfigUpdater {
     }
   }
 
-  private static void validatePubSubEncryptionKeyUrn(Store store, Optional<String> pubSubEncryptionKeyUrn) {
+  /**
+   * Validates a requested PubSub encryption key URN update.
+   *
+   * <p>{@code validateAgainstStoreState} gates the checks that read the store's existing metadata.
+   * Those belong only where the request originates -- the parent in a multi-region deployment, or the
+   * lone controller in a single-region one. A child applying a replicated admin message sees
+   * region-local state the originator could not: {@code encryptionEnabled} is derived per region from
+   * {@code cluster.encryption.enabled} when the store is created and is never replicated, so it can
+   * be true on the parent and false in a region that has not been flipped yet. Rejecting there would
+   * fail an already-accepted admin message on every retry and stall that region's admin queue.
+   */
+  private static void validatePubSubEncryptionKeyUrn(
+      Store store,
+      Optional<String> pubSubEncryptionKeyUrn,
+      boolean validateAgainstStoreState) {
     if (!pubSubEncryptionKeyUrn.isPresent()) {
       return;
     }
-    if (StringUtils.isNotBlank(store.getPubSubEncryptionKeyUrn())) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "PubSub encryption key URN is already configured and cannot be updated",
-          ErrorType.BAD_REQUEST);
-    }
-    if (StringUtils.isBlank(pubSubEncryptionKeyUrn.get())) {
+    String newUrn = pubSubEncryptionKeyUrn.get();
+    if (StringUtils.isBlank(newUrn)) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "PubSub encryption key URN must be non-blank",
           ErrorType.BAD_REQUEST);
     }
+    if (!validateAgainstStoreState) {
+      return;
+    }
     if (!store.isEncryptionEnabled()) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "PubSub encryption key URN can only be configured for an encryption-enabled store",
+          ErrorType.BAD_REQUEST);
+    }
+    /**
+     * The key URN is write-once, but re-submitting the current value must stay a no-op: a
+     * replicate-all-configs update-store echoes every existing config back, so rejecting an
+     * unchanged value would fail the resulting admin message on every controller that consumes it
+     * and stall the store's admin queue.
+     */
+    String currentUrn = store.getPubSubEncryptionKeyUrn();
+    if (StringUtils.isNotBlank(currentUrn) && !newUrn.equals(currentUrn)) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "PubSub encryption key URN is already configured as " + currentUrn + " and cannot be updated",
           ErrorType.BAD_REQUEST);
     }
   }
@@ -334,7 +359,10 @@ public final class StoreConfigUpdater {
     Optional<Long> throughputQuotaInRecords = params.getThroughputQuotaInRecords();
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
-    validatePubSubEncryptionKeyUrn(originalStore, pubSubEncryptionKeyUrn);
+    validatePubSubEncryptionKeyUrn(
+        originalStore,
+        pubSubEncryptionKeyUrn,
+        !admin.getMultiClusterConfigs().isMultiRegion());
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
@@ -1011,7 +1039,7 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    validatePubSubEncryptionKeyUrn(currStore, pubSubEncryptionKeyUrn);
+    validatePubSubEncryptionKeyUrn(currStore, pubSubEncryptionKeyUrn, true);
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;

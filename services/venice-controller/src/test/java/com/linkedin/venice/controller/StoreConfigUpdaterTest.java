@@ -478,7 +478,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   @DataProvider(name = "pubSubEncryptionKeyUrnUpdates")
   public Object[][] pubSubEncryptionKeyUrnUpdates() {
     return new Object[][] { { true, "", "keyUrn:abc", null }, { false, "", "keyUrn:abc", "encryption-enabled store" },
-        { true, "", "   ", "non-blank" }, { true, "keyUrn:abc", "keyUrn:abc", "already configured" } };
+        { true, "", "   ", "non-blank" }, { true, "keyUrn:abc", "keyUrn:abc", null },
+        { true, "keyUrn:abc", "keyUrn:xyz", "already configured" } };
   }
 
   @Test(dataProvider = "pubSubEncryptionKeyUrnUpdates")
@@ -508,6 +509,41 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertEquals(message.pubSubEncryptionKeyUrn.toString(), requestedPubSubEncryptionKeyUrn);
     assertTrue(
         message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(PUB_SUB_ENCRYPTION_KEY_URN::equals));
+  }
+
+  @DataProvider(name = "pubSubEncryptionKeyUrnChildRegions")
+  public Object[][] pubSubEncryptionKeyUrnChildRegions() {
+    return new Object[][] { { true, null }, { false, "encryption-enabled store" } };
+  }
+
+  /**
+   * {@code encryptionEnabled} is derived per region from {@code cluster.encryption.enabled} and is
+   * never replicated, so a child can legitimately see it as false for a store the parent already
+   * accepted a key URN for. The child must apply the replicated value rather than reject it, since a
+   * rejection here fails the admin message on every retry and stalls the region's admin queue. A
+   * single-region controller is itself the originator, so it still enforces the precondition.
+   */
+  @Test(dataProvider = "pubSubEncryptionKeyUrnChildRegions")
+  public void testApplyOnChildPubSubEncryptionKeyUrnEnforcesStoreStateOnlyWhenSingleRegion(
+      boolean multiRegion,
+      String expectedError) {
+    String storeName = Utils.getUniqueString("encryption-key-child");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multiClusterConfigs = admin.getMultiClusterConfigs();
+    doReturn(multiRegion).when(multiClusterConfigs).isMultiRegion();
+    Store store = admin.getStore(clusterName, storeName);
+    store.setEncryptionEnabled(false);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("keyUrn:abc");
+    if (expectedError != null) {
+      VeniceHttpException exception = expectThrows(
+          VeniceHttpException.class,
+          () -> StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params));
+      assertTrue(exception.getMessage().contains(expectedError));
+      return;
+    }
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
   }
 
   /**
