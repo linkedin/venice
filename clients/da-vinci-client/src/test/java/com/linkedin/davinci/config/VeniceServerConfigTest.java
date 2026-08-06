@@ -28,6 +28,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -42,6 +43,7 @@ import org.testng.annotations.Test;
 public class VeniceServerConfigTest {
   private Properties populatedBasicProperties() {
     Properties props = new Properties();
+    props.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     props.setProperty(CLUSTER_NAME, "test_cluster");
     props.setProperty(ZOOKEEPER_ADDRESS, "fake_zk_addr");
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, "fake_kafka_addr");
