@@ -138,6 +138,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -196,7 +197,13 @@ public final class StoreConfigUpdater {
     if (!pubSubEncryptionKeyUrn.isPresent()) {
       return;
     }
-    if (pubSubEncryptionKeyUrn.get().trim().isEmpty()) {
+    if (StringUtils.isNotBlank(store.getPubSubEncryptionKeyUrn())) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "PubSub encryption key URN is already configured and cannot be updated",
+          ErrorType.BAD_REQUEST);
+    }
+    if (StringUtils.isBlank(pubSubEncryptionKeyUrn.get())) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "PubSub encryption key URN must be non-blank",

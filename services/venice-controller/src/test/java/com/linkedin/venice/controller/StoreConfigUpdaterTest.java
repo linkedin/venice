@@ -477,22 +477,25 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
   @DataProvider(name = "pubSubEncryptionKeyUrnUpdates")
   public Object[][] pubSubEncryptionKeyUrnUpdates() {
-    return new Object[][] { { true, "keyUrn:abc", null }, { false, "keyUrn:abc", "encryption-enabled store" },
-        { true, "   ", "non-blank" } };
+    return new Object[][] { { true, "", "keyUrn:abc", null }, { false, "", "keyUrn:abc", "encryption-enabled store" },
+        { true, "", "   ", "non-blank" }, { true, "keyUrn:abc", "keyUrn:abc", "already configured" } };
   }
 
   @Test(dataProvider = "pubSubEncryptionKeyUrnUpdates")
   public void testApplyOnParentPubSubEncryptionKeyUrn(
       boolean encryptionEnabled,
-      String pubSubEncryptionKeyUrn,
+      String currentPubSubEncryptionKeyUrn,
+      String requestedPubSubEncryptionKeyUrn,
       String expectedError) {
     String storeName = Utils.getUniqueString("encryption-key-parent");
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
     store.setEncryptionEnabled(encryptionEnabled);
+    store.setPubSubEncryptionKeyUrn(currentPubSubEncryptionKeyUrn);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     parentAdmin.initStorageCluster(clusterName);
 
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(requestedPubSubEncryptionKeyUrn);
     if (expectedError != null) {
       VeniceHttpException exception =
           expectThrows(VeniceHttpException.class, () -> parentAdmin.updateStore(clusterName, storeName, params));
@@ -502,7 +505,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     parentAdmin.updateStore(clusterName, storeName, params);
     UpdateStore message = captureLastUpdateStore();
-    assertEquals(message.pubSubEncryptionKeyUrn.toString(), pubSubEncryptionKeyUrn);
+    assertEquals(message.pubSubEncryptionKeyUrn.toString(), requestedPubSubEncryptionKeyUrn);
     assertTrue(
         message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(PUB_SUB_ENCRYPTION_KEY_URN::equals));
   }
