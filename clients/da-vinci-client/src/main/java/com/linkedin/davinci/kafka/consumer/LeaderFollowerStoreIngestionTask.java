@@ -3134,7 +3134,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private static long getLeaderSilentDurationMs(PartitionConsumptionState pcs) {
     long lastSignalMs = max(pcs.getLastLeaderCompleteStateUpdateInMs(), pcs.getConsumptionStartTimeInMs());
-    return System.currentTimeMillis() - lastSignalMs;
+    return max(0, System.currentTimeMillis() - lastSignalMs);
   }
 
   /**
