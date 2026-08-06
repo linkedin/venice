@@ -271,6 +271,67 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertTrue(ingestionException.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
   }
 
+  @Test
+  public void testIncrementalPushAcceptsEncryptedStoreWithoutKeyUrn() {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
+    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
+    Version version = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
+    doReturn(version).when(internalAdmin)
+        .addVersionOnly(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            1,
+            1,
+            Version.PushType.INCREMENTAL,
+            "remote-kafka-bootstrap-server",
+            -1,
+            1,
+            testStore.getLargestUsedRTVersionNumber());
+
+    VeniceParentHelixAdmin admin = spy(parentAdmin);
+    doReturn(1).when(admin).getRmdVersionID(storeName, clusterName);
+    doNothing().when(admin).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin).releaseAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin)
+        .sendAddVersionAdminMessage(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            version,
+            1,
+            Version.PushType.INCREMENTAL,
+            null,
+            -1,
+            testStore.getLargestUsedRTVersionNumber());
+
+    admin.addVersionAndStartIngestion(
+        clusterName,
+        storeName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        1,
+        1,
+        Version.PushType.INCREMENTAL,
+        "remote-kafka-bootstrap-server",
+        -1,
+        -1,
+        false,
+        -1,
+        -1);
+
+    verify(internalAdmin).addVersionOnly(
+        clusterName,
+        storeName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        1,
+        1,
+        Version.PushType.INCREMENTAL,
+        "remote-kafka-bootstrap-server",
+        -1,
+        1,
+        testStore.getLargestUsedRTVersionNumber());
+  }
+
   private Store createPubSubEncryptionTestStore(
       String testStoreName,
       boolean encryptionEnabled,

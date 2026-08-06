@@ -1158,7 +1158,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    if (store.isEncryptionEnabled()) {
+    if (store.isEncryptionEnabled() && !pushType.isIncremental()) {
       validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, storeName, store);
     }
 
