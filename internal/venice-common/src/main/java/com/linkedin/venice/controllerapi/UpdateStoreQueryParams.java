@@ -142,10 +142,6 @@ public class UpdateStoreQueryParams extends QueryParams {
    */
   public UpdateStoreQueryParams(StoreInfo srcStore, boolean storeMigrating) {
     String pubSubEncryptionKeyUrn = srcStore.getPubSubEncryptionKeyUrn();
-    if (pubSubEncryptionKeyUrn != null && !pubSubEncryptionKeyUrn.trim().isEmpty() && !srcStore.isEncryptionEnabled()) {
-      throw new VeniceException("PubSub encryption key URN can only be configured for an encryption-enabled store");
-    }
-
     // Copy everything except for currentVersion, daVinciPushStatusStoreEnabled, latestSuperSetValueSchemaId,
     // storeMetaSystemStoreEnabled, storeMetadataSystemStoreEnabled
     UpdateStoreQueryParams updateStoreQueryParams =
