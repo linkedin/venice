@@ -331,6 +331,10 @@ subprojects {
       def versionOverrides = [
           project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v46', PathValidation.DIRECTORY),
           project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v101', PathValidation.DIRECTORY),
+          // MetadataResponseRecord v4 stages VersionProperties.storageMode (mirrors StoreVersion.storageMode from
+          // StoreMetaValue v44). Pinned to the current active version until SERVER_METADATA_RESPONSE is bumped and
+          // the server populate + Fast Client read land in a follow-up PR.
+          project(':internal:venice-common').file('src/main/resources/avro/MetadataResponseRecord/v3', PathValidation.DIRECTORY),
       ]
 
       def schemaDirs = [sourceDir]
