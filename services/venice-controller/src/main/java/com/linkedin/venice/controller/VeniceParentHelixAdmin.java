@@ -1158,9 +1158,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    boolean willCreateVersion =
-        versionNumber >= store.getLargestUsedVersionNumber() && !store.containsVersion(versionNumber);
-    if (willCreateVersion) {
+    if (store.isEncryptionEnabled()) {
       validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, storeName, store);
     }
 
@@ -2137,9 +2135,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    boolean existingPushId = store.getVersions().stream().anyMatch(version -> pushJobId.equals(version.getPushJobId()));
-    boolean existingVersionNumber = versionNumber != VERSION_ID_UNSET && store.containsVersion(versionNumber);
-    if (!existingPushId && !existingVersionNumber) {
+    if (store.isEncryptionEnabled()) {
       validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, storeName, store);
     }
 
@@ -2195,7 +2191,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void validatePubSubEncryptionKeyUrnForVersionCreation(String clusterName, String storeName, Store store) {
-    if (VeniceSystemStoreType.getSystemStoreType(storeName) != null || !store.isEncryptionEnabled()) {
+    if (store.isSystemStore()) {
       return;
     }
     if (StringUtils.isBlank(store.getPubSubEncryptionKeyUrn())) {

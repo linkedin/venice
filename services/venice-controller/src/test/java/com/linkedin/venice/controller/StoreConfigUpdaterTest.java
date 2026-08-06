@@ -86,6 +86,7 @@ import java.util.stream.Collectors;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -474,55 +475,36 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     }
   }
 
-  @Test
-  public void testApplyOnParentPubSubEncryptionKeyUrnRoundTrip() {
+  @DataProvider(name = "pubSubEncryptionKeyUrnUpdates")
+  public Object[][] pubSubEncryptionKeyUrnUpdates() {
+    return new Object[][] { { true, "keyUrn:abc", null }, { false, "keyUrn:abc", "encryption-enabled store" },
+        { true, "   ", "non-blank" } };
+  }
+
+  @Test(dataProvider = "pubSubEncryptionKeyUrnUpdates")
+  public void testApplyOnParentPubSubEncryptionKeyUrn(
+      boolean encryptionEnabled,
+      String pubSubEncryptionKeyUrn,
+      String expectedError) {
     String storeName = Utils.getUniqueString("encryption-key-parent");
-    String pubSubEncryptionKeyUrn = "keyUrn:abc";
     Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    store.setEncryptionEnabled(true);
+    store.setEncryptionEnabled(encryptionEnabled);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     parentAdmin.initStorageCluster(clusterName);
 
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn));
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    if (expectedError != null) {
+      VeniceHttpException exception =
+          expectThrows(VeniceHttpException.class, () -> parentAdmin.updateStore(clusterName, storeName, params));
+      assertTrue(exception.getMessage().contains(expectedError));
+      return;
+    }
 
+    parentAdmin.updateStore(clusterName, storeName, params);
     UpdateStore message = captureLastUpdateStore();
     assertEquals(message.pubSubEncryptionKeyUrn.toString(), pubSubEncryptionKeyUrn);
     assertTrue(
         message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(PUB_SUB_ENCRYPTION_KEY_URN::equals));
-  }
-
-  @Test
-  public void testApplyOnParentRejectsPubSubEncryptionKeyUrnForUnencryptedStore() {
-    String storeName = Utils.getUniqueString("unencrypted-key-parent");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    parentAdmin.initStorageCluster(clusterName);
-
-    VeniceHttpException exception = expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin
-            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("keyUrn:abc")));
-
-    assertTrue(exception.getMessage().contains("encryption-enabled store"));
-  }
-
-  @Test
-  public void testApplyOnParentRejectsBlankPubSubEncryptionKeyUrn() {
-    String storeName = Utils.getUniqueString("blank-encryption-key-parent");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    store.setEncryptionEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    parentAdmin.initStorageCluster(clusterName);
-
-    VeniceHttpException exception = expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin
-            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("   ")));
-
-    assertTrue(exception.getMessage().contains("non-blank"));
   }
 
   /**

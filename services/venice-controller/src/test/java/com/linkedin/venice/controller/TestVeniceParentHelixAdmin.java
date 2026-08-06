@@ -136,7 +136,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
-import org.mockito.verification.VerificationMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -165,128 +164,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @DataProvider(name = "validPubSubEncryptionKeyConfigurations")
   public Object[][] validPubSubEncryptionKeyConfigurations() {
-    return new Object[][] { { false, "" }, { true, PUB_SUB_ENCRYPTION_KEY_URN } };
+    return new Object[][] { { storeName, false, "" }, { storeName, true, PUB_SUB_ENCRYPTION_KEY_URN },
+        { VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), true, "" } };
   }
 
   @Test(dataProvider = "validPubSubEncryptionKeyConfigurations")
   public void testAddVersionAndTopicOnlyAcceptsValidPubSubEncryptionKeyConfiguration(
-      boolean encryptionEnabled,
-      String keyUrn) {
-    Store testStore = createPubSubEncryptionTestStore(storeName, encryptionEnabled, keyUrn);
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    Version newVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    stubAddVersionAndTopicOnly(new Pair<>(true, newVersion));
-
-    Version result = addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET);
-
-    assertSame(result, newVersion);
-    verifyAddVersionAndTopicOnly(times(1));
-  }
-
-  @Test
-  public void testAddVersionAndTopicOnlyRejectsEncryptedStoreWithoutKeyUrn() {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-
-    VeniceException exception = expectThrows(
-        VeniceException.class,
-        () -> addBatchVersionAndTopicOnly(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET));
-
-    assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
-    verifyAddVersionAndTopicOnly(never());
-    verifyNoAdminMessageWrite();
-  }
-
-  @Test
-  public void testAddVersionAndStartIngestionRejectsEncryptedStoreWithoutKeyUrn() {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-
-    VeniceException exception = expectThrows(
-        VeniceException.class,
-        () -> addBatchVersionAndStartIngestion(storeName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, 1));
-
-    assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
-    verifyAddVersionOnly(never());
-    verifyNoAdminMessageWrite();
-  }
-
-  @DataProvider(name = "idempotentExistingVersionRequests")
-  public Object[][] idempotentExistingVersionRequests() {
-    return new Object[][] { { PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET }, { "replacement-push", 1 } };
-  }
-
-  @Test(dataProvider = "idempotentExistingVersionRequests")
-  public void testIdempotentExistingVersionRequestDoesNotRequirePubSubEncryptionKeyUrn(
-      String requestedPushJobId,
-      int requestedVersionNumber) {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    Version existingVersion = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    testStore.addVersion(existingVersion);
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-    stubAddVersionAndTopicOnly(new Pair<>(false, existingVersion));
-
-    Version result = addBatchVersionAndTopicOnly(storeName, requestedPushJobId, requestedVersionNumber);
-
-    assertSame(result, existingVersion);
-    verifyAddVersionAndTopicOnly(times(1));
-    verifyNoAdminMessageWrite();
-  }
-
-  @Test
-  public void testSystemStoreVersionPathsDoNotRequirePubSubEncryptionKeyUrn() {
-    String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    Store systemStore = mock(Store.class);
-    doReturn(Collections.emptyList()).when(systemStore).getVersions();
-    doReturn(true).when(systemStore).isEncryptionEnabled();
-    doReturn("").when(systemStore).getPubSubEncryptionKeyUrn();
-    doReturn(false).when(systemStore).containsVersion(anyInt());
-    doReturn(systemStore).when(internalAdmin).getStore(clusterName, systemStoreName);
-    Version topicOnlyVersion = new VersionImpl(systemStoreName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
-    Version ingestionVersion = new VersionImpl(systemStoreName, 2, PUB_SUB_ENCRYPTION_PUSH_JOB_ID + "-ingestion");
-    stubAddVersionAndTopicOnly(new Pair<>(false, topicOnlyVersion));
-    doReturn(ingestionVersion).when(internalAdmin)
-        .addVersionOnly(
-            anyString(),
-            anyString(),
-            anyString(),
-            anyInt(),
-            anyInt(),
-            any(),
-            anyString(),
-            anyLong(),
-            anyInt(),
-            anyInt());
-
-    addBatchVersionAndTopicOnly(systemStoreName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID, VERSION_ID_UNSET);
-    addBatchVersionAndStartIngestion(systemStoreName, PUB_SUB_ENCRYPTION_PUSH_JOB_ID + "-ingestion", 2);
-
-    verify(systemStore, never()).setPubSubEncryptionKeyUrn(any());
-    verifyAddVersionAndTopicOnly(times(1));
-    verifyAddVersionOnly(times(1));
-    verify(veniceWriter, times(1)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-  }
-
-  private Store createPubSubEncryptionTestStore(
       String testStoreName,
       boolean encryptionEnabled,
-      String pubSubEncryptionKeyUrn) {
-    Store testStore = new ZKStore(
-        testStoreName,
-        "test_owner",
-        1,
-        PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-    testStore.setEncryptionEnabled(encryptionEnabled);
-    testStore.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
-    return testStore;
-  }
-
-  private void stubAddVersionAndTopicOnly(Pair<Boolean, Version> result) {
-    doReturn(result).when(internalAdmin)
+      String keyUrn) {
+    Store testStore = createPubSubEncryptionTestStore(testStoreName, encryptionEnabled, keyUrn);
+    doReturn(testStore).when(internalAdmin).getStore(clusterName, testStoreName);
+    Version newVersion = new VersionImpl(testStoreName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
+    doReturn(new Pair<>(false, newVersion)).when(internalAdmin)
         .addVersionAndTopicOnly(
             anyString(),
             anyString(),
@@ -309,14 +199,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             anyInt(),
             anyInt(),
             anyBoolean());
-  }
 
-  private Version addBatchVersionAndTopicOnly(String testStoreName, String pushJobId, int versionNumber) {
-    return parentAdmin.addVersionAndTopicOnly(
+    Version result = parentAdmin.addVersionAndTopicOnly(
         clusterName,
         testStoreName,
-        pushJobId,
-        versionNumber,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        VERSION_ID_UNSET,
         1,
         1,
         Version.PushType.BATCH,
@@ -332,65 +220,65 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         DEFAULT_RT_VERSION_NUMBER,
         -1,
         false);
+
+    assertSame(result, newVersion);
   }
 
-  private void addBatchVersionAndStartIngestion(String testStoreName, String pushJobId, int versionNumber) {
-    parentAdmin.addVersionAndStartIngestion(
-        clusterName,
-        testStoreName,
-        pushJobId,
-        versionNumber,
-        1,
-        Version.PushType.BATCH,
-        "remote-kafka-bootstrap-server",
-        -1,
-        -1,
-        false,
-        -1,
-        -1);
+  @Test
+  public void testVersionCreationRejectsEncryptedStoreWithoutKeyUrn() {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
+    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
+
+    VeniceException topicOnlyException = expectThrows(
+        VeniceException.class,
+        () -> parentAdmin.addVersionAndTopicOnly(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            VERSION_ID_UNSET,
+            1,
+            1,
+            Version.PushType.BATCH,
+            true,
+            false,
+            null,
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            DEFAULT_RT_VERSION_NUMBER,
+            -1,
+            false));
+    assertTrue(topicOnlyException.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
+
+    VeniceException ingestionException = expectThrows(
+        VeniceException.class,
+        () -> parentAdmin.addVersionAndStartIngestion(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            1,
+            1,
+            Version.PushType.BATCH,
+            "remote-kafka-bootstrap-server",
+            -1,
+            -1,
+            false,
+            -1,
+            -1));
+    assertTrue(ingestionException.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
   }
 
-  private void verifyAddVersionAndTopicOnly(VerificationMode verificationMode) {
-    verify(internalAdmin, verificationMode).addVersionAndTopicOnly(
-        anyString(),
-        anyString(),
-        anyString(),
-        anyInt(),
-        anyInt(),
-        anyInt(),
-        anyBoolean(),
-        anyBoolean(),
-        any(),
-        any(),
-        any(),
-        any(),
-        anyLong(),
-        anyInt(),
-        any(),
-        anyBoolean(),
-        any(),
-        anyInt(),
-        anyInt(),
-        anyInt(),
-        anyBoolean());
-  }
-
-  private void verifyAddVersionOnly(VerificationMode verificationMode) {
-    verify(internalAdmin, verificationMode).addVersionOnly(
-        anyString(),
-        anyString(),
-        anyString(),
-        anyInt(),
-        anyInt(),
-        any(),
-        anyString(),
-        anyLong(),
-        anyInt(),
-        anyInt());
-  }
-
-  private void verifyNoAdminMessageWrite() {
-    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  private Store createPubSubEncryptionTestStore(
+      String testStoreName,
+      boolean encryptionEnabled,
+      String pubSubEncryptionKeyUrn) {
+    Store testStore = TestUtils.createTestStore(testStoreName, "test_owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(encryptionEnabled);
+    testStore.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    return testStore;
   }
 
   @Test
