@@ -4,6 +4,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.StorageMode;
@@ -92,14 +93,15 @@ public class UpdateStoreQueryParamsTest {
   }
 
   @Test
-  public void testStoreInfoCopyOmitsPubSubEncryptionKeyUrnWhenEncryptionIsDisabled() {
+  public void testStoreInfoCopyRejectsPubSubEncryptionKeyUrnWhenEncryptionIsDisabled() {
     StoreInfo storeInfo = new StoreInfo();
     storeInfo.setPubSubEncryptionKeyUrn("keyUrn:abc");
     storeInfo.setReplicationMetadataVersionId(-1);
 
-    UpdateStoreQueryParams copiedParams = new UpdateStoreQueryParams(storeInfo, false);
+    VeniceException exception =
+        Assert.expectThrows(VeniceException.class, () -> new UpdateStoreQueryParams(storeInfo, false));
 
-    assertEquals(copiedParams.getPubSubEncryptionKeyUrn(), Optional.empty());
+    Assert.assertTrue(exception.getMessage().contains("encryption-enabled store"));
   }
 
   @Test
