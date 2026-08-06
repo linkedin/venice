@@ -426,6 +426,10 @@ public class PartitionConsumptionState {
     }
     this.hybrid = hybrid;
     this.offsetRecord = offsetRecord;
+    // Avoid calling the overridable getReplicaId() from the constructor (SpotBugs
+    // MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR); partitionReplica is already set and
+    // getReplicaId() is defined as getReplicaTopicPartition().toString().
+    this.offsetRecord.setReplicaId(this.partitionReplica.toString());
     this.pubSubContext = pubSubContext;
     this.errorReported = false;
     this.lagCaughtUp = false;

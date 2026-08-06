@@ -54,6 +54,11 @@ public class OffsetRecord {
   private final PubSubContext pubSubContext;
   private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
+  /**
+   * Runtime-only diagnostic context. This is intentionally kept outside {@link PartitionState}, so binding an
+   * OffsetRecord to a replica does not change its serialized form.
+   */
+  private volatile String replicaId;
   private PubSubTopic leaderPubSubTopic;
 
   public OffsetRecord(
@@ -136,7 +141,8 @@ public class OffsetRecord {
   public PubSubPosition getCheckpointedLocalVtPosition() {
     return deserializePositionWithOffsetFallback(
         this.partitionState.lastProcessedVersionTopicPubSubPosition,
-        this.partitionState.offset);
+        this.partitionState.offset,
+        positionSourceOrDefault("OffsetRecord.lastProcessedVersionTopicPubSubPosition"));
   }
 
   public void checkpointLocalVtPosition(PubSubPosition vtPosition) {
@@ -151,7 +157,8 @@ public class OffsetRecord {
   public PubSubPosition getCheckpointedRemoteVtPosition() {
     return deserializePositionWithOffsetFallback(
         this.partitionState.upstreamVersionTopicPubSubPosition,
-        this.partitionState.upstreamVersionTopicOffset);
+        this.partitionState.upstreamVersionTopicOffset,
+        positionSourceOrDefault("OffsetRecord.upstreamVersionTopicPubSubPosition"));
   }
 
   public void checkpointRemoteVtPosition(PubSubPosition remoteVtPosition) {
@@ -311,7 +318,10 @@ public class OffsetRecord {
       // If the offset is not set, return EARLIEST symbolic position.
       return PubSubSymbolicPosition.EARLIEST;
     }
-    return deserializePositionWithOffsetFallback(wfBuffer, offset);
+    return deserializePositionWithOffsetFallback(
+        wfBuffer,
+        offset,
+        positionSourceOrDefault("OffsetRecord.upstreamRealTimeTopicPubSubPosition[" + pubSubBrokerAddress + "]"));
   }
 
   public void checkpointRtPosition(String pubSubBrokerAddress, PubSubPosition leaderPosition) {
@@ -341,10 +351,34 @@ public class OffsetRecord {
       for (Map.Entry<String, Long> offsetEntry: partitionState.upstreamOffsetMap.entrySet()) {
         String pubSubBrokerAddress = offsetEntry.getKey();
         ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
-        checkpointUpstreamPositionsReceiver
-            .put(pubSubBrokerAddress, deserializePositionWithOffsetFallback(wfBuffer, offsetEntry.getValue()));
+        checkpointUpstreamPositionsReceiver.put(
+            pubSubBrokerAddress,
+            deserializePositionWithOffsetFallback(
+                wfBuffer,
+                offsetEntry.getValue(),
+                positionSourceOrDefault(
+                    "OffsetRecord.upstreamRealTimeTopicPubSubPosition[" + pubSubBrokerAddress + "]")));
       }
     }
+  }
+
+  /**
+   * Associates runtime diagnostic context with this record. Rebinding to the same replica is harmless, while
+   * rebinding to a different replica is rejected because an OffsetRecord must not be shared across partitions.
+   *
+   * <p>The synchronized write and volatile read make the binding safely visible to threads that subsequently
+   * deserialize checkpointed positions.</p>
+   */
+  public synchronized void setReplicaId(String replicaId) {
+    if (replicaId == null || replicaId.isEmpty()) {
+      throw new IllegalArgumentException("Replica ID cannot be null or empty");
+    }
+    if (this.replicaId != null && !this.replicaId.equals(replicaId)) {
+      throw new IllegalStateException(
+          "OffsetRecord is already associated with replica " + this.replicaId + " and cannot be rebound to "
+              + replicaId);
+    }
+    this.replicaId = replicaId;
   }
 
   public GUID getLeaderGUID() {
@@ -551,10 +585,29 @@ public class OffsetRecord {
    */
   @VisibleForTesting
   PubSubPosition deserializePositionWithOffsetFallback(ByteBuffer wireFormatBytes, long offset) {
+    return deserializePositionWithOffsetFallback(wireFormatBytes, offset, "OffsetRecord");
+  }
+
+  /**
+   * Same as {@link #deserializePositionWithOffsetFallback(ByteBuffer, long)}, but forwards an explicit
+   * {@code positionSource} label down to {@link PubSubUtil#deserializePositionWithOffsetFallback} so that a
+   * deserialization-failure warning can be attributed to the checkpoint field (and replica, when known) it came
+   * from, instead of logging a bare "N/A".
+   */
+  private PubSubPosition deserializePositionWithOffsetFallback(
+      ByteBuffer wireFormatBytes,
+      long offset,
+      String positionSource) {
     if (pubSubContext != null && !pubSubContext.isUseCheckpointedPubSubPositionWithFallbackEnabled()) {
       // When feature flag is disabled, use offset-only approach without attempting wire format deserialization
       return PubSubUtil.fromKafkaOffset(offset);
     }
-    return PubSubUtil.deserializePositionWithOffsetFallback(wireFormatBytes, offset, pubSubPositionDeserializer);
+    return PubSubUtil
+        .deserializePositionWithOffsetFallback(wireFormatBytes, offset, pubSubPositionDeserializer, positionSource);
+  }
+
+  private String positionSourceOrDefault(String fallbackLabel) {
+    String currentReplicaId = replicaId;
+    return currentReplicaId != null ? currentReplicaId : fallbackLabel;
   }
 }
