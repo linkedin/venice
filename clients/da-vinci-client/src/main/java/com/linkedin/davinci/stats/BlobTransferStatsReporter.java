@@ -1,6 +1,12 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.NO_CANDIDATES;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -41,23 +47,33 @@ public class BlobTransferStatsReporter extends AbstractVeniceStatsReporter<BlobT
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getBlobTransferRequestCount(false, true),
+            () -> getStats().getBlobTransferRequestCount(DAVINCI_PEER, SUCCESS),
             BlobTransferStats.BLOB_TRANSFER_DAVINCI_PEER_SUCCESSFUL_NUM_REQUESTS));
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getBlobTransferRequestCount(false, false),
+            () -> getStats().getBlobTransferRequestCount(DAVINCI_PEER, FAIL),
             BlobTransferStats.BLOB_TRANSFER_DAVINCI_PEER_FAILED_NUM_REQUESTS));
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getBlobTransferRequestCount(true, true),
+            () -> getStats().getBlobTransferRequestCount(VENICE_SERVER, SUCCESS),
             BlobTransferStats.BLOB_TRANSFER_VENICE_SERVER_SUCCESSFUL_NUM_REQUESTS));
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getBlobTransferRequestCount(true, false),
+            () -> getStats().getBlobTransferRequestCount(VENICE_SERVER, FAIL),
             BlobTransferStats.BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferKafkaFallbackCount(NO_CANDIDATES),
+            BlobTransferStats.BLOB_TRANSFER_KAFKA_FALLBACK_NO_CANDIDATES));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferKafkaFallbackCount(ALL_HOSTS_FAILED),
+            BlobTransferStats.BLOB_TRANSFER_KAFKA_FALLBACK_ALL_HOSTS_FAILED));
     registerSensor(
         new IngestionStatsGauge(
             this,

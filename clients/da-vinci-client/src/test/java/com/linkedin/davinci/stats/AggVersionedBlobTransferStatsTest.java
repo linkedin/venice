@@ -210,7 +210,11 @@ public class AggVersionedBlobTransferStatsTest {
           .validateLongPointDataFromCounter(inMemoryMetricReader, 1, failAttrs, otelResponseCount, METRIC_PREFIX);
 
       // --- recordBlobTransferRequest ---
-      stats.recordBlobTransferRequest(storeName, 1, true, true);
+      stats.recordBlobTransferRequest(
+          storeName,
+          1,
+          VeniceBlobTransferSource.VENICE_SERVER,
+          VeniceResponseStatusCategory.SUCCESS);
       Assert.assertEquals(
           reporter
               .query(

@@ -37,6 +37,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_BLOB_TRANSFER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.source");
           break;
+        case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.fallback_reason");
+          break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.retry_type");
           break;
@@ -228,6 +231,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_BLOB_TRANSFER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.source");
           break;
+        case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.fallbackReason");
+          break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.retryType");
           break;
@@ -418,6 +424,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_BLOB_TRANSFER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.Source");
+          break;
+        case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
+          assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.FallbackReason");
           break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.RetryType");

@@ -1,6 +1,12 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.NO_CANDIDATES;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
@@ -16,6 +22,9 @@ import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
@@ -127,7 +136,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
       perPartitionTransferFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
       if (response != null && response.isSourceAware()) {
-        recordKafkaFallback(storeName, version, true);
+        recordKafkaFallback(storeName, version, NO_CANDIDATES);
       }
       return perPartitionTransferFuture;
     }
@@ -196,6 +205,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    *
    *
    * @param uniqueConnectablePeers the set of peers to process
+   * @param serverHostNames the discovered hosts that are Venice servers, used to attribute source metrics
+   * @param sourceAware whether the peer finder distinguishes Venice servers from Da Vinci peers
    * @param storeName the name of the store
    * @param version the version of the store
    * @param partition the partition of the store
@@ -213,12 +224,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       CompletableFuture<InputStream> perPartitionTransferFuture) {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     Instant startTime = Instant.now();
+
     // Create a CompletableFuture that represents the chain of processing all peers
     CompletableFuture<Void> chainOfPeersFuture = CompletableFuture.completedFuture(null);
 
     // Iterate through each peer and chain the futures
     for (String chosenHost: uniqueConnectablePeers) {
-      boolean isVeniceServer = serverHostNames.contains(chosenHost);
+      VeniceBlobTransferSource source = serverHostNames.contains(chosenHost) ? VENICE_SERVER : DAVINCI_PEER;
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
@@ -248,13 +260,15 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           LOGGER.info(FETCHED_BLOB_SUCCESS_MSG, replicaId, chosenHost, transferTime);
           perPartitionTransferFuture.complete(inputStream);
           if (sourceAware) {
-            recordBlobTransferRequest(storeName, version, isVeniceServer, true);
+            recordBlobTransferRequest(storeName, version, source, SUCCESS);
           }
           // Updating the blob transfer stats with the transfer time and throughput
           updateBlobTransferFileReceiveStats(transferTime, storeName, version, partition);
         }).exceptionally(ex -> {
-          if (sourceAware) {
-            recordBlobTransferRequest(storeName, version, isVeniceServer, false);
+          // A cancellation closes the in-flight channel, which surfaces here as a transfer failure. That is a
+          // deliberate abort rather than an unusable source, so it must not count against the source.
+          if (sourceAware && !statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
+            recordBlobTransferRequest(storeName, version, source, FAIL);
           }
           handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
           return null;
@@ -277,7 +291,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       perPartitionTransferFuture.completeExceptionally(
           new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
       if (sourceAware) {
-        recordKafkaFallback(storeName, version, false);
+        recordKafkaFallback(storeName, version, ALL_HOSTS_FAILED);
       }
     });
   }
@@ -352,29 +366,33 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
   }
 
-  private void recordBlobTransferRequest(String storeName, int version, boolean isVeniceServer, boolean isSuccess) {
+  private void recordBlobTransferRequest(
+      String storeName,
+      int version,
+      VeniceBlobTransferSource source,
+      VeniceResponseStatusCategory status) {
     try {
-      aggVersionedBlobTransferStats.recordBlobTransferRequest(storeName, version, isVeniceServer, isSuccess);
+      aggVersionedBlobTransferStats.recordBlobTransferRequest(storeName, version, source, status);
     } catch (Exception e) {
       LOGGER.error(
-          "Failed to record blob transfer request metric for store {} version {} server source {} success {}",
+          "Failed to record blob transfer request metric for store {} version {} source {} status {}",
           storeName,
           version,
-          isVeniceServer,
-          isSuccess,
+          source,
+          status,
           e);
     }
   }
 
-  private void recordKafkaFallback(String storeName, int version, boolean noCandidates) {
+  private void recordKafkaFallback(String storeName, int version, VeniceBlobTransferFallbackReason reason) {
     try {
-      aggVersionedBlobTransferStats.recordBlobTransferKafkaFallback(storeName, version, noCandidates);
+      aggVersionedBlobTransferStats.recordBlobTransferKafkaFallback(storeName, version, reason);
     } catch (Exception e) {
       LOGGER.error(
-          "Failed to record blob transfer Kafka fallback metric for store {} version {} no candidates {}",
+          "Failed to record blob transfer Kafka fallback metric for store {} version {} reason {}",
           storeName,
           version,
-          noCandidates,
+          reason,
           e);
     }
   }
