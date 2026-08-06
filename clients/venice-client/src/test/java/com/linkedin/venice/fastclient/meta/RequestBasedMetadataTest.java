@@ -826,6 +826,206 @@ public class RequestBasedMetadataTest {
     }
   }
 
+  /**
+   * Exercises the StoreConfigChangeListener path with a real currentVersionStorageMode flip on the wire: initial
+   * refresh observes storageMode=INTERNAL; subsequent refresh observes DUAL_WRITE. The listener must receive exactly
+   * one (INTERNAL -> DUAL_WRITE) callback, proving the field round-trips through MetadataResponseRecord v4's
+   * VersionProperties.storageMode and the {@code lastStoreConfigSnapshot} diff detects the change.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreConfigChangeListenerFiresOnCurrentVersionStorageModeTransition() throws Exception {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery =
+        RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery(d2TransportClient, storeName);
+
+    // Two successive METADATA responses on the same version, differing only in currentVersionStorageMode.
+    CompletableFuture<TransportClientResponse> respInternal = CompletableFuture.completedFuture(
+        RequestBasedMetadataTestUtils.buildMetadataResponse(
+            CURRENT_VERSION,
+            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY,
+            com.linkedin.venice.meta.StorageMode.INTERNAL));
+    CompletableFuture<TransportClientResponse> respDualWrite = CompletableFuture.completedFuture(
+        RequestBasedMetadataTestUtils.buildMetadataResponse(
+            CURRENT_VERSION,
+            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY,
+            com.linkedin.venice.meta.StorageMode.DUAL_WRITE));
+    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    doReturn(respInternal, respDualWrite).when(d2TransportClient).get(eq(metadataPath));
+    TransportClientResponse dictResp =
+        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
+    String dictPath = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
+        + CURRENT_VERSION;
+    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+
+      // Register AFTER the initial INTERNAL commit so we observe only the subsequent flip.
+      List<StoreConfigSnapshot[]> received = new java.util.concurrent.CopyOnWriteArrayList<>();
+      requestBasedMetadata
+          .registerStoreConfigChangeListener((prev, curr) -> received.add(new StoreConfigSnapshot[] { prev, curr }));
+
+      // Second refresh observes DUAL_WRITE; deferred callback list must carry the flip.
+      requestBasedMetadata.updateCache(false).forEach(Runnable::run);
+
+      assertEquals(received.size(), 1, "exactly the currentVersionStorageMode flip must fire");
+      Assert.assertNotNull(received.get(0)[0]);
+      assertEquals(received.get(0)[0].getCurrentVersionStorageMode(), com.linkedin.venice.meta.StorageMode.INTERNAL);
+      Assert.assertNotNull(received.get(0)[1]);
+      assertEquals(received.get(0)[1].getCurrentVersionStorageMode(), com.linkedin.venice.meta.StorageMode.DUAL_WRITE);
+    }
+  }
+
+  /**
+   * Forward-compat guard: when a server returns a currentVersionStorageMode wire value that this client's
+   * {@link com.linkedin.venice.meta.StorageMode} enum does not recognize (e.g. a future value),
+   * {@code buildStoreConfigSnapshot} must coerce to {@code INTERNAL} rather than throwing out of the synchronized
+   * {@code updateCache} — a throw here would break the entire refresh loop. Coercing to INTERNAL (rather than, say,
+   * preserving DUAL_WRITE) is deliberately conservative: an unrecognized storage mode must never be treated as
+   * eligible for external-storage reads.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreConfigSnapshotCoercesUnknownStorageModeToInternal() throws Exception {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery =
+        RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery(d2TransportClient, storeName);
+
+    // Inject a wire value (42) that StorageMode does not define.
+    int unknownWireValue = 42;
+    CompletableFuture<TransportClientResponse> respUnknown = CompletableFuture.completedFuture(
+        RequestBasedMetadataTestUtils.buildMetadataResponse(
+            CURRENT_VERSION,
+            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY.getValue(),
+            unknownWireValue));
+    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    doReturn(respUnknown).when(d2TransportClient).get(eq(metadataPath));
+    TransportClientResponse dictResp =
+        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
+    String dictPath = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
+        + CURRENT_VERSION;
+    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      List<StoreConfigSnapshot[]> received = new java.util.concurrent.CopyOnWriteArrayList<>();
+      requestBasedMetadata
+          .registerStoreConfigChangeListener((prev, curr) -> received.add(new StoreConfigSnapshot[] { prev, curr }));
+
+      // start() must not throw — the metadata response carries an unknown int and the decode coerces to INTERNAL.
+      requestBasedMetadata.start();
+
+      assertEquals(received.size(), 1, "initial transition must fire with coerced INTERNAL");
+      Assert.assertNotNull(received.get(0)[1]);
+      assertEquals(received.get(0)[1].getCurrentVersionStorageMode(), com.linkedin.venice.meta.StorageMode.INTERNAL);
+    }
+  }
+
+  /**
+   * Regression test for the deferred-switch bug: {@code updateCache} must never pair the version number it is
+   * actually serving with another version's storage mode. Sequence:
+   * <ol>
+   *   <li>Initial refresh commits v{@code CURRENT_VERSION} with storageMode=INTERNAL (full routing).</li>
+   *   <li>A refresh reports fetchedCurrentVersion=v{@code CURRENT_VERSION + 1} with storageMode=DUAL_WRITE, but its
+   *   partition resources are incomplete, so {@code whetherToSwitchToFetchedCurrentVersion} defers the switch and
+   *   the client keeps serving v{@code CURRENT_VERSION}. The emitted {@link StoreConfigSnapshot} must still report
+   *   INTERNAL (the storage mode of the version actually being served) — not DUAL_WRITE, which is what the buggy
+   *   implementation reported by writing a scalar {@code currentVersionStorageModeRaw} from the fetched version
+   *   before the switch decision.</li>
+   *   <li>A subsequent refresh for the same fetched version now has complete partition resources, so the switch is
+   *   adopted; the snapshot must now report DUAL_WRITE.</li>
+   * </ol>
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreConfigSnapshotResolvesStorageModeAgainstServingVersionWhenSwitchDeferred() throws Exception {
+    String storeName = "testStore";
+    int nextVersion = CURRENT_VERSION + 1;
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery =
+        RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery(d2TransportClient, storeName);
+
+    // 1) Initial: v{CURRENT_VERSION}, INTERNAL, VENICE_ONLY, full routing -> adopted by start().
+    CompletableFuture<TransportClientResponse> respInitial =
+        CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION));
+    // 2) Fetched v{nextVersion} DUAL_WRITE, but its partition resources are not ready -> switch deferred, still
+    // serving v{CURRENT_VERSION}. externalStorageReadMode flips to EXTERNAL_ONLY so the snapshot is guaranteed to
+    // differ and the listener fires, letting the test inspect the emitted currentVersionStorageMode directly.
+    CompletableFuture<TransportClientResponse> respDeferred = CompletableFuture.completedFuture(
+        RequestBasedMetadataTestUtils.buildDeferredSwitchMetadataResponse(
+            CURRENT_VERSION,
+            nextVersion,
+            com.linkedin.venice.meta.StorageMode.DUAL_WRITE));
+    // 3) Same fetched version, now with complete partition resources -> switch adopted.
+    CompletableFuture<TransportClientResponse> respAdopted = CompletableFuture.completedFuture(
+        RequestBasedMetadataTestUtils.buildMetadataResponse(
+            nextVersion,
+            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY,
+            com.linkedin.venice.meta.StorageMode.DUAL_WRITE));
+    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    doReturn(respInitial, respDeferred, respAdopted).when(d2TransportClient).get(eq(metadataPath));
+    // Dictionary fetch is best-effort; succeed for both versions.
+    TransportClientResponse dictResp =
+        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
+    String dictPathCurrent = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName
+        + "/" + CURRENT_VERSION;
+    String dictPathNext =
+        com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + nextVersion;
+    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathCurrent));
+    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathNext));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+      assertEquals(requestBasedMetadata.getCurrentStoreVersion(), CURRENT_VERSION);
+
+      List<StoreConfigSnapshot[]> configReceived = new java.util.concurrent.CopyOnWriteArrayList<>();
+      requestBasedMetadata.registerStoreConfigChangeListener(
+          (prev, curr) -> configReceived.add(new StoreConfigSnapshot[] { prev, curr }));
+      List<int[]> versionSwitchesReceived = new java.util.concurrent.CopyOnWriteArrayList<>();
+      requestBasedMetadata
+          .registerVersionSwitchListener((prev, next) -> versionSwitchesReceived.add(new int[] { prev, next }));
+
+      // --- (1) fetched next version DUAL_WRITE while serving version stays INTERNAL; switch deferred ---
+      requestBasedMetadata.updateCache(false).forEach(Runnable::run);
+
+      assertEquals(
+          requestBasedMetadata.getCurrentStoreVersion(),
+          CURRENT_VERSION,
+          "partition resources not ready for the fetched version -> version switch must stay deferred");
+      assertTrue(versionSwitchesReceived.isEmpty(), "no version-switch callback should fire while switch is deferred");
+      assertEquals(configReceived.size(), 1);
+      assertEquals(
+          configReceived.get(0)[1].getCurrentVersionStorageMode(),
+          com.linkedin.venice.meta.StorageMode.INTERNAL,
+          "the still-serving version's storage mode must not be overwritten by the not-yet-adopted fetched "
+              + "version's DUAL_WRITE");
+
+      // --- (2) same fetched version now with complete partition resources -> switch adopted ---
+      requestBasedMetadata.updateCache(false).forEach(Runnable::run);
+
+      assertEquals(requestBasedMetadata.getCurrentStoreVersion(), nextVersion);
+      assertEquals(versionSwitchesReceived.size(), 1);
+      assertEquals(versionSwitchesReceived.get(0)[0], CURRENT_VERSION);
+      assertEquals(versionSwitchesReceived.get(0)[1], nextVersion);
+      assertEquals(configReceived.size(), 2);
+      assertEquals(
+          configReceived.get(1)[1].getCurrentVersionStorageMode(),
+          com.linkedin.venice.meta.StorageMode.DUAL_WRITE,
+          "after adoption the snapshot must reflect the newly-served version's DUAL_WRITE storage mode");
+    }
+  }
+
   @Test
   public void testIsPartitionResourceReady() {
     String storeName = "testStore";

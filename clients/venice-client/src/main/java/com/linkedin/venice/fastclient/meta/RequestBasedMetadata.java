@@ -27,6 +27,7 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -105,6 +106,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, CompressionStrategy> versionCompressionStrategyMap = new VeniceConcurrentHashMap<>();
+  // Keyed by version (not scalar) so a serving version number is never paired with another version's storage mode
+  // while a fetched-but-not-yet-adopted version switch is deferred (e.g. partition resources not ready). Populated
+  // and evicted alongside the other per-version maps above; resolved against currentVersion.get() in
+  // buildStoreConfigSnapshot().
+  private final Map<Integer, StorageMode> versionStorageModeMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient d2TransportClient;
@@ -460,6 +466,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionCountMap.put(fetchedCurrentVersion, partitionCount);
       versionCompressionStrategyMap
           .put(fetchedCurrentVersion, CompressionStrategy.valueOf(versionMetadata.getCompressionStrategy()));
+      // Recorded per-version (not as a scalar) so that if the switch to fetchedCurrentVersion is deferred below
+      // (e.g. partition resources not ready), the still-serving currentVersion.get()'s previously-recorded storage
+      // mode is untouched and buildStoreConfigSnapshot() keeps resolving against it instead of fetchedCurrentVersion.
+      versionStorageModeMap.put(fetchedCurrentVersion, decodeStorageMode(versionMetadata.getStorageMode()));
 
       // Update readyToServeInstanceMap
       Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
@@ -529,6 +539,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionCompressionStrategyMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      versionStorageModeMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
 
       /*
        * Reconcile instance-health tracking with the live serving set (all active versions' replicas) so departed
@@ -881,18 +892,39 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * to fire {@link StoreConfigChangeListener}s.
    *
    * <p>{@code externalStorageReadMode} is sourced from {@link MetadataResponseRecord} v3+. Older servers returning
-   * v2 responses omit the field and Avro fills the schema default (0 = VENICE_ONLY) on decode, so callers see
-   * VENICE_ONLY transparently until the server side is upgraded. Unknown future values from a server ahead of this
-   * client's {@link ExternalStorageReadMode} enum are coerced to VENICE_ONLY and logged on each refresh that
+   * v2 (or older) responses omit the field and Avro fills the schema default (0 = VENICE_ONLY) on decode, so callers
+   * see VENICE_ONLY transparently until the server side is upgraded. Unknown future values from a server ahead of
+   * this client's {@link ExternalStorageReadMode} enum are coerced to VENICE_ONLY and logged on each refresh that
    * observes them — the wire field is an {@code int} with no enum constraint and a throw here would break the
    * entire refresh loop.
    *
-   * <p>Must be invoked from within {@link #updateCache(boolean)}'s {@code synchronized} region — both fields read
-   * here ({@link #batchGetLimit}, {@link #externalStorageReadModeRaw}) are written under that monitor and must be
-   * observed as a consistent snapshot.
+   * <p>{@code currentVersionStorageMode} is sourced from {@code VersionProperties} in {@link MetadataResponseRecord}
+   * v4+. Older servers returning v3 (or older) responses omit the field and Avro fills the schema default
+   * (0 = INTERNAL) on decode, so callers see INTERNAL transparently until the server side is upgraded — this keeps
+   * external-storage reads gated off (Venice-only behavior) until both the server and the current version are
+   * actually configured for dual-write or external storage. Unknown future values are coerced to INTERNAL and
+   * logged, mirroring the externalStorageReadMode forward-compat handling above.
+   *
+   * <p>Unlike {@code externalStorageReadMode} (a store-level scalar), the decoded storage mode is recorded
+   * per-version in {@link #versionStorageModeMap} at fetch time — alongside {@link #versionCompressionStrategyMap}
+   * and friends — and resolved here against {@link #currentVersion} (the version actually being <em>served</em>),
+   * not the just-fetched version. This matters because {@link #updateCache(boolean)} can defer switching to a
+   * fetched current version (e.g. its partition resources are not ready yet); resolving against
+   * {@code currentVersion.get()} instead of the fetched version guarantees this snapshot never pairs a serving
+   * version number with another version's storage mode. If {@code currentVersion.get()} has no recorded entry (e.g.
+   * before the first successful refresh), this defaults to INTERNAL, matching the old/missing-metadata default.
+   *
+   * <p>Must be invoked from within {@link #updateCache(boolean)}'s {@code synchronized} region — all fields read
+   * here ({@link #batchGetLimit}, {@link #externalStorageReadModeRaw}, {@link #versionStorageModeMap}) are written
+   * under that monitor and must be observed as a consistent snapshot.
    */
   private StoreConfigSnapshot buildStoreConfigSnapshot() {
-    return new StoreConfigSnapshot(batchGetLimit.get(), decodeExternalStorageReadMode(externalStorageReadModeRaw));
+    StorageMode servingVersionStorageMode =
+        versionStorageModeMap.getOrDefault(currentVersion.get(), StorageMode.INTERNAL);
+    return new StoreConfigSnapshot(
+        batchGetLimit.get(),
+        decodeExternalStorageReadMode(externalStorageReadModeRaw),
+        servingVersionStorageMode);
   }
 
   private ExternalStorageReadMode decodeExternalStorageReadMode(int raw) {
@@ -905,6 +937,19 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           raw,
           storeName);
       return ExternalStorageReadMode.VENICE_ONLY;
+    }
+  }
+
+  private StorageMode decodeStorageMode(int raw) {
+    try {
+      return StorageMode.valueOf(raw);
+    } catch (VeniceException e) {
+      LOGGER.warn(
+          "Unknown current-version storageMode value {} from metadata response for store: {}; coercing to "
+              + "INTERNAL. This Fast Client may be behind the server's StorageMode enum.",
+          raw,
+          storeName);
+      return StorageMode.INTERNAL;
     }
   }
 
