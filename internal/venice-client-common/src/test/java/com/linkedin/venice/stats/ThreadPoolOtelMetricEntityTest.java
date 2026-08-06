@@ -47,6 +47,14 @@ public class ThreadPoolOtelMetricEntityTest {
             MetricUnit.NUMBER,
             "Distribution of queued task count over time",
             Collections.singleton(VENICE_THREAD_POOL_NAME)));
+    map.put(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_ACTIVE_THREAD_DISTRIBUTION,
+        new MetricEntityExpectation(
+            "thread_pool.thread.active_count_distribution",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Distribution of active thread count sampled at request submission time",
+            Collections.singleton(VENICE_THREAD_POOL_NAME)));
     return map;
   }
 

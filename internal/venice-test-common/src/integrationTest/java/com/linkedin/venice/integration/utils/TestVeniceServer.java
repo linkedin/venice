@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import io.netty.channel.ChannelHandlerContext;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -82,7 +83,9 @@ public class TestVeniceServer extends VeniceServer {
           ReadMetadataRetriever readMetadataRetriever,
           DiskHealthCheckService diskHealthService,
           StorageEngineBackedCompressorFactory compressorFactory,
-          Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+          Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+          ThreadPoolStats executorThreadPoolStats,
+          ThreadPoolStats computeExecutorThreadPoolStats) {
 
         return new StorageReadRequestHandler(
             serverConfig,
@@ -95,7 +98,9 @@ public class TestVeniceServer extends VeniceServer {
             readMetadataRetriever,
             diskHealthService,
             compressorFactory,
-            resourceReadUsageTracker) {
+            resourceReadUsageTracker,
+            executorThreadPoolStats,
+            computeExecutorThreadPoolStats) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             RequestHandler handler = requestHandler.get();

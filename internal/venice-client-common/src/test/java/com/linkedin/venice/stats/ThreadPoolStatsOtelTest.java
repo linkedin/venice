@@ -129,6 +129,69 @@ public class ThreadPoolStatsOtelTest {
   }
 
   @Test
+  public void testRecordActiveThreadCount() {
+    Mockito.doReturn(6).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadCount();
+
+    // OTel histogram
+    validateHistogram(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_ACTIVE_THREAD_DISTRIBUTION.getMetricEntity().getMetricName(),
+        6.0,
+        6.0,
+        1,
+        6.0,
+        threadPoolAttributes());
+
+    // Tehuti
+    validateTehutiMetric("active_thread_count", "Avg", 6.0);
+    validateTehutiMetric("active_thread_count", "Max", 6.0);
+  }
+
+  @Test
+  public void testRecordMultipleActiveThreadCounts() {
+    Mockito.doReturn(2).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadCount();
+    Mockito.doReturn(9).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadCount();
+
+    // OTel histogram: min=2, max=9, count=2, sum=11
+    validateHistogram(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_ACTIVE_THREAD_DISTRIBUTION.getMetricEntity().getMetricName(),
+        2.0,
+        9.0,
+        2,
+        11.0,
+        threadPoolAttributes());
+
+    // Tehuti Avg/Max independently confirm the distribution.
+    validateTehutiMetric("active_thread_count", "Avg", 5.5);
+    validateTehutiMetric("active_thread_count", "Max", 9.0);
+  }
+
+  /**
+   * Edge case: recording the active thread count must not perturb the periodic, collection-time async gauge for
+   * the same underlying value (active thread count). The two metrics are independent views of the same raw signal:
+   * one is sampled on a timer, the other is sampled on request submission.
+   */
+  @Test
+  public void testRecordActiveThreadCountDoesNotAffectAsyncGauge() {
+    Mockito.doReturn(4).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadCount();
+    stats.recordActiveThreadCount();
+    stats.recordActiveThreadCount();
+
+    // The async gauge still reflects the live thread pool state, independent of how many times we recorded.
+    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity().getMetricName(), 4);
+    validateHistogram(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_ACTIVE_THREAD_DISTRIBUTION.getMetricEntity().getMetricName(),
+        4.0,
+        4.0,
+        3,
+        12.0,
+        threadPoolAttributes());
+  }
+
+  @Test
   public void testBlankThreadPoolNameSanitizedToUnknown() {
     verifyThreadPoolNameDimension("   ", "unknown");
   }
@@ -235,5 +298,6 @@ public class ThreadPoolStatsOtelTest {
 
     ThreadPoolStats localStats = new ThreadPoolStats(repo, pool, poolName);
     localStats.recordQueuedTasksCount();
+    localStats.recordActiveThreadCount();
   }
 }

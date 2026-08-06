@@ -72,6 +72,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.AvroRecordUtils;
@@ -119,6 +120,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final DiskHealthCheckService diskHealthCheckService;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
+  private final ThreadPoolStats executorThreadPoolStats;
+  private final ThreadPoolStats computeExecutorThreadPoolStats;
   private final StorageEngineRepository storageEngineRepository;
   private final ReadOnlyStoreRepository metadataRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -206,7 +209,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       ReadMetadataRetriever readMetadataRetriever,
       DiskHealthCheckService healthCheckService,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker,
+      ThreadPoolStats executorThreadPoolStats,
+      ThreadPoolStats computeExecutorThreadPoolStats) {
     this(
         serverConfig,
         executor,
@@ -219,6 +224,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         healthCheckService,
         compressorFactory,
         optionalResourceReadUsageTracker,
+        executorThreadPoolStats,
+        computeExecutorThreadPoolStats,
         serverConfig.isKeyValueProfilingEnabled()
             ? s -> new MultiGetResponseWrapper(s, new MultiGetResponseStatsWithSizeProfiling(s))
             : MultiGetResponseWrapper::new,
@@ -246,6 +253,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       DiskHealthCheckService healthCheckService,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker,
+      ThreadPoolStats executorThreadPoolStats,
+      ThreadPoolStats computeExecutorThreadPoolStats,
       IntFunction<MultiGetResponseWrapper> multiGetResponseProvider,
       IntFunction<ComputeResponseWrapper> computeResponseProvider) {
     this(
@@ -260,6 +269,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         healthCheckService,
         compressorFactory,
         optionalResourceReadUsageTracker,
+        executorThreadPoolStats,
+        computeExecutorThreadPoolStats,
         multiGetResponseProvider,
         computeResponseProvider,
         new KeyPartitionProfilerManager(
@@ -283,11 +294,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       DiskHealthCheckService healthCheckService,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker,
+      ThreadPoolStats executorThreadPoolStats,
+      ThreadPoolStats computeExecutorThreadPoolStats,
       IntFunction<MultiGetResponseWrapper> multiGetResponseProvider,
       IntFunction<ComputeResponseWrapper> computeResponseProvider,
       KeyPartitionProfilerManager keyPartitionProfilerManager) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
+    this.executorThreadPoolStats = executorThreadPoolStats;
+    this.computeExecutorThreadPoolStats = computeExecutorThreadPoolStats;
     this.storageEngineRepository = storageEngineRepository;
     this.metadataRepository = metadataStoreRepository;
     this.schemaRepository = schemaRepository;
@@ -538,6 +553,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleSingleGetRequest(GetRouterRequest request) {
     final int queueLen = this.executor.getQueue().size();
+    this.executorThreadPoolStats.recordActiveThreadCount();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       if (request.shouldRequestBeTerminatedEarly()) {
@@ -590,6 +606,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         ParallelMultiKeyResponseWrapper::multiGet,
         this.multiGetResponseProvider,
         this.executor,
+        this.executorThreadPoolStats,
         requestContext,
         this::processMultiGet);
   }
@@ -609,6 +626,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       ParallelResponseProvider<R> parallelResponseProvider,
       IntFunction<R> individualResponseProvider,
       ThreadPoolExecutor threadPoolExecutor,
+      ThreadPoolStats threadPoolStats,
       C requestContext,
       SingleBatchProcessor<K, C, R> batchProcessor) {
     int totalKeyNum = keys.size();
@@ -620,6 +638,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture<Void>[] chunkFutures = new CompletableFuture[chunkCount];
 
     final int queueLen = threadPoolExecutor.getQueue().size();
+    threadPoolStats.recordActiveThreadCount();
     final long preSubmissionTimeNs = System.nanoTime();
     for (int cur = 0; cur < chunkCount; ++cur) {
       final int finalCur = cur;
@@ -698,6 +717,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     final int queueLen = this.executor.getQueue().size();
+    this.executorThreadPoolStats.recordActiveThreadCount();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
@@ -705,7 +725,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
-
       List<MultiGetRouterRequestKeyV1> keys = request.getKeys();
       MultiGetResponseWrapper responseWrapper = this.multiGetResponseProvider.apply(request.getKeyCount());
       RequestContext requestContext = new RequestContext(request, this);
@@ -729,6 +748,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     final int queueLen = this.computeExecutor.getQueue().size();
+    this.computeExecutorThreadPoolStats.recordActiveThreadCount();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       if (request.shouldRequestBeTerminatedEarly()) {
@@ -768,6 +788,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         ParallelMultiKeyResponseWrapper::compute,
         this.computeResponseProvider,
         this.computeExecutor,
+        this.computeExecutorThreadPoolStats,
         requestContext,
         this::processCompute);
   }
