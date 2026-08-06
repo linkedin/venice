@@ -407,7 +407,7 @@ public class MetadataBasedServerBlobFinderTest {
 
   private static byte[] serializeMetadata(Map<CharSequence, List<CharSequence>> routingInfo, int currentVersion) {
     MetadataResponseRecord record = new MetadataResponseRecord(
-        new VersionProperties(currentVersion, 0, 1, "", Collections.emptyMap(), 1),
+        new VersionProperties(currentVersion, 0, 1, "", Collections.emptyMap(), 1, 0),
         Collections.singletonList(currentVersion),
         Collections.emptyMap(),
         Collections.emptyMap(),
