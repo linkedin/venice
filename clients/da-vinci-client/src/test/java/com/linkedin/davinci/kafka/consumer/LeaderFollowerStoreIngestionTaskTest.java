@@ -4542,4 +4542,170 @@ public class LeaderFollowerStoreIngestionTaskTest {
         false);
     verify(vtUpdateLocal, times(1)).apply(localVtPosition);
   }
+
+  private static final int NEARLINE_LIMIT_BYTES = 5 * 1024 * 1024;
+
+  /** Wire a real detector into the mocked PCS and turn the feature on. */
+  private LargeRecordBlockDetector enableNearlineLargeRecordBlocking() {
+    LargeRecordBlockDetector detector = new LargeRecordBlockDetector(60_000, 100);
+    when(mockPartitionConsumptionState.getOrCreateLargeRecordBlockDetector(anyLong(), anyInt())).thenReturn(detector);
+    when(mockPartitionConsumptionState.getLargeRecordBlockDetectorIfPresent()).thenReturn(detector);
+    when(mockVeniceServerConfig.isNearlineLargeRecordBlockingEnabled()).thenReturn(true);
+    when(mockVeniceServerConfig.getNearlineLargeRecordBlockReportIntervalMs()).thenReturn(60_000L);
+    when(mockVeniceServerConfig.getNearlineLargeRecordMaxTrackedKeys()).thenReturn(100);
+    doReturn(NEARLINE_LIMIT_BYTES).when(leaderFollowerStoreIngestionTask).getMaxNearlineRecordSizeBytes();
+    return detector;
+  }
+
+  @Test
+  public void testNearlineLargeRecordBlockingIsOffByDefault() throws InterruptedException {
+    setUp();
+    doReturn(NEARLINE_LIMIT_BYTES).when(leaderFollowerStoreIngestionTask).getMaxNearlineRecordSizeBytes();
+    byte[] keyBytes = "some-key".getBytes();
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask
+            .shouldBlockLargeNearlineRecord(mockPartitionConsumptionState, keyBytes, NEARLINE_LIMIT_BYTES * 3),
+        "An oversized record must pass through when the feature is disabled");
+    assertEquals(
+        leaderFollowerStoreIngestionTask.getNearlineOldValueReadCeiling(),
+        ChunkedValueManifestContainer.UNLIMITED_SIZE,
+        "Reads must be unbounded when the feature is disabled");
+  }
+
+  @Test
+  public void testPartialUpdateUnderLimitIsNotBlocked() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+    byte[] keyBytes = "some-key".getBytes();
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask
+            .shouldBlockLargeNearlineRecord(mockPartitionConsumptionState, keyBytes, NEARLINE_LIMIT_BYTES));
+    assertFalse(leaderFollowerStoreIngestionTask.isNearlineUpdateBlocked(mockPartitionConsumptionState, keyBytes));
+  }
+
+  @Test
+  public void testOversizedPartialUpdateIsBlockedAndStaysBlocked() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+    byte[] keyBytes = "fat-key".getBytes();
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask
+            .shouldBlockLargeNearlineRecord(mockPartitionConsumptionState, keyBytes, NEARLINE_LIMIT_BYTES + 1));
+    // Subsequent updates must short-circuit before the merge rather than re-assembling the value every time.
+    assertTrue(leaderFollowerStoreIngestionTask.isNearlineUpdateBlocked(mockPartitionConsumptionState, keyBytes));
+    verify(mockPartitionConsumptionState, never()).setTransientRecord(anyInt(), any(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void testBlockingIsScopedToTheOffendingKey() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+    byte[] fatKey = "fat-key".getBytes();
+    byte[] innocentKey = "innocent-key".getBytes();
+
+    leaderFollowerStoreIngestionTask
+        .shouldBlockLargeNearlineRecord(mockPartitionConsumptionState, fatKey, NEARLINE_LIMIT_BYTES + 1);
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isNearlineUpdateBlocked(mockPartitionConsumptionState, innocentKey),
+        "One oversized key must not stall writes for any other key in the partition");
+  }
+
+  @Test
+  public void testFullPutAndDeleteUnblockTheKey() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+    byte[] keyBytes = "fat-key".getBytes();
+
+    leaderFollowerStoreIngestionTask
+        .shouldBlockLargeNearlineRecord(mockPartitionConsumptionState, keyBytes, NEARLINE_LIMIT_BYTES + 1);
+    assertTrue(leaderFollowerStoreIngestionTask.isNearlineUpdateBlocked(mockPartitionConsumptionState, keyBytes));
+
+    // A full put is the documented way to reset an oversized record, so it must restore writes.
+    leaderFollowerStoreIngestionTask.unblockNearlineRecordIfPresent(mockPartitionConsumptionState, keyBytes);
+    assertFalse(leaderFollowerStoreIngestionTask.isNearlineUpdateBlocked(mockPartitionConsumptionState, keyBytes));
+
+    leaderFollowerStoreIngestionTask
+        .shouldBlockLargeNearlineRecord(mockPartitionConsumptionState, keyBytes, NEARLINE_LIMIT_BYTES + 1);
+    // And so must a delete.
+    leaderFollowerStoreIngestionTask.unblockNearlineRecordIfPresent(mockPartitionConsumptionState, keyBytes);
+    assertFalse(leaderFollowerStoreIngestionTask.isNearlineUpdateBlocked(mockPartitionConsumptionState, keyBytes));
+  }
+
+  @Test
+  public void testOldValueReadCeilingIsDeclaredWhenEnabled() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+
+    assertEquals(leaderFollowerStoreIngestionTask.getNearlineOldValueReadCeiling(), NEARLINE_LIMIT_BYTES);
+  }
+
+  @Test
+  public void testUnlimitedStoreLimitLeavesReadsUnbounded() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+    doReturn(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE).when(leaderFollowerStoreIngestionTask)
+        .getMaxNearlineRecordSizeBytes();
+
+    assertEquals(
+        leaderFollowerStoreIngestionTask.getNearlineOldValueReadCeiling(),
+        ChunkedValueManifestContainer.UNLIMITED_SIZE);
+    assertFalse(
+        leaderFollowerStoreIngestionTask
+            .shouldBlockLargeNearlineRecord(mockPartitionConsumptionState, "k".getBytes(), Integer.MAX_VALUE));
+  }
+
+  @Test
+  public void testAlreadyOversizedStoredValueIsBlockedFromItsManifestAlone() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+    byte[] keyBytes = "pre-existing-fat-key".getBytes();
+
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer(NEARLINE_LIMIT_BYTES);
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.size = NEARLINE_LIMIT_BYTES * 3;
+    manifest.schemaId = 1;
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    container.setManifest(manifest);
+
+    assertTrue(container.isSizeLimitExceeded());
+    assertTrue(
+        leaderFollowerStoreIngestionTask
+            .isStoredValueAlreadyTooLarge(mockPartitionConsumptionState, keyBytes, container));
+    assertTrue(leaderFollowerStoreIngestionTask.isNearlineUpdateBlocked(mockPartitionConsumptionState, keyBytes));
+  }
+
+  @Test
+  public void testStoredValueUnderCeilingIsNotBlocked() throws InterruptedException {
+    setUp();
+    enableNearlineLargeRecordBlocking();
+
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer(NEARLINE_LIMIT_BYTES);
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.size = NEARLINE_LIMIT_BYTES;
+    manifest.schemaId = 1;
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    container.setManifest(manifest);
+
+    assertFalse(container.isSizeLimitExceeded());
+    assertFalse(
+        leaderFollowerStoreIngestionTask
+            .isStoredValueAlreadyTooLarge(mockPartitionConsumptionState, "k".getBytes(), container));
+  }
+
+  @Test
+  public void testUnlimitedContainerNeverFlagsOversize() {
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.size = Integer.MAX_VALUE;
+    manifest.schemaId = 1;
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    container.setManifest(manifest);
+
+    assertFalse(container.isSizeLimitExceeded(), "Read paths that declare no ceiling must be unaffected");
+    assertEquals(container.getManifest(), manifest);
+  }
 }

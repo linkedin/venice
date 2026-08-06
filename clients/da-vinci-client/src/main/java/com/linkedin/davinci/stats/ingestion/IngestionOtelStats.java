@@ -36,6 +36,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.LONG_RUNNING_TASK_CHECK_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.NEARLINE_LARGE_RECORD_BLOCKED_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_CACHE_HIT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_TIME;
@@ -185,6 +186,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateAmplificationAlertCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> nearlineLargeRecordBlockedCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> activeKeyCountInvalidationMetric;
   private final MetricEntityStateOneEnum<VersionRole> batchPushRecordCountMatchMetric;
   private final MetricEntityStateOneEnum<VersionRole> batchPushRecordCountMismatchMetric;
@@ -262,6 +264,7 @@ public class IngestionOtelStats {
     this.partialUpdateCacheHitCountMetric = null;
     this.checksumVerificationFailureCountMetric = null;
     this.partialUpdateAmplificationAlertCountMetric = null;
+    this.nearlineLargeRecordBlockedCountMetric = null;
     this.activeKeyCountInvalidationMetric = null;
     this.batchPushRecordCountMatchMetric = null;
     this.batchPushRecordCountMismatchMetric = null;
@@ -393,6 +396,7 @@ public class IngestionOtelStats {
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
     partialUpdateAmplificationAlertCountMetric =
         createOneEnumMetric(PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
+    nearlineLargeRecordBlockedCountMetric = createOneEnumMetric(NEARLINE_LARGE_RECORD_BLOCKED_COUNT.getMetricEntity());
     activeKeyCountInvalidationMetric =
         activeKeyCountEnabled ? createOneEnumMetric(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity()) : null;
     batchPushRecordCountMatchMetric = createOneEnumMetric(BATCH_PUSH_RECORD_COUNT_MATCH_COUNT.getMetricEntity());
@@ -828,6 +832,10 @@ public class IngestionOtelStats {
 
   public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
     partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
+  }
+
+  public void recordNearlineLargeRecordBlockedCount(int version, long value) {
+    nearlineLargeRecordBlockedCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
   public void recordActiveKeyCountInvalidation(int version) {

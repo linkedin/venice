@@ -406,6 +406,14 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
+  NEARLINE_LARGE_RECORD_BLOCKED_COUNT(
+      "ingestion.partial_update.large_record_blocked_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of partial updates rejected because the assembled record exceeds the nearline record size limit. "
+          + "A non-zero value means writes to at least one key are being dropped; the offending keys are named in the "
+          + "server log.",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
   ACTIVE_KEY_COUNT_INVALIDATION(
       "ingestion.key.active_count_invalidation", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of active key count invalidations due to underflow drift, keyExists failures, leader-propagated invalidation, or corrupt kcs signals",
