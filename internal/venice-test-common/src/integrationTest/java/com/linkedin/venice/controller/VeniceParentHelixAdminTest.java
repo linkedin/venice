@@ -25,7 +25,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -35,6 +38,7 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -200,6 +204,75 @@ public class VeniceParentHelixAdminTest {
         Assert.assertNotNull(storeResponseFromChild.getStore().getHybridStoreConfig());
         Assert.assertEquals(storeResponseFromChild.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 600);
       });
+    }
+  }
+
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
+  public void testFailedPushRetryCooldownThroughControllerApi() {
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      String storeName = Utils.getUniqueString("testFailedPushRetryCooldown");
+      assertCommand(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\""));
+
+      VersionCreationResponse firstPush = assertCommand(
+          parentControllerClient.requestTopicForWrites(
+              storeName,
+              1000,
+              Version.PushType.BATCH,
+              "failed-push",
+              true,
+              true,
+              false,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              -1));
+      assertCommand(parentControllerClient.killOfflinePushJob(firstPush.getKafkaTopic()));
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        JobStatusQueryResponse response =
+            assertCommand(parentControllerClient.queryJobStatus(firstPush.getKafkaTopic()));
+        assertTrue(
+            response.getStatus().equals("ERROR") || response.getStatus().equals("KILLED"),
+            "Push should be terminal before updating the parent version status");
+      });
+
+      Admin parentAdmin = multiRegionMultiClusterWrapper.getParentControllers().get(0).getVeniceAdmin();
+      waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        VersionStatus status =
+            parentAdmin.getStore(clusterName, storeName).getVersion(firstPush.getVersion()).getStatus();
+        assertTrue(status == VersionStatus.ERROR || status == VersionStatus.KILLED);
+      });
+      try (AutoCloseableLock ignore = parentAdmin.getHelixVeniceClusterResources(clusterName)
+          .getClusterLockManager()
+          .createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository storeRepository =
+            parentAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+        Store store = storeRepository.getStore(storeName);
+        store.updateVersionStatus(firstPush.getVersion(), VersionStatus.ERROR);
+        storeRepository.updateStore(store);
+      }
+
+      VersionCreationResponse retryResponse = parentControllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          "retry-push",
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+
+      assertTrue(retryResponse.isError());
+      assertTrue(retryResponse.getError().contains("Http Status 429"));
+      assertTrue(retryResponse.getError().contains("Retry in "));
+      Assert.assertFalse(
+          assertCommand(parentControllerClient.getStore(storeName)).getStore().getVersion(2).isPresent(),
+          "Rejected retry should not create another version");
     }
   }
 

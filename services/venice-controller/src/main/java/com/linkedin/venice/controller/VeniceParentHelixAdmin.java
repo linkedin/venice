@@ -1972,6 +1972,32 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
+    store = getStore(clusterName, storeName);
+    if (store != null) {
+      for (Version existingVersion: store.getVersions()) {
+        if (existingVersion.getPushJobId().equals(pushJobId)) {
+          LOGGER.info(
+              "Version request for pushId {} and store {}. pushId already exists, so returning existing version {}",
+              pushJobId,
+              storeName,
+              existingVersion.getNumber());
+          return existingVersion;
+        }
+      }
+
+      long failedPushRetryCooldownMs =
+          getMultiClusterConfigs().getControllerConfig(clusterName).getFailedPushRetryCooldownMs();
+      if (failedPushRetryCooldownMs > 0) {
+        FailedPushRetryCooldownPolicy.enforce(
+            store,
+            pushType,
+            pushJobId,
+            failedPushRetryCooldownMs,
+            getTimer().getMilliseconds(),
+            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getVeniceAdminStats());
+      }
+    }
+
     // Block all incremental pushes when any DC is degraded, regardless of AA status.
     // Gate behind isDegradedModeEnabled to avoid the read when the feature is off.
     if (isDegradedModeEnabled(clusterName) && pushType.isIncremental()) {
