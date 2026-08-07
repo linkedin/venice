@@ -5,11 +5,14 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Queue;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -89,5 +92,59 @@ public class IngestionNotificationDispatcherTest {
     Mockito.doReturn(true).when(pcs).isComplete();
     Mockito.doReturn(false).when(pcs).isCurrentVersion();
     dispatcher.reportError(Collections.singletonList(pcs), "fake ingestion error", mock(VeniceException.class));
+  }
+
+  @Test
+  public void testReportCompletedAnnotatesMessageOnDeadLeaderFallback() {
+    String topic = Utils.getUniqueString("test_v1");
+    int partitionId = 1;
+    VeniceNotifier mockNotifier = mock(VeniceNotifier.class);
+    Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
+    notifiers.add(mockNotifier);
+    IngestionNotificationDispatcher dispatcher =
+        new IngestionNotificationDispatcher(notifiers, topic, () -> true, pcs -> 0);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Mockito.doReturn(partitionId).when(pcs).getPartition();
+    Mockito.doReturn(false).when(pcs).isErrorReported();
+    Mockito.doReturn(true).when(pcs).isComplete();
+    Mockito.doReturn(false).when(pcs).isCompletionReported();
+    Mockito.doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    Mockito.doReturn(mock(PubSubPosition.class)).when(pcs).getLatestProcessedVtPosition();
+    Mockito.doReturn(true).when(pcs).isReadyToServeViaDeadLeaderFallback();
+
+    dispatcher.reportCompleted(pcs);
+
+    ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+    Mockito.verify(mockNotifier)
+        .completed(Mockito.eq(topic), Mockito.eq(partitionId), Mockito.any(), messageCaptor.capture());
+    Assert.assertTrue(
+        messageCaptor.getValue().contains("dead-leader fallback"),
+        "Completed message should note the dead-leader fallback: " + messageCaptor.getValue());
+  }
+
+  @Test
+  public void testReportCompletedLeavesMessagePlainWithoutDeadLeaderFallback() {
+    String topic = Utils.getUniqueString("test_v1");
+    int partitionId = 1;
+    VeniceNotifier mockNotifier = mock(VeniceNotifier.class);
+    Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
+    notifiers.add(mockNotifier);
+    IngestionNotificationDispatcher dispatcher =
+        new IngestionNotificationDispatcher(notifiers, topic, () -> true, pcs -> 0);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Mockito.doReturn(partitionId).when(pcs).getPartition();
+    Mockito.doReturn(false).when(pcs).isErrorReported();
+    Mockito.doReturn(true).when(pcs).isComplete();
+    Mockito.doReturn(false).when(pcs).isCompletionReported();
+    Mockito.doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    Mockito.doReturn(mock(PubSubPosition.class)).when(pcs).getLatestProcessedVtPosition();
+    Mockito.doReturn(false).when(pcs).isReadyToServeViaDeadLeaderFallback();
+
+    dispatcher.reportCompleted(pcs);
+
+    ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+    Mockito.verify(mockNotifier)
+        .completed(Mockito.eq(topic), Mockito.eq(partitionId), Mockito.any(), messageCaptor.capture());
+    Assert.assertEquals(messageCaptor.getValue(), LeaderFollowerStateType.STANDBY.toString());
   }
 }

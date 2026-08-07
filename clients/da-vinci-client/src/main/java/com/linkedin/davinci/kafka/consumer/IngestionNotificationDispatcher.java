@@ -144,11 +144,11 @@ class IngestionNotificationDispatcher {
    */
   void reportCompleted(PartitionConsumptionState pcs, boolean forceCompletion) {
     report(pcs, ExecutionStatus.COMPLETED, notifier -> {
-      notifier.completed(
-          topic,
-          pcs.getPartition(),
-          pcs.getLatestProcessedVtPosition(),
-          pcs.getLeaderFollowerState().toString());
+      String message = pcs.getLeaderFollowerState().toString();
+      if (pcs.isReadyToServeViaDeadLeaderFallback()) {
+        message += " (READY_TO_SERVE via dead-leader fallback; no fresh leader-complete signal)";
+      }
+      notifier.completed(topic, pcs.getPartition(), pcs.getLatestProcessedVtPosition(), message);
       pcs.releaseLatch();
       pcs.completionReported();
     }, () -> {

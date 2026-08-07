@@ -18,6 +18,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
@@ -3661,6 +3662,12 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isHybrid();
     doReturn(topicSwitchWithSourceRealTimeTopicWrapper).when(mockPcsBufferReplayStartedLagCaughtUp).getTopicSwitch();
     doReturn(mockOffsetRecordLagCaughtUp).when(mockPcsBufferReplayStartedLagCaughtUp).getOffsetRecord();
+    /*
+     * A real PartitionConsumptionState always stamps its consumption start time at construction, and the dead-leader
+     * fallback anchors its silence window on that stamp. Leaving the mock at its 0 default would read as "silent since
+     * the epoch" and trip the fallback, marking a not-yet-leader-completed standby ready to serve.
+     */
+    doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedLagCaughtUp).getConsumptionStartTimeInMs();
 
     doReturn(p5).when(mockTopicManager).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
     doReturn(p5).when(mockTopicManager).getLatestPositionCached(any(PubSubTopicPartition.class));
@@ -3706,6 +3713,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(topicSwitchWithSourceRealTimeTopicWrapper).when(mockPcsBufferReplayStartedRemoteLagging).getTopicSwitch();
     doReturn(mockOffsetRecordLagCaughtUpTimestampLagging).when(mockPcsBufferReplayStartedRemoteLagging)
         .getOffsetRecord();
+    // Stamp a realistic consumption start so the dead-leader fallback's silence window does not read as epoch-old.
+    doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedRemoteLagging).getConsumptionStartTimeInMs();
     doReturn(p150).when(mockTopicManager).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
     doReturn(p150).when(mockTopicManagerRemote).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
     doReturn(p150.getInternalOffset()).when(aggKafkaConsumerService)
@@ -3754,6 +3763,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(topicSwitchWithSourceRealTimeTopicWrapper).when(mockPcsOffsetLagCaughtUpTimestampLagging).getTopicSwitch();
     doReturn(mockOffsetRecordLagCaughtUpTimestampLagging).when(mockPcsOffsetLagCaughtUpTimestampLagging)
         .getOffsetRecord();
+    // Stamp a realistic consumption start so the dead-leader fallback's silence window does not read as epoch-old.
+    doReturn(System.currentTimeMillis()).when(mockPcsOffsetLagCaughtUpTimestampLagging).getConsumptionStartTimeInMs();
     doReturn(p150).when(mockTopicManager).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
     doReturn(p150).when(mockTopicManagerRemote).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
     if (nodeType == NodeType.LEADER) {
@@ -3946,6 +3957,7 @@ public abstract class StoreIngestionTaskTest {
     Map<String, Object> serverProperties = new HashMap<>();
     serverProperties.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000L);
     serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000L);
+    serverProperties.put(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, 60000L);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
@@ -3978,6 +3990,12 @@ public abstract class StoreIngestionTaskTest {
 
     PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     doCallRealMethod().when(mockPartitionConsumptionState).isLeaderCompleted();
+    /*
+     * A real PartitionConsumptionState always stamps its consumption start time at construction, and the dead-leader
+     * fallback anchors its silence window on that stamp. Leaving the mock at its 0 default would read as "silent since
+     * the epoch" and trip the fallback in every case below.
+     */
+    doReturn(System.currentTimeMillis()).when(mockPartitionConsumptionState).getConsumptionStartTimeInMs();
 
     // Case 1: offsetLag > offsetThreshold and instance is leader
     long offsetLag = 100;
@@ -4063,6 +4081,69 @@ public abstract class StoreIngestionTaskTest {
             offsetThreshold,
             false,
             lagType));
+
+    // Cases 8-11 exercise the dead-leader fallback, whose readiness is decided on offset catch-up. Under HEARTBEAT_LAG
+    // that offset lag is re-measured through measureHybridOffsetLag, which walks the real offset record and PubSub
+    // machinery this mock does not stand up; heartbeat-mode fallback behaviour is covered against a mocked task in
+    // LeaderFollowerStoreIngestionTaskTest instead, so here we assert the offset-lag path only.
+    if (lagType == LagType.OFFSET_LAG) {
+      // Case 8: leader has been silent past the dead-leader threshold, so an acceptable lag stands on its own
+      // even though the last LEADER_COMPLETED signal is long stale
+      doReturn(LEADER_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
+      doReturn(System.currentTimeMillis() - 120000).when(mockPartitionConsumptionState).getConsumptionStartTimeInMs();
+      doReturn(System.currentTimeMillis() - 120000).when(mockPartitionConsumptionState)
+          .getLastLeaderCompleteStateUpdateInMs();
+      assertTrue(
+          storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+              mockPartitionConsumptionState,
+              offsetLag,
+              offsetThreshold,
+              false,
+              lagType));
+
+      // Case 9: the fallback does not require the leader to have ever reported completion; a leader that went silent
+      // while still LEADER_NOT_COMPLETED (never-signalled, so the update time stays at its epoch-zero default) is
+      // equally dead once the replica has been consuming past the threshold
+      doReturn(LEADER_NOT_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
+      doReturn(0L).when(mockPartitionConsumptionState).getLastLeaderCompleteStateUpdateInMs();
+      assertTrue(
+          storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+              mockPartitionConsumptionState,
+              offsetLag,
+              offsetThreshold,
+              false,
+              lagType));
+
+      // Case 10: a replica that has never observed a leader-complete signal measures silence from when it started
+      // consuming, so it waits out the full dead-leader threshold instead of tripping on the epoch-zero default
+      doReturn(0L).when(mockPartitionConsumptionState).getLastLeaderCompleteStateUpdateInMs();
+      doReturn(System.currentTimeMillis()).when(mockPartitionConsumptionState).getConsumptionStartTimeInMs();
+      assertFalse(
+          storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+              mockPartitionConsumptionState,
+              offsetLag,
+              offsetThreshold,
+              false,
+              lagType));
+
+      doReturn(System.currentTimeMillis() - 120000).when(mockPartitionConsumptionState).getConsumptionStartTimeInMs();
+      assertTrue(
+          storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+              mockPartitionConsumptionState,
+              offsetLag,
+              offsetThreshold,
+              false,
+              lagType));
+
+      // Case 11: the fallback only relaxes the leader-complete gate; an unacceptable lag is still unacceptable
+      assertFalse(
+          storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+              mockPartitionConsumptionState,
+              offsetThreshold + 1,
+              offsetThreshold,
+              false,
+              lagType));
+    }
   }
 
   @DataProvider
