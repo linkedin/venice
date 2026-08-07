@@ -351,6 +351,10 @@ public interface Store {
 
   void setEncryptionEnabled(boolean encryptionEnabled);
 
+  String getPubSubEncryptionKeyUrn();
+
+  void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn);
+
   long getMinCompactionLagSeconds();
 
   void setMinCompactionLagSeconds(long minCompactionLagSeconds);

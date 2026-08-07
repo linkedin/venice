@@ -1154,9 +1154,14 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       int repushSourceVersion,
       int repushTtlSeconds) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
-    int largestUsedRTVersionNumber = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
+    int largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
     Version version = getVeniceHelixAdmin().addVersionOnly(
         clusterName,
         storeName,
@@ -2123,6 +2128,11 @@ public class VeniceParentHelixAdmin implements Admin {
       int largestUsedRTVersionNumber,
       int repushTtlSeconds,
       boolean isDegradedPush) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,

@@ -2597,6 +2597,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           storeName,
           clusterName);
     } else {
+      validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
         if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
@@ -2968,6 +2969,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return srcStoreResponse.getStore().getVersion(versionNumber);
   }
 
+  static void validatePubSubEncryptionKeyUrnForVersionCreation(String clusterName, Store store, PushType pushType) {
+    if (!store.isEncryptionEnabled() || store.isSystemStore() || pushType.isIncremental()) {
+      return;
+    }
+    if (StringUtils.isBlank(store.getPubSubEncryptionKeyUrn())) {
+      throw new VeniceException(
+          "Cannot create a version for encryption-enabled store " + store.getName() + " in cluster " + clusterName
+              + " because pubSubEncryptionKeyUrn is empty; set pubSubEncryptionKeyUrn through update-store first");
+    }
+  }
+
   /**
    * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
    * Add version is a multi step process that can be broken down to three main steps:
@@ -3068,6 +3080,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterName);
             return new Pair<>(false, null);
           }
+
+          validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
 
           backupStrategy = store.getBackupStrategy();
           offlinePushStrategy = store.getOffLinePushStrategy();

@@ -31,6 +31,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -147,6 +148,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   static final int NUM_REGIONS = 3;
   static final long LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+  private static final String PUB_SUB_ENCRYPTION_KEY_URN = "keyUrn:abc";
+  private static final String PUB_SUB_ENCRYPTION_PUSH_JOB_ID = "pub-sub-encryption-push";
 
   @BeforeMethod
   public void setupTestCase() {
@@ -157,6 +160,139 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @AfterMethod
   public void cleanupTestCase() {
     super.cleanupTestCase();
+  }
+
+  @DataProvider(name = "validPubSubEncryptionKeyConfigurations")
+  public Object[][] validPubSubEncryptionKeyConfigurations() {
+    return new Object[][] { { storeName, false, "" }, { storeName, true, PUB_SUB_ENCRYPTION_KEY_URN },
+        { VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), true, "" } };
+  }
+
+  @Test(dataProvider = "validPubSubEncryptionKeyConfigurations")
+  public void testAddVersionAndTopicOnlyAcceptsValidPubSubEncryptionKeyConfiguration(
+      String testStoreName,
+      boolean encryptionEnabled,
+      String keyUrn) {
+    Store testStore = createPubSubEncryptionTestStore(testStoreName, encryptionEnabled, keyUrn);
+    doReturn(testStore).when(internalAdmin).getStore(clusterName, testStoreName);
+    Version newVersion = new VersionImpl(testStoreName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
+    doReturn(new Pair<>(false, newVersion)).when(internalAdmin)
+        .addVersionAndTopicOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            any(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean());
+
+    Version result = parentAdmin.addVersionAndTopicOnly(
+        clusterName,
+        testStoreName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        VERSION_ID_UNSET,
+        1,
+        1,
+        Version.PushType.BATCH,
+        true,
+        false,
+        null,
+        Optional.empty(),
+        -1,
+        Optional.empty(),
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER,
+        -1,
+        false);
+
+    assertSame(result, newVersion);
+  }
+
+  @Test
+  public void testIncrementalPushAcceptsEncryptedStoreWithoutKeyUrn() {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
+    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
+    Version version = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
+    doReturn(version).when(internalAdmin)
+        .addVersionOnly(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            1,
+            1,
+            Version.PushType.INCREMENTAL,
+            "remote-kafka-bootstrap-server",
+            -1,
+            1,
+            testStore.getLargestUsedRTVersionNumber());
+
+    VeniceParentHelixAdmin admin = spy(parentAdmin);
+    doReturn(1).when(admin).getRmdVersionID(storeName, clusterName);
+    doNothing().when(admin).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin).releaseAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin)
+        .sendAddVersionAdminMessage(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            version,
+            1,
+            Version.PushType.INCREMENTAL,
+            null,
+            -1,
+            testStore.getLargestUsedRTVersionNumber());
+
+    admin.addVersionAndStartIngestion(
+        clusterName,
+        storeName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        1,
+        1,
+        Version.PushType.INCREMENTAL,
+        "remote-kafka-bootstrap-server",
+        -1,
+        -1,
+        false,
+        -1,
+        -1);
+
+    verify(internalAdmin).addVersionOnly(
+        clusterName,
+        storeName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        1,
+        1,
+        Version.PushType.INCREMENTAL,
+        "remote-kafka-bootstrap-server",
+        -1,
+        1,
+        testStore.getLargestUsedRTVersionNumber());
+  }
+
+  private Store createPubSubEncryptionTestStore(
+      String testStoreName,
+      boolean encryptionEnabled,
+      String pubSubEncryptionKeyUrn) {
+    Store testStore = TestUtils.createTestStore(testStoreName, "test_owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(encryptionEnabled);
+    testStore.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    return testStore;
   }
 
   @Test
