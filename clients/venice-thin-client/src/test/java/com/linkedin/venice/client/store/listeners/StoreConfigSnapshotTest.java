@@ -4,6 +4,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 
 import com.linkedin.venice.meta.ExternalStorageReadMode;
+import com.linkedin.venice.meta.StorageMode;
 import org.testng.annotations.Test;
 
 
@@ -41,5 +42,48 @@ public class StoreConfigSnapshotTest {
     StoreConfigSnapshot snapshot = new StoreConfigSnapshot(150, ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK);
     assertEquals(snapshot.getBatchGetLimit(), 150);
     assertEquals(snapshot.getExternalStorageReadMode(), ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK);
+  }
+
+  /**
+   * The deprecated 2-arg constructor (kept for source/binary compatibility) must default
+   * {@code currentVersionStorageMode} to {@link StorageMode#INTERNAL} — this is what keeps external-storage reads
+   * (e.g. Spaniel) gated off when only the older, storageMode-unaware constructor is used.
+   */
+  @Test
+  public void twoArgConstructorDefaultsCurrentVersionStorageModeToInternal() {
+    StoreConfigSnapshot snapshot = new StoreConfigSnapshot(150, ExternalStorageReadMode.EXTERNAL_ONLY);
+    assertEquals(snapshot.getCurrentVersionStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void threeArgConstructorAccessorsReturnConstructorValues() {
+    StoreConfigSnapshot snapshot =
+        new StoreConfigSnapshot(150, ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK, StorageMode.DUAL_WRITE);
+    assertEquals(snapshot.getBatchGetLimit(), 150);
+    assertEquals(snapshot.getExternalStorageReadMode(), ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK);
+    assertEquals(snapshot.getCurrentVersionStorageMode(), StorageMode.DUAL_WRITE);
+  }
+
+  @Test
+  public void nullCurrentVersionStorageModeCoercesToInternal() {
+    StoreConfigSnapshot snapshot = new StoreConfigSnapshot(150, ExternalStorageReadMode.EXTERNAL_ONLY, null);
+    assertEquals(snapshot.getCurrentVersionStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void currentVersionStorageModeDifferenceBreaksEquality() {
+    StoreConfigSnapshot a = new StoreConfigSnapshot(150, ExternalStorageReadMode.EXTERNAL_ONLY, StorageMode.INTERNAL);
+    StoreConfigSnapshot b = new StoreConfigSnapshot(150, ExternalStorageReadMode.EXTERNAL_ONLY, StorageMode.EXTERNAL);
+    assertNotEquals(a, b);
+  }
+
+  @Test
+  public void identicalThreeArgSnapshotsCompareEqual() {
+    StoreConfigSnapshot a =
+        new StoreConfigSnapshot(150, ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN, StorageMode.DUAL_WRITE);
+    StoreConfigSnapshot b =
+        new StoreConfigSnapshot(150, ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN, StorageMode.DUAL_WRITE);
+    assertEquals(a, b);
+    assertEquals(a.hashCode(), b.hashCode());
   }
 }
