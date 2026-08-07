@@ -343,6 +343,7 @@ public abstract class AbstractStore implements Store {
      *     b) ERROR version (ideally should not be there as AbstractPushmonitor#handleErrorPush deletes those)
      *     c) STARTED versions if its not the last one and the store is not migrating.
      *     d) KILLED versions by {@link org.apache.kafka.clients.admin.Admin#killOfflinePush} api.
+     *     e) ROLLED_BACK versions after their dedicated time-based retention expires.
      */
     // current version need not be the largest version, preseve it before finding other versions > current version
     for (int i = lastElementIndex; i >= 0; i--) {
@@ -353,26 +354,27 @@ public abstract class AbstractStore implements Store {
 
     for (int i = lastElementIndex; i >= 0; i--) {
       Version version = versions.get(i);
+      VersionStatus status = version.getStatus();
 
       if (version.getNumber() == currentVersion) { // currentVersion is always preserved
         continue;
       }
-      if (VersionStatus.isVersionRolledBack(version.getStatus())) {
+      if (VersionStatus.isVersionRolledBack(status)) {
         // ROLLED_BACK versions are retained and cleaned up by StoreBackupVersionCleanupService
         // with a dedicated retention period. Skip them here so the retention window is honored.
         // Note: if the backup version retention-based cleanup service is disabled for the cluster,
         // ROLLED_BACK versions will not be automatically deleted by this path. The admin tool's
         // deleteOldVersion can still be used for manual cleanup in that case.
         continue;
-      } else if (VersionStatus.canDelete(version.getStatus())) { // ERROR and KILLED versions are always deleted
+      } else if (VersionStatus.canDelete(status)) { // ERROR and KILLED versions are always deleted
         versionsToDelete.add(version);
-      } else if (VersionStatus.ONLINE.equals(version.getStatus())) {
+      } else if (VersionStatus.preserveLastFew(status)) {
         if (curNumVersionsToPreserve > 0) { // keep the minimum number of version to preserve
           curNumVersionsToPreserve--;
         } else {
           versionsToDelete.add(version);
         }
-      } else if (VersionStatus.STARTED.equals(version.getStatus()) && (i != lastElementIndex) && !isMigrating) {
+      } else if (VersionStatus.STARTED.equals(status) && (i != lastElementIndex) && !isMigrating) {
         // For the non-last started version, if it's not the current version(STARTED version should not be the current
         // version, just prevent some edge cases here.), we should delete it only if the store is not migrating
         // as during store migration are there are concurrent pushes with STARTED version.
@@ -380,8 +382,8 @@ public abstract class AbstractStore implements Store {
         // version status properly.
         versionsToDelete.add(version);
       }
-      // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in
-      // the future.
+      // PUSHED versions can still be active deferred or concurrent swap candidates. They require an
+      // explicit terminal transition before cleanup and are never deleted by count alone.
     }
     return versionsToDelete;
   }
