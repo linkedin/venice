@@ -1,6 +1,9 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricConfig;
@@ -8,6 +11,8 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Gauge;
+import java.util.EnumMap;
+import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -25,6 +30,21 @@ public class BlobTransferStats {
   protected static final String BLOB_TRANSFER_SUCCESSFUL_NUM_RESPONSES = "blob_transfer_successful_num_responses";
   protected static final String BLOB_TRANSFER_FAILED_NUM_RESPONSES = "blob_transfer_failed_num_responses";
 
+  protected static final String BLOB_TRANSFER_DAVINCI_PEER_SUCCESSFUL_NUM_REQUESTS =
+      "blob_transfer_davinci_peer_successful_num_requests";
+  protected static final String BLOB_TRANSFER_DAVINCI_PEER_FAILED_NUM_REQUESTS =
+      "blob_transfer_davinci_peer_failed_num_requests";
+  protected static final String BLOB_TRANSFER_VENICE_SERVER_SUCCESSFUL_NUM_REQUESTS =
+      "blob_transfer_venice_server_successful_num_requests";
+  protected static final String BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS =
+      "blob_transfer_venice_server_failed_num_requests";
+
+  // Replicas that bootstrapped from Kafka instead of blob transfer, split by why blob transfer was not used.
+  protected static final String BLOB_TRANSFER_KAFKA_FALLBACK_NO_CANDIDATES =
+      "blob_transfer_kafka_fallback_no_candidates";
+  protected static final String BLOB_TRANSFER_KAFKA_FALLBACK_ALL_HOSTS_FAILED =
+      "blob_transfer_kafka_fallback_all_hosts_failed";
+
   // The blob file receiving throughput (in MB/sec) and time (in sec)
   protected static final String BLOB_TRANSFER_THROUGHPUT = "blob_transfer_file_receive_throughput";
   protected static final String BLOB_TRANSFER_TIME = "blob_transfer_time";
@@ -39,6 +59,10 @@ public class BlobTransferStats {
   private Sensor blobTransferSuccessNumResponsesSensor;
   private Count blobTransferFailedNumResponsesCount = new Count();
   private Sensor blobTransferFailedNumResponsesSensor;
+  private final Map<VeniceBlobTransferSource, Map<VeniceResponseStatusCategory, CountSensor>> requestCounters =
+      new EnumMap<>(VeniceBlobTransferSource.class);
+  private final Map<VeniceBlobTransferFallbackReason, CountSensor> kafkaFallbackCounters =
+      new EnumMap<>(VeniceBlobTransferFallbackReason.class);
   private Gauge blobTransferFileReceiveThroughputGauge = new Gauge();
   private Sensor blobTransferFileReceiveThroughputSensor;
   private Gauge blobTransferTimeGauge = new Gauge();
@@ -64,6 +88,30 @@ public class BlobTransferStats {
 
     blobTransferFailedNumResponsesSensor = localMetricRepository.sensor(BLOB_TRANSFER_FAILED_NUM_RESPONSES);
     blobTransferFailedNumResponsesSensor.add(BLOB_TRANSFER_FAILED_NUM_RESPONSES, blobTransferFailedNumResponsesCount);
+
+    registerRequestCounter(
+        VeniceBlobTransferSource.DAVINCI_PEER,
+        VeniceResponseStatusCategory.SUCCESS,
+        BLOB_TRANSFER_DAVINCI_PEER_SUCCESSFUL_NUM_REQUESTS);
+    registerRequestCounter(
+        VeniceBlobTransferSource.DAVINCI_PEER,
+        VeniceResponseStatusCategory.FAIL,
+        BLOB_TRANSFER_DAVINCI_PEER_FAILED_NUM_REQUESTS);
+    registerRequestCounter(
+        VeniceBlobTransferSource.VENICE_SERVER,
+        VeniceResponseStatusCategory.SUCCESS,
+        BLOB_TRANSFER_VENICE_SERVER_SUCCESSFUL_NUM_REQUESTS);
+    registerRequestCounter(
+        VeniceBlobTransferSource.VENICE_SERVER,
+        VeniceResponseStatusCategory.FAIL,
+        BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS);
+
+    kafkaFallbackCounters.put(
+        VeniceBlobTransferFallbackReason.NO_CANDIDATES,
+        new CountSensor(localMetricRepository, BLOB_TRANSFER_KAFKA_FALLBACK_NO_CANDIDATES));
+    kafkaFallbackCounters.put(
+        VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED,
+        new CountSensor(localMetricRepository, BLOB_TRANSFER_KAFKA_FALLBACK_ALL_HOSTS_FAILED));
 
     blobTransferFileReceiveThroughputSensor = localMetricRepository.sensor(BLOB_TRANSFER_THROUGHPUT);
     blobTransferFileReceiveThroughputSensor.add(BLOB_TRANSFER_THROUGHPUT, blobTransferFileReceiveThroughputGauge);
@@ -93,6 +141,14 @@ public class BlobTransferStats {
     } else {
       blobTransferFailedNumResponsesSensor.record();
     }
+  }
+
+  public void recordBlobTransferRequest(VeniceBlobTransferSource source, VeniceResponseStatusCategory status) {
+    requestCounters.get(source).get(status).record();
+  }
+
+  public void recordBlobTransferKafkaFallback(VeniceBlobTransferFallbackReason reason) {
+    kafkaFallbackCounters.get(reason).record();
   }
 
   /**
@@ -139,6 +195,14 @@ public class BlobTransferStats {
     }
   }
 
+  public double getBlobTransferRequestCount(VeniceBlobTransferSource source, VeniceResponseStatusCategory status) {
+    return requestCounters.get(source).get(status).measure();
+  }
+
+  public double getBlobTransferKafkaFallbackCount(VeniceBlobTransferFallbackReason reason) {
+    return kafkaFallbackCounters.get(reason).measure();
+  }
+
   public double getBlobTransferFileReceiveThroughput() {
     if (blobTransferFileReceiveThroughputGauge == null) {
       return 0;
@@ -174,5 +238,32 @@ public class BlobTransferStats {
   void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
     Sensor sensor = localMetricRepository.sensor(sensorName);
     sensor.add(sensorName + "_rate", gauge);
+  }
+
+  private void registerRequestCounter(
+      VeniceBlobTransferSource source,
+      VeniceResponseStatusCategory status,
+      String sensorName) {
+    requestCounters.computeIfAbsent(source, k -> new EnumMap<>(VeniceResponseStatusCategory.class))
+        .put(status, new CountSensor(localMetricRepository, sensorName));
+  }
+
+  /** A Tehuti {@link Count} paired with the {@link Sensor} that feeds it. */
+  private static class CountSensor {
+    private final Count count = new Count();
+    private final Sensor sensor;
+
+    CountSensor(MetricsRepository metricsRepository, String sensorName) {
+      this.sensor = metricsRepository.sensor(sensorName);
+      this.sensor.add(sensorName, count);
+    }
+
+    void record() {
+      sensor.record();
+    }
+
+    double measure() {
+      return count.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
   }
 }

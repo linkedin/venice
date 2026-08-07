@@ -2,6 +2,8 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.CLUSTER_NAME;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.METRIC_PREFIX;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildFallbackCountAttributes;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildRequestCountAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildResponseCountAttributes;
 import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildVersionRoleAttributes;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
@@ -11,6 +13,8 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
@@ -28,6 +32,10 @@ public class BlobTransferOtelStatsTest {
 
   private static final String OTEL_RESPONSE_COUNT =
       BlobTransferOtelMetricEntity.RESPONSE_COUNT.getMetricEntity().getMetricName();
+  private static final String OTEL_REQUEST_COUNT =
+      BlobTransferOtelMetricEntity.REQUEST_COUNT.getMetricEntity().getMetricName();
+  private static final String OTEL_KAFKA_FALLBACK_COUNT =
+      BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT.getMetricEntity().getMetricName();
   private static final String OTEL_TIME = BlobTransferOtelMetricEntity.TIME.getMetricEntity().getMetricName();
   private static final String OTEL_BYTES_RECEIVED =
       BlobTransferOtelMetricEntity.BYTES_RECEIVED.getMetricEntity().getMetricName();
@@ -87,6 +95,31 @@ public class BlobTransferOtelStatsTest {
             CLUSTER_NAME,
             VersionRole.CURRENT,
             VeniceResponseStatusCategory.FAIL));
+  }
+
+  @Test
+  public void testRecordRequestCountBySourceAndStatus() {
+    stats.recordRequestCount(1, VeniceBlobTransferSource.DAVINCI_PEER, VeniceResponseStatusCategory.FAIL);
+    stats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceResponseStatusCategory.SUCCESS);
+
+    validateCounter(
+        OTEL_REQUEST_COUNT,
+        1,
+        buildRequestCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceBlobTransferSource.DAVINCI_PEER,
+            VeniceResponseStatusCategory.FAIL));
+    validateCounter(
+        OTEL_REQUEST_COUNT,
+        1,
+        buildRequestCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceBlobTransferSource.VENICE_SERVER,
+            VeniceResponseStatusCategory.SUCCESS));
   }
 
   @Test
@@ -163,6 +196,45 @@ public class BlobTransferOtelStatsTest {
             CLUSTER_NAME,
             VersionRole.CURRENT,
             VeniceResponseStatusCategory.SUCCESS));
+  }
+
+  @Test
+  public void testRequestCountAccumulation() {
+    stats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceResponseStatusCategory.FAIL);
+    stats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceResponseStatusCategory.FAIL);
+
+    validateCounter(
+        OTEL_REQUEST_COUNT,
+        2,
+        buildRequestCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceBlobTransferSource.VENICE_SERVER,
+            VeniceResponseStatusCategory.FAIL));
+  }
+
+  @Test
+  public void testRecordKafkaFallbackByReason() {
+    stats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.NO_CANDIDATES);
+    stats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED);
+
+    validateCounter(
+        OTEL_KAFKA_FALLBACK_COUNT,
+        1,
+        buildFallbackCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceBlobTransferFallbackReason.NO_CANDIDATES));
+    validateCounter(
+        OTEL_KAFKA_FALLBACK_COUNT,
+        1,
+        buildFallbackCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED));
   }
 
   @Test
@@ -309,6 +381,10 @@ public class BlobTransferOtelStatsTest {
 
   private void assertAllMethodsSafe(BlobTransferOtelStats safeStats) {
     safeStats.updateVersionInfo(1, 2);
+    safeStats.recordRequestCount(1, VeniceBlobTransferSource.DAVINCI_PEER, VeniceResponseStatusCategory.SUCCESS);
+    safeStats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceResponseStatusCategory.FAIL);
+    safeStats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.NO_CANDIDATES);
+    safeStats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED);
     safeStats.recordResponseCount(1, VeniceResponseStatusCategory.SUCCESS);
     safeStats.recordResponseCount(1, VeniceResponseStatusCategory.FAIL);
     safeStats.recordTime(1, 5.0);

@@ -1,5 +1,12 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.NO_CANDIDATES;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
@@ -49,6 +56,33 @@ public class BlobTransferStatsTest {
 
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
     Assert.assertEquals(1.0, stats.getBlobTransferFailedNumResponses());
+  }
+
+  @Test
+  public void testRecordBlobTransferRequestsBySourceAndOutcome() {
+    BlobTransferStats stats = new BlobTransferStats();
+
+    stats.recordBlobTransferRequest(DAVINCI_PEER, SUCCESS);
+    stats.recordBlobTransferRequest(DAVINCI_PEER, FAIL);
+    stats.recordBlobTransferRequest(VENICE_SERVER, SUCCESS);
+    stats.recordBlobTransferRequest(VENICE_SERVER, FAIL);
+
+    Assert.assertEquals(stats.getBlobTransferRequestCount(DAVINCI_PEER, SUCCESS), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(DAVINCI_PEER, FAIL), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(VENICE_SERVER, SUCCESS), 1.0);
+    Assert.assertEquals(stats.getBlobTransferRequestCount(VENICE_SERVER, FAIL), 1.0);
+  }
+
+  @Test
+  public void testRecordBlobTransferKafkaFallbackByReason() {
+    BlobTransferStats stats = new BlobTransferStats();
+
+    stats.recordBlobTransferKafkaFallback(NO_CANDIDATES);
+    stats.recordBlobTransferKafkaFallback(ALL_HOSTS_FAILED);
+    stats.recordBlobTransferKafkaFallback(ALL_HOSTS_FAILED);
+
+    Assert.assertEquals(stats.getBlobTransferKafkaFallbackCount(NO_CANDIDATES), 1.0);
+    Assert.assertEquals(stats.getBlobTransferKafkaFallbackCount(ALL_HOSTS_FAILED), 2.0);
   }
 
   @Test
@@ -112,11 +146,39 @@ public class BlobTransferStatsTest {
     Assert.assertEquals(
         reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
         -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_failed_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_failed_num_requests.IngestionStatsGauge")
+            .value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_no_candidates.IngestionStatsGauge").value(),
+        -20.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_all_hosts_failed.IngestionStatsGauge").value(),
+        -20.0);
 
     BlobTransferStats stats = new BlobTransferStats();
     stats.recordBlobTransferResponsesCount();
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(true);
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
+    stats.recordBlobTransferRequest(DAVINCI_PEER, SUCCESS);
+    stats.recordBlobTransferRequest(DAVINCI_PEER, FAIL);
+    stats.recordBlobTransferRequest(VENICE_SERVER, SUCCESS);
+    stats.recordBlobTransferRequest(VENICE_SERVER, FAIL);
+    stats.recordBlobTransferKafkaFallback(NO_CANDIDATES);
+    stats.recordBlobTransferKafkaFallback(ALL_HOSTS_FAILED);
 
     blobTransferStatsReporter.setStats(stats);
     Assert.assertEquals(
@@ -127,6 +189,28 @@ public class BlobTransferStatsTest {
         1.0);
     Assert.assertEquals(
         reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_davinci_peer_failed_num_requests.IngestionStatsGauge")
+            .value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_successful_num_requests.IngestionStatsGauge")
+            .value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_venice_server_failed_num_requests.IngestionStatsGauge")
+            .value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_no_candidates.IngestionStatsGauge").value(),
+        1.0);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_all_hosts_failed.IngestionStatsGauge").value(),
         1.0);
   }
 }

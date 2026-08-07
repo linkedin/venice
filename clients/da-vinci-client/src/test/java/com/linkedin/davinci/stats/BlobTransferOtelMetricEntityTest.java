@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_FALLBACK_REASON;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -23,6 +25,28 @@ public class BlobTransferOtelMetricEntityTest {
 
   private static Map<BlobTransferOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<BlobTransferOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
+    map.put(
+        BlobTransferOtelMetricEntity.REQUEST_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.blob_transfer.request.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of attempted blob transfers by source and status. Hosts rejected by the pre-transfer "
+                + "connectability check are never attempted and so are not counted here",
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_VERSION_ROLE,
+                VENICE_BLOB_TRANSFER_SOURCE,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    map.put(
+        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.blob_transfer.kafka_fallback.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of replicas that fell back to Kafka bootstrapping instead of blob transfer, by reason",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_BLOB_TRANSFER_FALLBACK_REASON)));
     map.put(
         BlobTransferOtelMetricEntity.RESPONSE_COUNT,
         new MetricEntityExpectation(

@@ -1,6 +1,9 @@
 package com.linkedin.venice.blobtransfer;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 
 public class BlobPeersDiscoveryResponse {
@@ -9,6 +12,10 @@ public class BlobPeersDiscoveryResponse {
   private String message;
 
   private List<String> hostNameList;
+
+  private Set<String> serverHostNames = Collections.emptySet();
+
+  private boolean sourceAware;
 
   public void setError(boolean error) {
     this.isError = error;
@@ -32,6 +39,24 @@ public class BlobPeersDiscoveryResponse {
 
   public List<String> getDiscoveryResult() {
     return this.hostNameList;
+  }
+
+  public void setServerHostNames(Set<String> serverHostNames) {
+    this.serverHostNames = serverHostNames == null || serverHostNames.isEmpty()
+        ? Collections.emptySet()
+        : Collections.unmodifiableSet(new HashSet<>(serverHostNames));
+  }
+
+  public Set<String> getServerHostNames() {
+    return this.serverHostNames;
+  }
+
+  public void setSourceAware(boolean sourceAware) {
+    this.sourceAware = sourceAware;
+  }
+
+  public boolean isSourceAware() {
+    return sourceAware;
   }
 
 }
