@@ -2,9 +2,15 @@ package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
+import static com.linkedin.venice.spark.SparkConstants.SCHEMA_FOR_CHUNK_ASSEMBLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
@@ -14,21 +20,37 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.spark.SparkExecutorTestUtils;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.writer.TestSparkPartitionWriter;
+import com.linkedin.venice.storage.protocol.ChunkId;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Dataset;
@@ -214,30 +236,21 @@ public class DataWriterSparkJobRepushTest {
     assertTrue(Arrays.equals(record.rmd, "rmd".getBytes()), "DELETE RMD should match");
   }
 
-  /**
-   * Test applyTTLFilter with TTL enabled to verify the transformation is set up correctly.
-   * This exercises the enabled path in AbstractDataWriterSparkJob.applyTTLFilter().
-   * We verify the filter transformation is applied (returns a transformed Dataset) without
-   * executing the full Spark pipeline to avoid test infrastructure conflicts.
-   */
   @Test
-  public void testApplyTTLFilterEnabledSetup() throws Exception {
-    String testName = "testApplyTTLFilterEnabledSetup";
+  public void testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary() throws Exception {
+    String testName = "testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary";
 
-    // Create temp directories and schema files
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
     File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
 
     try {
-      // Create simple schemas for testing
       String valueSchemaStr =
           "{\"type\":\"record\",\"name\":\"TestValue\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}";
       String rmdSchemaStr =
           "{\"type\":\"record\",\"name\":\"RmdRecord\",\"fields\":[{\"name\":\"timestamp\",\"type\":\"long\"}]}";
 
-      // Write schema files (schema ID 1, RMD version 1)
       File valueSchemaFile = new File(valueSchemaTempDir, "1");
-      File rmdSchemaFile = new File(rmdSchemaTempDir, "1");
+      File rmdSchemaFile = new File(rmdSchemaTempDir, "1_1");
 
       Files.write(valueSchemaFile.toPath(), valueSchemaStr.getBytes());
       Files.write(rmdSchemaFile.toPath(), rmdSchemaStr.getBytes());
@@ -252,10 +265,20 @@ public class DataWriterSparkJobRepushTest {
       props.setProperty("repush.ttl.start.timestamp", String.valueOf(ttlStartTime));
       props.setProperty("value.schema.dir", valueSchemaTempDir.getAbsolutePath());
       props.setProperty("rmd.schema.dir", rmdSchemaTempDir.getAbsolutePath());
-      props.setProperty("kafka.input.source.compression.strategy", "NO_OP");
+      props.setProperty("kafka.input.source.compression.strategy", CompressionStrategy.ZSTD_WITH_DICT.name());
+      props.setProperty(SSL_CONFIGURATOR_CLASS_CONFIG, SparkExecutorTestUtils.RecordingSSLConfigurator.class.getName());
+      props.setProperty(
+          PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          SparkExecutorTestUtils.AssertingPubSubConsumerAdapterFactory.class.getName());
+      props.setProperty("pass.through.config.prefixes.list", "pubsub.");
+      props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test-keystore-credential");
+      props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test-truststore-credential");
+      props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test-key-password-credential");
 
       PushJobSetting setting = new PushJobSetting();
       setting.isSourceKafka = true;
+      setting.enableSSL = true;
+      setting.sslToKafka = true;
       setting.kafkaInputTopic = "test_store_v1";
       setting.repushSourcePubsubBroker = "localhost:9092";
       setting.repushTTLEnabled = true; // TTL enabled
@@ -266,25 +289,134 @@ public class DataWriterSparkJobRepushTest {
       setting.pushDestinationPubsubBroker = "localhost:9092";
       setting.partitionerClass = DefaultVenicePartitioner.class.getName();
       setting.partitionCount = 1;
-      setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+      Version sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
+      sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      setting.sourceKafkaInputVersionInfo = sourceVersion;
 
       job.configure(new VeniceProperties(props), setting);
 
-      // Create test DataFrame with chunked records (these skip TTL filtering)
       List<Row> rows =
           Arrays.asList(createChunkedRow("key1", "chunk1", -1, 1L), createChunkedRow("key2", "chunk2", -20, 2L));
       Dataset<Row> inputDF = job.getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
 
-      // Apply TTL filter - should return a transformed Dataset
-      Dataset<Row> outputDF = job.testableApplyTTLFilter(inputDF);
-
-      // Verify the transformation was applied (outputDF is not null and is a different object)
-      assertNotNull(outputDF, "TTL filter should return a DataFrame");
-      // Don't call count() to avoid Spark execution issues in test environment
-      // The transformation setup itself provides code coverage
-
+      SparkExecutorTestUtils.resetInvocations();
+      SparkExecutorTestUtils.withTokenFile(() -> {
+        List<Row> outputRows = job.testableApplyTTLFilter(inputDF).collectAsList();
+        assertEquals(outputRows.size(), rows.size());
+        assertTrue(SparkExecutorTestUtils.getSslConfiguratorInvocations() > 0);
+        assertTrue(SparkExecutorTestUtils.getConsumerFactoryInvocations() > 0);
+        assertTrue(SparkExecutorTestUtils.getDictionaryConsumerInvocations() > 0);
+      });
     } finally {
-      // Cleanup temp directories
+      deleteDirectory(valueSchemaTempDir);
+      deleteDirectory(rmdSchemaTempDir);
+    }
+  }
+
+  @Test
+  public void testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL() throws Exception {
+    String testName = "testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL";
+
+    File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
+    File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
+
+    try {
+      Schema valueSchema = new Schema.Parser()
+          .parse("{\"type\":\"record\",\"name\":\"TestValue\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}");
+      Schema rmdSchema = new Schema.Parser().parse(
+          "{\"type\":\"record\",\"name\":\"RmdRecord\",\"fields\":[{\"name\":\"timestamp\",\"type\":\"long\"}]}");
+      Files.write(new File(valueSchemaTempDir, "1").toPath(), valueSchema.toString().getBytes());
+      Files.write(new File(rmdSchemaTempDir, "1_1").toPath(), rmdSchema.toString().getBytes());
+
+      long ttlStartTime = System.currentTimeMillis();
+      GenericRecord valueRecord = new GenericData.Record(valueSchema);
+      valueRecord.put("id", "fresh-value");
+      GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
+      rmdRecord.put("timestamp", ttlStartTime + 1_000);
+
+      RecordSerializer<GenericRecord> valueSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
+      RecordSerializer<GenericRecord> rmdSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema);
+      byte[] serializedValue = valueSerializer.serialize(valueRecord);
+      byte[] serializedRmd = rmdSerializer.serialize(rmdRecord);
+
+      CompressorFactory compressorFactory = new CompressorFactory();
+      VeniceCompressor zstdCompressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
+          CompressionStrategy.ZSTD_WITH_DICT,
+          "spark-chunked-ttl-test",
+          SparkExecutorTestUtils.getTestDictionary());
+      byte[] compressedValue = ByteUtils.extractByteArray(zstdCompressor.compress(ByteBuffer.wrap(serializedValue), 0));
+
+      TestableDataWriterSparkJob job = new TestableDataWriterSparkJob(testName);
+      currentTestJob = job;
+
+      Properties props = createDefaultTestProperties();
+      props.setProperty("repush.ttl.policy", "0");
+      props.setProperty("repush.ttl.start.timestamp", String.valueOf(ttlStartTime));
+      props.setProperty("value.schema.dir", valueSchemaTempDir.getAbsolutePath());
+      props.setProperty("rmd.schema.dir", rmdSchemaTempDir.getAbsolutePath());
+      props.setProperty("kafka.input.source.compression.strategy", CompressionStrategy.ZSTD_WITH_DICT.name());
+      props.setProperty(SSL_CONFIGURATOR_CLASS_CONFIG, SparkExecutorTestUtils.RecordingSSLConfigurator.class.getName());
+      props.setProperty(
+          PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          SparkExecutorTestUtils.AssertingPubSubConsumerAdapterFactory.class.getName());
+      props.setProperty("pass.through.config.prefixes.list", "pubsub.");
+      props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test-keystore-credential");
+      props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test-truststore-credential");
+      props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test-key-password-credential");
+
+      PushJobSetting setting = new PushJobSetting();
+      setting.isSourceKafka = true;
+      setting.enableSSL = true;
+      setting.sslToKafka = true;
+      setting.kafkaInputTopic = "test_store_v1";
+      setting.repushSourcePubsubBroker = "localhost:9092";
+      setting.repushTTLEnabled = true;
+      setting.repushTTLStartTimeMs = ttlStartTime;
+      setting.valueSchemaDir = valueSchemaTempDir.getAbsolutePath();
+      setting.rmdSchemaDir = rmdSchemaTempDir.getAbsolutePath();
+      setting.topic = "test_store_v1";
+      setting.pushDestinationPubsubBroker = "localhost:9092";
+      setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+      setting.partitionCount = 1;
+      Version sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
+      sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      sourceVersion.setChunkingEnabled(true);
+      setting.sourceKafkaInputVersionInfo = sourceVersion;
+
+      job.configure(new VeniceProperties(props), setting);
+      job.getSparkSession().conf().set("spark.sql.shuffle.partitions", "1");
+
+      byte[] chunkedKey = "chunked-key".getBytes();
+      byte[] regularKey = "regular-key".getBytes();
+      List<Row> rows = new ArrayList<>();
+      rows.addAll(createSingleChunkRows(chunkedKey, compressedValue, serializedRmd));
+      rows.add(createAssemblyRow(regularKey, compressedValue, serializedRmd, 1, 1, 3L, null));
+      Dataset<Row> inputDF = job.getSparkSession().createDataFrame(rows, SCHEMA_FOR_CHUNK_ASSEMBLY);
+
+      SparkExecutorTestUtils.resetInvocations();
+      SparkExecutorTestUtils.withTokenFile(() -> {
+        List<Row> outputRows = job.testableApplyChunkAssembly(inputDF).collectAsList();
+
+        assertEquals(outputRows.size(), 2);
+        Row assembledChunk = outputRows.stream()
+            .filter(row -> Arrays.equals((byte[]) row.getAs("key"), chunkedKey))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(assembledChunk, "Chunked value should survive post-assembly TTL filtering");
+        assertTrue(Arrays.equals((byte[]) assembledChunk.getAs("value"), compressedValue));
+        assertEquals(
+            SparkExecutorTestUtils.getSslConfiguratorInvocations(),
+            1,
+            "Executor SSL should be materialized once for both key groups in the task");
+        assertEquals(
+            SparkExecutorTestUtils.getConsumerFactoryInvocations(),
+            1,
+            "Only one task-local dictionary consumer should be created");
+        assertEquals(SparkExecutorTestUtils.getDictionaryConsumerInvocations(), 1);
+      });
+    } finally {
       deleteDirectory(valueSchemaTempDir);
       deleteDirectory(rmdSchemaTempDir);
     }
@@ -295,6 +427,59 @@ public class DataWriterSparkJobRepushTest {
         new Object[] { "region1", 0, offset, MessageType.PUT.getValue(), negativeSchemaId, key.getBytes(),
             chunkData.getBytes(), -1, new byte[0], null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  private List<Row> createSingleChunkRows(byte[] key, byte[] value, byte[] rmd) {
+    ChunkId chunkId = new ChunkId();
+    chunkId.segmentNumber = 1;
+    chunkId.messageSequenceNumber = 1;
+    chunkId.chunkIndex = 0;
+    chunkId.producerGUID = new GUID();
+
+    ChunkedKeySuffix suffix = new ChunkedKeySuffix();
+    suffix.chunkId = chunkId;
+    suffix.isChunk = true;
+
+    ChunkedKeySuffixSerializer suffixSerializer = new ChunkedKeySuffixSerializer();
+    byte[] suffixBytes = suffixSerializer.serialize("ignored", suffix);
+
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix =
+        Collections.singletonList(new KeyWithChunkingSuffixSerializer().serializeChunkedKey(key, suffix));
+    manifest.schemaId = 1;
+    manifest.size = value.length;
+    byte[] manifestBytes = ByteUtils.extractByteArray(new ChunkedValueManifestSerializer(true).serialize(manifest));
+
+    Row manifestRow = createAssemblyRow(
+        key,
+        manifestBytes,
+        rmd,
+        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+        1,
+        2L,
+        null);
+    Row chunkRow = createAssemblyRow(
+        key,
+        value,
+        new byte[0],
+        AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+        -1,
+        1L,
+        suffixBytes);
+    return Arrays.asList(manifestRow, chunkRow);
+  }
+
+  private Row createAssemblyRow(
+      byte[] key,
+      byte[] value,
+      byte[] rmd,
+      int schemaId,
+      int rmdVersionId,
+      long offset,
+      byte[] chunkedKeySuffix) {
+    return new GenericRowWithSchema(
+        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, MessageType.PUT.getValue(), chunkedKeySuffix },
+        SCHEMA_FOR_CHUNK_ASSEMBLY);
   }
 
   /**
@@ -746,6 +931,10 @@ public class DataWriterSparkJobRepushTest {
 
     public Dataset<Row> testableApplyTTLFilter(Dataset<Row> dataFrame) {
       return super.applyTTLFilter(dataFrame);
+    }
+
+    public Dataset<Row> testableApplyChunkAssembly(Dataset<Row> dataFrame) {
+      return super.applyChunkAssembly(dataFrame);
     }
   }
 
