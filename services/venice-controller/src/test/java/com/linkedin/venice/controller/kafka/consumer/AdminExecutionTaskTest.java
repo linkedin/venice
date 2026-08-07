@@ -615,13 +615,14 @@ public class AdminExecutionTaskTest {
   @Test(dataProvider = "pubSubEncryptionKeyUrnCases")
   public void testHandleSetStorePubSubEncryptionKeyUrn(
       boolean encryptionEnabled,
+      String pubSubEncryptionKeyUrn,
       Optional<String> expectedPubSubEncryptionKeyUrn) {
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
 
     AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
     UpdateStore updateStore = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
     updateStore.encryptionEnabled = encryptionEnabled;
-    updateStore.pubSubEncryptionKeyUrn = "keyUrn:abc";
+    updateStore.pubSubEncryptionKeyUrn = pubSubEncryptionKeyUrn;
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
     queue.add(wrapper);
@@ -650,7 +651,8 @@ public class AdminExecutionTaskTest {
   @DataProvider(name = "pubSubEncryptionKeyUrnCases")
   public Object[][] pubSubEncryptionKeyUrnCases() {
     String pubSubEncryptionKeyUrn = "keyUrn:abc";
-    return new Object[][] { { true, Optional.of(pubSubEncryptionKeyUrn) }, { false, Optional.empty() } };
+    return new Object[][] { { true, pubSubEncryptionKeyUrn, Optional.of(pubSubEncryptionKeyUrn) },
+        { false, pubSubEncryptionKeyUrn, Optional.empty() }, { true, "   ", Optional.empty() } };
   }
 
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {

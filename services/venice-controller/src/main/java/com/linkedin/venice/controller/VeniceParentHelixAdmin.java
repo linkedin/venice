@@ -1158,9 +1158,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    if (store.isEncryptionEnabled() && !pushType.isIncremental()) {
-      validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, storeName, store);
-    }
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
 
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
@@ -2135,9 +2133,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    if (store.isEncryptionEnabled()) {
-      validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, storeName, store);
-    }
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
 
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
@@ -2188,17 +2184,6 @@ public class VeniceParentHelixAdmin implements Admin {
     deleteStrandedNonCurrentVersions(clusterName, storeName);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
-  }
-
-  private void validatePubSubEncryptionKeyUrnForVersionCreation(String clusterName, String storeName, Store store) {
-    if (store.isSystemStore()) {
-      return;
-    }
-    if (StringUtils.isBlank(store.getPubSubEncryptionKeyUrn())) {
-      throw new VeniceException(
-          "Cannot create a version for encryption-enabled store " + storeName + " in cluster " + clusterName
-              + " because pubSubEncryptionKeyUrn is empty; set pubSubEncryptionKeyUrn through update-store first");
-    }
   }
 
   void sendAddVersionAdminMessage(

@@ -122,6 +122,24 @@ public class TestVeniceHelixAdmin {
   private static final String storeName = "test-store";
 
   @Test
+  public void testValidatePubSubEncryptionKeyUrnForVersionCreation() {
+    Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(true);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> VeniceHelixAdmin
+            .validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.BATCH));
+    assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
+
+    testStore.setPubSubEncryptionKeyUrn("keyUrn:abc");
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.BATCH);
+
+    testStore.setPubSubEncryptionKeyUrn("");
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.INCREMENTAL);
+  }
+
+  @Test
   public void testDropResources() {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     List<String> nodes = new ArrayList<>();
