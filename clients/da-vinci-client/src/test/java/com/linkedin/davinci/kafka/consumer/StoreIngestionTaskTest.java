@@ -6450,11 +6450,14 @@ public abstract class StoreIngestionTaskTest {
    * Verify what happens when globalRtDiv() is called and simulate loading a GlobalRtDivState object from disk.
    */
   @Test
-  public void testLoadGlobalRtDiv() {
+  public void testLoadGlobalRtDiv() throws NoSuchFieldException, IllegalAccessException {
     LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask).restoreProducerStatesForLeaderConsumption(anyInt());
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt());
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt(), anyString());
+    Field versionedIngestionStatsField = StoreIngestionTask.class.getDeclaredField("versionedIngestionStats");
+    versionedIngestionStatsField.setAccessible(true);
+    versionedIngestionStatsField.set(ingestionTask, mockVersionedStorageIngestionStats);
     // Drive the real non-A/A accessor so the checkpoint is stored under the NON_AA key (the key the leader-start path
     // reads back), not the broker URL.
     doCallRealMethod().when(ingestionTask).updateDivRtCheckpointPosition(any(), anyString(), any());
@@ -6484,6 +6487,8 @@ public abstract class StoreIngestionTaskTest {
     brokerIdToUrlMap.forEach((brokerId, url) -> {
       verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO), eq(url));
     });
+    verify(mockVersionedStorageIngestionStats, times(brokerIdToUrlMap.size()))
+        .recordGlobalRtDivLoaded(isNull(), eq(0), eq(globalRtDivState.getProducerStates().size()));
     ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
     ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
     verify(pcs, times(brokerIdToUrlMap.size()))

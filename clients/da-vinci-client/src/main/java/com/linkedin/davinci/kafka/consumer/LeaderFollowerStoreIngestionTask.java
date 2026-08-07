@@ -94,6 +94,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
@@ -4608,6 +4609,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             true);
 
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(brokerUrl);
+    versionedIngestionStats
+        .recordGlobalRtDivSent(storeName, versionNumber, valueBytes.length, rtDivPartitionStates.size());
     return vtDivSyncedFuture;
   }
 
@@ -4622,6 +4625,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     try {
       valueBytes = compressor.get().compress(valueBytes);
     } catch (IOException e) {
+      versionedIngestionStats.recordGlobalRtDivError(storeName, versionNumber, VeniceGlobalRtDivErrorType.SEND);
       LOGGER.error(
           "Failed to compress GlobalRtDivState for replica: {}. Will proceed without {} compression.",
           topicPartition,
@@ -4715,6 +4719,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // GlobalRtDivState loading is best-effort. Any failure (e.g. storage not initialized,
       // compressor dictionary not yet available before SOP is consumed on secondary-fabric leaders)
       // should not propagate and kill ingestion.
+      versionedIngestionStats.recordGlobalRtDivError(storeName, versionNumber, VeniceGlobalRtDivErrorType.LOAD);
       LOGGER.warn(
           "Unable to read Global RT DIV state for topic-partition: {}, brokerUrl: {}",
           topicPartition,
@@ -4736,6 +4741,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return globalRtDivStateSerializer
           .deserialize(serializedValueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
+      versionedIngestionStats.recordGlobalRtDivError(storeName, versionNumber, VeniceGlobalRtDivErrorType.LOAD);
       // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
@@ -4854,6 +4860,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         new ChunkedValueManifestContainer());
 
     if (globalRtDivState == null) {
+      versionedIngestionStats.recordGlobalRtDivLoadNotFound(storeName, versionNumber);
       // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected
       // Object not existing could be problematic if this isn't the first leader (detected via nonzero leaderPosition)
       PubSubPosition leaderPosition = pcs.getLeaderPosition(brokerUrl, false);
@@ -4868,6 +4875,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
+    versionedIngestionStats.recordGlobalRtDivLoaded(storeName, versionNumber, producerStates.size());
     PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
     getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
     ByteBuffer checkpointBytes = globalRtDivState.getLatestPubSubPosition(); // LCRP
