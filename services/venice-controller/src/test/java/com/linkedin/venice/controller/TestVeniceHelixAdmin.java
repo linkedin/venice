@@ -66,6 +66,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
@@ -104,6 +105,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -137,6 +139,48 @@ public class TestVeniceHelixAdmin {
 
     testStore.setPubSubEncryptionKeyUrn("");
     VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.INCREMENTAL);
+  }
+
+  @Test
+  public void testAddVersionOnlyValidatesEncryptionKeyUrnAfterIdempotencyCheck() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(true);
+
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(testStore).when(repository).getStore(storeName);
+    doCallRealMethod().when(admin)
+        .addVersionOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            anyInt());
+    Supplier<Version> addVersion = () -> admin.addVersionOnly(
+        clusterName,
+        storeName,
+        "push-id",
+        1,
+        1,
+        PushType.BATCH,
+        "remote-kafka-bootstrap-server",
+        -1,
+        -1,
+        Version.DEFAULT_RT_VERSION_NUMBER);
+
+    expectThrows(VeniceException.class, addVersion::get);
+
+    testStore.addVersion(new VersionImpl(storeName, 1, "push-id"));
+    addVersion.get();
+    verify(repository, never()).updateStore(testStore);
   }
 
   @Test

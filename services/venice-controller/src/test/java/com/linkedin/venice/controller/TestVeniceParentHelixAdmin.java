@@ -225,53 +225,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testVersionCreationRejectsEncryptedStoreWithoutKeyUrn() {
-    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
-    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
-
-    VeniceException topicOnlyException = expectThrows(
-        VeniceException.class,
-        () -> parentAdmin.addVersionAndTopicOnly(
-            clusterName,
-            storeName,
-            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
-            VERSION_ID_UNSET,
-            1,
-            1,
-            Version.PushType.BATCH,
-            true,
-            false,
-            null,
-            Optional.empty(),
-            -1,
-            Optional.empty(),
-            false,
-            null,
-            -1,
-            DEFAULT_RT_VERSION_NUMBER,
-            -1,
-            false));
-    assertTrue(topicOnlyException.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
-
-    VeniceException ingestionException = expectThrows(
-        VeniceException.class,
-        () -> parentAdmin.addVersionAndStartIngestion(
-            clusterName,
-            storeName,
-            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
-            1,
-            1,
-            Version.PushType.BATCH,
-            "remote-kafka-bootstrap-server",
-            -1,
-            -1,
-            false,
-            -1,
-            -1));
-    assertTrue(ingestionException.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
-  }
-
-  @Test
   public void testIncrementalPushAcceptsEncryptedStoreWithoutKeyUrn() {
     Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
     doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);

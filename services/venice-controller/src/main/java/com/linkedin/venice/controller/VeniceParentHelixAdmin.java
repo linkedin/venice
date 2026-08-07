@@ -1158,7 +1158,6 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
 
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
@@ -2133,7 +2132,6 @@ public class VeniceParentHelixAdmin implements Admin {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
 
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
