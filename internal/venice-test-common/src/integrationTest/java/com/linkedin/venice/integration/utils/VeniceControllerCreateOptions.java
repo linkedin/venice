@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
@@ -381,6 +382,9 @@ public class VeniceControllerCreateOptions {
     private void addDefaults() {
       if (extraProperties == null) {
         extraProperties = new Properties();
+      }
+      if (!extraProperties.containsKey(CONTROLLER_PUSH_RETRY_COOLDOWN_MS)) {
+        extraProperties.setProperty(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, "0");
       }
 
       if (childControllers != null && childControllers.length != 0) {

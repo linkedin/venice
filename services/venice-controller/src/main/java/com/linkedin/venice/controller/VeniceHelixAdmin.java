@@ -3064,12 +3064,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
           }
-          if (versionNumber == VERSION_ID_UNSET && startIngestion && clusterConfig.getFailedPushRetryCooldownMs() > 0) {
-            FailedPushRetryCooldownPolicy.enforce(
+          if (versionNumber == VERSION_ID_UNSET && startIngestion && clusterConfig.getPushRetryCooldownMs() > 0) {
+            PushRetryCooldownPolicy.enforce(
                 store,
                 pushType,
                 pushJobId,
-                clusterConfig.getFailedPushRetryCooldownMs(),
+                clusterConfig.getPushRetryCooldownMs(),
                 System.currentTimeMillis(),
                 resources.getVeniceAdminStats());
           }

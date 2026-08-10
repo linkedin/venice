@@ -1985,14 +1985,13 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
 
-      long failedPushRetryCooldownMs =
-          getMultiClusterConfigs().getControllerConfig(clusterName).getFailedPushRetryCooldownMs();
-      if (failedPushRetryCooldownMs > 0) {
-        FailedPushRetryCooldownPolicy.enforce(
+      long pushRetryCooldownMs = getMultiClusterConfigs().getControllerConfig(clusterName).getPushRetryCooldownMs();
+      if (pushRetryCooldownMs > 0) {
+        PushRetryCooldownPolicy.enforce(
             store,
             pushType,
             pushJobId,
-            failedPushRetryCooldownMs,
+            pushRetryCooldownMs,
             getTimer().getMilliseconds(),
             getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getVeniceAdminStats());
       }

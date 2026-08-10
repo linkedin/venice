@@ -11,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
@@ -34,6 +33,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -267,16 +267,16 @@ public class TestVeniceControllerClusterConfig {
   }
 
   @Test
-  public void testFailedPushRetryCooldownConfig() {
+  public void testPushRetryCooldownConfig() {
     Properties props = getBaseSingleRegionProperties(true);
     VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    assertEquals(clusterConfig.getFailedPushRetryCooldownMs(), TimeUnit.MINUTES.toMillis(10));
+    assertEquals(clusterConfig.getPushRetryCooldownMs(), TimeUnit.MINUTES.toMillis(10));
 
-    props.put(CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS, 0);
+    props.put(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, 0);
     clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    assertEquals(clusterConfig.getFailedPushRetryCooldownMs(), 0);
+    assertEquals(clusterConfig.getPushRetryCooldownMs(), 0);
 
-    props.put(CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS, -1);
+    props.put(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, -1);
     assertThrows(ConfigurationException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
   }
 

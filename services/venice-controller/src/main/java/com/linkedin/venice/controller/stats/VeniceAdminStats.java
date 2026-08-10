@@ -45,9 +45,9 @@ public class VeniceAdminStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<PushType> incrementalPushStartedMetric;
 
   /**
-   * A counter reporting user-store version-creating pushes rejected by the failed-push retry cooldown.
+   * A counter reporting user-store version-creating pushes rejected by the push retry cooldown.
    */
-  private final MetricEntityStateOneEnum<PushType> failedPushRetryCooldownRejectionMetric;
+  private final MetricEntityStateOneEnum<PushType> pushRetryCooldownRejectionMetric;
 
   /**
    * A counter reporting the number of failed serialization attempts of admin operations.
@@ -92,11 +92,11 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         baseDimensionsMap,
         PushType.class);
 
-    failedPushRetryCooldownRejectionMetric = MetricEntityStateOneEnum.create(
-        VeniceAdminOtelMetricEntity.ADMIN_FAILED_PUSH_RETRY_COOLDOWN_REJECTION_COUNT.getMetricEntity(),
+    pushRetryCooldownRejectionMetric = MetricEntityStateOneEnum.create(
+        VeniceAdminOtelMetricEntity.ADMIN_PUSH_RETRY_COOLDOWN_REJECTION_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
-        VeniceAdminTehutiMetricNameEnum.FAILED_PUSH_RETRY_COOLDOWN_REJECTION_COUNT,
+        VeniceAdminTehutiMetricNameEnum.PUSH_RETRY_COOLDOWN_REJECTION_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
         PushType.class);
@@ -123,8 +123,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
     incrementalPushStartedMetric.record(1, PushType.INCREMENTAL);
   }
 
-  public void recordFailedPushRetryCooldownRejection(PushType pushType) {
-    failedPushRetryCooldownRejectionMetric.record(1, pushType);
+  public void recordPushRetryCooldownRejection(PushType pushType) {
+    pushRetryCooldownRejectionMetric.record(1, pushType);
   }
 
   public void recordFailedSerializingAdminOperationMessageCount() {
@@ -133,7 +133,7 @@ public class VeniceAdminStats extends AbstractVeniceStats {
 
   enum VeniceAdminTehutiMetricNameEnum implements TehutiMetricNameEnum {
     UNEXPECTED_TOPIC_ABSENCE_DURING_INCREMENTAL_PUSH_COUNT, SUCCESSFULLY_STARTED_USER_BATCH_PUSH_PARENT_ADMIN_COUNT,
-    SUCCESSFUL_STARTED_USER_INCREMENTAL_PUSH_PARENT_ADMIN_COUNT, FAILED_PUSH_RETRY_COOLDOWN_REJECTION_COUNT,
+    SUCCESSFUL_STARTED_USER_INCREMENTAL_PUSH_PARENT_ADMIN_COUNT, PUSH_RETRY_COOLDOWN_REJECTION_COUNT,
     FAILED_SERIALIZING_ADMIN_OPERATION_MESSAGE_COUNT
   }
 
@@ -149,11 +149,10 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         "Successful push starts from parent admin, differentiated by push type",
         setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)
     ),
-    /** Version-creating pushes rejected by the failed-push retry cooldown */
-    ADMIN_FAILED_PUSH_RETRY_COOLDOWN_REJECTION_COUNT(
-        "admin.push.failed_retry_cooldown_rejection_count", MetricType.COUNTER, MetricUnit.NUMBER,
-        "Version-creating pushes rejected by the failed-push retry cooldown",
-        setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)
+    /** Version-creating pushes rejected by the push retry cooldown */
+    ADMIN_PUSH_RETRY_COOLDOWN_REJECTION_COUNT(
+        "admin.push.retry_cooldown_rejection_count", MetricType.COUNTER, MetricUnit.NUMBER,
+        "Version-creating pushes rejected by the push retry cooldown", setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)
     ),
     /** Failed admin operation serializations */
     ADMIN_OPERATION_SERIALIZATION_FAILURE_COUNT(

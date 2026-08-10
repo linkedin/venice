@@ -8,7 +8,6 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
-import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
@@ -1077,7 +1076,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testRecentFailedPushRetryIsRejected() {
+  public void testRecentVersionCreationIsRejected() {
     String storeName = Utils.getUniqueString("test_store");
     String pushJobId = "new_push_id";
     Store store = new ZKStore(
@@ -1089,13 +1088,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-    Version failedVersion = new VersionImpl(storeName, 1, "failed_push_id");
-    failedVersion.setStatus(ERROR);
-    store.addVersion(failedVersion);
+    Version recentVersion = new VersionImpl(storeName, 1, "previous_push_id");
+    recentVersion.setStatus(ONLINE);
+    store.addVersion(recentVersion);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(Collections.emptyMap()).when(internalAdmin).getControllerClientMap(clusterName);
-    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getFailedPushRetryCooldownMs();
-    parentAdmin.setTimer(new TestMockTime(failedVersion.getCreatedTime() + TimeUnit.MINUTES.toMillis(1)));
+    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getPushRetryCooldownMs();
+    parentAdmin.setTimer(new TestMockTime(recentVersion.getCreatedTime() + TimeUnit.MINUTES.toMillis(1)));
 
     VeniceHttpException exception = expectThrows(
         VeniceHttpException.class,
@@ -1103,7 +1102,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     assertEquals(exception.getHttpStatusCode(), HttpStatus.SC_TOO_MANY_REQUESTS);
     assertTrue(exception.getMessage().contains("Retry in " + TimeUnit.MINUTES.toMillis(9) + " ms"));
-    verify(adminStats).recordFailedPushRetryCooldownRejection(Version.PushType.BATCH);
+    verify(adminStats).recordPushRetryCooldownRejection(Version.PushType.BATCH);
   }
 
   /**
@@ -1308,10 +1307,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
     Version version = new VersionImpl(storeName, 1, pushJobId);
-    version.setStatus(ERROR);
+    version.setStatus(ONLINE);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getFailedPushRetryCooldownMs();
+    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getPushRetryCooldownMs();
     doReturn(new Pair<>(false, version)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -1366,6 +1365,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1,
           DEFAULT_RT_VERSION_NUMBER);
       assertEquals(newVersion.getNumber(), version.getNumber());
+      verify(adminStats, never()).recordPushRetryCooldownRejection(Version.PushType.BATCH);
     }
   }
 

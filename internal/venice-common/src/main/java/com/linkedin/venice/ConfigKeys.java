@@ -350,10 +350,10 @@ public class ConfigKeys {
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String CONCURRENT_PUSH_DETECTION_STRATEGY = "concurrent.push.detection.strategy";
   /**
-   * Minimum spacing between the start times of consecutive version-creating pushes when the latest terminal push
-   * failed. A value of 0 disables the cooldown.
+   * Minimum spacing between the creation times of consecutive user-store version-creating pushes. A value of 0 disables
+   * the cooldown.
    */
-  public static final String CONTROLLER_FAILED_PUSH_RETRY_COOLDOWN_MS = "controller.failed.push.retry.cooldown.ms";
+  public static final String CONTROLLER_PUSH_RETRY_COOLDOWN_MS = "controller.push.retry.cooldown.ms";
 
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
