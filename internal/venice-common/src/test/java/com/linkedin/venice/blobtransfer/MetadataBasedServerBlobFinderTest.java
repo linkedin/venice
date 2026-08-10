@@ -215,10 +215,10 @@ public class MetadataBasedServerBlobFinderTest {
         waitingThread.set(Thread.currentThread());
         return finder.discoverBlobPeers(STORE_NAME, VERSION, 0);
       });
-      TestUtils.waitForNonDeterministicAssertion(
-          1,
-          TimeUnit.SECONDS,
-          () -> Assert.assertEquals(waitingThread.get().getState(), Thread.State.WAITING));
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+        Assert.assertNotNull(waitingThread.get(), "Shared-request thread has not started yet");
+        Assert.assertEquals(waitingThread.get().getState(), Thread.State.WAITING);
+      });
 
       failedMetadataResponse.completeExceptionally(new RuntimeException("metadata unavailable"));
 
