@@ -136,7 +136,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
       perPartitionTransferFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
       if (response != null && response.isSourceAware()) {
-        recordKafkaFallback(storeName, version, NO_CANDIDATES);
+        recordVersionTopicFallback(storeName, version, NO_CANDIDATES);
       }
       return perPartitionTransferFuture;
     }
@@ -165,7 +165,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * 1. If no peers info are found for the requested blob, a VenicePeersNotFoundException is thrown.
    *    In this case, blob transfer is not used for bootstrapping at all.
    * 2. If all peers fail to connect or have no snapshot, a VenicePeersAllFailedException is thrown,
-   *    and Kafka is used for bootstrapping instead.
+   *    and version-topic consumption is used for bootstrapping instead.
    *
    * - Non-fatal cases, move to the next possible host:
    * 3. If one host connect error, it will throw VenicePeersCannotConnectException then move to the next possible host.
@@ -282,16 +282,16 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         return;
       }
       if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
-        // Receive cancellation request, skip Kafka bootstrapping
+        // Receive cancellation request, skip version-topic bootstrapping
         perPartitionTransferFuture.completeExceptionally(
             new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
         return;
       }
-      // No usable peers available, fall back to Kafka bootstrapping.
+      // No usable peers available, fall back to version-topic bootstrapping.
       perPartitionTransferFuture.completeExceptionally(
           new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
       if (sourceAware) {
-        recordKafkaFallback(storeName, version, ALL_HOSTS_FAILED);
+        recordVersionTopicFallback(storeName, version, ALL_HOSTS_FAILED);
       }
     });
   }
@@ -384,12 +384,12 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
   }
 
-  private void recordKafkaFallback(String storeName, int version, VeniceBlobTransferFallbackReason reason) {
+  private void recordVersionTopicFallback(String storeName, int version, VeniceBlobTransferFallbackReason reason) {
     try {
-      aggVersionedBlobTransferStats.recordBlobTransferKafkaFallback(storeName, version, reason);
+      aggVersionedBlobTransferStats.recordBlobTransferVersionTopicFallback(storeName, version, reason);
     } catch (Exception e) {
       LOGGER.error(
-          "Failed to record blob transfer Kafka fallback metric for store {} version {} reason {}",
+          "Failed to record blob transfer version-topic fallback metric for store {} version {} reason {}",
           storeName,
           version,
           reason,

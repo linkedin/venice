@@ -74,15 +74,15 @@ public class BlobTransferStatsTest {
   }
 
   @Test
-  public void testRecordBlobTransferKafkaFallbackByReason() {
+  public void testRecordBlobTransferVersionTopicFallbackByReason() {
     BlobTransferStats stats = new BlobTransferStats();
 
-    stats.recordBlobTransferKafkaFallback(NO_CANDIDATES);
-    stats.recordBlobTransferKafkaFallback(ALL_HOSTS_FAILED);
-    stats.recordBlobTransferKafkaFallback(ALL_HOSTS_FAILED);
+    stats.recordBlobTransferVersionTopicFallback(NO_CANDIDATES);
+    stats.recordBlobTransferVersionTopicFallback(ALL_HOSTS_FAILED);
+    stats.recordBlobTransferVersionTopicFallback(ALL_HOSTS_FAILED);
 
-    Assert.assertEquals(stats.getBlobTransferKafkaFallbackCount(NO_CANDIDATES), 1.0);
-    Assert.assertEquals(stats.getBlobTransferKafkaFallbackCount(ALL_HOSTS_FAILED), 2.0);
+    Assert.assertEquals(stats.getBlobTransferVersionTopicFallbackCount(NO_CANDIDATES), 1.0);
+    Assert.assertEquals(stats.getBlobTransferVersionTopicFallbackCount(ALL_HOSTS_FAILED), 2.0);
   }
 
   @Test
@@ -163,10 +163,12 @@ public class BlobTransferStatsTest {
             .value(),
         -20.0);
     Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_no_candidates.IngestionStatsGauge").value(),
+        reporter.query("." + storeName + "--blob_transfer_version_topic_fallback_no_candidates.IngestionStatsGauge")
+            .value(),
         -20.0);
     Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_all_hosts_failed.IngestionStatsGauge").value(),
+        reporter.query("." + storeName + "--blob_transfer_version_topic_fallback_all_hosts_failed.IngestionStatsGauge")
+            .value(),
         -20.0);
 
     BlobTransferStats stats = new BlobTransferStats();
@@ -177,8 +179,8 @@ public class BlobTransferStatsTest {
     stats.recordBlobTransferRequest(DAVINCI_PEER, FAIL);
     stats.recordBlobTransferRequest(VENICE_SERVER, SUCCESS);
     stats.recordBlobTransferRequest(VENICE_SERVER, FAIL);
-    stats.recordBlobTransferKafkaFallback(NO_CANDIDATES);
-    stats.recordBlobTransferKafkaFallback(ALL_HOSTS_FAILED);
+    stats.recordBlobTransferVersionTopicFallback(NO_CANDIDATES);
+    stats.recordBlobTransferVersionTopicFallback(ALL_HOSTS_FAILED);
 
     blobTransferStatsReporter.setStats(stats);
     Assert.assertEquals(
@@ -207,10 +209,12 @@ public class BlobTransferStatsTest {
             .value(),
         1.0);
     Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_no_candidates.IngestionStatsGauge").value(),
+        reporter.query("." + storeName + "--blob_transfer_version_topic_fallback_no_candidates.IngestionStatsGauge")
+            .value(),
         1.0);
     Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_kafka_fallback_all_hosts_failed.IngestionStatsGauge").value(),
+        reporter.query("." + storeName + "--blob_transfer_version_topic_fallback_all_hosts_failed.IngestionStatsGauge")
+            .value(),
         1.0);
   }
 }

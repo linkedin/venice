@@ -39,11 +39,12 @@ public class BlobTransferStats {
   protected static final String BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS =
       "blob_transfer_venice_server_failed_num_requests";
 
-  // Replicas that bootstrapped from Kafka instead of blob transfer, split by why blob transfer was not used.
-  protected static final String BLOB_TRANSFER_KAFKA_FALLBACK_NO_CANDIDATES =
-      "blob_transfer_kafka_fallback_no_candidates";
-  protected static final String BLOB_TRANSFER_KAFKA_FALLBACK_ALL_HOSTS_FAILED =
-      "blob_transfer_kafka_fallback_all_hosts_failed";
+  // Replicas that bootstrapped from the version topic instead of blob transfer, split by why blob transfer was not
+  // used.
+  protected static final String BLOB_TRANSFER_VERSION_TOPIC_FALLBACK_NO_CANDIDATES =
+      "blob_transfer_version_topic_fallback_no_candidates";
+  protected static final String BLOB_TRANSFER_VERSION_TOPIC_FALLBACK_ALL_HOSTS_FAILED =
+      "blob_transfer_version_topic_fallback_all_hosts_failed";
 
   // The blob file receiving throughput (in MB/sec) and time (in sec)
   protected static final String BLOB_TRANSFER_THROUGHPUT = "blob_transfer_file_receive_throughput";
@@ -61,7 +62,7 @@ public class BlobTransferStats {
   private Sensor blobTransferFailedNumResponsesSensor;
   private final Map<VeniceBlobTransferSource, Map<VeniceResponseStatusCategory, CountSensor>> requestCounters =
       new EnumMap<>(VeniceBlobTransferSource.class);
-  private final Map<VeniceBlobTransferFallbackReason, CountSensor> kafkaFallbackCounters =
+  private final Map<VeniceBlobTransferFallbackReason, CountSensor> versionTopicFallbackCounters =
       new EnumMap<>(VeniceBlobTransferFallbackReason.class);
   private Gauge blobTransferFileReceiveThroughputGauge = new Gauge();
   private Sensor blobTransferFileReceiveThroughputSensor;
@@ -106,12 +107,12 @@ public class BlobTransferStats {
         VeniceResponseStatusCategory.FAIL,
         BLOB_TRANSFER_VENICE_SERVER_FAILED_NUM_REQUESTS);
 
-    kafkaFallbackCounters.put(
+    versionTopicFallbackCounters.put(
         VeniceBlobTransferFallbackReason.NO_CANDIDATES,
-        new CountSensor(localMetricRepository, BLOB_TRANSFER_KAFKA_FALLBACK_NO_CANDIDATES));
-    kafkaFallbackCounters.put(
+        new CountSensor(localMetricRepository, BLOB_TRANSFER_VERSION_TOPIC_FALLBACK_NO_CANDIDATES));
+    versionTopicFallbackCounters.put(
         VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED,
-        new CountSensor(localMetricRepository, BLOB_TRANSFER_KAFKA_FALLBACK_ALL_HOSTS_FAILED));
+        new CountSensor(localMetricRepository, BLOB_TRANSFER_VERSION_TOPIC_FALLBACK_ALL_HOSTS_FAILED));
 
     blobTransferFileReceiveThroughputSensor = localMetricRepository.sensor(BLOB_TRANSFER_THROUGHPUT);
     blobTransferFileReceiveThroughputSensor.add(BLOB_TRANSFER_THROUGHPUT, blobTransferFileReceiveThroughputGauge);
@@ -147,8 +148,8 @@ public class BlobTransferStats {
     requestCounters.get(source).get(status).record();
   }
 
-  public void recordBlobTransferKafkaFallback(VeniceBlobTransferFallbackReason reason) {
-    kafkaFallbackCounters.get(reason).record();
+  public void recordBlobTransferVersionTopicFallback(VeniceBlobTransferFallbackReason reason) {
+    versionTopicFallbackCounters.get(reason).record();
   }
 
   /**
@@ -199,8 +200,8 @@ public class BlobTransferStats {
     return requestCounters.get(source).get(status).measure();
   }
 
-  public double getBlobTransferKafkaFallbackCount(VeniceBlobTransferFallbackReason reason) {
-    return kafkaFallbackCounters.get(reason).measure();
+  public double getBlobTransferVersionTopicFallbackCount(VeniceBlobTransferFallbackReason reason) {
+    return versionTopicFallbackCounters.get(reason).measure();
   }
 
   public double getBlobTransferFileReceiveThroughput() {

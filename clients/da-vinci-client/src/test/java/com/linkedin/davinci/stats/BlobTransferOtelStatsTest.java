@@ -34,8 +34,8 @@ public class BlobTransferOtelStatsTest {
       BlobTransferOtelMetricEntity.RESPONSE_COUNT.getMetricEntity().getMetricName();
   private static final String OTEL_REQUEST_COUNT =
       BlobTransferOtelMetricEntity.REQUEST_COUNT.getMetricEntity().getMetricName();
-  private static final String OTEL_KAFKA_FALLBACK_COUNT =
-      BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT.getMetricEntity().getMetricName();
+  private static final String OTEL_VERSION_TOPIC_FALLBACK_COUNT =
+      BlobTransferOtelMetricEntity.VERSION_TOPIC_FALLBACK_COUNT.getMetricEntity().getMetricName();
   private static final String OTEL_TIME = BlobTransferOtelMetricEntity.TIME.getMetricEntity().getMetricName();
   private static final String OTEL_BYTES_RECEIVED =
       BlobTransferOtelMetricEntity.BYTES_RECEIVED.getMetricEntity().getMetricName();
@@ -215,12 +215,12 @@ public class BlobTransferOtelStatsTest {
   }
 
   @Test
-  public void testRecordKafkaFallbackByReason() {
-    stats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.NO_CANDIDATES);
-    stats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED);
+  public void testRecordVersionTopicFallbackByReason() {
+    stats.recordVersionTopicFallback(1, VeniceBlobTransferFallbackReason.NO_CANDIDATES);
+    stats.recordVersionTopicFallback(1, VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED);
 
     validateCounter(
-        OTEL_KAFKA_FALLBACK_COUNT,
+        OTEL_VERSION_TOPIC_FALLBACK_COUNT,
         1,
         buildFallbackCountAttributes(
             TEST_STORE_NAME,
@@ -228,7 +228,7 @@ public class BlobTransferOtelStatsTest {
             VersionRole.CURRENT,
             VeniceBlobTransferFallbackReason.NO_CANDIDATES));
     validateCounter(
-        OTEL_KAFKA_FALLBACK_COUNT,
+        OTEL_VERSION_TOPIC_FALLBACK_COUNT,
         1,
         buildFallbackCountAttributes(
             TEST_STORE_NAME,
@@ -383,8 +383,8 @@ public class BlobTransferOtelStatsTest {
     safeStats.updateVersionInfo(1, 2);
     safeStats.recordRequestCount(1, VeniceBlobTransferSource.DAVINCI_PEER, VeniceResponseStatusCategory.SUCCESS);
     safeStats.recordRequestCount(1, VeniceBlobTransferSource.VENICE_SERVER, VeniceResponseStatusCategory.FAIL);
-    safeStats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.NO_CANDIDATES);
-    safeStats.recordKafkaFallback(1, VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED);
+    safeStats.recordVersionTopicFallback(1, VeniceBlobTransferFallbackReason.NO_CANDIDATES);
+    safeStats.recordVersionTopicFallback(1, VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED);
     safeStats.recordResponseCount(1, VeniceResponseStatusCategory.SUCCESS);
     safeStats.recordResponseCount(1, VeniceResponseStatusCategory.FAIL);
     safeStats.recordTime(1, 5.0);

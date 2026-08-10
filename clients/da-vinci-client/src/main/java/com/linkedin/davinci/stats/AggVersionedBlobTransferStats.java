@@ -177,17 +177,20 @@ public class AggVersionedBlobTransferStats
   }
 
   /**
-   * Records that a replica bootstrapped from Kafka instead of blob transfer (Tehuti and OTel).
+   * Records that a replica bootstrapped from the version topic instead of blob transfer (Tehuti and OTel).
    *
    * @param storeName the store name
    * @param version the version of the store
    * @param reason why blob transfer was not used
    */
-  public void recordBlobTransferKafkaFallback(String storeName, int version, VeniceBlobTransferFallbackReason reason) {
+  public void recordBlobTransferVersionTopicFallback(
+      String storeName,
+      int version,
+      VeniceBlobTransferFallbackReason reason) {
     // Tehuti metrics
-    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferKafkaFallback(reason));
+    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferVersionTopicFallback(reason));
     // OTel metrics
-    getBlobTransferOtelStats(storeName).recordKafkaFallback(version, reason);
+    getBlobTransferOtelStats(storeName).recordVersionTopicFallback(version, reason);
   }
 
   /**

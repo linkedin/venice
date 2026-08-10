@@ -22,7 +22,7 @@ import java.util.Set;
  * <p>Maps blob transfer telemetry into OTel metrics:
  * <ul>
  *   <li>source-specific request outcomes → 1 COUNTER with source and response-status dimensions</li>
- *   <li>Kafka fallbacks → 1 COUNTER with a {@code blob_transfer.fallback_reason} dimension</li>
+ *   <li>Version-topic fallbacks → 1 COUNTER with a {@code blob_transfer.fallback_reason} dimension</li>
  *   <li>3 count sensors (total/success/fail) → 1 COUNTER with {@code response_status_category} dimension</li>
  *   <li>throughput gauge → dropped (derivable as rate from {@code bytes.received})</li>
  *   <li>time gauge → 1 HISTOGRAM in seconds</li>
@@ -43,9 +43,9 @@ public enum BlobTransferOtelMetricEntity implements ModuleMetricEntityInterface 
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
 
-  KAFKA_FALLBACK_COUNT(
-      "ingestion.blob_transfer.kafka_fallback.count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of replicas that fell back to Kafka bootstrapping instead of blob transfer, by reason",
+  VERSION_TOPIC_FALLBACK_COUNT(
+      "ingestion.blob_transfer.version_topic_fallback.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of replicas that fell back to version-topic bootstrapping instead of blob transfer, by reason",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_BLOB_TRANSFER_FALLBACK_REASON)
   ),
 

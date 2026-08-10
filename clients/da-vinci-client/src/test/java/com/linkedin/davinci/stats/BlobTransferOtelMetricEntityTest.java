@@ -40,12 +40,12 @@ public class BlobTransferOtelMetricEntityTest {
                 VENICE_BLOB_TRANSFER_SOURCE,
                 VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     map.put(
-        BlobTransferOtelMetricEntity.KAFKA_FALLBACK_COUNT,
+        BlobTransferOtelMetricEntity.VERSION_TOPIC_FALLBACK_COUNT,
         new MetricEntityExpectation(
-            "ingestion.blob_transfer.kafka_fallback.count",
+            "ingestion.blob_transfer.version_topic_fallback.count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of replicas that fell back to Kafka bootstrapping instead of blob transfer, by reason",
+            "Count of replicas that fell back to version-topic bootstrapping instead of blob transfer, by reason",
             setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_BLOB_TRANSFER_FALLBACK_REASON)));
     map.put(
         BlobTransferOtelMetricEntity.RESPONSE_COUNT,

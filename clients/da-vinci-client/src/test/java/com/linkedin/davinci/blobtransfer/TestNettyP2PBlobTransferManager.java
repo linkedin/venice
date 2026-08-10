@@ -233,7 +233,7 @@ public class TestNettyP2PBlobTransferManager {
       Assert.assertTrue(throwable instanceof VenicePeersNotFoundException);
     });
     Mockito.verify(versionedBlobTransferStats, Mockito.never())
-        .recordBlobTransferKafkaFallback(anyString(), anyInt(), any());
+        .recordBlobTransferVersionTopicFallback(anyString(), anyInt(), any());
   }
 
   /**
@@ -270,7 +270,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.verify(versionedBlobTransferStats, Mockito.never())
         .recordBlobTransferRequest(anyString(), anyInt(), any(), any());
     Mockito.verify(versionedBlobTransferStats, Mockito.never())
-        .recordBlobTransferKafkaFallback(anyString(), anyInt(), any());
+        .recordBlobTransferVersionTopicFallback(anyString(), anyInt(), any());
   }
 
   @Test
@@ -302,7 +302,8 @@ public class TestNettyP2PBlobTransferManager {
     });
     // Verification:
     verifyFileTransferFailed(expectOffsetRecord);
-    Mockito.verify(versionedBlobTransferStats).recordBlobTransferKafkaFallback(TEST_STORE, TEST_VERSION, NO_CANDIDATES);
+    Mockito.verify(versionedBlobTransferStats)
+        .recordBlobTransferVersionTopicFallback(TEST_STORE, TEST_VERSION, NO_CANDIDATES);
   }
 
   /**
@@ -697,7 +698,7 @@ public class TestNettyP2PBlobTransferManager {
       Assert.assertTrue(throwable.getMessage().contains("failed to connect to any peer"));
     });
     Mockito.verify(versionedBlobTransferStats)
-        .recordBlobTransferKafkaFallback(TEST_STORE, TEST_VERSION, ALL_HOSTS_FAILED);
+        .recordBlobTransferVersionTopicFallback(TEST_STORE, TEST_VERSION, ALL_HOSTS_FAILED);
   }
 
   /**
@@ -732,7 +733,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.verify(versionedBlobTransferStats, Mockito.never())
         .recordBlobTransferRequest(anyString(), anyInt(), any(), any());
     Mockito.verify(versionedBlobTransferStats, Mockito.never())
-        .recordBlobTransferKafkaFallback(anyString(), anyInt(), any());
+        .recordBlobTransferVersionTopicFallback(anyString(), anyInt(), any());
   }
 
   /**

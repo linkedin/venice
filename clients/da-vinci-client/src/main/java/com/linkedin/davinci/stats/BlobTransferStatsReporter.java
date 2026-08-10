@@ -67,13 +67,13 @@ public class BlobTransferStatsReporter extends AbstractVeniceStatsReporter<BlobT
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getBlobTransferKafkaFallbackCount(NO_CANDIDATES),
-            BlobTransferStats.BLOB_TRANSFER_KAFKA_FALLBACK_NO_CANDIDATES));
+            () -> getStats().getBlobTransferVersionTopicFallbackCount(NO_CANDIDATES),
+            BlobTransferStats.BLOB_TRANSFER_VERSION_TOPIC_FALLBACK_NO_CANDIDATES));
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getBlobTransferKafkaFallbackCount(ALL_HOSTS_FAILED),
-            BlobTransferStats.BLOB_TRANSFER_KAFKA_FALLBACK_ALL_HOSTS_FAILED));
+            () -> getStats().getBlobTransferVersionTopicFallbackCount(ALL_HOSTS_FAILED),
+            BlobTransferStats.BLOB_TRANSFER_VERSION_TOPIC_FALLBACK_ALL_HOSTS_FAILED));
     registerSensor(
         new IngestionStatsGauge(
             this,
