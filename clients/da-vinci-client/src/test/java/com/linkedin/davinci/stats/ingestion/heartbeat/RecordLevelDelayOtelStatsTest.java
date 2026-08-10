@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICATION_MODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -25,6 +26,7 @@ import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -83,6 +85,7 @@ public class RecordLevelDelayOtelStatsTest {
         DEFAULT_WRITE_TYPE,
         DEFAULT_CHUNKING_STATUS,
         region.equals(LOCAL_REGION) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         delay);
   }
 
@@ -305,6 +308,9 @@ public class RecordLevelDelayOtelStatsTest {
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
         .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), chunkStatus.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
 
     validateExponentialHistogramPointData(
@@ -471,6 +477,9 @@ public class RecordLevelDelayOtelStatsTest {
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
         .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), chunkStatus.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -575,6 +584,9 @@ public class RecordLevelDelayOtelStatsTest {
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -603,6 +615,7 @@ public class RecordLevelDelayOtelStatsTest {
         VeniceStoreWriteType.WRITE_COMPUTE,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         150L);
 
     Attributes expectedAttributes = Attributes.builder()
@@ -619,6 +632,9 @@ public class RecordLevelDelayOtelStatsTest {
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
 
     validateExponentialHistogramPointData(
@@ -649,6 +665,7 @@ public class RecordLevelDelayOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.CHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         300L);
 
     Attributes expectedAttributes = Attributes.builder()
@@ -663,6 +680,9 @@ public class RecordLevelDelayOtelStatsTest {
             VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
             VeniceStoreWriteType.REGULAR.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), VeniceChunkingStatus.CHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
 
     validateExponentialHistogramPointData(

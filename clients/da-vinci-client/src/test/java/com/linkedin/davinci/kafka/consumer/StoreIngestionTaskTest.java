@@ -4127,6 +4127,7 @@ public abstract class StoreIngestionTaskTest {
         true,
         false,
         false,
+        false,
         null);
 
     long producerTimestamp = System.currentTimeMillis();
@@ -4423,6 +4424,7 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(versionTopic, 0),
         offsetRecord,
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -5373,6 +5375,7 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(pubSubTopic, 0),
         offsetRecord,
         pubSubContext,
+        false,
         false,
         false,
         false,

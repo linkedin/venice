@@ -2897,6 +2897,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hybridStoreConfig.isPresent(),
         isWriteComputationEnabled,
         isChunked,
+        isActiveActiveReplicationEnabled,
         serverConfig.getRegionName());
     if (uniqueIngestedKeyCountHllEnabled) {
       int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
@@ -2951,6 +2952,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hybridStoreConfig.isPresent(),
         isWriteComputationEnabled,
         isChunked,
+        isActiveActiveReplicationEnabled,
         serverConfig.getRegionName());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
@@ -3225,6 +3227,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           hybridStoreConfig.isPresent(),
           isWriteComputationEnabled,
           isChunked,
+          isActiveActiveReplicationEnabled,
           serverConfig.getRegionName());
       if (uniqueIngestedKeyCountHllEnabled) {
         consumptionState.initializeUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());

@@ -13,8 +13,9 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
-import com.linkedin.venice.stats.metrics.MetricEntityStateFiveEnums;
+import com.linkedin.venice.stats.metrics.MetricEntityStateSixEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -36,7 +37,7 @@ public class HeartbeatOtelStats {
    * into the per-region state's base dimensions on first call (deterministic function of source region for a
    * given server), matching the layout of {@link RecordLevelDelayOtelStats}.
    */
-  private final Map<String, MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus>> metricsByRegion;
+  private final Map<String, MetricEntityStateSixEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus, VeniceReplicationMode>> metricsByRegion;
 
   // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
   private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
@@ -85,6 +86,7 @@ public class HeartbeatOtelStats {
    * @param locality Pre-resolved locality label (LOCAL / REMOTE) — applied to the per-region metric state on first
    *          call per region; subsequent calls reuse the cached state. Null is coerced to REMOTE: from the
    *          perspective of an unconfigured server, every source region is "not the local region".
+   * @param replicationMode Pre-resolved replication-mode label (NON_ACTIVE_ACTIVE / ACTIVE_ACTIVE)
    * @param delayMs The delay in milliseconds
    */
   public void recordHeartbeatDelayOtelMetrics(
@@ -95,6 +97,7 @@ public class HeartbeatOtelStats {
       VeniceStoreWriteType writeType,
       VeniceChunkingStatus chunkingStatus,
       VeniceRegionLocality locality,
+      VeniceReplicationMode replicationMode,
       long delayMs) {
     if (!emitOtelMetrics()) {
       return;
@@ -108,10 +111,10 @@ public class HeartbeatOtelStats {
      */
     VeniceRegionLocality resolvedLocality = locality != null ? locality : VeniceRegionLocality.REMOTE;
 
-    MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus> metricState =
+    MetricEntityStateSixEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus, VeniceReplicationMode> metricState =
         getOrCreateMetricState(region, resolvedLocality);
 
-    metricState.record(delayMs, versionRole, replicaType, replicaState, writeType, chunkingStatus);
+    metricState.record(delayMs, versionRole, replicaType, replicaState, writeType, chunkingStatus, replicationMode);
   }
 
   /**
@@ -119,7 +122,7 @@ public class HeartbeatOtelStats {
    * caller and baked into the per-region base dimensions on first call — every subsequent record
    * for the same region reuses the cached state.
    */
-  private MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus> getOrCreateMetricState(
+  private MetricEntityStateSixEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus, VeniceReplicationMode> getOrCreateMetricState(
       String region,
       VeniceRegionLocality locality) {
     return metricsByRegion.computeIfAbsent(region, r -> {
@@ -127,7 +130,7 @@ public class HeartbeatOtelStats {
       regionBaseDimensions.put(VeniceMetricsDimensions.VENICE_REGION_NAME, r);
       regionBaseDimensions.put(VeniceMetricsDimensions.VENICE_REGION_LOCALITY, locality.getDimensionValue());
 
-      return MetricEntityStateFiveEnums.create(
+      return MetricEntityStateSixEnums.create(
           INGESTION_HEARTBEAT_DELAY.getMetricEntity(),
           otelRepository,
           regionBaseDimensions,
@@ -135,7 +138,8 @@ public class HeartbeatOtelStats {
           ReplicaType.class,
           ReplicaState.class,
           VeniceStoreWriteType.class,
-          VeniceChunkingStatus.class);
+          VeniceChunkingStatus.class,
+          VeniceReplicationMode.class);
     });
   }
 
