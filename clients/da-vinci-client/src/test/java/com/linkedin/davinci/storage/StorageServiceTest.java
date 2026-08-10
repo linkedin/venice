@@ -16,6 +16,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -74,6 +75,47 @@ public class StorageServiceTest {
 
     StorageService.deleteStorageEngineOnRocksDBError(storageEngineName, storeRepository, factory);
     verify(factory, times(2)).removeStorageEngine(storageEngineName);
+  }
+
+  @Test
+  public void testRemoveAndCloseStorageEngineDetachStats() {
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getDataBasePath()).thenReturn("/tmp");
+    when(configLoader.getVeniceServerConfig()).thenReturn(serverConfig);
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeConfig.getStorePersistenceType()).thenReturn(PersistenceType.BLACK_HOLE);
+    when(configLoader.getStoreConfig(storageEngineName)).thenReturn(storeConfig);
+
+    AggVersionedStorageEngineStats storageEngineStats = mock(AggVersionedStorageEngineStats.class);
+    StorageEngineFactory factory = mock(StorageEngineFactory.class);
+    Map<PersistenceType, StorageEngineFactory> factories = new HashMap<>();
+    factories.put(PersistenceType.BLACK_HOLE, factory);
+    StorageService storageService = new StorageService(
+        configLoader,
+        storageEngineStats,
+        mock(RocksDBMemoryStats.class),
+        mock(InternalAvroSpecificSerializer.class),
+        mock(InternalAvroSpecificSerializer.class),
+        storeRepository,
+        false,
+        false,
+        ignored -> true,
+        Optional.of(factories));
+
+    DelegatingStorageEngine storageEngine = mock(DelegatingStorageEngine.class);
+    when(storageEngine.getStoreVersionName()).thenReturn(storageEngineName);
+    when(storageEngine.getType()).thenReturn(PersistenceType.BLACK_HOLE);
+    storageService.getStorageEngineRepository().addLocalStorageEngine(storageEngine);
+
+    storageService.removeStorageEngine(storageEngineName);
+    verify(storageEngineStats).unsetStorageEngine(storageEngineName);
+    verify(storageEngine).drop();
+
+    storageService.getStorageEngineRepository().addLocalStorageEngine(storageEngine);
+    storageService.closeStorageEngine(storageEngineName);
+    verify(storageEngineStats, times(2)).unsetStorageEngine(storageEngineName);
+    verify(storageEngine).close();
   }
 
   @Test

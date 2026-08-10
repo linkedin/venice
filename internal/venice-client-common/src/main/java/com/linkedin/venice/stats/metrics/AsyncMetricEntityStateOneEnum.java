@@ -6,6 +6,8 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.ObservableDoubleGauge;
+import io.opentelemetry.api.metrics.ObservableLongGauge;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.ObjDoubleConsumer;
@@ -36,7 +38,7 @@ import java.util.function.ObjDoubleConsumer;
  * cost is {@code O(|E|)} {@code liveStateResolver} calls plus one {@code measurement.record(...)}
  * per emitted combo.
  */
-public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> {
+public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> implements AutoCloseable {
   private final boolean emitOpenTelemetryMetrics;
   /** Precomputed per-enum attributes; {@code null} when OTel is disabled. */
   private final EnumMap<E, Attributes> attributesByEnum;
@@ -176,5 +178,14 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
   /** Visible for testing — the underlying SDK instrument handle, or {@code null} if OTel disabled. */
   public Object getInstrument() {
     return instrument;
+  }
+
+  @Override
+  public void close() {
+    if (instrument instanceof ObservableLongGauge) {
+      ((ObservableLongGauge) instrument).close();
+    } else if (instrument instanceof ObservableDoubleGauge) {
+      ((ObservableDoubleGauge) instrument).close();
+    }
   }
 }

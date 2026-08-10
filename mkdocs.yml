@@ -121,6 +121,7 @@ nav:
     - operations/index.md
     - Data Management:
       - Repush: operations/data-management/repush.md
+      - Version Lifecycle and Deletion: operations/data-management/version-lifecycle.md
       - TTL: operations/data-management/ttl.md
       - System Stores: operations/data-management/system-stores.md
     - Alerting:

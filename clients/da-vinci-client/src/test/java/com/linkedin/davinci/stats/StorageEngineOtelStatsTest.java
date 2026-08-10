@@ -32,6 +32,8 @@ public class StorageEngineOtelStatsTest {
 
   private static final String DISK_USAGE_METRIC =
       StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName();
+  private static final String VERSION_COUNT_METRIC =
+      StorageEngineOtelMetricEntity.VERSION_COUNT.getMetricEntity().getMetricName();
   private static final String KEY_COUNT_METRIC =
       StorageEngineOtelMetricEntity.KEY_COUNT_ESTIMATE.getMetricEntity().getMetricName();
   private static final String OPEN_FAILURE_METRIC =
@@ -144,15 +146,21 @@ public class StorageEngineOtelStatsTest {
   }
 
   @Test
-  public void testDiskUsageBackupSelectsSmallestVersion() {
-    // current=1, future=2. Versions 3 and 5 are both backups — should select version 3 (smallest)
+  public void testDiskUsageAggregatesAllBackupVersions() {
+    // current=1, future=2. Versions 3 and 5 are both backups.
     stats.setStatsWrapper(3, new MockWrapper(3000, 300, 30));
     stats.setStatsWrapper(5, new MockWrapper(5000, 500, 50));
 
     OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
         inMemoryMetricReader,
-        3000,
+        8000,
         buildDiskUsageAttributes(VersionRole.BACKUP, VeniceRecordType.DATA),
+        DISK_USAGE_METRIC,
+        METRIC_PREFIX);
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        800,
+        buildDiskUsageAttributes(VersionRole.BACKUP, VeniceRecordType.REPLICATION_METADATA),
         DISK_USAGE_METRIC,
         METRIC_PREFIX);
   }
@@ -327,6 +335,29 @@ public class StorageEngineOtelStatsTest {
   }
 
   @Test
+  public void testVersionCountTracksAddRemoveAndRoleChanges() {
+    stats.setStatsWrapper(1, new MockWrapper(1000, 100, 10));
+    stats.setStatsWrapper(2, new MockWrapper(2000, 200, 20));
+    stats.setStatsWrapper(3, new MockWrapper(3000, 300, 30));
+    stats.setStatsWrapper(5, new MockWrapper(5000, 500, 50));
+
+    assertVersionCount(VersionRole.CURRENT, 1);
+    assertVersionCount(VersionRole.FUTURE, 1);
+    assertVersionCount(VersionRole.BACKUP, 2);
+
+    stats.onVersionRemoved(3);
+    assertVersionCount(VersionRole.BACKUP, 1);
+
+    stats.updateVersionInfo(5, 2);
+    assertVersionCount(VersionRole.CURRENT, 1);
+    assertVersionCount(VersionRole.FUTURE, 1);
+    assertVersionCount(VersionRole.BACKUP, 1);
+
+    stats.onVersionRemoved(1);
+    assertVersionCount(VersionRole.BACKUP, 0);
+  }
+
+  @Test
   public void testRemoveVersionClearsWrapper() {
     AggVersionedStorageEngineStats.StorageEngineStatsWrapper wrapper = new MockWrapper(1000, 100, 10);
     stats.setStatsWrapper(1, wrapper);
@@ -392,6 +423,15 @@ public class StorageEngineOtelStatsTest {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
         .build();
+  }
+
+  private void assertVersionCount(VersionRole role, long expectedCount) {
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        expectedCount,
+        buildVersionRoleAttributes(role),
+        VERSION_COUNT_METRIC,
+        METRIC_PREFIX);
   }
 
   @Test
