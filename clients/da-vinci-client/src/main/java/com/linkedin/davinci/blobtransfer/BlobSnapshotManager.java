@@ -332,20 +332,28 @@ public class BlobSnapshotManager {
       throw new VeniceException("StorageMetadataService or storeVersionStateSerializer is not initialized");
     }
 
-    if (storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName()) == null
-        || storageMetadataService
-            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null) == null) {
+    StoreVersionState storeVersionState =
+        storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName());
+
+    OffsetRecord offsetRecord;
+    try {
+      // No PubSubContext is available in this code path. When no offset has ever been persisted for this
+      // partition, getLastOffset(..., null) falls back to constructing a brand new OffsetRecord and
+      // dereferences the null PubSubContext while doing so, throwing an NPE instead of returning null.
+      // Treat that the same as "no offset record found" below.
+      offsetRecord = storageMetadataService
+          .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null);
+    } catch (NullPointerException e) {
+      offsetRecord = null;
+    }
+
+    if (storeVersionState == null || offsetRecord == null) {
       throw new VeniceException("Cannot get store version state or offset record from storage metadata service.");
     }
 
     // prepare metadata
-    StoreVersionState storeVersionState =
-        storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName());
     java.nio.ByteBuffer storeVersionStateByte =
         ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
-
-    OffsetRecord offsetRecord = storageMetadataService
-        .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null);
 
     LOGGER.info(
         "Preparing offset record for topic {} partition {} with pushTrackingIncrementalPushStatus {}",

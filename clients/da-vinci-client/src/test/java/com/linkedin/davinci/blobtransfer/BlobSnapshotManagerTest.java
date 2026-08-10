@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -404,5 +405,27 @@ public class BlobSnapshotManagerTest {
     // Verify cleanup was executed and snapshot was created
     verify(blobSnapshotManager, times(1)).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
     verify(blobSnapshotManager, times(1)).createSnapshot(TOPIC_NAME, PARTITION_ID);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testPrepareMetadataThrowsVeniceExceptionWhenNoOffsetRecordExists() {
+    // Regression test: StorageMetadataService.getLastOffset(..., null) is called without a PubSubContext.
+    // When no offset has ever been persisted for a partition, that call falls back to constructing a fresh
+    // OffsetRecord and throws an NPE instead of returning null (since it dereferences the null
+    // PubSubContext). prepareMetadata() must translate that into the intended
+    // "Cannot get store version state or offset record..." VeniceException rather than let the NPE escape.
+    StorageMetadataService localStorageMetadataService = mock(StorageMetadataService.class);
+    doReturn(mock(com.linkedin.venice.kafka.protocol.state.StoreVersionState.class)).when(localStorageMetadataService)
+        .getStoreVersionState(TOPIC_NAME);
+    doThrow(new NullPointerException("pubSubContext is null")).when(localStorageMetadataService)
+        .getLastOffset(TOPIC_NAME, PARTITION_ID, null);
+
+    BlobSnapshotManager blobSnapshotManager =
+        new BlobSnapshotManager(storageEngineRepository, localStorageMetadataService);
+
+    VeniceException e =
+        Assert.expectThrows(VeniceException.class, () -> blobSnapshotManager.prepareMetadata(blobTransferPayload));
+    Assert
+        .assertEquals(e.getMessage(), "Cannot get store version state or offset record from storage metadata service.");
   }
 }
