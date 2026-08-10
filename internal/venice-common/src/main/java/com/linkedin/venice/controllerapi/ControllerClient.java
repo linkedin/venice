@@ -86,6 +86,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
@@ -1395,12 +1396,25 @@ public class ControllerClient implements Closeable {
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
         try {
-          // ControllerClient and D2ControllerClient only target VeniceController hosts via controller discovery URLs,
-          // so the legacy router-style /discover_cluster/{storeName} fallback is dead code here.
-          QueryParams params = getQueryParamsToDiscoverCluster(storeName);
-          return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
+          try {
+            QueryParams params = getQueryParamsToDiscoverCluster(storeName);
+            return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
+          } catch (VeniceHttpException e) {
+            if (e.getErrorType() == ErrorType.STORE_NOT_FOUND) {
+              lastException = e;
+              break;
+            }
+
+            if (e.getErrorType() == ErrorType.GENERAL_ERROR && e.getHttpStatusCode() == 404) {
+              lastException =
+                  new VeniceHttpException(e.getHttpStatusCode(), e.getMessage(), e, ErrorType.STORE_NOT_FOUND);
+              break;
+            }
+
+            throw e;
+          }
         } catch (Exception e) {
-          LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url);
+          LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url, e);
           if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
             lastConnectException = e;
           } else {

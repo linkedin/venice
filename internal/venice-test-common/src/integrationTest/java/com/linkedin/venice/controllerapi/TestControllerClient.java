@@ -209,7 +209,8 @@ public class TestControllerClient {
         Assert.assertTrue(nonExistentStoreDiscoResponseInvalidAndLegacy.isError());
         Assert.assertEquals(nonExistentStoreDiscoResponseInvalidAndLegacy.getErrorType(), ErrorType.STORE_NOT_FOUND);
 
-        // Non-store-not-found controller errors still surface as errors after trying the available controller URLs.
+        // Backward compatibility test. Errors which cannot be identified as STORE_NOT_FOUND still surface as the
+        // original request-path failure, even though the legacy router-style path fallback is no longer attempted.
         D2ServiceDiscoveryResponse errorDiscoResponseInvalidAndLegacy = ControllerClient.discoverCluster(
             nonExistentControllerUrl1 + "," + validControllerUrl,
             errorResponseStoreName,
