@@ -200,4 +200,41 @@ public class MetricEntityStateSixEnumsTest extends MetricEntityStateEnumTestBase
     // Still just one cached combo — same dimensions reused, no new EnumMap entries created.
     assertEquals(metricEntityState.getMetricAttributesDataEnumMap().size(), 1);
   }
+
+  @Test
+  public void testGetAllMetricAttributesData() {
+    MetricEntityStateSixEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2, MetricEntityStateTest.DimensionEnum3, MetricEntityStateTest.DimensionEnum4, MetricEntityStateTest.DimensionEnum5, MetricEntityStateTest.DimensionEnum6> metricEntityState =
+        MetricEntityStateSixEnums
+            .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, E1, E2, E3, E4, E5, E6);
+    // Populate the 6-level EnumMap with 2 distinct entries spanning all enum levels
+    metricEntityState.record(
+        100L,
+        MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum3.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum4.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum5.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum6.DIMENSION_ONE);
+    metricEntityState.record(
+        200L,
+        MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum3.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum4.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum5.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum6.DIMENSION_TWO);
+
+    // Verify iteration walks all 6 nested EnumMap levels and surfaces both entries.
+    int count = 0;
+    for (com.linkedin.venice.stats.metrics.MetricAttributesData md: metricEntityState.getAllMetricAttributesData()) {
+      assertNotNull(md);
+      count++;
+    }
+    assertEquals(count, 2);
+
+    // Otel disabled → null sentinel branch
+    MetricEntityStateSixEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2, MetricEntityStateTest.DimensionEnum3, MetricEntityStateTest.DimensionEnum4, MetricEntityStateTest.DimensionEnum5, MetricEntityStateTest.DimensionEnum6> disabled =
+        MetricEntityStateSixEnums.create(mockMetricEntity, null, baseDimensionsMap, E1, E2, E3, E4, E5, E6);
+    assertNull(disabled.getAllMetricAttributesData());
+  }
 }
