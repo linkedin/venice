@@ -142,7 +142,6 @@ public class ServerReadMetadataRepositoryTest {
     assertNotNull(versionProperties);
     assertEquals(versionProperties.getCurrentVersion(), 2);
     assertEquals(versionProperties.getPartitionCount(), 1);
-    // Default storage mode for a version with no explicit setStorageMode() call is INTERNAL (Venice-only).
     assertEquals(versionProperties.getStorageMode(), StorageMode.INTERNAL.getValue());
     assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
     // If batch get limit is not set should use {@link Store.DEFAULT_BATCH_GET_LIMIT}
@@ -162,9 +161,8 @@ public class ServerReadMetadataRepositoryTest {
   }
 
   /**
-   * Verifies that {@code VersionProperties.storageMode} in the metadata response reflects the current version's
-   * {@link StorageMode} — not the store-level default — so Fast Client callers gating external-storage reads (e.g.
-   * Spaniel) on the current version's storage mode see the correct value.
+   * A version's storage mode must survive into the metadata response, since Fast Client gates external-storage
+   * reads on it rather than on any store-level default.
    */
   @Test
   public void testGetMetadataPopulatesCurrentVersionStorageMode() {
@@ -181,8 +179,7 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.setStorageNodeReadQuotaEnabled(true);
     Version v1 = new VersionImpl(storeName, 1, "test-job-id");
     mockStore.addVersion(v1);
-    // Set storageMode after addVersion(): addVersion() applies the store-level default storageMode onto new,
-    // non-cloned versions, which would otherwise clobber a storageMode set beforehand.
+    // addVersion() stamps the store-level default storageMode onto new versions, so set it afterwards.
     v1.setStorageMode(StorageMode.DUAL_WRITE);
     mockStore.setCurrentVersion(1);
     String topicName = Version.composeKafkaTopic(storeName, 1);

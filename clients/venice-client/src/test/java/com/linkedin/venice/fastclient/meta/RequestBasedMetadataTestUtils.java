@@ -318,8 +318,7 @@ public class RequestBasedMetadataTestUtils {
 
   /**
    * Build a {@link TransportClientResponse} reporting the supplied current version, {@code externalStorageReadMode},
-   * and current-version {@code storageMode}. Used by tests that gate Spaniel/external-storage reads on both the
-   * store-level externalStorageReadMode and the current version's storageMode together.
+   * and current-version {@code storageMode}.
    */
   public static TransportClientResponse buildMetadataResponse(
       int currentVersion,
@@ -330,7 +329,7 @@ public class RequestBasedMetadataTestUtils {
 
   /**
    * Lower-level overload that accepts the raw int for externalStorageReadMode, with storageMode defaulting to
-   * INTERNAL (0). Used by forward-compat tests that need to inject a wire value the client's
+   * INTERNAL. Used by forward-compat tests that need to inject a wire value the client's
    * {@link com.linkedin.venice.meta.ExternalStorageReadMode} enum does not yet recognize.
    */
   public static TransportClientResponse buildMetadataResponse(int currentVersion, int rawExternalStorageReadMode) {
@@ -381,13 +380,10 @@ public class RequestBasedMetadataTestUtils {
   }
 
   /**
-   * Build a {@link TransportClientResponse} that mimics a METADATA fetch reporting {@code fetchedCurrentVersion} as
-   * the server-side current version while deliberately leaving its partition resources incomplete (partition 1 of 2
-   * has no ready replicas), and advertising both {@code servingVersion} and {@code fetchedCurrentVersion} as active.
-   * This drives {@link RequestBasedMetadata#whetherToSwitchToFetchedCurrentVersion} to defer the switch — the client
-   * keeps serving {@code servingVersion} even though the response describes {@code fetchedCurrentVersion}'s
-   * {@code storageMode}. Used to test that {@code buildStoreConfigSnapshot} resolves storage mode against the
-   * version actually being served, not the just-fetched one.
+   * Build a {@link TransportClientResponse} that reports {@code fetchedCurrentVersion} as the server-side current
+   * version while leaving its partition resources incomplete (partition 1 of 2 has no ready replicas), so
+   * {@link RequestBasedMetadata#whetherToSwitchToFetchedCurrentVersion} defers the switch and the client keeps
+   * serving {@code servingVersion}.
    */
   public static TransportClientResponse buildDeferredSwitchMetadataResponse(
       int servingVersion,
@@ -403,17 +399,14 @@ public class RequestBasedMetadataTestUtils {
         Collections.unmodifiableMap(partitionerParams),
         1,
         fetchedCurrentVersionStorageMode.getValue());
-    // Partition 1 of 2 has no ready replicas for fetchedCurrentVersion (present but empty, not omitted, to avoid
-    // routingInfo.get(partitionId) returning null in updateCache's own routing-info loop) ->
-    // isPartitionResourcesReady()
-    // is false.
+    // Partition 1 is present but empty rather than omitted, so updateCache's routing-info loop does not see a null
+    // while isPartitionResourcesReady() still returns false.
     Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
     routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
     routeMap.put("1", Collections.emptyList());
     Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
     helixGroupMap.put(REPLICA1_NAME, 0);
-    // Both versions active -> isCurrentVersionActive(servingVersion) stays true, so the only reason the switch is
-    // deferred is the incomplete partition routing above (not a stale/evicted serving version).
+    // Both versions active, so incomplete partition routing is the only reason the switch is deferred.
     MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
         versionProperties,
         Collections.unmodifiableList(Arrays.asList(servingVersion, fetchedCurrentVersion)),

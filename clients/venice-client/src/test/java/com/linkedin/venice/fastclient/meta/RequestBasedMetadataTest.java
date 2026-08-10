@@ -827,10 +827,8 @@ public class RequestBasedMetadataTest {
   }
 
   /**
-   * Exercises the StoreConfigChangeListener path with a real currentVersionStorageMode flip on the wire: initial
-   * refresh observes storageMode=INTERNAL; subsequent refresh observes DUAL_WRITE. The listener must receive exactly
-   * one (INTERNAL -> DUAL_WRITE) callback, proving the field round-trips through MetadataResponseRecord v4's
-   * VersionProperties.storageMode and the {@code lastStoreConfigSnapshot} diff detects the change.
+   * A currentVersionStorageMode flip on the wire must produce exactly one (INTERNAL -> DUAL_WRITE) listener
+   * callback.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreConfigChangeListenerFiresOnCurrentVersionStorageModeTransition() throws Exception {
@@ -870,7 +868,7 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata
           .registerStoreConfigChangeListener((prev, curr) -> received.add(new StoreConfigSnapshot[] { prev, curr }));
 
-      // Second refresh observes DUAL_WRITE; deferred callback list must carry the flip.
+      // Second refresh observes DUAL_WRITE.
       requestBasedMetadata.updateCache(false).forEach(Runnable::run);
 
       assertEquals(received.size(), 1, "exactly the currentVersionStorageMode flip must fire");
@@ -882,12 +880,9 @@ public class RequestBasedMetadataTest {
   }
 
   /**
-   * Forward-compat guard: when a server returns a currentVersionStorageMode wire value that this client's
-   * {@link com.linkedin.venice.meta.StorageMode} enum does not recognize (e.g. a future value),
-   * {@code buildStoreConfigSnapshot} must coerce to {@code INTERNAL} rather than throwing out of the synchronized
-   * {@code updateCache} — a throw here would break the entire refresh loop. Coercing to INTERNAL (rather than, say,
-   * preserving DUAL_WRITE) is deliberately conservative: an unrecognized storage mode must never be treated as
-   * eligible for external-storage reads.
+   * An unrecognized currentVersionStorageMode wire value must coerce to INTERNAL rather than throw out of the
+   * synchronized {@code updateCache} and break the refresh loop. INTERNAL is the conservative choice: an unknown
+   * storage mode must never be treated as eligible for external-storage reads.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreConfigSnapshotCoercesUnknownStorageModeToInternal() throws Exception {
@@ -920,7 +915,7 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata
           .registerStoreConfigChangeListener((prev, curr) -> received.add(new StoreConfigSnapshot[] { prev, curr }));
 
-      // start() must not throw — the metadata response carries an unknown int and the decode coerces to INTERNAL.
+      // start() must not throw on the unknown wire value.
       requestBasedMetadata.start();
 
       assertEquals(received.size(), 1, "initial transition must fire with coerced INTERNAL");
@@ -930,19 +925,9 @@ public class RequestBasedMetadataTest {
   }
 
   /**
-   * Regression test for the deferred-switch bug: {@code updateCache} must never pair the version number it is
-   * actually serving with another version's storage mode. Sequence:
-   * <ol>
-   *   <li>Initial refresh commits v{@code CURRENT_VERSION} with storageMode=INTERNAL (full routing).</li>
-   *   <li>A refresh reports fetchedCurrentVersion=v{@code CURRENT_VERSION + 1} with storageMode=DUAL_WRITE, but its
-   *   partition resources are incomplete, so {@code whetherToSwitchToFetchedCurrentVersion} defers the switch and
-   *   the client keeps serving v{@code CURRENT_VERSION}. The emitted {@link StoreConfigSnapshot} must still report
-   *   INTERNAL (the storage mode of the version actually being served) — not DUAL_WRITE, which is what the buggy
-   *   implementation reported by writing a scalar {@code currentVersionStorageModeRaw} from the fetched version
-   *   before the switch decision.</li>
-   *   <li>A subsequent refresh for the same fetched version now has complete partition resources, so the switch is
-   *   adopted; the snapshot must now report DUAL_WRITE.</li>
-   * </ol>
+   * The emitted snapshot must report the storage mode of the version actually being served. When a fetched version
+   * carries DUAL_WRITE but its switch is deferred, the snapshot must still report the serving version's INTERNAL,
+   * and only report DUAL_WRITE once the switch is adopted.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreConfigSnapshotResolvesStorageModeAgainstServingVersionWhenSwitchDeferred() throws Exception {
@@ -956,9 +941,8 @@ public class RequestBasedMetadataTest {
     // 1) Initial: v{CURRENT_VERSION}, INTERNAL, VENICE_ONLY, full routing -> adopted by start().
     CompletableFuture<TransportClientResponse> respInitial =
         CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION));
-    // 2) Fetched v{nextVersion} DUAL_WRITE, but its partition resources are not ready -> switch deferred, still
-    // serving v{CURRENT_VERSION}. externalStorageReadMode flips to EXTERNAL_ONLY so the snapshot is guaranteed to
-    // differ and the listener fires, letting the test inspect the emitted currentVersionStorageMode directly.
+    // 2) Fetched v{nextVersion} DUAL_WRITE with partition resources not ready -> switch deferred.
+    // externalStorageReadMode also flips so the snapshot differs and the listener fires.
     CompletableFuture<TransportClientResponse> respDeferred = CompletableFuture.completedFuture(
         RequestBasedMetadataTestUtils.buildDeferredSwitchMetadataResponse(
             CURRENT_VERSION,
@@ -996,7 +980,7 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata
           .registerVersionSwitchListener((prev, next) -> versionSwitchesReceived.add(new int[] { prev, next }));
 
-      // --- (1) fetched next version DUAL_WRITE while serving version stays INTERNAL; switch deferred ---
+      // Switch deferred: serving version stays INTERNAL.
       requestBasedMetadata.updateCache(false).forEach(Runnable::run);
 
       assertEquals(
@@ -1011,7 +995,7 @@ public class RequestBasedMetadataTest {
           "the still-serving version's storage mode must not be overwritten by the not-yet-adopted fetched "
               + "version's DUAL_WRITE");
 
-      // --- (2) same fetched version now with complete partition resources -> switch adopted ---
+      // Partition resources now complete -> switch adopted.
       requestBasedMetadata.updateCache(false).forEach(Runnable::run);
 
       assertEquals(requestBasedMetadata.getCurrentStoreVersion(), nextVersion);

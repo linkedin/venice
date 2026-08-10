@@ -44,11 +44,7 @@ public class StoreConfigSnapshotTest {
     assertEquals(snapshot.getExternalStorageReadMode(), ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK);
   }
 
-  /**
-   * The deprecated 2-arg constructor (kept for source/binary compatibility) must default
-   * {@code currentVersionStorageMode} to {@link StorageMode#INTERNAL} — this is what keeps external-storage reads
-   * (e.g. Spaniel) gated off when only the older, storageMode-unaware constructor is used.
-   */
+  /** The deprecated 2-arg constructor must default to INTERNAL so external-storage reads stay gated off. */
   @Test
   public void twoArgConstructorDefaultsCurrentVersionStorageModeToInternal() {
     StoreConfigSnapshot snapshot = new StoreConfigSnapshot(150, ExternalStorageReadMode.EXTERNAL_ONLY);
