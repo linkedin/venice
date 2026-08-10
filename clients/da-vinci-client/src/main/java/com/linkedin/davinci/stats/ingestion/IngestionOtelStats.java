@@ -20,6 +20,13 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_TOTAL_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DISK_QUOTA_USED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DUPLICATE_KEY_UPDATE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_ERROR_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_LOAD_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_LOAD_RT_PRODUCER_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_PERSIST_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_RT_PRODUCER_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_SIZE;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_VT_SYNC_PRODUCER_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_PRODUCED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_FAILURE_COUNT;
@@ -71,6 +78,8 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivLoadOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
@@ -201,6 +210,15 @@ public class IngestionOtelStats {
   private final MetricEntityStateTwoEnums<VersionRole, VeniceRecordType> recordAssembledSizeMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordAssembledSizeRatioMetric;
 
+  // Global RT DIV metrics
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivSendSizeMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivSendRtProducerCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivPersistCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivVtSyncProducerCountMetric;
+  private final MetricEntityStateTwoEnums<VersionRole, VeniceGlobalRtDivErrorType> globalRtDivErrorCountMetric;
+  private final MetricEntityStateTwoEnums<VersionRole, VeniceGlobalRtDivLoadOutcome> globalRtDivLoadCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivLoadRtProducerCountMetric;
+
   // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
   private final AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> activeKeyCountByRoleAndReplicaType;
@@ -273,6 +291,13 @@ public class IngestionOtelStats {
     this.recordValueSizeMetric = null;
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
+    this.globalRtDivSendSizeMetric = null;
+    this.globalRtDivSendRtProducerCountMetric = null;
+    this.globalRtDivPersistCountMetric = null;
+    this.globalRtDivVtSyncProducerCountMetric = null;
+    this.globalRtDivErrorCountMetric = null;
+    this.globalRtDivLoadCountMetric = null;
+    this.globalRtDivLoadRtProducerCountMetric = null;
     this.ingestionTaskCountByRole = null;
     this.activeKeyCountByRoleAndReplicaType = null;
     this.uniqueIngestedKeyCountByRoleAndReplicaType = null;
@@ -411,6 +436,17 @@ public class IngestionOtelStats {
     recordValueSizeMetric = createOneEnumMetric(RECORD_VALUE_SIZE.getMetricEntity());
     recordAssembledSizeMetric = createTwoEnumMetric(RECORD_ASSEMBLED_SIZE.getMetricEntity(), VeniceRecordType.class);
     recordAssembledSizeRatioMetric = createOneEnumMetric(RECORD_ASSEMBLED_SIZE_RATIO.getMetricEntity());
+
+    // Global RT DIV metrics
+    globalRtDivSendSizeMetric = createOneEnumMetric(GLOBAL_RT_DIV_SEND_SIZE.getMetricEntity());
+    globalRtDivSendRtProducerCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_SEND_RT_PRODUCER_COUNT.getMetricEntity());
+    globalRtDivPersistCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_PERSIST_COUNT.getMetricEntity());
+    globalRtDivVtSyncProducerCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_VT_SYNC_PRODUCER_COUNT.getMetricEntity());
+    globalRtDivErrorCountMetric =
+        createTwoEnumMetric(GLOBAL_RT_DIV_ERROR_COUNT.getMetricEntity(), VeniceGlobalRtDivErrorType.class);
+    globalRtDivLoadCountMetric =
+        createTwoEnumMetric(GLOBAL_RT_DIV_LOAD_COUNT.getMetricEntity(), VeniceGlobalRtDivLoadOutcome.class);
+    globalRtDivLoadRtProducerCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_LOAD_RT_PRODUCER_COUNT.getMetricEntity());
 
     ingestionTaskCountByRole =
         createAsyncByRole(INGESTION_TASK_COUNT.getMetricEntity(), this::getTaskForRole, (task, role) -> 1L);
@@ -828,6 +864,36 @@ public class IngestionOtelStats {
 
   public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
     partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
+  }
+
+  // Global RT DIV recording methods
+
+  public void recordGlobalRtDivSent(int version, long payloadSizeBytes, int rtProducerCount) {
+    VersionRole versionRole = classifyVersion(version, versionInfo);
+    globalRtDivSendSizeMetric.record(payloadSizeBytes, versionRole);
+    globalRtDivSendRtProducerCountMetric.record(rtProducerCount, versionRole);
+  }
+
+  public void recordGlobalRtDivPersisted(int version) {
+    globalRtDivPersistCountMetric.record(1, classifyVersion(version, versionInfo));
+  }
+
+  public void recordGlobalRtDivVtSynced(int version, int vtProducerCount) {
+    globalRtDivVtSyncProducerCountMetric.record(vtProducerCount, classifyVersion(version, versionInfo));
+  }
+
+  public void recordGlobalRtDivError(int version, VeniceGlobalRtDivErrorType errorType) {
+    globalRtDivErrorCountMetric.record(1, classifyVersion(version, versionInfo), errorType);
+  }
+
+  public void recordGlobalRtDivLoaded(int version, int rtProducerCount) {
+    VersionRole versionRole = classifyVersion(version, versionInfo);
+    globalRtDivLoadCountMetric.record(1, versionRole, VeniceGlobalRtDivLoadOutcome.FOUND);
+    globalRtDivLoadRtProducerCountMetric.record(rtProducerCount, versionRole);
+  }
+
+  public void recordGlobalRtDivLoadNotFound(int version) {
+    globalRtDivLoadCountMetric.record(1, classifyVersion(version, versionInfo), VeniceGlobalRtDivLoadOutcome.NOT_FOUND);
   }
 
   public void recordActiveKeyCountInvalidation(int version) {

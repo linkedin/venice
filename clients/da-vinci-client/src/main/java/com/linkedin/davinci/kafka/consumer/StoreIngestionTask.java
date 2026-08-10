@@ -128,6 +128,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -2327,7 +2328,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
     updateOffsetMetadataInOffsetRecord(pcs);
-    syncOffset(pcs);
+    try {
+      syncOffset(pcs);
+    } catch (Exception e) {
+      versionedIngestionStats.recordGlobalRtDivError(storeName, versionNumber, VeniceGlobalRtDivErrorType.VT_SYNC);
+      throw e;
+    }
+    versionedIngestionStats.recordGlobalRtDivVtSynced(
+        storeName,
+        versionNumber,
+        vtDivSnapshot.getPartitionStates(PartitionTracker.VERSION_TOPIC).size());
   }
 
   /**
@@ -4818,9 +4828,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void putGlobalRtDivStateInMetadata(int partition, byte[] keyBytes, Put put) {
-    storageEngine.putGlobalRtDivMetadata(
-        keyBytes,
-        ByteUtils.prependIntHeaderToByteBuffer(put.putValue, put.schemaId, false).array());
+    try {
+      storageEngine.putGlobalRtDivMetadata(
+          keyBytes,
+          ByteUtils.prependIntHeaderToByteBuffer(put.putValue, put.schemaId, false).array());
+    } catch (Exception e) {
+      versionedIngestionStats.recordGlobalRtDivError(storeName, versionNumber, VeniceGlobalRtDivErrorType.PERSIST);
+      throw e;
+    }
+    versionedIngestionStats.recordGlobalRtDivPersisted(storeName, versionNumber);
   }
 
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
@@ -5421,7 +5437,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         keyLen = keyBytes.length;
         if (kafkaKey.isGlobalRtDiv()) {
-          storageEngine.deleteGlobalRtDivMetadata(keyBytes);
+          try {
+            storageEngine.deleteGlobalRtDivMetadata(keyBytes);
+          } catch (Exception e) {
+            versionedIngestionStats.recordGlobalRtDivError(storeName, versionNumber, VeniceGlobalRtDivErrorType.DELETE);
+            throw e;
+          }
         } else {
           deleteFromStorageEngine(producedPartition, keyBytes, delete);
         }
