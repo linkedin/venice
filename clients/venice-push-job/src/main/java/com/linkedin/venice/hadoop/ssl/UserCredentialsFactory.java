@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.ssl;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.io.File;
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
@@ -27,14 +28,23 @@ public class UserCredentialsFactory {
    * Get user's credentials from the the Hadoop token file
    */
   public static Credentials getUserCredentialsFromTokenFile() throws IOException {
-    String tokenFilePath = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
-    if (tokenFilePath == null) {
-      tokenFilePath = System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
-    }
+    String tokenFilePath = getTokenFilePath(
+        System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION),
+        System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION));
     File tokenFile = new File(tokenFilePath);
     Credentials credentials = Credentials.readTokenStorageFile(tokenFile, new Configuration());
     verifyCredentials(credentials);
     return credentials;
+  }
+
+  static String getTokenFilePath(String environmentValue, String systemPropertyValue) {
+    String tokenFilePath = environmentValue != null ? environmentValue : systemPropertyValue;
+    if (tokenFilePath == null) {
+      throw new VeniceException(
+          "Hadoop token file location is not configured. Set " + UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION
+              + " as an environment variable or system property.");
+    }
+    return tokenFilePath;
   }
 
   private static void verifyCredentials(Credentials credentials) {
