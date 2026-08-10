@@ -5,6 +5,6 @@ public enum VeniceBlobTransferSource implements VeniceDimensionInterface {
 
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SOURCE;
+    return VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SENDER_SOURCE;
   }
 }

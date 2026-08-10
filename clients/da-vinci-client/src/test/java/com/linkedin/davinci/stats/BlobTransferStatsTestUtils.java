@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_FALLBACK_REASON;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SOURCE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SENDER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -92,7 +92,7 @@ class BlobTransferStatsTestUtils {
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
-        .put(VENICE_BLOB_TRANSFER_SOURCE.getDimensionNameInDefaultFormat(), source.getDimensionValue())
+        .put(VENICE_BLOB_TRANSFER_SENDER_SOURCE.getDimensionNameInDefaultFormat(), source.getDimensionValue())
         .put(VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(), status.getDimensionValue())
         .build();
   }

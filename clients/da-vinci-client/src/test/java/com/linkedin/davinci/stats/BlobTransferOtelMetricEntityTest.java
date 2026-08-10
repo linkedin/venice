@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_FALLBACK_REASON;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SOURCE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SENDER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -37,7 +37,7 @@ public class BlobTransferOtelMetricEntityTest {
                 VENICE_STORE_NAME,
                 VENICE_CLUSTER_NAME,
                 VENICE_VERSION_ROLE,
-                VENICE_BLOB_TRANSFER_SOURCE,
+                VENICE_BLOB_TRANSFER_SENDER_SOURCE,
                 VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     map.put(
         BlobTransferOtelMetricEntity.VERSION_TOPIC_FALLBACK_COUNT,

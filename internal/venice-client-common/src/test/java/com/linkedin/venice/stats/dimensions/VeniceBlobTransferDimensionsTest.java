@@ -15,7 +15,7 @@ public class VeniceBlobTransferDimensionsTest {
             .build();
     new VeniceDimensionTestFixture<>(
         VeniceBlobTransferSource.class,
-        VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SOURCE,
+        VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SENDER_SOURCE,
         expectedValues).assertAll();
   }
 

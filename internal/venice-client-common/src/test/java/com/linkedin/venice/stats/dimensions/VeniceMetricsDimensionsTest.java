@@ -34,8 +34,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.status_code_category");
           break;
-        case VENICE_BLOB_TRANSFER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.source");
+        case VENICE_BLOB_TRANSFER_SENDER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.sender_source");
           break;
         case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.fallback_reason");
@@ -228,8 +228,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.statusCodeCategory");
           break;
-        case VENICE_BLOB_TRANSFER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.source");
+        case VENICE_BLOB_TRANSFER_SENDER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.senderSource");
           break;
         case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.fallbackReason");
@@ -422,8 +422,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "Venice.Response.StatusCodeCategory");
           break;
-        case VENICE_BLOB_TRANSFER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.Source");
+        case VENICE_BLOB_TRANSFER_SENDER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.SenderSource");
           break;
         case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
           assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.FallbackReason");

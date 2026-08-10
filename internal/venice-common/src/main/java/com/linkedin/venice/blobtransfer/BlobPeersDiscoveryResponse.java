@@ -13,8 +13,16 @@ public class BlobPeersDiscoveryResponse {
 
   private List<String> hostNameList;
 
+  /**
+   * Normalized hosts known to be Venice servers. Hosts not present in this set are treated as Da Vinci peer senders
+   * when {@link #sourceAware} is true.
+   */
   private Set<String> serverHostNames = Collections.emptySet();
 
+  /**
+   * True when discovery can distinguish Da Vinci peer senders from Venice server senders for source-attributed
+   * blob-transfer metrics.
+   */
   private boolean sourceAware;
 
   public void setError(boolean error) {
