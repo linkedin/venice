@@ -2938,8 +2938,8 @@ public class ConfigKeys {
    * How long a hybrid follower or DaVinci replica waits without observing a fresh leader-complete heartbeat before
    * presuming the leader dead and falling back to offset catch-up alone for the ready-to-serve check. The silence
    * window is anchored on the later of the last observed signal and the consumption start time. Default is 3 hours;
-   * {@code 0} or less disables the fallback. Must exceed
-   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}.
+   * {@code 0} or less disables the fallback. When positive it must be larger than
+   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}, otherwise server startup fails.
    */
   public static final String SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS =
       "server.dead.leader.ready.to.serve.fallback.threshold.ms";

@@ -1191,13 +1191,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getLong(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, TimeUnit.HOURS.toMillis(3));
     if (deadLeaderReadyToServeFallbackThresholdMs > 0
         && deadLeaderReadyToServeFallbackThresholdMs <= leaderCompleteStateCheckInFollowerValidIntervalMs) {
-      LOGGER.warn(
-          "{}: {} is not greater than {}: {}. The dead-leader ready-to-serve fallback will engage almost as soon as "
-              + "the leader-complete freshness window lapses, which defeats the purpose of the freshness check.",
-          SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS,
-          deadLeaderReadyToServeFallbackThresholdMs,
-          SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS,
-          leaderCompleteStateCheckInFollowerValidIntervalMs);
+      throw new VeniceException(
+          "Config for " + SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS + ": "
+              + deadLeaderReadyToServeFallbackThresholdMs + " should be larger than "
+              + SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS + ": "
+              + leaderCompleteStateCheckInFollowerValidIntervalMs
+              + ", otherwise the dead-leader ready-to-serve fallback would engage almost as soon as the "
+              + "leader-complete freshness window lapses, defeating the purpose of the freshness check.");
     }
     consumerPoolStrategyType = KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.valueOf(
         serverProperties.getString(
