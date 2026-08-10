@@ -1018,6 +1018,20 @@ public interface Admin extends AutoCloseable, Closeable {
   }
 
   /**
+   * Update a specific version's {@link StorageMode} in the selected region(s) without mutating the
+   * store-level default. Used by VPJ fail-open external dual-write pushes to downgrade only the failed child
+   * colo's current version back to INTERNAL before EOP.
+   */
+  default void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter) {
+    throw new VeniceUnsupportedOperationException("updateStoreVersionStorageMode");
+  }
+
+  /**
    * Return whether the admin consumption task is enabled for the passed cluster.
    */
   default boolean isAdminTopicConsumptionEnabled(String clusterName) {

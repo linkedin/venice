@@ -38,6 +38,8 @@ public class MRJobCounterHelper {
       "Mapper spray all partitions triggered count";
   private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
+  private static final String COUNTER_GROUP_EXTERNAL_STORAGE = "External storage";
+  private static final String EXTERNAL_STORAGE_FAILED_REGION_COUNTER_NAME_PREFIX = "failed region: ";
 
   private static final String REPUSH_TTL_FILTERED_COUNT = "Repush ttl filtered count";
 
@@ -160,6 +162,16 @@ public class MRJobCounterHelper {
     incrAmountWithGroupCounterName(reporter, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME, amount);
   }
 
+  public static void incrFailedExternalStorageRegionCount(Reporter reporter, String regionName, long amount) {
+    if (regionName == null || regionName.isEmpty()) {
+      return;
+    }
+    incrAmountWithGroupCounterName(
+        reporter,
+        new GroupAndCounterNames(COUNTER_GROUP_EXTERNAL_STORAGE, getFailedExternalStorageRegionCounterName(regionName)),
+        amount);
+  }
+
   public static long getWriteAclAuthorizationFailureCount(Reporter reporter) {
     return getCountWithGroupCounterName(reporter, WRITE_ACL_FAILURE_GROUP_COUNTER_NAME);
   }
@@ -248,6 +260,21 @@ public class MRJobCounterHelper {
     return getCountFromCounters(counters, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME);
   }
 
+  public static java.util.Set<String> getFailedExternalStorageRegions(Counters counters) {
+    if (counters == null) {
+      return java.util.Collections.emptySet();
+    }
+    java.util.Set<String> regions = new java.util.HashSet<>();
+    Counters.Group group = counters.getGroup(COUNTER_GROUP_EXTERNAL_STORAGE);
+    for (Counters.Counter counter: group) {
+      if (counter.getCounter() > 0
+          && counter.getName().startsWith(EXTERNAL_STORAGE_FAILED_REGION_COUNTER_NAME_PREFIX)) {
+        regions.add(counter.getName().substring(EXTERNAL_STORAGE_FAILED_REGION_COUNTER_NAME_PREFIX.length()));
+      }
+    }
+    return java.util.Collections.unmodifiableSet(regions);
+  }
+
   private static long getCountFromCounters(Counters counters, GroupAndCounterNames groupAndCounterNames) {
     if (counters == null) {
       return 0;
@@ -278,6 +305,10 @@ public class MRJobCounterHelper {
 
   public static void incrRepushTtlFilterCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME, amount);
+  }
+
+  private static String getFailedExternalStorageRegionCounterName(String regionName) {
+    return EXTERNAL_STORAGE_FAILED_REGION_COUNTER_NAME_PREFIX + regionName;
   }
 
   /**

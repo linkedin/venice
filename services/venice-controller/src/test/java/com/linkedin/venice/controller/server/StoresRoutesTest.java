@@ -11,6 +11,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -18,6 +19,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiRegionStorageModeResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
@@ -112,6 +114,60 @@ public class StoresRoutesTest {
     Assert.assertEquals(response.getName(), TEST_STORE_NAME);
     Assert.assertEquals(response.getRegionToStorageMode().get("dc-0"), "DUAL_WRITE");
     Assert.assertEquals(response.getRegionToStorageMode().get("dc-1"), "INTERNAL");
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageMode() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("1").when(request).queryParams(eq(ControllerApiConstants.VERSION));
+    doReturn(StorageMode.INTERNAL.name()).when(request).queryParams(eq(ControllerApiConstants.STORAGE_MODE));
+    doReturn("dc-1").when(request).queryParamOrDefault(eq(ControllerApiConstants.REGIONS_FILTER), eq(""));
+
+    Route route =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).updateStoreVersionStorageMode(mockAdmin);
+    ControllerResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+    verify(mockAdmin).updateStoreVersionStorageMode(TEST_CLUSTER, TEST_STORE_NAME, 1, StorageMode.INTERNAL, "dc-1");
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeAllowsTopicWriter() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("1").when(request).queryParams(eq(ControllerApiConstants.VERSION));
+    doReturn(StorageMode.INTERNAL.name()).when(request).queryParams(eq(ControllerApiConstants.STORAGE_MODE));
+    doReturn("dc-1").when(request).queryParamOrDefault(eq(ControllerApiConstants.REGIONS_FILTER), eq(""));
+
+    StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository) {
+      @Override
+      protected boolean isAllowListUser(Request request) {
+        return false;
+      }
+
+      @Override
+      protected boolean hasWriteAccessToTopic(Request request) {
+        return true;
+      }
+    };
+    Route route = storesRoutes.updateStoreVersionStorageMode(mockAdmin);
+    ControllerResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+
+    Assert.assertFalse(response.isError());
+    verify(mockAdmin).updateStoreVersionStorageMode(TEST_CLUSTER, TEST_STORE_NAME, 1, StorageMode.INTERNAL, "dc-1");
   }
 
   @Test

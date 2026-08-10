@@ -5,6 +5,7 @@ import static org.apache.spark.sql.types.DataTypes.IntegerType;
 import static org.apache.spark.sql.types.DataTypes.LongType;
 import static org.apache.spark.sql.types.DataTypes.StringType;
 
+import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
@@ -19,6 +20,7 @@ public class SparkConstants {
   // Internal column names, hence begins with "_"
   public static final String PARTITION_COLUMN_NAME = "__partition__";
   public static final String RECORD_COUNT_COLUMN_NAME = "__record_count__";
+  public static final String FAILED_EXTERNAL_STORAGE_REGIONS_COLUMN_NAME = "__failed_external_storage_regions__";
   public static final String SCHEMA_ID_COLUMN_NAME = "__schema_id__";
   public static final String RMD_VERSION_ID_COLUMN_NAME = "__replication_metadata_version_id__";
   public static final String OFFSET_COLUMN_NAME = "__offset__";
@@ -32,7 +34,12 @@ public class SparkConstants {
 
   public static final StructType PARTITION_RECORD_COUNT_SCHEMA = new StructType(
       new StructField[] { new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()),
-          new StructField(RECORD_COUNT_COLUMN_NAME, LongType, false, Metadata.empty()) });
+          new StructField(RECORD_COUNT_COLUMN_NAME, LongType, false, Metadata.empty()),
+          new StructField(
+              FAILED_EXTERNAL_STORAGE_REGIONS_COLUMN_NAME,
+              DataTypes.createArrayType(StringType),
+              false,
+              Metadata.empty()) });
 
   public static final StructType DEFAULT_SCHEMA_WITH_PARTITION = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),

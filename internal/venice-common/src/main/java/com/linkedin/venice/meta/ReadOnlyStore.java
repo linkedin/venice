@@ -1640,6 +1640,11 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setVersionStorageMode(int versionNumber, StorageMode storageMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   @Nonnull
   public Version getVersionOrThrow(int versionNumber) throws StoreVersionNotFoundException {
     return new ReadOnlyVersion(this.delegate.getVersionOrThrow(versionNumber));

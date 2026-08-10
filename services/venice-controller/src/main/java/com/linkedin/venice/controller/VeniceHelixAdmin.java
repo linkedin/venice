@@ -5846,6 +5846,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  @Override
+  public void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter) {
+    if (StringUtils.isNotEmpty(regionFilter) && !isRegionPartOfRegionsFilterList(getRegionName(), regionFilter)) {
+      LOGGER.info(
+          "Skipping version storage-mode update for store {} v{} in cluster {} because region filter {} does not include {}",
+          storeName,
+          version,
+          clusterName,
+          regionFilter,
+          getRegionName());
+      return;
+    }
+
+    storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+      Version storeVersion = store.getVersion(version);
+      if (storeVersion == null) {
+        throw new VeniceException(
+            "Version " + version + " does not exist for store " + storeName + " in cluster " + clusterName);
+      }
+      if (storeVersion.getStorageMode() == storageMode) {
+        return store;
+      }
+      store.setVersionStorageMode(version, storageMode);
+      LOGGER.info(
+          "Updated store {} v{} storageMode to {} in cluster {} for region {}",
+          storeName,
+          version,
+          storageMode,
+          clusterName,
+          getRegionName());
+      return store;
+    });
+  }
+
   /**
    * Returns true if {@code localFabric} is permitted by an ETL active-fabrics allowlist.
    * {@code null} or empty list means "no restriction; permit every fabric" (default behavior).

@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop.task.datawriter;
 import com.linkedin.venice.hadoop.task.TaskTracker;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -65,6 +66,13 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default void trackIncrementalPushThrottledTime(long timeMs) {
+  }
+
+  /**
+   * Report that the external writer for {@code regionName} exhausted its retry budget and was disabled for
+   * the remainder of the task. Callers should report each region at most once per task.
+   */
+  default void trackFailedExternalStorageRegion(String regionName) {
   }
 
   default long getSprayAllPartitionsCount() {
@@ -143,5 +151,13 @@ public interface DataWriterTaskTracker extends TaskTracker {
    */
   default Map<Integer, Long> getPerPartitionRecordCounts() {
     return Collections.emptyMap();
+  }
+
+  /**
+   * Returns the set of regions whose external writers exhausted retries and were reported by one or more
+   * data-writer tasks. Implementations should return an immutable or defensive-copy snapshot.
+   */
+  default Set<String> getFailedExternalStorageRegions() {
+    return Collections.emptySet();
   }
 }

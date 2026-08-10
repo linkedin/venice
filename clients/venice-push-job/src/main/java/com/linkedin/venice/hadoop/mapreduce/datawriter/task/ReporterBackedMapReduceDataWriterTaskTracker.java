@@ -2,6 +2,9 @@ package com.linkedin.venice.hadoop.mapreduce.datawriter.task;
 
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.hadoop.mapred.Reporter;
 
 
@@ -10,6 +13,7 @@ import org.apache.hadoop.mapred.Reporter;
  */
 public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterTaskTracker {
   private final Reporter reporter;
+  private final Set<String> failedExternalStorageRegions = new HashSet<>();
 
   public ReporterBackedMapReduceDataWriterTaskTracker(Reporter reporter) {
     if (reporter != null) {
@@ -119,6 +123,15 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   }
 
   @Override
+  public void trackFailedExternalStorageRegion(String regionName) {
+    if (regionName == null || regionName.isEmpty()) {
+      return;
+    }
+    failedExternalStorageRegions.add(regionName);
+    MRJobCounterHelper.incrFailedExternalStorageRegionCount(reporter, regionName, 1);
+  }
+
+  @Override
   public long getIncrementalPushThrottledTimeMs() {
     return MRJobCounterHelper.getIncrementalPushThrottleTimeMs(reporter);
   }
@@ -156,5 +169,10 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   @Override
   public long getTotalPutOrDeleteRecordsCount() {
     return MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
+  }
+
+  @Override
+  public Set<String> getFailedExternalStorageRegions() {
+    return Collections.unmodifiableSet(new HashSet<>(failedExternalStorageRegions));
   }
 }

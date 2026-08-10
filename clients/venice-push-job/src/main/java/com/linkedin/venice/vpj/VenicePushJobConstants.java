@@ -524,6 +524,7 @@ public final class VenicePushJobConstants {
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE} — buffer threshold for the dual-write wrapper</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES} — bounded retry count for {@code batchPut}</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS} — sleep between retry attempts</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE} — optionally disable a region after retry exhaustion and continue the push</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND} — per-region global record-rate cap</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND} — per-region global byte-rate cap</li>
    * </ul>
@@ -567,6 +568,18 @@ public final class VenicePushJobConstants {
   public static final String PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS =
       "push.job.external.storage.batchput.retry.backoff.ms";
   public static final long DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS = 1000L;
+
+  /**
+   * Whether VPJ should fail open when one region's external writer keeps failing after exhausting
+   * {@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES}. Default {@code false} preserves the historical
+   * fail-fast behavior: any regional external-write failure aborts the push before Kafka produce. When set
+   * to {@code true}, the failed region is reported once, its external writer is disabled for the rest of the
+   * task, healthy external regions continue receiving writes, Kafka produce continues, and the VPJ driver is
+   * expected to flip that region's current version {@code storageMode} to {@code INTERNAL} before EOP.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE =
+      "push.job.external.storage.fail.open.on.region.failure";
+  public static final boolean DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE = false;
 
   /**
    * Global write quota in records per second for the external-storage dual-write path, applied <em>per target

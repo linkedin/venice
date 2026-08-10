@@ -5,7 +5,10 @@ import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
@@ -247,6 +250,97 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
                 veniceValue.toString(),
                 "External-storage value and Venice value diverge for key " + i);
           }
+        });
+      }
+    }
+  }
+
+  @Test(timeOut = 240 * Time.MS_PER_SECOND)
+  public void dualWritePushSucceedsWhenOneRegionExhaustsExternalWriteRetries() throws Exception {
+    String storeName = Utils.getUniqueString("dual_write_fail_open_multi_region");
+    String healthyRegion = multiRegionMultiClusterWrapper.getChildRegionNames().get(0);
+    String failedRegion = multiRegionMultiClusterWrapper.getChildRegionNames().get(1);
+
+    File inputDir = Utils.getTempDataDirectory();
+    writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    Schema stringSchema = Schema.parse("\"string\"");
+
+    Properties props = IntegrationTestPushUtils
+        .defaultVPJProps(multiRegionMultiClusterWrapper, "file://" + inputDir.getAbsolutePath(), storeName);
+    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, InMemoryExternalStorageWriter.class.getName());
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE, "1");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES, "2");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS, "0");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE, "true");
+    props.setProperty(InMemoryExternalStorageWriter.FAIL_ALWAYS_IN_REGION_KEY, failedRegion);
+
+    try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl());
+        ControllerClient healthyClient =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient failedClient =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
+      assertCommand(parentClient.createNewStore(storeName, "owner", stringSchema.toString(), stringSchema.toString()));
+      assertCommand(
+          parentClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setPartitionCount(1)
+                  .setStorageMode(StorageMode.DUAL_WRITE)));
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        assertEquals(
+            assertCommand(healthyClient.getStore(storeName)).getStore().getStorageMode(),
+            StorageMode.DUAL_WRITE);
+        assertEquals(
+            assertCommand(failedClient.getStore(storeName)).getStore().getStorageMode(),
+            StorageMode.DUAL_WRITE);
+      });
+
+      IntegrationTestPushUtils.runVPJ(props);
+
+      String topic = Version.composeKafkaTopic(storeName, 1);
+      assertEquals(
+          InMemoryExternalStorageWriter.batchPutAttemptsForRegionAndTopic(failedRegion, topic),
+          3,
+          "Failed region should exhaust the configured initial attempt plus 2 retries exactly once");
+      assertEquals(
+          InMemoryExternalStorageWriter.regionsWithDataForTopic(topic),
+          Collections.singleton(healthyRegion),
+          "Only the healthy region should retain external-storage data after fail-open disables the failed region");
+      assertEquals(
+          InMemoryExternalStorageWriter.snapshotForRegionAndTopic(healthyRegion, topic).size(),
+          DEFAULT_USER_DATA_RECORD_COUNT);
+      assertTrue(
+          InMemoryExternalStorageWriter.snapshotForRegionAndTopic(failedRegion, topic).isEmpty(),
+          "The failed region should never persist external-storage records after every batchPut throws");
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        StoreInfo healthyStore = assertCommand(healthyClient.getStore(storeName)).getStore();
+        StoreInfo failedStore = assertCommand(failedClient.getStore(storeName)).getStore();
+
+        assertEquals(healthyStore.getCurrentVersion(), 1);
+        assertEquals(failedStore.getCurrentVersion(), 1);
+        assertEquals(healthyStore.getStorageMode(), StorageMode.DUAL_WRITE);
+        assertEquals(failedStore.getStorageMode(), StorageMode.DUAL_WRITE);
+        assertEquals(
+            healthyStore.getVersion(1).get().getStorageMode(),
+            StorageMode.DUAL_WRITE,
+            "Healthy region should keep the version in DUAL_WRITE mode");
+        assertEquals(
+            failedStore.getVersion(1).get().getStorageMode(),
+            StorageMode.INTERNAL,
+            "Failed region should downgrade only that version to INTERNAL before the swap");
+      });
+
+      VeniceClusterWrapper failedCluster = getCluster(1);
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(failedCluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(READ_VERIFICATION_TIMEOUT_SEC, TimeUnit.SECONDS, true, true, () -> {
+          failedCluster.refreshAllRouterMetaData();
+          Object value = client.get("1").get();
+          assertNotNull(value, "Failed region should still serve the new current version");
+          assertEquals(value.toString(), DEFAULT_USER_DATA_VALUE_PREFIX + 1);
         });
       }
     }

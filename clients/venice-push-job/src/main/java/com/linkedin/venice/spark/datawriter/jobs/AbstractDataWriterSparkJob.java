@@ -890,7 +890,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     validateRmdSchema(pushJobSetting);
 
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
-    ExpressionEncoder<Row> partitionRecordCountEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
+    ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
 
     Properties jobProps = new Properties();
@@ -967,26 +967,33 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         } finally {
           kafkaWriteMetrics.timeNs.add(System.nanoTime() - startNs);
         }
-      }, partitionRecordCountEncoder);
+      }, partitionWriterTaskOutputEncoder);
 
       /*
-       * collect() returns exactly one (partitionId, recordCount) row per Spark partition. With
-       * speculative execution, if the original task and a speculative attempt both finish at the
-       * same time, Spark's TaskScheduler accepts the result from whichever one successfully
-       * communicates completion first and immediately kills the other; the duplicate's work is
-       * discarded to prevent duplicate data processing. So no two rows in the collected list will
-       * ever share the same partition id, and we can populate the map directly via put().
+       * collect() returns exactly one successful task-output row per Spark partition:
+       * (partitionId, recordCount, failedExternalStorageRegions). With speculative execution, if
+       * the original task and a speculative attempt both finish at the same time, Spark's
+       * TaskScheduler accepts the result from whichever one successfully communicates completion
+       * first and immediately kills the other; the duplicate's work is discarded to prevent
+       * duplicate data processing. So no two rows in the collected list will ever share the same
+       * partition id, and only the winning task's final disabled-region set contributes here.
        *
-       * The collected data volume is bounded by numPartitions (e.g. 10K partitions = ~160KB) so
-       * collectAsList() is safe.
+       * The collected data volume is bounded by numPartitions plus a small failed-region list per
+       * partition (e.g. 10K partitions with record counts only is ~160KB), so collectAsList() is
+       * safe.
        */
       String topicName = pushJobSetting.topic;
-      List<Row> partitionCountRows = dataFrame.collectAsList();
-      Map<Integer, Long> perPartitionRecordCounts = new HashMap<>(partitionCountRows.size());
-      for (Row row: partitionCountRows) {
+      List<Row> taskOutputRows = dataFrame.collectAsList();
+      Map<Integer, Long> perPartitionRecordCounts = new HashMap<>(taskOutputRows.size());
+      Set<String> failedExternalStorageRegions = new HashSet<>();
+      for (Row row: taskOutputRows) {
         perPartitionRecordCounts.put(row.getInt(0), row.getLong(1));
+        if (!row.isNullAt(2)) {
+          failedExternalStorageRegions.addAll(row.getList(2));
+        }
       }
       taskTracker.setPerPartitionRecordCounts(perPartitionRecordCounts);
+      taskTracker.setFailedExternalStorageRegions(failedExternalStorageRegions);
       LOGGER.info(
           "Collected per-partition record counts for topic: {} ({} partitions)",
           topicName,

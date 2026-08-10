@@ -84,6 +84,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SINGLE_GE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC_VERSION_INCLUDED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORES_TO_REPLICATE;
@@ -285,6 +286,9 @@ public enum ControllerRoute implements VeniceDimensionInterface {
 
   GET_DEAD_STORES(
       "/get_dead_stores", HttpMethod.GET, Arrays.asList(CLUSTER), NAME, INCLUDE_SYSTEM_STORES, LOOK_BACK_MS
+  ),
+  UPDATE_STORE_VERSION_STORAGE_MODE(
+      "/update_store_version_storage_mode", HttpMethod.POST, Arrays.asList(NAME, VERSION, STORAGE_MODE), REGIONS_FILTER
   ),
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(
