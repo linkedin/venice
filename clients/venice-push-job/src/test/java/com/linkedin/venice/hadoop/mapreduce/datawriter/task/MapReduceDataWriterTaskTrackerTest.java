@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
@@ -51,6 +52,16 @@ public class MapReduceDataWriterTaskTrackerTest {
   public void testFailedExternalStorageRegionsDefaultToEmpty() {
     CounterBackedMapReduceDataWriterTaskTracker counterTracker =
         new CounterBackedMapReduceDataWriterTaskTracker(new Counters());
+    assertEquals(counterTracker.getFailedExternalStorageRegions(), Collections.emptySet());
+  }
+
+  @Test
+  public void testFailedExternalStorageRegionsDefaultToEmptyWhenCounterGroupIsMissing() {
+    Counters counters = mock(Counters.class);
+    when(counters.getGroup(anyString())).thenReturn(null);
+
+    CounterBackedMapReduceDataWriterTaskTracker counterTracker =
+        new CounterBackedMapReduceDataWriterTaskTracker(counters);
     assertEquals(counterTracker.getFailedExternalStorageRegions(), Collections.emptySet());
   }
 }

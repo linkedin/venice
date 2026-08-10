@@ -266,6 +266,9 @@ public class MRJobCounterHelper {
     }
     java.util.Set<String> regions = new java.util.HashSet<>();
     Counters.Group group = counters.getGroup(COUNTER_GROUP_EXTERNAL_STORAGE);
+    if (group == null) {
+      return java.util.Collections.emptySet();
+    }
     for (Counters.Counter counter: group) {
       if (counter.getCounter() > 0
           && counter.getName().startsWith(EXTERNAL_STORAGE_FAILED_REGION_COUNTER_NAME_PREFIX)) {

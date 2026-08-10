@@ -25,6 +25,7 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.ABORT_MIGRATION, "abort_migration")
         .put(ControllerRoute.DELETE_STORE, "delete_store")
         .put(ControllerRoute.UPDATE_STORE, "update_store")
+        .put(ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE, "update_store_version_storage_mode")
         .put(ControllerRoute.SET_VERSION, "set_version")
         .put(ControllerRoute.ROLLBACK_TO_BACKUP_VERSION, "rollback_to_backup_version")
         .put(ControllerRoute.AGGREGATED_HEALTH_STATUS, "aggregated_health_status")
