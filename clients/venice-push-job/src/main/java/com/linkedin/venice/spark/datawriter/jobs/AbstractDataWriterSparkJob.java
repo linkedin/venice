@@ -50,6 +50,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -154,6 +155,7 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.LongAccumulator;
+import scala.collection.JavaConverters;
 
 
 /**
@@ -236,6 +238,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     sparkContext.setCallSite(jobGroupId);
 
     RuntimeConfig jobConf = sparkSession.conf();
+    new ArrayList<>(JavaConverters.mapAsJavaMap(jobConf.getAll()).keySet()).stream()
+        .filter(key -> key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX))
+        .forEach(jobConf::unset);
     setupCommonSparkConf(props, jobConf, pushJobSetting);
     jobConf.set(BATCH_NUM_BYTES_PROP, pushJobSetting.batchNumBytes);
     jobConf.set(TOPIC_PROP, pushJobSetting.topic);
@@ -350,6 +355,10 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // impl-specific keys beyond the two gating ones; everything else is opaque pass-through.
     for (String key: props.keySet()) {
       if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
+        jobConf.set(key, props.getString(key));
+      }
+      // The factory receives these properties when it is initialized in the executor task.
+      if (key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
         jobConf.set(key, props.getString(key));
       }
     }
