@@ -110,6 +110,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -195,6 +196,8 @@ public class StorageReadRequestHandlerTest {
   private final IngestionMetadataRetriever ingestionMetadataRetriever = mock(IngestionMetadataRetriever.class);
   private final ReadMetadataRetriever readMetadataRetriever = mock(ReadMetadataRetriever.class);
   private final VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+  private final ThreadPoolStats executorThreadPoolStats = mock(ThreadPoolStats.class);
+  private final ThreadPoolStats computeExecutorThreadPoolStats = mock(ThreadPoolStats.class);
   private final VenicePartitioner partitioner = new SimplePartitioner();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer =
       new ChunkedValueManifestSerializer(true);
@@ -235,7 +238,9 @@ public class StorageReadRequestHandlerTest {
         ingestionMetadataRetriever,
         readMetadataRetriever,
         serverConfig,
-        context);
+        context,
+        executorThreadPoolStats,
+        computeExecutorThreadPoolStats);
   }
 
   private enum ParallelQueryProcessing {
@@ -281,6 +286,8 @@ public class StorageReadRequestHandlerTest {
         healthCheckService,
         compressorFactory,
         Optional.empty(),
+        executorThreadPoolStats,
+        computeExecutorThreadPoolStats,
         multiGetResponseProvider,
         ComputeResponseWrapper::new);
   }
@@ -760,7 +767,9 @@ public class StorageReadRequestHandlerTest {
     if (!readComputationEnabled) {
       HttpShortcutResponse errorResponse = (HttpShortcutResponse) argumentCaptor.getValue();
       assertEquals(errorResponse.getStatus(), HttpResponseStatus.METHOD_NOT_ALLOWED);
+      verify(computeExecutorThreadPoolStats, never()).recordActiveThreadCount();
     } else {
+      verify(computeExecutorThreadPoolStats, times(1)).recordActiveThreadCount();
       ComputeResponseWrapper computeResponse = (ComputeResponseWrapper) argumentCaptor.getValue();
       assertEquals(computeResponse.isStreamingResponse(), request.isStreamingRequest());
       assertEquals(computeResponse.getCompressionStrategy(), CompressionStrategy.NO_OP);
@@ -1101,6 +1110,7 @@ public class StorageReadRequestHandlerTest {
       AdminResponse startResp = (AdminResponse) argumentCaptor.getValue();
       assertEquals(startResp.isError(), false, startResp.getMessage());
       assertTrue(startResp.getMessage().contains("status=STARTED"), startResp.getMessage());
+      assertTrue(startResp.serializedResponse().length > 0, "START response should serialize");
       assertTrue(manager.isAnyProfilingActive(), "fast-path flag should flip after START");
 
       // Step 2: send a handful of single-get reads that should all flow through the profiler.
@@ -1139,6 +1149,7 @@ public class StorageReadRequestHandlerTest {
       AdminResponse stopResp = (AdminResponse) stopCaptor.getValue();
       assertEquals(stopResp.isError(), false, stopResp.getMessage());
       assertTrue(stopResp.getMessage().contains("stopped active profiling session"), stopResp.getMessage());
+      assertTrue(stopResp.serializedResponse().length > 0, "STOP response should serialize");
       assertTrue(!manager.isAnyProfilingActive(), "fast-path flag should clear after STOP");
       assertNull(manager.getProfiler(storeName), null);
     } finally {
@@ -1191,6 +1202,196 @@ public class StorageReadRequestHandlerTest {
     } finally {
       manager.shutdown();
     }
+  }
+
+  /**
+   * VENG-11686: whenever a request is submitted to a storage-engine thread pool, we should record exactly one
+   * request-triggered active thread count sample on the {@link ThreadPoolStats} retained for that pool, and we
+   * should never record on the other pool's stats. These tests cover the single-get, sequential multi-get/compute,
+   * and parallel multi-get/compute submission points, plus the edge case of a parallel batch spanning multiple
+   * chunks, which must still record exactly once per request (not once per chunk).
+   */
+  @Test
+  public void testRecordActiveThreadCountOnSingleGet() throws Exception {
+    String keyString = "test-key";
+    GetRouterRequest request = mock(GetRouterRequest.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(SINGLE_GET).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(keyString.getBytes()).when(request).getKeyBytes();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(any());
+    verify(executorThreadPoolStats, times(1)).recordActiveThreadCount();
+    verify(computeExecutorThreadPoolStats, never()).recordActiveThreadCount();
+  }
+
+  @Test
+  public void testRecordActiveThreadCountOnSequentialMultiGet() throws Exception {
+    doReturn(false).when(serverConfig).isEnableParallelBatchGet();
+
+    MultiGetRouterRequestWrapper request = mock(MultiGetRouterRequestWrapper.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(RequestType.MULTI_GET).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(false).when(request).isStreamingRequest();
+    doReturn(Collections.emptyList()).when(request).getKeys();
+    doReturn(0).when(request).getKeyCount();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(any());
+    verify(executorThreadPoolStats, times(1)).recordActiveThreadCount();
+    verify(computeExecutorThreadPoolStats, never()).recordActiveThreadCount();
+  }
+
+  @Test
+  public void testSequentialMultiGetContextFailureIsTranslatedAsynchronously() throws Exception {
+    doReturn(false).when(serverConfig).isEnableParallelBatchGet();
+    doReturn(null).when(storageEngineRepository).getLocalStorageEngine(any());
+
+    MultiGetRouterRequestWrapper request = mock(MultiGetRouterRequestWrapper.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(RequestType.MULTI_GET).when(request).getRequestType();
+    doReturn("missing-store_v1").when(request).getResourceName();
+    doReturn("missing-store").when(request).getStoreName();
+    doReturn(Collections.emptyList()).when(request).getKeys();
+    doReturn(0).when(request).getKeyCount();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    assertTrue(argumentCaptor.getValue() instanceof HttpShortcutResponse);
+    assertTrue(((HttpShortcutResponse) argumentCaptor.getValue()).getMessage().contains("missing-store_v1"));
+    verify(executorThreadPoolStats, times(1)).recordActiveThreadCount();
+  }
+
+  /**
+   * Edge case: a parallel multi-get spanning several chunks must still record the active thread count exactly once
+   * per request submission, not once per chunk, even though the work fans out into multiple parallel tasks.
+   */
+  @Test
+  public void testRecordActiveThreadCountOnParallelMultiGetRecordsOnceAcrossChunks() throws Exception {
+    doReturn(true).when(serverConfig).isEnableParallelBatchGet();
+    doReturn(1).when(serverConfig).getParallelBatchGetChunkSize();
+
+    RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer("\"string\"");
+    List<MultiGetRouterRequestKeyV1> keys = new ArrayList<>();
+    int recordCount = 5; // with chunk size 1, this yields 5 parallel chunks
+    for (int i = 0; i < recordCount; ++i) {
+      MultiGetRouterRequestKeyV1 requestKey = new MultiGetRouterRequestKeyV1();
+      requestKey.keyBytes = ByteBuffer.wrap(keySerializer.serialize(null, "key_" + i));
+      requestKey.keyIndex = i;
+      requestKey.partitionId = 0;
+      keys.add(requestKey);
+    }
+
+    String uri = "/" + TYPE_STORAGE + "/test-topic_v1";
+    FullHttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
+    httpRequest.headers()
+        .set(
+            HttpConstants.VENICE_API_VERSION,
+            ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+    httpRequest.content().writeBytes(serializer.serializeObjects(keys));
+    MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper
+        .parseMultiGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(uri)));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(true, MultiGetResponseWrapper::new);
+    requestHandler.channelRead(context, request);
+
+    verify(context, timeout(1000).times(1)).writeAndFlush(any());
+    // Exactly one sample for the whole request, regardless of the 5 parallel chunks it fanned out into.
+    verify(executorThreadPoolStats, times(1)).recordActiveThreadCount();
+    verify(computeExecutorThreadPoolStats, never()).recordActiveThreadCount();
+  }
+
+  private ComputeRouterRequestWrapper buildComputeRequestForActiveThreadCountTests(
+      List<ComputeRouterRequestKeyV1> keys) {
+    String valueSchemaStr =
+        "{\"type\": \"record\", \"name\": \"User\"," + " \"fields\": [{\"name\": \"name\", \"type\": \"string\"}]}";
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr);
+    SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueSchema);
+    doReturn(valueSchemaEntry).when(schemaRepository).getValueSchema(any(), anyInt());
+
+    ComputeRequest computeRequest = new ComputeRequest();
+    computeRequest.setOperations(Collections.emptyList());
+    computeRequest.setResultSchemaStr(new org.apache.avro.util.Utf8(valueSchemaStr));
+
+    ComputeRouterRequestWrapper request = mock(ComputeRouterRequestWrapper.class);
+    doReturn(keys).when(request).getKeys();
+    doReturn(keys.size()).when(request).getKeyCount();
+    doReturn("test-store_v1").when(request).getResourceName();
+    doReturn("test-store").when(request).getStoreName();
+    doReturn(RequestType.COMPUTE).when(request).getRequestType();
+    doReturn(computeRequest).when(request).getComputeRequest();
+    doReturn(1).when(request).getValueSchemaId();
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(false).when(request).isStreamingRequest();
+    return request;
+  }
+
+  @Test
+  public void testRecordActiveThreadCountOnSequentialCompute() throws Exception {
+    doReturn(false).when(serverConfig).isEnableParallelBatchGet();
+    doReturn(true).when(storeRepository).isReadComputationEnabled(any());
+
+    ComputeRouterRequestWrapper request = buildComputeRequestForActiveThreadCountTests(Collections.emptyList());
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, timeout(1000).times(1)).writeAndFlush(any());
+    verify(computeExecutorThreadPoolStats, times(1)).recordActiveThreadCount();
+    verify(executorThreadPoolStats, never()).recordActiveThreadCount();
+  }
+
+  @Test
+  public void testSequentialComputeContextFailureIsTranslatedAsynchronously() throws Exception {
+    doReturn(false).when(serverConfig).isEnableParallelBatchGet();
+    doReturn(true).when(storeRepository).isReadComputationEnabled(any());
+    doReturn(null).when(storageEngineRepository).getLocalStorageEngine(any());
+
+    ComputeRouterRequestWrapper request = buildComputeRequestForActiveThreadCountTests(Collections.emptyList());
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    assertTrue(argumentCaptor.getValue() instanceof HttpShortcutResponse);
+    assertTrue(((HttpShortcutResponse) argumentCaptor.getValue()).getMessage().contains("test-store_v1"));
+    verify(computeExecutorThreadPoolStats, times(1)).recordActiveThreadCount();
+  }
+
+  /**
+   * Edge case: a parallel compute request spanning several chunks must still record the active thread count exactly
+   * once per request submission, not once per chunk.
+   */
+  @Test
+  public void testRecordActiveThreadCountOnParallelComputeRecordsOnceAcrossChunks() throws Exception {
+    doReturn(true).when(serverConfig).isEnableParallelBatchGet();
+    doReturn(1).when(serverConfig).getParallelBatchGetChunkSize();
+    doReturn(true).when(storeRepository).isReadComputationEnabled(any());
+
+    int recordCount = 5; // with chunk size 1, this yields 5 parallel chunks
+    List<ComputeRouterRequestKeyV1> keys = new ArrayList<>();
+    for (int i = 0; i < recordCount; ++i) {
+      keys.add(new ComputeRouterRequestKeyV1(i, ByteBuffer.wrap(("key_" + i).getBytes()), 0));
+    }
+    ComputeRouterRequestWrapper request = buildComputeRequestForActiveThreadCountTests(keys);
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, timeout(1000).times(1)).writeAndFlush(any());
+    // Exactly one sample for the whole request, regardless of the 5 parallel chunks it fanned out into.
+    verify(computeExecutorThreadPoolStats, times(1)).recordActiveThreadCount();
+    verify(executorThreadPoolStats, never()).recordActiveThreadCount();
   }
 
   private SchemaReader getMockSchemaReader(Schema keySchema, Schema valueSchema) {

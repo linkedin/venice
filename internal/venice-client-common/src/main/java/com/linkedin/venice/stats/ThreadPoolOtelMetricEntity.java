@@ -28,6 +28,11 @@ public enum ThreadPoolOtelMetricEntity implements ModuleMetricEntityInterface {
   THREAD_POOL_QUEUE_TASK_DISTRIBUTION(
       "thread_pool.queue.task_distribution", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Distribution of queued task count over time", Collections.singleton(VENICE_THREAD_POOL_NAME)
+  ),
+  THREAD_POOL_ACTIVE_THREAD_DISTRIBUTION(
+      "thread_pool.thread.active_count_distribution", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Distribution of active thread count sampled at request submission time",
+      Collections.singleton(VENICE_THREAD_POOL_NAME)
   );
 
   private final MetricEntity metricEntity;

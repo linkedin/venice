@@ -62,6 +62,8 @@ public class ListenerService extends AbstractVeniceService {
   private final VeniceServerConfig serverConfig;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
+  private final ThreadPoolStats executorThreadPoolStats;
+  private final ThreadPoolStats computeExecutorThreadPoolStats;
   private final ThreadPoolExecutor grpcExecutor;
   private ThreadPoolExecutor sslHandshakeExecutor;
 
@@ -94,13 +96,14 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getRestServiceStorageThreadNum(),
         "StorageExecutionThread",
         serverConfig.getDatabaseLookupQueueCapacity());
-    new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
+    executorThreadPoolStats = new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
 
     computeExecutor = createThreadPool(
         serverConfig.getServerComputeThreadNum(),
         "StorageComputeThread",
         serverConfig.getComputeQueueCapacity());
-    new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
+    computeExecutorThreadPoolStats =
+        new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
     if (sslFactory.isPresent() && serverConfig.getSslHandshakeThreadPoolSize() > 0) {
       this.sslHandshakeExecutor = createThreadPool(
@@ -120,7 +123,9 @@ public class ListenerService extends AbstractVeniceService {
         readMetadataRetriever,
         diskHealthService,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        executorThreadPoolStats,
+        computeExecutorThreadPoolStats);
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
@@ -263,7 +268,9 @@ public class ListenerService extends AbstractVeniceService {
       ReadMetadataRetriever readMetadataRetriever,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      ThreadPoolStats executorThreadPoolStats,
+      ThreadPoolStats computeExecutorThreadPoolStats) {
     return new StorageReadRequestHandler(
         serverConfig,
         executor,
@@ -275,6 +282,8 @@ public class ListenerService extends AbstractVeniceService {
         readMetadataRetriever,
         diskHealthService,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        executorThreadPoolStats,
+        computeExecutorThreadPoolStats);
   }
 }

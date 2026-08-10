@@ -11,13 +11,15 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 
 /**
- * Stats used to collect the usage of a thread pool including: 1. active thread number, 2. max thread number and 3.
- * queued task number.
+ * Stats used to collect the usage of a thread pool including: 1. active thread number, 2. max thread number, 3.
+ * queued task number and 4. a request-triggered avg/max distribution of active thread count and queued task count.
  */
 public class ThreadPoolStats extends AbstractVeniceStats {
   private final ThreadPoolExecutor threadPoolExecutor;
 
   private final MetricEntityStateBase queuedTasksCountMetric;
+
+  private final MetricEntityStateBase activeThreadCountMetric;
 
   public ThreadPoolStats(MetricsRepository metricsRepository, ThreadPoolExecutor threadPoolExecutor, String name) {
     super(metricsRepository, name);
@@ -72,6 +74,22 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         Arrays.asList(new Avg(), new Max()),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes());
+
+    /**
+     * The periodic async gauge above reports the active thread count only at metric collection time, which can
+     * miss short-lived bursts of activity between collection intervals. To get a better signal on utilization, we
+     * additionally allow callers to explicitly record the active thread count whenever a new request is submitted
+     * to the thread pool. Recording on every request submission (rather than relying purely on the collection-time
+     * gauge) gives us more data points to compute avg/max active thread count within the metric reporting window.
+     */
+    activeThreadCountMetric = MetricEntityStateBase.create(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_ACTIVE_THREAD_DISTRIBUTION.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensor,
+        ThreadPoolTehutiMetricNameEnum.ACTIVE_THREAD_COUNT,
+        Arrays.asList(new Avg(), new Max()),
+        otelData.getBaseDimensionsMap(),
+        otelData.getBaseAttributes());
   }
 
   /**
@@ -83,7 +101,19 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     queuedTasksCountMetric.record(this.threadPoolExecutor.getQueue().size());
   }
 
+  /**
+   * Records the current active thread count as a distribution data point for the active thread count metric.
+   * Callers should invoke this once per incoming request, at the point where the request's work is submitted to
+   * this thread pool, to capture avg/max active thread utilization within the metric reporting window. This is a
+   * best-effort, request-triggered sample: it does not rely on periodic metric collection, so it can surface
+   * utilization spikes that a collection-time gauge would otherwise miss, at the cost of not being a fully
+   * accurate point-in-time measurement.
+   */
+  public void recordActiveThreadCount() {
+    activeThreadCountMetric.record(this.threadPoolExecutor.getActiveCount());
+  }
+
   enum ThreadPoolTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    QUEUED_TASK_COUNT
+    QUEUED_TASK_COUNT, ACTIVE_THREAD_COUNT
   }
 }
