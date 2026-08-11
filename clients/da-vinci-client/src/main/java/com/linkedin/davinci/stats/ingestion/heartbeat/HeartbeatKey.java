@@ -44,8 +44,13 @@ public final class HeartbeatKey {
 
   /**
    * @deprecated use the 8-arg constructor so the key also carries {@link VeniceReplicationMode}.
-   *   Retained so call sites/tests that don't need replication-mode classification don't need to
-   *   change; {@code replicationMode} is left {@code null} in that case.
+   *   Retained for source/binary compatibility with existing callers of this previously-canonical
+   *   7-arg constructor. Since keys built here can still reach per-record OTel emission (e.g. via
+   *   {@code recordLeaderRecordTimestamp}/{@code recordFollowerRecordTimestamp}), which rejects a
+   *   {@code null} dimension value, {@code replicationMode} defaults to
+   *   {@link VeniceReplicationMode#ACTIVE_ACTIVE} rather than {@code null}. Active-active is the
+   *   safer default because it is the stricter/superset classification: it never claims a
+   *   cross-region-replicated store is exempt from AA overhead.
    */
   @Deprecated
   public HeartbeatKey(
@@ -56,7 +61,15 @@ public final class HeartbeatKey {
       VeniceStoreWriteType writeType,
       VeniceChunkingStatus chunkingStatus,
       VeniceRegionLocality locality) {
-    this(storeName, version, partition, region, writeType, chunkingStatus, locality, null);
+    this(
+        storeName,
+        version,
+        partition,
+        region,
+        writeType,
+        chunkingStatus,
+        locality,
+        VeniceReplicationMode.ACTIVE_ACTIVE);
   }
 
   public HeartbeatKey(

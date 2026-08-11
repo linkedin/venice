@@ -128,6 +128,74 @@ public class RecordLevelDelayOtelStatsTest {
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
   }
 
+  /**
+   * Regression test for the deprecated 7-arg {@link HeartbeatKey} constructor: it must not leave
+   * {@code replicationMode} {@code null}, since a null enum reaching {@code MetricEntityStateSixEnums}
+   * fails dimension validation with an {@link IllegalArgumentException}. Existing/compatibility callers
+   * of that 7-arg constructor (retained as the previously-canonical hot-path constructor) can still
+   * flow into per-record OTel emission, so this exercises that path end-to-end with real OTel emission
+   * enabled.
+   */
+  @Test
+  public void testRecordDelayOtelMetricsWithDeprecated7ArgHeartbeatKeyDoesNotThrow() {
+    recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+    HeartbeatKey key = new HeartbeatKey(
+        STORE_NAME,
+        CURRENT_VERSION,
+        0,
+        REGION_US_WEST,
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceRegionLocality.LOCAL);
+
+    assertEquals(
+        key.getReplicationMode(),
+        VeniceReplicationMode.ACTIVE_ACTIVE,
+        "Deprecated 7-arg constructor must default replicationMode instead of leaving it null");
+
+    // Must not throw IllegalArgumentException from MetricEntityStateSixEnums#validateInputDimension.
+    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+        CURRENT_VERSION,
+        REGION_US_WEST,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        key.getWriteType(),
+        key.getChunkingStatus(),
+        key.getLocality(),
+        key.getReplicationMode(),
+        100L);
+
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), REGION_US_WEST)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.LOCAL.getDimensionValue())
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
+        .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
+        .put(
+            VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
+        .put(
+            VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
+            VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.ACTIVE_ACTIVE.getDimensionValue())
+        .build();
+
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        100.0,
+        100.0,
+        1,
+        100.0,
+        expectedAttributes,
+        INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
   @Test
   public void testUpdateVersionInfo() {
     // Update version info
