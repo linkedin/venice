@@ -32,6 +32,12 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceResponseStatusCategory} */
   VENICE_RESPONSE_STATUS_CODE_CATEGORY("venice.response.status_code_category"),
 
+  /** {@link VeniceBlobTransferSource} */
+  VENICE_BLOB_TRANSFER_SENDER_SOURCE("venice.blob_transfer.sender_source"),
+
+  /** {@link VeniceBlobTransferFallbackReason} */
+  VENICE_BLOB_TRANSFER_FALLBACK_REASON("venice.blob_transfer.fallback_reason"),
+
   /** {@link RequestRetryType} */
   VENICE_REQUEST_RETRY_TYPE("venice.request.retry_type"),
 
