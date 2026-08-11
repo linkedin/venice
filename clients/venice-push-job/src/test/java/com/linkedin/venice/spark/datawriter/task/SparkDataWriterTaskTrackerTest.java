@@ -1,8 +1,11 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import com.linkedin.venice.spark.SparkConstants;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import org.apache.spark.sql.SparkSession;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -268,6 +271,57 @@ public class SparkDataWriterTaskTrackerTest {
     Assert.assertEquals((long) result.get(0), 100L);
     Assert.assertEquals((long) result.get(1), 200L);
     Assert.assertEquals((long) result.get(2), 50L);
+  }
+
+  @Test
+  public void testFailedExternalStorageRegionsTrackPerTaskTracker() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker1 = new SparkDataWriterTaskTracker(accumulators);
+    SparkDataWriterTaskTracker tracker2 = new SparkDataWriterTaskTracker(accumulators);
+
+    tracker1.trackFailedExternalStorageRegion("dc-0");
+    tracker1.trackFailedExternalStorageRegion("dc-0");
+    tracker1.trackFailedExternalStorageRegion("dc-1");
+    tracker1.trackFailedExternalStorageRegion(null);
+    tracker1.trackFailedExternalStorageRegion("");
+    tracker2.trackFailedExternalStorageRegion("dc-2");
+
+    Set<String> tracker1Expected = new HashSet<>();
+    tracker1Expected.add("dc-0");
+    tracker1Expected.add("dc-1");
+    Assert.assertEquals(tracker1.getFailedExternalStorageRegions(), tracker1Expected);
+    Assert.assertEquals(tracker2.getFailedExternalStorageRegions(), Collections.singleton("dc-2"));
+
+    verifyAllAccumulators(accumulators, new DataWriterAccumulators(spark));
+  }
+
+  @Test
+  public void testSetAndGetFailedExternalStorageRegions() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+
+    tracker.trackFailedExternalStorageRegion("dc-stale");
+
+    Set<String> failedRegions = new HashSet<>();
+    failedRegions.add("dc-0");
+    failedRegions.add("dc-1");
+
+    tracker.setFailedExternalStorageRegions(failedRegions);
+    failedRegions.add("dc-2");
+
+    Set<String> expected = new HashSet<>();
+    expected.add("dc-0");
+    expected.add("dc-1");
+    Assert.assertEquals(tracker.getFailedExternalStorageRegions(), expected);
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testFailedExternalStorageRegionsIsUnmodifiable() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+    tracker.setFailedExternalStorageRegions(Collections.singleton("dc-0"));
+
+    tracker.getFailedExternalStorageRegions().add("dc-1");
   }
 
   @Test(expectedExceptions = UnsupportedOperationException.class)

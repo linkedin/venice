@@ -254,6 +254,19 @@ public abstract class AbstractStore implements Store {
   }
 
   @Override
+  public void setVersionStorageMode(int versionNumber, StorageMode storageMode) {
+    checkVersionSupplier();
+    for (int i = storeVersionsSupplier.getForUpdate().size() - 1; i >= 0; i--) {
+      Version version = new VersionImpl(storeVersionsSupplier.getForUpdate().get(i));
+      if (version.getNumber() == versionNumber) {
+        version.setStorageMode(storageMode);
+        return;
+      }
+    }
+    throw new VeniceException("Version:" + versionNumber + " does not exist");
+  }
+
+  @Override
   public int peekNextVersionNumber() {
     int nextVersionNumber = getLargestUsedVersionNumber() + 1;
     checkDisableStoreWrite("increase", nextVersionNumber);

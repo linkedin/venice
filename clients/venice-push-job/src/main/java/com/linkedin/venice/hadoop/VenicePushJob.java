@@ -947,6 +947,7 @@ public class VenicePushJob implements AutoCloseable {
            */
         }
         runJobWithKillDetection();
+        downgradeFailedExternalStorageRegionsToInternalBeforeEndOfPush();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
@@ -1825,6 +1826,62 @@ public class VenicePushJob implements AutoCloseable {
       return Collections.emptyMap();
     }
     return dataWriterComputeJob.getTaskTracker().getPerPartitionRecordCounts();
+  }
+
+  private Set<String> getFailedExternalStorageRegions() {
+    String topicName = Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version);
+    if (dataWriterComputeJob == null || dataWriterComputeJob.getTaskTracker() == null) {
+      LOGGER
+          .warn("Cannot retrieve failed external-storage regions for topic: {}: no task tracker available", topicName);
+      return Collections.emptySet();
+    }
+    Set<String> failedRegions = dataWriterComputeJob.getTaskTracker().getFailedExternalStorageRegions();
+    return failedRegions == null ? Collections.emptySet() : failedRegions;
+  }
+
+  private void downgradeFailedExternalStorageRegionsToInternalBeforeEndOfPush() {
+    Set<String> failedRegions = getFailedExternalStorageRegions();
+    if (failedRegions.isEmpty()) {
+      return;
+    }
+    List<String> sortedFailedRegions = new ArrayList<>(failedRegions);
+    Collections.sort(sortedFailedRegions);
+    String regionsFilter = String.join(",", sortedFailedRegions);
+    LOGGER.warn(
+        "External-storage dual-write exhausted retries in regions {} for store {} v{}. "
+            + "Downgrading those version storage modes to INTERNAL before EOP.",
+        sortedFailedRegions,
+        pushJobSetting.storeName,
+        pushJobSetting.version);
+    String failureContext = "Failed to downgrade version storage mode to INTERNAL for store " + pushJobSetting.storeName
+        + " v" + pushJobSetting.version + " in regions " + sortedFailedRegions;
+    ControllerResponse response;
+    try {
+      response = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          client -> client.updateStoreVersionStorageMode(
+              pushJobSetting.storeName,
+              pushJobSetting.version,
+              StorageMode.INTERNAL,
+              regionsFilter));
+    } catch (Exception e) {
+      throw new VeniceException(
+          failureContext + ". The controller API may be unavailable or not deployed. Root cause: "
+              + getRootCauseMessage(e),
+          e);
+    }
+    if (response.isError()) {
+      throw new VeniceException(failureContext + ". Controller error: " + response.getError());
+    }
+  }
+
+  private static String getRootCauseMessage(Throwable throwable) {
+    Throwable rootCause = throwable;
+    while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+      rootCause = rootCause.getCause();
+    }
+    return rootCause.getMessage() == null ? rootCause.toString() : rootCause.getMessage();
   }
 
   private void updatePushJobDetailsWithDataWriterTracker() {

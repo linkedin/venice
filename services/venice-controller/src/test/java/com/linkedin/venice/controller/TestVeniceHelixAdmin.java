@@ -242,6 +242,42 @@ public class TestVeniceHelixAdmin {
         () -> veniceHelixAdmin.getStorageModePerRegion(clusterName, missingStoreName));
   }
 
+  @Test
+  public void testUpdateStoreVersionStorageModeMutatesOnlyTheVersion() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    String storeName = "store_version_storage_mode_update";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    VersionImpl version = new VersionImpl(storeName, 1, "test-push");
+    version.setStorageMode(StorageMode.DUAL_WRITE);
+    store.addVersion(version);
+    doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(veniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    assertEquals(store.getStorageMode(), StorageMode.DUAL_WRITE);
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeSkipsWhenRegionFilterDoesNotMatch() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(clusterName, "store", 1, StorageMode.INTERNAL, "dc-1");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, "store", 1, StorageMode.INTERNAL, "dc-1");
+
+    verify(veniceHelixAdmin, never()).storeMetadataUpdate(anyString(), anyString(), any());
+  }
+
   /**
    * This test verify that in function {@link VeniceHelixAdmin#setUpMetaStoreAndMayProduceSnapshot},
    * meta store RT topic creation has to happen before any writings to meta store's rt topic.

@@ -66,6 +66,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC_VERSION_INCLUDED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
@@ -90,6 +91,7 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -1159,6 +1161,22 @@ public class ControllerClient implements Closeable {
   public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams queryParams) {
     QueryParams params = addCommonParams(queryParams).add(NAME, storeName);
     return request(ControllerRoute.UPDATE_STORE, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse updateStoreVersionStorageMode(String storeName, int version, StorageMode storageMode) {
+    return updateStoreVersionStorageMode(storeName, version, storageMode, null);
+  }
+
+  public ControllerResponse updateStoreVersionStorageMode(
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionsFilter) {
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(STORAGE_MODE, storageMode.name());
+    if (StringUtils.isNotEmpty(regionsFilter)) {
+      params.add(REGIONS_FILTER, regionsFilter);
+    }
+    return request(ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE, params, ControllerResponse.class);
   }
 
   public SchemaResponse getValueSchema(String storeName, int valueSchemaId) {

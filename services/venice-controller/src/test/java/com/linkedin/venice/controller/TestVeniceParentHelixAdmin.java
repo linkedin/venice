@@ -3036,6 +3036,42 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testUpdateStoreVersionStorageModeTargetsOnlyRequestedRegions() {
+    String storeName = "test_store_version_storage_mode_targeted";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient dc0Client = mock(ControllerClient.class);
+    ControllerClient dc1Client = mock(ControllerClient.class);
+    controllerClientMap.put("dc-0", dc0Client);
+    controllerClientMap.put("dc-1", dc1Client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    ControllerResponse response = new ControllerResponse();
+    doReturn(response).when(dc1Client).updateStoreVersionStorageMode(storeName, 1, StorageMode.INTERNAL);
+
+    parentAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-1");
+
+    verify(dc0Client, never()).updateStoreVersionStorageMode(anyString(), anyInt(), any());
+    verify(dc1Client).updateStoreVersionStorageMode(storeName, 1, StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeThrowsOnChildError() {
+    String storeName = "test_store_version_storage_mode_error";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient dc0Client = mock(ControllerClient.class);
+    controllerClientMap.put("dc-0", dc0Client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    ControllerResponse errorResponse = new ControllerResponse();
+    errorResponse.setError("simulated child failure");
+    doReturn(errorResponse).when(dc0Client).updateStoreVersionStorageMode(storeName, 1, StorageMode.INTERNAL);
+
+    assertThrows(
+        VeniceException.class,
+        () -> parentAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0"));
+  }
+
+  @Test
   public void checkNewPushCapacityFromChildrenBlocksWhenChildRolledBackWithinRetention() {
     String store = "npc_from_children_rollback_block";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);

@@ -3177,6 +3177,46 @@ public class VeniceParentHelixAdmin implements Admin {
     parentVersionOrchestrator.updateStoreVersionStatus(clusterName, storeName, version, status);
   }
 
+  @Override
+  public void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter) {
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClientMap.isEmpty()) {
+      throw new VeniceException("No child controller clients found for cluster " + clusterName);
+    }
+
+    Set<String> targetRegions = StringUtils.isEmpty(regionFilter)
+        ? new TreeSet<>(controllerClientMap.keySet())
+        : new TreeSet<>(parseRegionsFilterList(regionFilter));
+    Set<String> unknownRegions = new HashSet<>(targetRegions);
+    unknownRegions.removeAll(controllerClientMap.keySet());
+    if (!unknownRegions.isEmpty()) {
+      throw new VeniceException(
+          "Unknown regions " + unknownRegions + " requested for store " + storeName + " in cluster " + clusterName);
+    }
+
+    for (String region: targetRegions) {
+      ControllerClient childControllerClient = controllerClientMap.get(region);
+      ControllerResponse response;
+      try {
+        response = childControllerClient.updateStoreVersionStorageMode(storeName, version, storageMode);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Failed to update version storage mode for store " + storeName + " v" + version + " in region " + region,
+            e);
+      }
+      if (response.isError()) {
+        throw new VeniceException(
+            "Failed to update version storage mode for store " + storeName + " v" + version + " in region " + region
+                + ": " + response.getError());
+      }
+    }
+  }
+
   public void validateActiveActiveReplicationEnableConfigs(
       Optional<Boolean> activeActiveReplicationEnabledOptional,
       Optional<Boolean> nativeReplicationEnabledOptional,

@@ -315,6 +315,12 @@ public interface Store {
     // ReadOnlyStore overrides to throw UnsupportedOperationException.
   }
 
+  default void setVersionStorageMode(int versionNumber, StorageMode storageMode) {
+    // No-op default. AbstractStore overrides this using storeVersionsSupplier.getForUpdate() to bypass the
+    // ReadOnlyVersion wrapper returned by getVersion(). ReadOnlyStore overrides to throw
+    // UnsupportedOperationException.
+  }
+
   int peekNextVersionNumber();
 
   /**

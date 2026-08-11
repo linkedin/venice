@@ -26,12 +26,13 @@ import org.apache.logging.log4j.Logger;
  *
  * <p>When the push targets multiple regions, the same record is fanned out to every regional writer before
  * the Kafka produce. The guarantee is that <em>no Kafka produce happens for a batch until every regional
- * external write for that batch has succeeded</em>: if any regional write fails (after its bounded retry) the
- * exception propagates before the produce and fails the Spark task. Note this is not an all-or-nothing write
- * across the external sinks within a failed attempt — an earlier region in the fan-out may already hold the
- * batch while a later one failed. Consistency is restored by the whole-partition retry: external writes are
- * idempotent on key, so the next attempt overwrites the partially-written region rather than leaving it
- * divergent.
+ * external write for that batch has succeeded</em> by default: if any regional write fails (after its bounded
+ * retry) the exception propagates before the produce and fails the Spark task. When the optional fail-open
+ * mode is enabled, only the region that exhausted retries is disabled and reported; healthy external regions
+ * and Kafka continue. Note this is not an all-or-nothing write across the external sinks within a failed
+ * attempt — an earlier region in the fan-out may already hold the batch while a later one failed.
+ * Consistency is restored either by the whole-partition retry (fail-fast) or by flipping the failed
+ * region's version {@code storageMode} back to {@code INTERNAL} before EOP (fail-open mode).
  *
  * <p><b>Region fan-out is sequential.</b> Each region's {@code batchPut} (including its bounded retries and
  * backoff) completes before the next region's begins, on the single partition-writer task thread. This keeps
@@ -55,6 +56,7 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
 
   private final AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter;
   private final List<ExternalStorageWriter> externalWriters;
+  private final List<String> externalWriterRegions;
   /**
    * Per-region rate limiters, index-aligned with {@link #externalWriters}. {@code null} when throttling is off
    * for the whole task; individual entries may be {@code null} to leave a single region unthrottled.
@@ -66,6 +68,9 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
   private final int batchPutRetries;
   private final long batchPutRetryBackoffMs;
   private final List<BufferedPut> putBuffer;
+  private final boolean failOpenOnExternalStorageRegionFailure;
+  private final DataWriterTaskTracker dataWriterTaskTracker;
+  private final boolean[] disabledExternalWriters;
 
   /**
    * Convenience constructor for callers that don't need the buffered retry policy (e.g. unit tests that
@@ -104,7 +109,17 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
       int batchSize,
       int batchPutRetries,
       long batchPutRetryBackoffMs) {
-    this(topicName, kafkaWriter, externalWriters, null, batchSize, batchPutRetries, batchPutRetryBackoffMs);
+    this(
+        topicName,
+        kafkaWriter,
+        externalWriters,
+        defaultExternalWriterRegions(externalWriters.size()),
+        null,
+        batchSize,
+        batchPutRetries,
+        batchPutRetryBackoffMs,
+        false,
+        null);
   }
 
   /**
@@ -120,9 +135,38 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
       int batchSize,
       int batchPutRetries,
       long batchPutRetryBackoffMs) {
+    this(
+        topicName,
+        kafkaWriter,
+        externalWriters,
+        defaultExternalWriterRegions(externalWriters.size()),
+        throttlers,
+        batchSize,
+        batchPutRetries,
+        batchPutRetryBackoffMs,
+        false,
+        null);
+  }
+
+  DualWriteVeniceWriter(
+      String topicName,
+      AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter,
+      List<ExternalStorageWriter> externalWriters,
+      List<String> externalWriterRegions,
+      List<ExternalStorageWriteThrottler> throttlers,
+      int batchSize,
+      int batchPutRetries,
+      long batchPutRetryBackoffMs,
+      boolean failOpenOnExternalStorageRegionFailure,
+      DataWriterTaskTracker dataWriterTaskTracker) {
     super(topicName);
     if (externalWriters == null || externalWriters.isEmpty()) {
       throw new IllegalArgumentException("externalWriters must be non-empty");
+    }
+    if (externalWriterRegions == null || externalWriterRegions.size() != externalWriters.size()) {
+      throw new IllegalArgumentException(
+          "externalWriterRegions size " + (externalWriterRegions == null ? 0 : externalWriterRegions.size())
+              + " must match externalWriters size " + externalWriters.size());
     }
     if (throttlers != null && throttlers.size() != externalWriters.size()) {
       throw new IllegalArgumentException(
@@ -137,14 +181,23 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
     if (batchPutRetryBackoffMs < 0) {
       throw new IllegalArgumentException("batchPutRetryBackoffMs must be >= 0, got " + batchPutRetryBackoffMs);
     }
+    for (String externalWriterRegion: externalWriterRegions) {
+      if (externalWriterRegion == null || externalWriterRegion.isEmpty()) {
+        throw new IllegalArgumentException("externalWriterRegions must not contain null/empty values");
+      }
+    }
     this.kafkaWriter = kafkaWriter;
     this.externalWriters = new ArrayList<>(externalWriters);
+    this.externalWriterRegions = new ArrayList<>(externalWriterRegions);
     this.throttlers = throttlers == null ? null : new ArrayList<>(throttlers);
     this.anyByteThrottling = anyByteThrottling(this.throttlers);
     this.batchSize = batchSize;
     this.batchPutRetries = batchPutRetries;
     this.batchPutRetryBackoffMs = batchPutRetryBackoffMs;
     this.putBuffer = new ArrayList<>(batchSize);
+    this.failOpenOnExternalStorageRegionFailure = failOpenOnExternalStorageRegionFailure;
+    this.dataWriterTaskTracker = dataWriterTaskTracker;
+    this.disabledExternalWriters = new boolean[externalWriters.size()];
   }
 
   @Override
@@ -239,8 +292,19 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
   @Override
   public void flush() {
     drainBuffer();
-    for (ExternalStorageWriter externalWriter: externalWriters) {
-      externalWriter.flush();
+    for (int i = 0; i < externalWriters.size(); i++) {
+      try {
+        externalWriters.get(i).flush();
+      } catch (RuntimeException e) {
+        if (shouldSuppressDisabledWriterFailure(i)) {
+          LOGGER.warn(
+              "Suppressing flush failure from disabled external writer for region {} because fail-open is enabled",
+              externalWriterRegions.get(i),
+              e);
+          continue;
+        }
+        throw e;
+      }
     }
     kafkaWriter.flush();
   }
@@ -262,10 +326,17 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
     } catch (RuntimeException e) {
       firstError = new IOException("Failed to flush before close", e);
     }
-    for (ExternalStorageWriter externalWriter: externalWriters) {
+    for (int i = 0; i < externalWriters.size(); i++) {
       try {
-        externalWriter.close();
+        externalWriters.get(i).close();
       } catch (IOException | RuntimeException e) {
+        if (shouldSuppressDisabledWriterFailure(i)) {
+          LOGGER.warn(
+              "Suppressing close failure from disabled external writer for region {} because fail-open is enabled",
+              externalWriterRegions.get(i),
+              e);
+          continue;
+        }
         // External impls are pluggable — an unchecked throw from one regional writer must not skip closing
         // the remaining regional writers or kafkaWriter.close() below, otherwise resources leak during task
         // shutdown.
@@ -331,23 +402,35 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
     long byteCount = anyByteThrottling ? totalBytes(externalRecords) : 0L;
     CompletableFuture<PubSubProduceResult> last = null;
     try {
-      // Fan out the same batch to every regional external sink before any Kafka produce. A failure on any
-      // region (after its bounded retry) propagates before any produce and fails the push. Earlier regions in
-      // the fan-out may already hold the batch when a later one fails; that partial state is reconciled by the
-      // idempotent whole-partition retry (see the class-level contract), not prevented here.
+      // Fan out the same batch to every regional external sink before any Kafka produce. In fail-fast mode a
+      // regional failure (after its bounded retry) propagates before any produce and fails the push. In
+      // fail-open mode the failed region is disabled and future batches skip it, while healthy regions and
+      // Kafka continue. Earlier regions in the fan-out may already hold the batch when a later one failed;
+      // that partial state is reconciled either by the idempotent whole-partition retry (fail-fast) or by
+      // downgrading the failed region's version back to INTERNAL before EOP (fail-open).
       //
       // Each region is rate limited (when a throttler is configured) immediately before its own write: the
       // blocking limiter waits until the per-region budget admits the batch, enforcing independent per-region
       // budgets without reordering the external-first writes. (If a limiter threw instead of blocking it would
       // propagate before the write; the GuavaRateLimiter used here blocks rather than rejecting.)
       for (int i = 0; i < externalWriters.size(); i++) {
+        if (shouldSkipExternalWriter(i)) {
+          continue;
+        }
         if (throttlers != null) {
           ExternalStorageWriteThrottler throttler = throttlers.get(i);
           if (throttler != null) {
             throttler.throttle(recordCount, byteCount);
           }
         }
-        batchPutWithRetry(externalWriters.get(i), externalRecords);
+        try {
+          batchPutWithRetry(externalWriters.get(i), externalWriterRegions.get(i), externalRecords);
+        } catch (RuntimeException e) {
+          if (!failOpenOnExternalStorageRegionFailure || Thread.currentThread().isInterrupted()) {
+            throw e;
+          }
+          disableFailedExternalWriter(i, e);
+        }
       }
       for (BufferedPut buffered: putBuffer) {
         CompletableFuture<PubSubProduceResult> kafkaFuture = invokeKafkaPut(buffered);
@@ -385,14 +468,18 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
    * <p>Interruption during the backoff sleep aborts the retry — the executor wants to shut down — and
    * surfaces the original failure with the {@link InterruptedException} suppressed.
    */
-  private void batchPutWithRetry(ExternalStorageWriter externalWriter, List<ExternalStorageRecord> records) {
+  private void batchPutWithRetry(
+      ExternalStorageWriter externalWriter,
+      String regionName,
+      List<ExternalStorageRecord> records) {
     int attempts = batchPutRetries + 1;
     RuntimeException lastError = null;
     for (int attempt = 1; attempt <= attempts; attempt++) {
       try {
         externalWriter.batchPut(records);
         if (attempt > 1) {
-          LOGGER.info("externalWriter.batchPut succeeded on attempt {}/{}", attempt, attempts);
+          LOGGER
+              .info("externalWriter.batchPut for region {} succeeded on attempt {}/{}", regionName, attempt, attempts);
         }
         return;
       } catch (RuntimeException e) {
@@ -403,7 +490,8 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
         }
         if (attempt < attempts) {
           LOGGER.warn(
-              "externalWriter.batchPut failed on attempt {}/{}; retrying after {}ms",
+              "externalWriter.batchPut failed for region {} on attempt {}/{}; retrying after {}ms",
+              regionName,
               attempt,
               attempts,
               batchPutRetryBackoffMs,
@@ -454,6 +542,39 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
       }
     }
     return false;
+  }
+
+  private boolean shouldSkipExternalWriter(int writerIndex) {
+    return failOpenOnExternalStorageRegionFailure && disabledExternalWriters[writerIndex];
+  }
+
+  private boolean shouldSuppressDisabledWriterFailure(int writerIndex) {
+    return failOpenOnExternalStorageRegionFailure && disabledExternalWriters[writerIndex];
+  }
+
+  private void disableFailedExternalWriter(int writerIndex, RuntimeException failure) {
+    if (disabledExternalWriters[writerIndex]) {
+      return;
+    }
+    disabledExternalWriters[writerIndex] = true;
+    String regionName = externalWriterRegions.get(writerIndex);
+    if (dataWriterTaskTracker != null) {
+      dataWriterTaskTracker.trackFailedExternalStorageRegion(regionName);
+    }
+    LOGGER.warn(
+        "Fail-open is enabled; disabling external writer for region {} after {} failed batchPut attempt(s). "
+            + "Future batches will skip this region while Kafka and healthy external regions continue.",
+        regionName,
+        batchPutRetries + 1,
+        failure);
+  }
+
+  private static List<String> defaultExternalWriterRegions(int writerCount) {
+    List<String> regions = new ArrayList<>(writerCount);
+    for (int i = 0; i < writerCount; i++) {
+      regions.add("external-region-" + i);
+    }
+    return regions;
   }
 
   private CompletableFuture<PubSubProduceResult> invokeKafkaPut(BufferedPut bp) {
