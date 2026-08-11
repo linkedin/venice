@@ -287,9 +287,9 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
     props.setProperty(InMemoryExternalStorageWriter.FAIL_ALWAYS_IN_REGION_KEY, failedRegion);
 
     try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl());
-        ControllerClient healthyClient =
+        ControllerClient healthyRegionControllerClient =
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
-        ControllerClient failedClient =
+        ControllerClient failedRegionControllerClient =
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
       assertCommand(parentClient.createNewStore(storeName, "owner", stringSchema.toString(), stringSchema.toString()));
       assertCommand(
@@ -300,10 +300,10 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
                   .setStorageMode(StorageMode.DUAL_WRITE)));
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         assertEquals(
-            assertCommand(healthyClient.getStore(storeName)).getStore().getStorageMode(),
+            assertCommand(healthyRegionControllerClient.getStore(storeName)).getStore().getStorageMode(),
             StorageMode.DUAL_WRITE);
         assertEquals(
-            assertCommand(failedClient.getStore(storeName)).getStore().getStorageMode(),
+            assertCommand(failedRegionControllerClient.getStore(storeName)).getStore().getStorageMode(),
             StorageMode.DUAL_WRITE);
       });
 
@@ -326,19 +326,19 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
           "The failed region should never persist external-storage records after every batchPut throws");
 
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        StoreInfo healthyStore = assertCommand(healthyClient.getStore(storeName)).getStore();
-        StoreInfo failedStore = assertCommand(failedClient.getStore(storeName)).getStore();
+        StoreInfo healthyRegionStoreInfo = assertCommand(healthyRegionControllerClient.getStore(storeName)).getStore();
+        StoreInfo failedRegionStoreInfo = assertCommand(failedRegionControllerClient.getStore(storeName)).getStore();
 
-        assertEquals(healthyStore.getCurrentVersion(), 1);
-        assertEquals(failedStore.getCurrentVersion(), 1);
-        assertEquals(healthyStore.getStorageMode(), StorageMode.DUAL_WRITE);
-        assertEquals(failedStore.getStorageMode(), StorageMode.DUAL_WRITE);
+        assertEquals(healthyRegionStoreInfo.getCurrentVersion(), 1);
+        assertEquals(failedRegionStoreInfo.getCurrentVersion(), 1);
+        assertEquals(healthyRegionStoreInfo.getStorageMode(), StorageMode.DUAL_WRITE);
+        assertEquals(failedRegionStoreInfo.getStorageMode(), StorageMode.DUAL_WRITE);
         assertEquals(
-            healthyStore.getVersion(1).get().getStorageMode(),
+            healthyRegionStoreInfo.getVersion(1).get().getStorageMode(),
             StorageMode.DUAL_WRITE,
             "Healthy region should keep the version in DUAL_WRITE mode");
         assertEquals(
-            failedStore.getVersion(1).get().getStorageMode(),
+            failedRegionStoreInfo.getVersion(1).get().getStorageMode(),
             StorageMode.INTERNAL,
             "Failed region should downgrade only that version to INTERNAL before the swap");
       });
