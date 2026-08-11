@@ -204,6 +204,7 @@ public class PartitionConsumptionStateTest {
         false,
         false,
         false,
+        false,
         null);
     assertFalse(pcs.isReadyToServeViaDeadLeaderFallback());
     assertTrue(pcs.toString().contains("readyToServeViaDeadLeaderFallback=false"));
