@@ -1,5 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
+import static org.testng.Assert.assertTrue;
+
 import com.linkedin.venice.stats.dimensions.VeniceDimensionTestFixture;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -8,6 +10,11 @@ import org.testng.annotations.Test;
 
 
 public class ControllerRouteDimensionTest {
+  @Test
+  public void testUpdateStoreVersionStorageModeRequiresCluster() {
+    assertTrue(ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE.getParams().contains(ControllerApiConstants.CLUSTER));
+  }
+
   @Test
   public void testDimensionInterface() {
     Map<ControllerRoute, String> expectedValues = CollectionUtils.<ControllerRoute, String>mapBuilder()

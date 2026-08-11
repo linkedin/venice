@@ -288,7 +288,8 @@ public enum ControllerRoute implements VeniceDimensionInterface {
       "/get_dead_stores", HttpMethod.GET, Arrays.asList(CLUSTER), NAME, INCLUDE_SYSTEM_STORES, LOOK_BACK_MS
   ),
   UPDATE_STORE_VERSION_STORAGE_MODE(
-      "/update_store_version_storage_mode", HttpMethod.POST, Arrays.asList(NAME, VERSION, STORAGE_MODE), REGIONS_FILTER
+      "/update_store_version_storage_mode", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION, STORAGE_MODE),
+      REGIONS_FILTER
   ),
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(

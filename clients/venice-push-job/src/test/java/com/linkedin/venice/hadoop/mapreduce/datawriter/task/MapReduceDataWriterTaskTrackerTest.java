@@ -4,6 +4,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
@@ -39,6 +41,7 @@ public class MapReduceDataWriterTaskTrackerTest {
     expected.add("dc-0");
     expected.add("dc-1");
     assertEquals(reporterTracker.getFailedExternalStorageRegions(), expected);
+    verify(reporter, times(2)).incrCounter(anyString(), anyString(), anyLong());
 
     CounterBackedMapReduceDataWriterTaskTracker counterTracker =
         new CounterBackedMapReduceDataWriterTaskTracker(counters);

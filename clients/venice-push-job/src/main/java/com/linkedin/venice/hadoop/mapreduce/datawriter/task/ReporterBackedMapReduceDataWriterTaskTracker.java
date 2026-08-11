@@ -127,8 +127,9 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
     if (regionName == null || regionName.isEmpty()) {
       return;
     }
-    failedExternalStorageRegions.add(regionName);
-    MRJobCounterHelper.incrFailedExternalStorageRegionCount(reporter, regionName, 1);
+    if (failedExternalStorageRegions.add(regionName)) {
+      MRJobCounterHelper.incrFailedExternalStorageRegionCount(reporter, regionName, 1);
+    }
   }
 
   @Override
