@@ -670,7 +670,8 @@ public class StorageReadRequestHandlerTest {
         1,
         "test_partitioner_class",
         Collections.singletonMap("test_partitioner_param", "test_param"),
-        2);
+        2,
+        0);
     expectedMetadataResponse.setVersions(Collections.singletonList(1));
     expectedMetadataResponse.setVersionMetadata(versionProperties);
     expectedMetadataResponse.setKeySchema(keySchema);
