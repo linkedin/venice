@@ -22,6 +22,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageRecord;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -86,6 +87,11 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
   @DataProvider(name = "batchSize")
   public Object[][] batchSize() {
     return new Object[][] { { 1 }, { 25 } };
+  }
+
+  @DataProvider(name = "dataWriterComputeJobClass")
+  public Object[][] dataWriterComputeJobClass() {
+    return new Object[][] { { DataWriterSparkJob.class }, { DataWriterMRJob.class } };
   }
 
   @Test(timeOut = 240 * Time.MS_PER_SECOND, dataProvider = "batchSize")
@@ -255,9 +261,11 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
     }
   }
 
-  @Test(timeOut = 240 * Time.MS_PER_SECOND)
-  public void dualWritePushSucceedsWhenOneRegionExhaustsExternalWriteRetries() throws Exception {
-    String storeName = Utils.getUniqueString("dual_write_fail_open_multi_region");
+  @Test(timeOut = 240 * Time.MS_PER_SECOND, dataProvider = "dataWriterComputeJobClass")
+  public void dualWritePushSucceedsWhenOneRegionExhaustsExternalWriteRetries(Class<?> dataWriterComputeJobClass)
+      throws Exception {
+    String storeName =
+        Utils.getUniqueString("dual_write_fail_open_multi_region_" + dataWriterComputeJobClass.getSimpleName());
     String healthyRegion = multiRegionMultiClusterWrapper.getChildRegionNames().get(0);
     String failedRegion = multiRegionMultiClusterWrapper.getChildRegionNames().get(1);
 
@@ -267,8 +275,10 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
 
     Properties props = IntegrationTestPushUtils
         .defaultVPJProps(multiRegionMultiClusterWrapper, "file://" + inputDir.getAbsolutePath(), storeName);
-    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
-    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterComputeJobClass.getCanonicalName());
+    if (dataWriterComputeJobClass == DataWriterSparkJob.class) {
+      props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+    }
     props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, InMemoryExternalStorageWriter.class.getName());
     props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE, "1");
     props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES, "2");
