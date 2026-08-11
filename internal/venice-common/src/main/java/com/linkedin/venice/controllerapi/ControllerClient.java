@@ -1396,37 +1396,25 @@ public class ControllerClient implements Closeable {
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
         try {
-          // Because the way to get parameter is different between controller and router, in order to support query
-          // cluster from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first,
-          // if it does not work, try "/discover_cluster/$storeName"
           try {
             QueryParams params = getQueryParamsToDiscoverCluster(storeName);
             return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
           } catch (VeniceHttpException e) {
-            // TODO: Routers also support fetching the store name via query params. So, once sufficient time has passed,
-            // this check can be changed to break out of the loop on non-5XX errors.
-
-            // Do not attempt querying further if host explicitly returns that store was not found.
-            // If Controllers have been upgraded to recent versions, they will return the proper STORE_NOT_FOUND
-            // ErrorType.
             if (e.getErrorType() == ErrorType.STORE_NOT_FOUND) {
               lastException = e;
               break;
             }
 
-            // If Controllers have not been upgraded recently, they will return a 404 status with GENERAL_ERROR as the
-            // ErrorType.
             if (e.getErrorType() == ErrorType.GENERAL_ERROR && e.getHttpStatusCode() == 404) {
               lastException =
                   new VeniceHttpException(e.getHttpStatusCode(), e.getMessage(), e, ErrorType.STORE_NOT_FOUND);
               break;
             }
 
-            String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
-            return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
+            throw e;
           }
         } catch (Exception e) {
-          LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url);
+          LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url, e);
           if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
             lastConnectException = e;
           } else {
