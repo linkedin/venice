@@ -4,6 +4,7 @@ import static java.util.Collections.emptyList;
 
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -53,14 +54,18 @@ public class TestPushJobDetailsSchemaCompatibility {
   }
 
   /**
-   * v6 is registered but not activated: the schema ships in the resources so controllers register it in the push job
-   * details system store, while {@link AvroProtocolDefinition#PUSH_JOB_DETAILS} and the generated classes (pinned to
-   * v5 through the {@code versionOverrides} entry in the root build.gradle) stay on v5, so the code keeps
-   * serializing v5. The follow-up PR that populates the new fields removes the pin and bumps the protocol
-   * definition.
+   * v6 is staged, which means it is inert: the {@code versionOverrides} pin in the root build.gradle keeps the
+   * generated classes on v5, and {@link Utils#getAllSchemasFromResources(AvroProtocolDefinition)} stops at the
+   * compiled version, so no runtime path in this build reads, writes or registers v6. Controllers register value
+   * schemas only up to {@link AvroProtocolDefinition#currentProtocolVersion}, and the serializer only caches
+   * readers for the versions resource discovery returned, so both stop at v5 too.
+   *
+   * That inertness is the point of staging: the schema is frozen in the resources and reviewed on its own, while
+   * no code path can emit it. The follow-up PR removes the pin and bumps the protocol definition, which is what
+   * actually registers v6 on the controllers and starts serializing it.
    */
   @Test
-  public void testStagedV6IsRegisteredButNotActivated() throws IOException {
+  public void testStagedV6IsNotActivatedAndNotVisibleAtRuntime() throws IOException {
     Assert.assertEquals(
         AvroProtocolDefinition.PUSH_JOB_DETAILS.currentProtocolVersion.get().intValue(),
         ACTIVE_SCHEMA_ID,
@@ -68,6 +73,14 @@ public class TestPushJobDetailsSchemaCompatibility {
     Assert.assertNull(
         schemaVersionMap.get(STAGED_SCHEMA_ID),
         "The compiled PushJobDetails class must still be v5 while v6 is only staged");
+    IntSet knownProtocols = AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer().knownProtocols();
+    Assert.assertTrue(
+        knownProtocols.contains(ACTIVE_SCHEMA_ID),
+        "The runtime serializer must know the active version v5, got: " + knownProtocols);
+    Assert.assertFalse(
+        knownProtocols.contains(STAGED_SCHEMA_ID),
+        "A staged schema must stay invisible to the runtime serializer, otherwise a v6 payload could be emitted "
+            + "before the controllers have registered v6, got: " + knownProtocols);
 
     Schema activeSchema = schemaVersionMap.get(ACTIVE_SCHEMA_ID);
     Schema stagedSchema = getStagedSchema();
@@ -84,7 +97,9 @@ public class TestPushJobDetailsSchemaCompatibility {
       Assert.assertEquals(GenericData.get().getDefaultValue(field), -1L, addedField + " must default to -1");
     }
 
-    // Registration only succeeds if v6 is compatible in both directions with the version currently being written.
+    // When the follow-up PR activates v6, the controllers register it against v5, which is the version still being
+    // written by push jobs that have not picked up the new VPJ yet. That registration only succeeds if the two are
+    // compatible in both directions.
     assertCompatible(stagedSchema, activeSchema);
     assertCompatible(activeSchema, stagedSchema);
   }

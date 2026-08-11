@@ -330,9 +330,9 @@ subprojects {
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
           // PushJobDetails v6 stages externalStorageWriteTimeMs + veniceWriteTimeMs. Pinned to the current active
-          // version so controllers register v6 in the push job details system store while the code keeps
-          // serializing v5. The override is removed and PUSH_JOB_DETAILS is bumped to v6 in the follow-up PR that
-          // actually populates the two fields from the push job.
+          // version so the generated classes stay on v5 and no code path can serialize v6 yet. The override is
+          // removed and PUSH_JOB_DETAILS is bumped to v6 in the follow-up PR that actually populates the two fields
+          // from the push job, which is also what makes the controllers register v6.
           project(':internal:venice-common').file('src/main/resources/avro/PushJobDetails/v5', PathValidation.DIRECTORY),
       ]
 
