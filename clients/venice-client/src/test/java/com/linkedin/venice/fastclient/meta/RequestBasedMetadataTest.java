@@ -40,6 +40,9 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
+import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Time;
@@ -641,15 +644,13 @@ public class RequestBasedMetadataTest {
         CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION));
     CompletableFuture<TransportClientResponse> respV2 =
         CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION + 1));
-    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respV1, respV2).when(d2TransportClient).get(eq(metadataPath));
     // Dictionary fetch is best-effort; succeed for both versions.
     TransportClientResponse dictResp =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPathV1 = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
-        + CURRENT_VERSION;
-    String dictPathV2 = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
-        + (CURRENT_VERSION + 1);
+    String dictPathV1 = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
+    String dictPathV2 = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + (CURRENT_VERSION + 1);
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathV1));
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathV2));
 
@@ -697,9 +698,8 @@ public class RequestBasedMetadataTest {
     // would in production, producing the recovery attempt's pendingCallbacks.
     CompletableFuture<TransportClientResponse> recoveryFuture =
         CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION));
-    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
-    String dictionaryPath = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName
-        + "/" + CURRENT_VERSION;
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    String dictionaryPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
     TransportClientResponse dictResp =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
     doReturn(failingFuture, recoveryFuture).when(d2TransportClient).get(eq(metadataPath));
@@ -741,18 +741,15 @@ public class RequestBasedMetadataTest {
 
     // Two successive METADATA responses on the same version, differing only in externalStorageReadMode.
     CompletableFuture<TransportClientResponse> respVeniceOnly = CompletableFuture.completedFuture(
-        RequestBasedMetadataTestUtils
-            .buildMetadataResponse(CURRENT_VERSION, com.linkedin.venice.meta.ExternalStorageReadMode.VENICE_ONLY));
+        RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION, ExternalStorageReadMode.VENICE_ONLY));
     CompletableFuture<TransportClientResponse> respDualEarlyReturn = CompletableFuture.completedFuture(
-        RequestBasedMetadataTestUtils.buildMetadataResponse(
-            CURRENT_VERSION,
-            com.linkedin.venice.meta.ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN));
-    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+        RequestBasedMetadataTestUtils
+            .buildMetadataResponse(CURRENT_VERSION, ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN));
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respVeniceOnly, respDualEarlyReturn).when(d2TransportClient).get(eq(metadataPath));
     TransportClientResponse dictResp =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
-        + CURRENT_VERSION;
+    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
@@ -771,19 +768,15 @@ public class RequestBasedMetadataTest {
 
       assertEquals(received.size(), 1, "exactly the externalStorageReadMode flip must fire");
       Assert.assertNotNull(received.get(0)[0]);
-      assertEquals(
-          received.get(0)[0].getExternalStorageReadMode(),
-          com.linkedin.venice.meta.ExternalStorageReadMode.VENICE_ONLY);
+      assertEquals(received.get(0)[0].getExternalStorageReadMode(), ExternalStorageReadMode.VENICE_ONLY);
       Assert.assertNotNull(received.get(0)[1]);
-      assertEquals(
-          received.get(0)[1].getExternalStorageReadMode(),
-          com.linkedin.venice.meta.ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN);
+      assertEquals(received.get(0)[1].getExternalStorageReadMode(), ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN);
     }
   }
 
   /**
    * Forward-compat guard: when a server returns an externalStorageReadMode wire value that this client's
-   * {@link com.linkedin.venice.meta.ExternalStorageReadMode} enum does not recognize (e.g. a future value),
+   * {@link ExternalStorageReadMode} enum does not recognize (e.g. a future value),
    * {@code buildStoreConfigSnapshot} must coerce to {@code VENICE_ONLY} rather than throwing out of the synchronized
    * {@code updateCache} — a throw here would break the entire refresh loop.
    */
@@ -799,12 +792,11 @@ public class RequestBasedMetadataTest {
     int unknownWireValue = 42;
     CompletableFuture<TransportClientResponse> respUnknown = CompletableFuture
         .completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION, unknownWireValue));
-    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respUnknown).when(d2TransportClient).get(eq(metadataPath));
     TransportClientResponse dictResp =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
-        + CURRENT_VERSION;
+    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
@@ -820,9 +812,7 @@ public class RequestBasedMetadataTest {
 
       assertEquals(received.size(), 1, "initial transition must fire with coerced VENICE_ONLY");
       Assert.assertNotNull(received.get(0)[1]);
-      assertEquals(
-          received.get(0)[1].getExternalStorageReadMode(),
-          com.linkedin.venice.meta.ExternalStorageReadMode.VENICE_ONLY);
+      assertEquals(received.get(0)[1].getExternalStorageReadMode(), ExternalStorageReadMode.VENICE_ONLY);
     }
   }
 
@@ -840,21 +830,16 @@ public class RequestBasedMetadataTest {
 
     // Two successive METADATA responses on the same version, differing only in currentVersionStorageMode.
     CompletableFuture<TransportClientResponse> respInternal = CompletableFuture.completedFuture(
-        RequestBasedMetadataTestUtils.buildMetadataResponse(
-            CURRENT_VERSION,
-            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY,
-            com.linkedin.venice.meta.StorageMode.INTERNAL));
+        RequestBasedMetadataTestUtils
+            .buildMetadataResponse(CURRENT_VERSION, ExternalStorageReadMode.EXTERNAL_ONLY, StorageMode.INTERNAL));
     CompletableFuture<TransportClientResponse> respDualWrite = CompletableFuture.completedFuture(
-        RequestBasedMetadataTestUtils.buildMetadataResponse(
-            CURRENT_VERSION,
-            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY,
-            com.linkedin.venice.meta.StorageMode.DUAL_WRITE));
-    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+        RequestBasedMetadataTestUtils
+            .buildMetadataResponse(CURRENT_VERSION, ExternalStorageReadMode.EXTERNAL_ONLY, StorageMode.DUAL_WRITE));
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respInternal, respDualWrite).when(d2TransportClient).get(eq(metadataPath));
     TransportClientResponse dictResp =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
-        + CURRENT_VERSION;
+    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
@@ -873,9 +858,9 @@ public class RequestBasedMetadataTest {
 
       assertEquals(received.size(), 1, "exactly the currentVersionStorageMode flip must fire");
       Assert.assertNotNull(received.get(0)[0]);
-      assertEquals(received.get(0)[0].getCurrentVersionStorageMode(), com.linkedin.venice.meta.StorageMode.INTERNAL);
+      assertEquals(received.get(0)[0].getCurrentVersionStorageMode(), StorageMode.INTERNAL);
       Assert.assertNotNull(received.get(0)[1]);
-      assertEquals(received.get(0)[1].getCurrentVersionStorageMode(), com.linkedin.venice.meta.StorageMode.DUAL_WRITE);
+      assertEquals(received.get(0)[1].getCurrentVersionStorageMode(), StorageMode.DUAL_WRITE);
     }
   }
 
@@ -897,14 +882,13 @@ public class RequestBasedMetadataTest {
     CompletableFuture<TransportClientResponse> respUnknown = CompletableFuture.completedFuture(
         RequestBasedMetadataTestUtils.buildMetadataResponse(
             CURRENT_VERSION,
-            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY.getValue(),
+            ExternalStorageReadMode.EXTERNAL_ONLY.getValue(),
             unknownWireValue));
-    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respUnknown).when(d2TransportClient).get(eq(metadataPath));
     TransportClientResponse dictResp =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/"
-        + CURRENT_VERSION;
+    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
@@ -920,7 +904,7 @@ public class RequestBasedMetadataTest {
 
       assertEquals(received.size(), 1, "initial transition must fire with coerced INTERNAL");
       Assert.assertNotNull(received.get(0)[1]);
-      assertEquals(received.get(0)[1].getCurrentVersionStorageMode(), com.linkedin.venice.meta.StorageMode.INTERNAL);
+      assertEquals(received.get(0)[1].getCurrentVersionStorageMode(), StorageMode.INTERNAL);
     }
   }
 
@@ -944,25 +928,19 @@ public class RequestBasedMetadataTest {
     // 2) Fetched v{nextVersion} DUAL_WRITE with partition resources not ready -> switch deferred.
     // externalStorageReadMode also flips so the snapshot differs and the listener fires.
     CompletableFuture<TransportClientResponse> respDeferred = CompletableFuture.completedFuture(
-        RequestBasedMetadataTestUtils.buildDeferredSwitchMetadataResponse(
-            CURRENT_VERSION,
-            nextVersion,
-            com.linkedin.venice.meta.StorageMode.DUAL_WRITE));
+        RequestBasedMetadataTestUtils
+            .buildDeferredSwitchMetadataResponse(CURRENT_VERSION, nextVersion, StorageMode.DUAL_WRITE));
     // 3) Same fetched version, now with complete partition resources -> switch adopted.
     CompletableFuture<TransportClientResponse> respAdopted = CompletableFuture.completedFuture(
-        RequestBasedMetadataTestUtils.buildMetadataResponse(
-            nextVersion,
-            com.linkedin.venice.meta.ExternalStorageReadMode.EXTERNAL_ONLY,
-            com.linkedin.venice.meta.StorageMode.DUAL_WRITE));
-    String metadataPath = com.linkedin.venice.meta.QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+        RequestBasedMetadataTestUtils
+            .buildMetadataResponse(nextVersion, ExternalStorageReadMode.EXTERNAL_ONLY, StorageMode.DUAL_WRITE));
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respInitial, respDeferred, respAdopted).when(d2TransportClient).get(eq(metadataPath));
     // Dictionary fetch is best-effort; succeed for both versions.
     TransportClientResponse dictResp =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPathCurrent = com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName
-        + "/" + CURRENT_VERSION;
-    String dictPathNext =
-        com.linkedin.venice.meta.QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + nextVersion;
+    String dictPathCurrent = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
+    String dictPathNext = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + nextVersion;
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathCurrent));
     doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathNext));
 
@@ -991,7 +969,7 @@ public class RequestBasedMetadataTest {
       assertEquals(configReceived.size(), 1);
       assertEquals(
           configReceived.get(0)[1].getCurrentVersionStorageMode(),
-          com.linkedin.venice.meta.StorageMode.INTERNAL,
+          StorageMode.INTERNAL,
           "the still-serving version's storage mode must not be overwritten by the not-yet-adopted fetched "
               + "version's DUAL_WRITE");
 
@@ -1005,7 +983,7 @@ public class RequestBasedMetadataTest {
       assertEquals(configReceived.size(), 2);
       assertEquals(
           configReceived.get(1)[1].getCurrentVersionStorageMode(),
-          com.linkedin.venice.meta.StorageMode.DUAL_WRITE,
+          StorageMode.DUAL_WRITE,
           "after adoption the snapshot must reflect the newly-served version's DUAL_WRITE storage mode");
     }
   }
