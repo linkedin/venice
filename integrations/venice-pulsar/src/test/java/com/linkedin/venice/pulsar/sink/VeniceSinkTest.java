@@ -93,22 +93,12 @@ public class VeniceSinkTest {
 
     when(producer.put(Mockito.any(), Mockito.any())).thenAnswer((InvocationOnMock invocation) -> {
       CompletableFuture<Void> future = new CompletableFuture<>();
-      executor.schedule(
-          () -> future.complete(null),
-          ThreadLocalRandom.current().nextInt(minFlushDelay, maxFlushDelay),
-          TimeUnit.MILLISECONDS);
-
       futures.add(future);
       return future;
     });
 
     when(producer.delete(Mockito.any())).thenAnswer((InvocationOnMock invocation) -> {
       CompletableFuture<Void> future = new CompletableFuture<>();
-      executor.schedule(
-          () -> future.complete(null),
-          ThreadLocalRandom.current().nextInt(minFlushDelay, maxFlushDelay),
-          TimeUnit.MILLISECONDS);
-
       futures.add(future);
       return future;
     });
