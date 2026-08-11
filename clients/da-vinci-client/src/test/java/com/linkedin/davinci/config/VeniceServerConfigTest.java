@@ -12,8 +12,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_T
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
@@ -25,15 +27,18 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CU
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.testng.annotations.Test;
@@ -174,6 +179,26 @@ public class VeniceServerConfigTest {
 
     String path = config.getRocksDBPath();
     assertEquals(path, "db/path/rocksdb");
+  }
+
+  @Test
+  public void testDeadLeaderReadyToServeFallbackThresholdMs() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getDeadLeaderReadyToServeFallbackThresholdMs(), TimeUnit.HOURS.toMillis(3));
+
+    props.put(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, "7200000");
+    VeniceServerConfig overriddenConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(overriddenConfig.getDeadLeaderReadyToServeFallbackThresholdMs(), 7200000L);
+
+    props.put(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, "0");
+    VeniceServerConfig disabledConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(disabledConfig.getDeadLeaderReadyToServeFallbackThresholdMs(), 0L);
+
+    // A positive threshold that is not larger than the leader-complete freshness window is rejected at construction.
+    props.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, "300000");
+    props.put(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, "300000");
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
   }
 
   // TODO: Delete this test once we fully delete the HelixMessagingChannel.
