@@ -81,6 +81,29 @@ public class UpdateStoreQueryParamsTest {
   }
 
   @Test
+  public void testStoreInfoCopyIncludesPubSubEncryptionKeyUrn() {
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setEncryptionEnabled(true);
+    storeInfo.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    storeInfo.setReplicationMetadataVersionId(-1);
+    UpdateStoreQueryParams copiedParams = new UpdateStoreQueryParams(storeInfo, false);
+    assertEquals(copiedParams.getPubSubEncryptionKeyUrn(), Optional.of(pubSubEncryptionKeyUrn));
+  }
+
+  @Test
+  public void testStoreInfoCopyIncludesPubSubEncryptionKeyUrnWhenEncryptionIsDisabled() {
+    StoreInfo storeInfo = new StoreInfo();
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
+    storeInfo.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    storeInfo.setReplicationMetadataVersionId(-1);
+
+    UpdateStoreQueryParams copiedParams = new UpdateStoreQueryParams(storeInfo, false);
+
+    assertEquals(copiedParams.getPubSubEncryptionKeyUrn(), Optional.of(pubSubEncryptionKeyUrn));
+  }
+
+  @Test
   public void testExternalStorageReadModeRoundTrip() {
     for (ExternalStorageReadMode mode: ExternalStorageReadMode.values()) {
       UpdateStoreQueryParams params = new UpdateStoreQueryParams();

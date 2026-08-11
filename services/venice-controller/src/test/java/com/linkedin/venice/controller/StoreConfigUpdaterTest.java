@@ -17,6 +17,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
@@ -36,10 +37,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -83,6 +86,7 @@ import java.util.stream.Collectors;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -469,6 +473,77 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     if (!failures.isEmpty()) {
       fail("Parent round-trip failed for " + failures.size() + " field(s):\n  - " + String.join("\n  - ", failures));
     }
+  }
+
+  @DataProvider(name = "pubSubEncryptionKeyUrnUpdates")
+  public Object[][] pubSubEncryptionKeyUrnUpdates() {
+    return new Object[][] { { true, "", "keyUrn:abc", null }, { false, "", "keyUrn:abc", "encryption-enabled store" },
+        { true, "", "   ", "non-blank" }, { true, "keyUrn:abc", "keyUrn:abc", null },
+        { true, "keyUrn:abc", "keyUrn:xyz", "already configured" } };
+  }
+
+  @Test(dataProvider = "pubSubEncryptionKeyUrnUpdates")
+  public void testApplyOnParentPubSubEncryptionKeyUrn(
+      boolean encryptionEnabled,
+      String currentPubSubEncryptionKeyUrn,
+      String requestedPubSubEncryptionKeyUrn,
+      String expectedError) {
+    String storeName = Utils.getUniqueString("encryption-key-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setEncryptionEnabled(encryptionEnabled);
+    store.setPubSubEncryptionKeyUrn(currentPubSubEncryptionKeyUrn);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(requestedPubSubEncryptionKeyUrn);
+    if (expectedError != null) {
+      VeniceHttpException exception =
+          expectThrows(VeniceHttpException.class, () -> parentAdmin.updateStore(clusterName, storeName, params));
+      assertTrue(exception.getMessage().contains(expectedError));
+      return;
+    }
+
+    parentAdmin.updateStore(clusterName, storeName, params);
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.pubSubEncryptionKeyUrn.toString(), requestedPubSubEncryptionKeyUrn);
+    assertTrue(
+        message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(PUB_SUB_ENCRYPTION_KEY_URN::equals));
+  }
+
+  @DataProvider(name = "pubSubEncryptionKeyUrnChildRegions")
+  public Object[][] pubSubEncryptionKeyUrnChildRegions() {
+    return new Object[][] { { true, null }, { false, "encryption-enabled store" } };
+  }
+
+  /**
+   * {@code encryptionEnabled} is derived per region from {@code cluster.encryption.enabled} and is
+   * never replicated, so a child can legitimately see it as false for a store the parent already
+   * accepted a key URN for. The child must apply the replicated value rather than reject it, since a
+   * rejection here fails the admin message on every retry and stalls the region's admin queue. A
+   * single-region controller is itself the originator, so it still enforces the precondition.
+   */
+  @Test(dataProvider = "pubSubEncryptionKeyUrnChildRegions")
+  public void testApplyOnChildPubSubEncryptionKeyUrnEnforcesStoreStateOnlyWhenSingleRegion(
+      boolean multiRegion,
+      String expectedError) {
+    String storeName = Utils.getUniqueString("encryption-key-child");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multiClusterConfigs = admin.getMultiClusterConfigs();
+    doReturn(multiRegion).when(multiClusterConfigs).isMultiRegion();
+    Store store = admin.getStore(clusterName, storeName);
+    store.setEncryptionEnabled(false);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("keyUrn:abc");
+    if (expectedError != null) {
+      VeniceHttpException exception = expectThrows(
+          VeniceHttpException.class,
+          () -> StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params));
+      assertTrue(exception.getMessage().contains(expectedError));
+      return;
+    }
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
   }
 
   /**

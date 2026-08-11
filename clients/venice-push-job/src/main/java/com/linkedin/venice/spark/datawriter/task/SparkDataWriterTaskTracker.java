@@ -3,7 +3,9 @@ package com.linkedin.venice.spark.datawriter.task;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -12,6 +14,7 @@ import java.util.Map;
 public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   private final DataWriterAccumulators accumulators;
   private Map<Integer, Long> perPartitionRecordCounts = Collections.emptyMap();
+  private final Set<String> failedExternalStorageRegions = new HashSet<>();
 
   public SparkDataWriterTaskTracker(DataWriterAccumulators accumulators) {
     this.accumulators = accumulators;
@@ -95,6 +98,14 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public void trackIncrementalPushThrottledTime(long timeMs) {
     accumulators.incrementalPushThrottleTimeCounter.add(timeMs);
+  }
+
+  @Override
+  public void trackFailedExternalStorageRegion(String regionName) {
+    if (regionName == null || regionName.isEmpty()) {
+      return;
+    }
+    failedExternalStorageRegions.add(regionName);
   }
 
   @Override
@@ -186,8 +197,25 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
         : Collections.unmodifiableMap(new HashMap<>(counts));
   }
 
+  /**
+   * Sets the deduplicated failed external-storage regions collected from successful Spark task output.
+   */
+  public void setFailedExternalStorageRegions(Set<String> failedRegions) {
+    failedExternalStorageRegions.clear();
+    if (failedRegions != null) {
+      failedExternalStorageRegions.addAll(failedRegions);
+    }
+  }
+
   @Override
   public Map<Integer, Long> getPerPartitionRecordCounts() {
     return perPartitionRecordCounts;
+  }
+
+  @Override
+  public Set<String> getFailedExternalStorageRegions() {
+    return failedExternalStorageRegions.isEmpty()
+        ? Collections.emptySet()
+        : Collections.unmodifiableSet(new HashSet<>(failedExternalStorageRegions));
   }
 }

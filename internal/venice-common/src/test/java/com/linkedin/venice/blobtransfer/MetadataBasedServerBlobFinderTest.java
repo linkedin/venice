@@ -215,10 +215,10 @@ public class MetadataBasedServerBlobFinderTest {
         waitingThread.set(Thread.currentThread());
         return finder.discoverBlobPeers(STORE_NAME, VERSION, 0);
       });
-      TestUtils.waitForNonDeterministicAssertion(
-          1,
-          TimeUnit.SECONDS,
-          () -> Assert.assertEquals(waitingThread.get().getState(), Thread.State.WAITING));
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+        Assert.assertNotNull(waitingThread.get(), "Shared-request thread has not started yet");
+        Assert.assertEquals(waitingThread.get().getState(), Thread.State.WAITING);
+      });
 
       failedMetadataResponse.completeExceptionally(new RuntimeException("metadata unavailable"));
 
@@ -407,7 +407,7 @@ public class MetadataBasedServerBlobFinderTest {
 
   private static byte[] serializeMetadata(Map<CharSequence, List<CharSequence>> routingInfo, int currentVersion) {
     MetadataResponseRecord record = new MetadataResponseRecord(
-        new VersionProperties(currentVersion, 0, 1, "", Collections.emptyMap(), 1),
+        new VersionProperties(currentVersion, 0, 1, "", Collections.emptyMap(), 1, 0),
         Collections.singletonList(currentVersion),
         Collections.emptyMap(),
         Collections.emptyMap(),

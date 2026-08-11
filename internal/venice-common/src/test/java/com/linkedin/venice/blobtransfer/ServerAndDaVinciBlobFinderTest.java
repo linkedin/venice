@@ -26,7 +26,7 @@ public class ServerAndDaVinciBlobFinderTest {
 
     BlobFinder serverBlobFinder = mock(BlobFinder.class);
     BlobPeersDiscoveryResponse serverResponse = new BlobPeersDiscoveryResponse();
-    serverResponse.setDiscoveryResult(Collections.singletonList("server-host"));
+    serverResponse.setDiscoveryResult(Collections.singletonList("server-host_1234"));
     doReturn(serverResponse).when(serverBlobFinder).discoverBlobPeers(anyString(), anyInt(), anyInt());
 
     ServerAndDaVinciBlobFinder finder = new ServerAndDaVinciBlobFinder(daVinciBlobFinder, serverBlobFinder);
@@ -34,9 +34,33 @@ public class ServerAndDaVinciBlobFinderTest {
     BlobPeersDiscoveryResponse response = finder.discoverBlobPeers(STORE_NAME, VERSION, PARTITION);
 
     Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getDiscoveryResult(), Arrays.asList("dvc-host", "server-host"));
+    Assert.assertEquals(response.getDiscoveryResult(), Arrays.asList("dvc-host", "server-host_1234"));
+    Assert.assertEquals(response.getServerHostNames(), Collections.singleton("server-host"));
+    Assert.assertTrue(response.isSourceAware());
     verify(daVinciBlobFinder).discoverBlobPeers(STORE_NAME, VERSION, PARTITION);
     verify(serverBlobFinder).discoverBlobPeers(STORE_NAME, VERSION, PARTITION);
+  }
+
+  @Test
+  public void testOverlappingNormalizedHostsRemainDaVinciSource() {
+    BlobFinder daVinciBlobFinder = mock(BlobFinder.class);
+    BlobPeersDiscoveryResponse daVinciResponse = new BlobPeersDiscoveryResponse();
+    daVinciResponse.setDiscoveryResult(Collections.singletonList("shared-host_1111"));
+    doReturn(daVinciResponse).when(daVinciBlobFinder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    BlobFinder serverBlobFinder = mock(BlobFinder.class);
+    BlobPeersDiscoveryResponse serverResponse = new BlobPeersDiscoveryResponse();
+    serverResponse.setDiscoveryResult(Collections.singletonList("shared-host_2222"));
+    doReturn(serverResponse).when(serverBlobFinder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    ServerAndDaVinciBlobFinder finder = new ServerAndDaVinciBlobFinder(daVinciBlobFinder, serverBlobFinder);
+
+    BlobPeersDiscoveryResponse response = finder.discoverBlobPeers(STORE_NAME, VERSION, PARTITION);
+
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getDiscoveryResult(), Arrays.asList("shared-host_1111", "shared-host_2222"));
+    Assert.assertTrue(response.getServerHostNames().isEmpty());
+    Assert.assertTrue(response.isSourceAware());
   }
 
   @Test
@@ -56,6 +80,7 @@ public class ServerAndDaVinciBlobFinderTest {
 
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getDiscoveryResult(), Collections.singletonList("server-host"));
+    Assert.assertEquals(response.getServerHostNames(), Collections.singleton("server-host"));
   }
 
   @Test
@@ -77,6 +102,7 @@ public class ServerAndDaVinciBlobFinderTest {
 
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getDiscoveryResult(), Collections.singletonList("dvc-host"));
+    Assert.assertTrue(response.getServerHostNames().isEmpty());
   }
 
   @Test

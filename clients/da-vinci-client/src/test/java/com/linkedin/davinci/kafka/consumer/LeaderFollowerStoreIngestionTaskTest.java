@@ -44,6 +44,7 @@ import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -80,6 +81,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -131,6 +133,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -2538,6 +2541,159 @@ public class LeaderFollowerStoreIngestionTaskTest {
     spy.reportIfCatchUpVersionTopicOffset(pcs, true);
 
     verify(pcs, times(1)).lagHasCaughtUp();
+  }
+
+  /**
+   * When the leader has been silent past the dead-leader threshold, an already-acceptable lag is honoured on its own:
+   * the PCS flag flips exactly once, even across repeated {@code isReadyToServe} ticks.
+   */
+  @Test
+  public void testDeadLeaderFallbackActivatesOnce() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    // Consumption started 4h ago and no leader-complete signal ever arrived: silent for 4h, past the 3h threshold.
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    AtomicBoolean fallbackFlag = new AtomicBoolean(false);
+    when(pcs.isReadyToServeViaDeadLeaderFallback()).thenAnswer(invocation -> fallbackFlag.get());
+    doAnswer(invocation -> {
+      fallbackFlag.set(invocation.getArgument(0));
+      return null;
+    }).when(pcs).setReadyToServeViaDeadLeaderFallback(anyBoolean());
+
+    assertTrue(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 1L, 10L, false, LagType.OFFSET_LAG));
+    // Second poll: still acceptable, but the flag guard prevents a re-activation.
+    assertTrue(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 1L, 10L, false, LagType.OFFSET_LAG));
+
+    verify(pcs, times(1)).setReadyToServeViaDeadLeaderFallback(true);
+  }
+
+  /**
+   * In heartbeat-lag mode a dead leader inflates the heartbeat lag itself, so the measured lag stays above the
+   * threshold. Readiness then falls back to the re-measured offset lag: once offset catch-up is confirmed the fallback
+   * still fires despite the unacceptable heartbeat lag.
+   */
+  @Test
+  public void testDeadLeaderFallbackUsesOffsetCatchUpInHeartbeatMode() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    // Offset threshold 100 per partition; offset lag re-measured at 5 => caught up.
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(hybridStoreConfig.getOffsetLagThresholdToGoOnline()).thenReturn(100L);
+    setField(ctx.task, "hybridStoreConfig", Optional.of(hybridStoreConfig));
+    setField(ctx.task, "partitionCount", 1);
+    doReturn(5L).when(ctx.task).measureHybridOffsetLag(any(PartitionConsumptionState.class), anyBoolean());
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    AtomicBoolean fallbackFlag = new AtomicBoolean(false);
+    when(pcs.isReadyToServeViaDeadLeaderFallback()).thenAnswer(invocation -> fallbackFlag.get());
+    doAnswer(invocation -> {
+      fallbackFlag.set(invocation.getArgument(0));
+      return null;
+    }).when(pcs).setReadyToServeViaDeadLeaderFallback(anyBoolean());
+
+    // Heartbeat lag 999999 is far above the 10 ms threshold, yet offset catch-up carries the fallback.
+    assertTrue(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 999999L, 10L, false, LagType.HEARTBEAT_LAG));
+    verify(pcs, times(1)).setReadyToServeViaDeadLeaderFallback(true);
+  }
+
+  /**
+   * In heartbeat-lag mode, when the re-measured offset lag is still above the offset threshold the replica has not
+   * caught up, so the dead-leader fallback does not fire even though the leader is long silent.
+   */
+  @Test
+  public void testDeadLeaderFallbackNotAppliedWhenOffsetStillLaggingInHeartbeatMode() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(hybridStoreConfig.getOffsetLagThresholdToGoOnline()).thenReturn(100L);
+    setField(ctx.task, "hybridStoreConfig", Optional.of(hybridStoreConfig));
+    setField(ctx.task, "partitionCount", 1);
+    // Offset lag re-measured at 500 => still lagging past the 100 threshold.
+    doReturn(500L).when(ctx.task).measureHybridOffsetLag(any(PartitionConsumptionState.class), anyBoolean());
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    assertFalse(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 999999L, 10L, false, LagType.HEARTBEAT_LAG));
+    verify(pcs, never()).setReadyToServeViaDeadLeaderFallback(true);
+  }
+
+  /**
+   * The fallback only bypasses the leader-complete freshness gate; the offset lag remains authoritative. An offset lag
+   * above the threshold stays unacceptable and never activates the fallback, even when the leader is long silent.
+   */
+  @Test
+  public void testDeadLeaderFallbackNotAppliedWhenLagExceedsThreshold() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    assertFalse(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 100L, 10L, false, LagType.OFFSET_LAG));
+
+    verify(pcs, never()).setReadyToServeViaDeadLeaderFallback(true);
   }
 
   private PartitionConsumptionState makePcsForCatchUpTest() {

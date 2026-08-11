@@ -2597,6 +2597,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           storeName,
           clusterName);
     } else {
+      validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
         if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
@@ -2968,6 +2969,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return srcStoreResponse.getStore().getVersion(versionNumber);
   }
 
+  static void validatePubSubEncryptionKeyUrnForVersionCreation(String clusterName, Store store, PushType pushType) {
+    if (!store.isEncryptionEnabled() || store.isSystemStore() || pushType.isIncremental()) {
+      return;
+    }
+    if (StringUtils.isBlank(store.getPubSubEncryptionKeyUrn())) {
+      throw new VeniceException(
+          "Cannot create a version for encryption-enabled store " + store.getName() + " in cluster " + clusterName
+              + " because pubSubEncryptionKeyUrn is empty; set pubSubEncryptionKeyUrn through update-store first");
+    }
+  }
+
   /**
    * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
    * Add version is a multi step process that can be broken down to three main steps:
@@ -3068,6 +3080,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterName);
             return new Pair<>(false, null);
           }
+
+          validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
 
           backupStrategy = store.getBackupStrategy();
           offlinePushStrategy = store.getOffLinePushStrategy();
@@ -5830,6 +5844,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       storeRepository.updateStore(store);
       LOGGER.info("Updated store {} v{} status to {} in cluster {}", storeName, version, status, clusterName);
     }
+  }
+
+  @Override
+  public void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter) {
+    if (StringUtils.isNotEmpty(regionFilter) && !isRegionPartOfRegionsFilterList(getRegionName(), regionFilter)) {
+      LOGGER.info(
+          "Skipping version storage-mode update for store {} v{} in cluster {} because region filter {} does not include {}",
+          storeName,
+          version,
+          clusterName,
+          regionFilter,
+          getRegionName());
+      return;
+    }
+
+    storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+      Version storeVersion = store.getVersion(version);
+      if (storeVersion == null) {
+        throw new VeniceException(
+            "Version " + version + " does not exist for store " + storeName + " in cluster " + clusterName);
+      }
+      if (storeVersion.getStorageMode() == storageMode) {
+        return store;
+      }
+      store.setVersionStorageMode(version, storageMode);
+      LOGGER.info(
+          "Updated store {} v{} storageMode to {} in cluster {} for region {}",
+          storeName,
+          version,
+          storageMode,
+          clusterName,
+          getRegionName());
+      return store;
+    });
   }
 
   /**

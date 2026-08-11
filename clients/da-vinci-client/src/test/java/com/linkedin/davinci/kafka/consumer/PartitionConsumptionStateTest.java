@@ -196,6 +196,24 @@ public class PartitionConsumptionStateTest {
   }
 
   @Test
+  public void testReadyToServeViaDeadLeaderFallback() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        null);
+    assertFalse(pcs.isReadyToServeViaDeadLeaderFallback());
+    assertTrue(pcs.toString().contains("readyToServeViaDeadLeaderFallback=false"));
+
+    pcs.setReadyToServeViaDeadLeaderFallback(true);
+    assertTrue(pcs.isReadyToServeViaDeadLeaderFallback());
+    assertTrue(pcs.toString().contains("readyToServeViaDeadLeaderFallback=true"));
+  }
+
+  @Test
   public void testAddIncPushVersionToPendingReportList() {
     List<String> pendingReportIncrementalPush = new ArrayList<>();
     OffsetRecord offsetRecord = mock(OffsetRecord.class);

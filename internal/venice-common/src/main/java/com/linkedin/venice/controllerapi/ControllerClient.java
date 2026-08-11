@@ -66,6 +66,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC_VERSION_INCLUDED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
@@ -90,6 +91,7 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -1161,6 +1163,22 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.UPDATE_STORE, params, ControllerResponse.class);
   }
 
+  public ControllerResponse updateStoreVersionStorageMode(String storeName, int version, StorageMode storageMode) {
+    return updateStoreVersionStorageMode(storeName, version, storageMode, null);
+  }
+
+  public ControllerResponse updateStoreVersionStorageMode(
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionsFilter) {
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(STORAGE_MODE, storageMode.name());
+    if (StringUtils.isNotEmpty(regionsFilter)) {
+      params.add(REGIONS_FILTER, regionsFilter);
+    }
+    return request(ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE, params, ControllerResponse.class);
+  }
+
   public SchemaResponse getValueSchema(String storeName, int valueSchemaId) {
     QueryParams params = newParams().add(NAME, storeName).add(SCHEMA_ID, valueSchemaId);
     return request(ControllerRoute.GET_VALUE_SCHEMA, params, SchemaResponse.class);
@@ -1396,37 +1414,25 @@ public class ControllerClient implements Closeable {
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
         try {
-          // Because the way to get parameter is different between controller and router, in order to support query
-          // cluster from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first,
-          // if it does not work, try "/discover_cluster/$storeName"
           try {
             QueryParams params = getQueryParamsToDiscoverCluster(storeName);
             return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
           } catch (VeniceHttpException e) {
-            // TODO: Routers also support fetching the store name via query params. So, once sufficient time has passed,
-            // this check can be changed to break out of the loop on non-5XX errors.
-
-            // Do not attempt querying further if host explicitly returns that store was not found.
-            // If Controllers have been upgraded to recent versions, they will return the proper STORE_NOT_FOUND
-            // ErrorType.
             if (e.getErrorType() == ErrorType.STORE_NOT_FOUND) {
               lastException = e;
               break;
             }
 
-            // If Controllers have not been upgraded recently, they will return a 404 status with GENERAL_ERROR as the
-            // ErrorType.
             if (e.getErrorType() == ErrorType.GENERAL_ERROR && e.getHttpStatusCode() == 404) {
               lastException =
                   new VeniceHttpException(e.getHttpStatusCode(), e.getMessage(), e, ErrorType.STORE_NOT_FOUND);
               break;
             }
 
-            String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
-            return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
+            throw e;
           }
         } catch (Exception e) {
-          LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url);
+          LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url, e);
           if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
             lastConnectException = e;
           } else {

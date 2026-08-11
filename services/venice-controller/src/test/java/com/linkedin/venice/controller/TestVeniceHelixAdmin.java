@@ -66,6 +66,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
@@ -104,6 +105,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -120,6 +122,66 @@ public class TestVeniceHelixAdmin {
 
   private static final String clusterName = "test-cluster";
   private static final String storeName = "test-store";
+
+  @Test
+  public void testValidatePubSubEncryptionKeyUrnForVersionCreation() {
+    Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(true);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> VeniceHelixAdmin
+            .validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.BATCH));
+    assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
+
+    testStore.setPubSubEncryptionKeyUrn("keyUrn:abc");
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.BATCH);
+
+    testStore.setPubSubEncryptionKeyUrn("");
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.INCREMENTAL);
+  }
+
+  @Test
+  public void testAddVersionOnlyValidatesEncryptionKeyUrnAfterIdempotencyCheck() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(true);
+
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(testStore).when(repository).getStore(storeName);
+    doCallRealMethod().when(admin)
+        .addVersionOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            anyInt());
+    Supplier<Version> addVersion = () -> admin.addVersionOnly(
+        clusterName,
+        storeName,
+        "push-id",
+        1,
+        1,
+        PushType.BATCH,
+        "remote-kafka-bootstrap-server",
+        -1,
+        -1,
+        Version.DEFAULT_RT_VERSION_NUMBER);
+
+    expectThrows(VeniceException.class, addVersion::get);
+
+    testStore.addVersion(new VersionImpl(storeName, 1, "push-id"));
+    addVersion.get();
+    verify(repository, never()).updateStore(testStore);
+  }
 
   @Test
   public void testDropResources() {
@@ -178,6 +240,42 @@ public class TestVeniceHelixAdmin {
     assertThrows(
         VeniceNoStoreException.class,
         () -> veniceHelixAdmin.getStorageModePerRegion(clusterName, missingStoreName));
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeMutatesOnlyTheVersion() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    String storeName = "store_version_storage_mode_update";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    VersionImpl version = new VersionImpl(storeName, 1, "test-push");
+    version.setStorageMode(StorageMode.DUAL_WRITE);
+    store.addVersion(version);
+    doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(veniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    assertEquals(store.getStorageMode(), StorageMode.DUAL_WRITE);
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeSkipsWhenRegionFilterDoesNotMatch() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(clusterName, "store", 1, StorageMode.INTERNAL, "dc-1");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, "store", 1, StorageMode.INTERNAL, "dc-1");
+
+    verify(veniceHelixAdmin, never()).storeMetadataUpdate(anyString(), anyString(), any());
   }
 
   /**

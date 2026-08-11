@@ -79,6 +79,7 @@ public class StoreInfo {
     storeInfo.setCompactionEnabled(store.isCompactionEnabled());
     storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
     storeInfo.setEncryptionEnabled(store.isEncryptionEnabled());
+    storeInfo.setPubSubEncryptionKeyUrn(store.getPubSubEncryptionKeyUrn());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
@@ -370,6 +371,8 @@ public class StoreInfo {
   private long compactionThreshold;
 
   private boolean encryptionEnabled;
+
+  private String pubSubEncryptionKeyUrn = "";
 
   private long minCompactionLagSeconds;
 
@@ -914,6 +917,14 @@ public class StoreInfo {
 
   public void setEncryptionEnabled(boolean encryptionEnabled) {
     this.encryptionEnabled = encryptionEnabled;
+  }
+
+  public String getPubSubEncryptionKeyUrn() {
+    return pubSubEncryptionKeyUrn;
+  }
+
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    this.pubSubEncryptionKeyUrn = pubSubEncryptionKeyUrn;
   }
 
   public long getMinCompactionLagSeconds() {

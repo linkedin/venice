@@ -269,6 +269,7 @@ public class ControllerApiConstants {
 
   public static final String COMPACTION_ENABLED = "compaction_enabled";
   public static final String COMPACTION_THRESHOLD_MILLISECONDS = "compaction_threshold_milliseconds";
+  public static final String PUB_SUB_ENCRYPTION_KEY_URN = "pub_sub_encryption_key_urn";
   public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
 

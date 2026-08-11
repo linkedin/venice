@@ -326,6 +326,12 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
+  /**
+   * Set when this replica became ready to serve via the dead-leader fallback rather than a fresh leader-complete signal.
+   * Guards the one-time WARN log and annotates the completion notification.
+   */
+  private boolean readyToServeViaDeadLeaderFallback;
+
   private List<String> pendingReportIncPushVersionList;
 
   // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
@@ -482,6 +488,7 @@ public class PartitionConsumptionState {
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
+    this.readyToServeViaDeadLeaderFallback = false;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
     this.activeKeyCount.set(offsetRecord.getActiveKeyCount());
@@ -850,6 +857,8 @@ public class PartitionConsumptionState {
         .append(leaderCompleteState)
         .append(", lastLeaderCompleteStateUpdateInMs=")
         .append(lastLeaderCompleteStateUpdateInMs)
+        .append(", readyToServeViaDeadLeaderFallback=")
+        .append(readyToServeViaDeadLeaderFallback)
         .append(", consumeRemotely=")
         .append(consumeRemotely)
         .append(", latestMessageConsumedTimestampInMs=")
@@ -1509,6 +1518,14 @@ public class PartitionConsumptionState {
 
   public void setLastLeaderCompleteStateUpdateInMs(long lastLeaderCompleteStateUpdateInMs) {
     this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
+  }
+
+  public boolean isReadyToServeViaDeadLeaderFallback() {
+    return readyToServeViaDeadLeaderFallback;
+  }
+
+  public void setReadyToServeViaDeadLeaderFallback(boolean readyToServeViaDeadLeaderFallback) {
+    this.readyToServeViaDeadLeaderFallback = readyToServeViaDeadLeaderFallback;
   }
 
   public String getReplicaId() {

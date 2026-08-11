@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -609,6 +610,49 @@ public class AdminExecutionTaskTest {
                 p -> p.getThroughputQuotaInBytes().equals(Optional.of(123456L))
                     && p.getThroughputQuotaInRecords().equals(Optional.of(789L))),
         "updateStore must be called with throughput quota values propagated from the UpdateStore message");
+  }
+
+  @Test(dataProvider = "pubSubEncryptionKeyUrnCases")
+  public void testHandleSetStorePubSubEncryptionKeyUrn(
+      boolean encryptionEnabled,
+      String pubSubEncryptionKeyUrn,
+      Optional<String> expectedPubSubEncryptionKeyUrn) {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
+    UpdateStore updateStore = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
+    updateStore.encryptionEnabled = encryptionEnabled;
+    updateStore.pubSubEncryptionKeyUrn = pubSubEncryptionKeyUrn;
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(wrapper);
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        /* isParentController= */ false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertEquals(captor.getValue().getPubSubEncryptionKeyUrn(), expectedPubSubEncryptionKeyUrn);
+  }
+
+  @DataProvider(name = "pubSubEncryptionKeyUrnCases")
+  public Object[][] pubSubEncryptionKeyUrnCases() {
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
+    return new Object[][] { { true, pubSubEncryptionKeyUrn, Optional.of(pubSubEncryptionKeyUrn) },
+        { false, pubSubEncryptionKeyUrn, Optional.empty() }, { true, "   ", Optional.empty() } };
   }
 
   private AdminOperationWrapper createUpdateStoreWrapper(long executionId, boolean targetRegionPromoted) {
