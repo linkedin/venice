@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.mapreduce.counter;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.Reporter;
 
@@ -260,14 +263,14 @@ public class MRJobCounterHelper {
     return getCountFromCounters(counters, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME);
   }
 
-  public static java.util.Set<String> getFailedExternalStorageRegions(Counters counters) {
+  public static Set<String> getFailedExternalStorageRegions(Counters counters) {
     if (counters == null) {
-      return java.util.Collections.emptySet();
+      return Collections.emptySet();
     }
-    java.util.Set<String> regions = new java.util.HashSet<>();
+    Set<String> regions = new HashSet<>();
     Counters.Group group = counters.getGroup(COUNTER_GROUP_EXTERNAL_STORAGE);
     if (group == null) {
-      return java.util.Collections.emptySet();
+      return Collections.emptySet();
     }
     for (Counters.Counter counter: group) {
       if (counter.getCounter() > 0
@@ -275,7 +278,7 @@ public class MRJobCounterHelper {
         regions.add(counter.getName().substring(EXTERNAL_STORAGE_FAILED_REGION_COUNTER_NAME_PREFIX.length()));
       }
     }
-    return java.util.Collections.unmodifiableSet(regions);
+    return Collections.unmodifiableSet(regions);
   }
 
   private static long getCountFromCounters(Counters counters, GroupAndCounterNames groupAndCounterNames) {

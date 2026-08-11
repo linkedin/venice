@@ -24,7 +24,9 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.testng.annotations.Test;
@@ -680,7 +682,7 @@ public class DualWriteVeniceWriterTest {
   }
 
   private static final class RecordingDataWriterTaskTracker implements DataWriterTaskTracker {
-    final java.util.Set<String> failedExternalStorageRegions = new java.util.HashSet<>();
+    final Set<String> failedExternalStorageRegions = new HashSet<>();
 
     @Override
     public void trackFailedExternalStorageRegion(String regionName) {
