@@ -224,6 +224,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setEtlStoreConfig(store.getEtlStoreConfig());
     setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
+    setLastVersionCreationAttemptTimestampMs(store.getLastVersionCreationAttemptTimestampMs());
+    setLastVersionCreationAttemptPushJobId(store.getLastVersionCreationAttemptPushJobId());
     setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     setReplicationFactor(store.getReplicationFactor());
     setMigrationDuplicateStore(store.isMigrationDuplicateStore());
@@ -855,6 +857,29 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
     this.storeProperties.latestVersionPromoteToCurrentTimestamp = latestVersionPromoteToCurrentTimestamp;
+  }
+
+  @Override
+  public long getLastVersionCreationAttemptTimestampMs() {
+    return this.storeProperties.lastVersionCreationAttemptTimestampMs;
+  }
+
+  @Override
+  public void setLastVersionCreationAttemptTimestampMs(long lastVersionCreationAttemptTimestampMs) {
+    this.storeProperties.lastVersionCreationAttemptTimestampMs = lastVersionCreationAttemptTimestampMs;
+  }
+
+  @Override
+  public String getLastVersionCreationAttemptPushJobId() {
+    return this.storeProperties.lastVersionCreationAttemptPushJobId == null
+        ? ""
+        : this.storeProperties.lastVersionCreationAttemptPushJobId.toString();
+  }
+
+  @Override
+  public void setLastVersionCreationAttemptPushJobId(String lastVersionCreationAttemptPushJobId) {
+    this.storeProperties.lastVersionCreationAttemptPushJobId =
+        lastVersionCreationAttemptPushJobId == null ? "" : lastVersionCreationAttemptPushJobId;
   }
 
   @Override

@@ -246,6 +246,14 @@ public interface Store {
 
   void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp);
 
+  long getLastVersionCreationAttemptTimestampMs();
+
+  void setLastVersionCreationAttemptTimestampMs(long lastVersionCreationAttemptTimestampMs);
+
+  String getLastVersionCreationAttemptPushJobId();
+
+  void setLastVersionCreationAttemptPushJobId(String lastVersionCreationAttemptPushJobId);
+
   long getBackupVersionRetentionMs();
 
   void setBackupVersionRetentionMs(long backupVersionRetentionMs);

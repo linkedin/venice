@@ -80,6 +80,8 @@ public class TestStoreJsonSerializer {
         BufferReplayPolicy.REWIND_FROM_EOP);
     store.setHybridStoreConfig(hybridStoreConfig);
     store.setReadQuotaInCU(100);
+    store.setLastVersionCreationAttemptTimestampMs(1234);
+    store.setLastVersionCreationAttemptPushJobId("push-job-id");
 
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     viewConfigMap
@@ -90,6 +92,8 @@ public class TestStoreJsonSerializer {
     byte[] data = serializer.serialize(store, "");
     Store newStore = serializer.deserialize(data, "");
     Assert.assertEquals(store, newStore);
+    Assert.assertEquals(newStore.getLastVersionCreationAttemptTimestampMs(), 1234);
+    Assert.assertEquals(newStore.getLastVersionCreationAttemptPushJobId(), "push-job-id");
 
     // Equality of the HybridStoreConfig should already be covered by the Store's equals(), but just in case it's not,
     // we'll verify...
@@ -133,6 +137,8 @@ public class TestStoreJsonSerializer {
     Assert.assertTrue(
         store.isEnableWrites(),
         "By default, allow store to be written while missing enableWrites field in ZK");
+    Assert.assertEquals(store.getLastVersionCreationAttemptTimestampMs(), 0);
+    Assert.assertEquals(store.getLastVersionCreationAttemptPushJobId(), "");
   }
 
   @Test

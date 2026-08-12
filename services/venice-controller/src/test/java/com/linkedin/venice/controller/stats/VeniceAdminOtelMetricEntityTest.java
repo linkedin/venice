@@ -34,12 +34,12 @@ public class VeniceAdminOtelMetricEntityTest {
             "Successful push starts from parent admin, differentiated by push type",
             setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)));
     map.put(
-        VeniceAdminOtelMetricEntity.ADMIN_PUSH_RETRY_COOLDOWN_REJECTION_COUNT,
+        VeniceAdminOtelMetricEntity.ADMIN_VERSION_CREATION_ATTEMPT_COOLDOWN_REJECTION_COUNT,
         new MetricEntityExpectation(
-            "admin.push.retry_cooldown_rejection_count",
+            "admin.version_creation_attempt.cooldown_rejection_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Version-creating pushes rejected by the push retry cooldown",
+            "User-store version-creation attempts rejected by the cooldown",
             setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)));
     map.put(
         VeniceAdminOtelMetricEntity.ADMIN_OPERATION_SERIALIZATION_FAILURE_COUNT,

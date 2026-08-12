@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.controller.MockStoreLifecycleHooks.PRE_STORE_VERSION_CREATION_OUTCOME;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -19,6 +20,8 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -26,6 +29,8 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -38,7 +43,9 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -245,11 +252,145 @@ public class VeniceParentHelixAdminTest {
 
       assertTrue(retryResponse.isError());
       assertTrue(retryResponse.getError().contains("Http Status 429"));
-      assertTrue(retryResponse.getError().contains("version-creating pushes must be spaced at least"));
+      Assert.assertFalse(retryResponse.getError().contains("Http Status 500"));
+      Assert.assertEquals(retryResponse.getErrorType(), ErrorType.BAD_REQUEST);
+      assertTrue(retryResponse.getError().contains("version-creation attempts must be spaced at least"));
       Assert.assertFalse(
           assertCommand(parentControllerClient.getStore(storeName)).getStore().getVersion(2).isPresent(),
           "Rejected push should not create another version");
     }
+  }
+
+  @Test(timeOut = 3 * DEFAULT_TEST_TIMEOUT_MS)
+  public void testFailedVersionCreationAttemptReservesCooldownBeforeResources() {
+    Properties controllerProperties = new Properties();
+    controllerProperties.setProperty(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, String.valueOf(TimeUnit.MINUTES.toMillis(10)));
+
+    try (
+        VeniceParentHelixAdminTestFixture cooldownFixture = new VeniceParentHelixAdminTestFixture(controllerProperties);
+        ControllerClient parentControllerClient = new ControllerClient(
+            cooldownFixture.getClusterName(),
+            cooldownFixture.getMultiRegionMultiClusterWrapper().getControllerConnectString());
+        TopicManagerRepository parentTopicManagerRepository = IntegrationTestPushUtils.getTopicManagerRepo(
+            PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
+            100,
+            0L,
+            cooldownFixture.getMultiRegionMultiClusterWrapper().getParentKafkaBrokerWrapper(),
+            new PubSubTopicRepository())) {
+      String storeName = Utils.getUniqueString("testFailedVersionCreationAttemptCooldown");
+      String firstPushId = "failed-after-reservation";
+      String versionTopicName = Version.composeKafkaTopic(storeName, 1);
+      PubSubTopic versionTopic = new PubSubTopicRepository().getTopic(versionTopicName);
+      assertCommand(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\""));
+      assertCommand(
+          parentControllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams()
+                  .setStoreLifecycleHooks(getPreVersionCreationHooks(StoreVersionLifecycleEventOutcome.ABORT))));
+
+      VersionCreationResponse failedAttempt = parentControllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          firstPushId,
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+
+      assertTrue(failedAttempt.isError());
+      assertTrue(failedAttempt.getError().contains("preStoreVersionCreation hook"));
+      StoreResponse storeAfterFailure = assertCommand(parentControllerClient.getStore(storeName));
+      long reservedTimestampMs = storeAfterFailure.getStore().getLastVersionCreationAttemptTimestampMs();
+      assertTrue(reservedTimestampMs > 0);
+      Assert.assertEquals(storeAfterFailure.getStore().getLastVersionCreationAttemptPushJobId(), firstPushId);
+      Assert.assertFalse(storeAfterFailure.getStore().getVersion(1).isPresent());
+      assertVersionResourcesAbsent(
+          cooldownFixture,
+          parentTopicManagerRepository.getLocalTopicManager(),
+          versionTopic,
+          versionTopicName);
+
+      VersionCreationResponse differentPushAttempt = parentControllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          "different-push-id",
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+
+      assertTrue(differentPushAttempt.isError());
+      assertTrue(differentPushAttempt.getError().contains("Http Status 429"));
+      Assert.assertFalse(differentPushAttempt.getError().contains("Http Status 500"));
+      Assert.assertEquals(differentPushAttempt.getErrorType(), ErrorType.BAD_REQUEST);
+      StoreResponse storeAfterRejection = assertCommand(parentControllerClient.getStore(storeName));
+      Assert
+          .assertEquals(storeAfterRejection.getStore().getLastVersionCreationAttemptTimestampMs(), reservedTimestampMs);
+      Assert.assertEquals(storeAfterRejection.getStore().getLastVersionCreationAttemptPushJobId(), firstPushId);
+      Assert.assertFalse(storeAfterRejection.getStore().getVersion(1).isPresent());
+      assertVersionResourcesAbsent(
+          cooldownFixture,
+          parentTopicManagerRepository.getLocalTopicManager(),
+          versionTopic,
+          versionTopicName);
+
+      assertCommand(
+          parentControllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams()
+                  .setStoreLifecycleHooks(getPreVersionCreationHooks(StoreVersionLifecycleEventOutcome.PROCEED))));
+      VersionCreationResponse samePushRetry = parentControllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          firstPushId,
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+
+      assertCommand(samePushRetry);
+      StoreResponse storeAfterSamePushRetry = assertCommand(parentControllerClient.getStore(storeName));
+      assertTrue(storeAfterSamePushRetry.getStore().getVersion(1).isPresent());
+      Assert.assertEquals(
+          storeAfterSamePushRetry.getStore().getLastVersionCreationAttemptTimestampMs(),
+          reservedTimestampMs);
+      Assert.assertEquals(storeAfterSamePushRetry.getStore().getLastVersionCreationAttemptPushJobId(), firstPushId);
+    }
+  }
+
+  private static List<LifecycleHooksRecord> getPreVersionCreationHooks(StoreVersionLifecycleEventOutcome outcome) {
+    Map<String, String> hookParams = new HashMap<>();
+    hookParams.put(PRE_STORE_VERSION_CREATION_OUTCOME, outcome.toString());
+    return Collections.singletonList(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), hookParams));
+  }
+
+  private static void assertVersionResourcesAbsent(
+      VeniceParentHelixAdminTestFixture cooldownFixture,
+      TopicManager parentTopicManager,
+      PubSubTopic versionTopic,
+      String versionTopicName) {
+    Assert.assertFalse(parentTopicManager.containsTopic(versionTopic), "Parent version topic should not exist");
+    VeniceHelixAdmin childAdmin = cooldownFixture.getVenice().getLeaderVeniceController().getVeniceHelixAdmin();
+    Assert
+        .assertFalse(childAdmin.getTopicManager().containsTopic(versionTopic), "Child version topic should not exist");
+    Assert.assertFalse(
+        childAdmin.getHelixAdmin().getResourcesInCluster(cooldownFixture.getClusterName()).contains(versionTopicName),
+        "Child Helix resource should not exist");
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS * 2)

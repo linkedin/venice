@@ -8,6 +8,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,11 +35,24 @@ public class TestStoreInfo {
     StoreInfo deserializedMissingFieldFasterXml =
         OBJECT_MAPPER.readValue(PRE_HYBRID_STORE_INFO_STRING, StoreInfo.class);
     assertNull(deserializedMissingFieldFasterXml.getHybridStoreConfig());
+    assertEquals(deserializedMissingFieldFasterXml.getLastVersionCreationAttemptTimestampMs(), 0);
+    assertEquals(deserializedMissingFieldFasterXml.getLastVersionCreationAttemptPushJobId(), "");
   }
 
   @Test
   public void nullStore() {
     assertNull(StoreInfo.fromStore(null)); // should not throw a NPE!
+  }
+
+  @Test
+  public void testVersionCreationAttemptMetadataFromStore() {
+    Store store = TestUtils.createTestStore("test-store", "owner", System.currentTimeMillis());
+    store.setLastVersionCreationAttemptTimestampMs(1234);
+    store.setLastVersionCreationAttemptPushJobId("push-job-id");
+
+    StoreInfo storeInfo = StoreInfo.fromStore(store);
+    assertEquals(storeInfo.getLastVersionCreationAttemptTimestampMs(), 1234);
+    assertEquals(storeInfo.getLastVersionCreationAttemptPushJobId(), "push-job-id");
   }
 
   @Test
