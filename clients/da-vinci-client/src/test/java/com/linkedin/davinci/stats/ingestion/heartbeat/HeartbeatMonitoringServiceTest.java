@@ -42,6 +42,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
@@ -356,57 +357,66 @@ public class HeartbeatMonitoringServiceTest {
         0,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 0),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         currentVersion,
         1,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         currentVersion,
         2,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         0,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 0),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         1,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         2,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         0,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 0),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         1,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         2,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     // The above calls initialize entries with current time, and followers will retain the highest timestamp.
     // we'll note the current time that comes AFTER the initialization and use that from which to increment the time.
@@ -483,37 +493,43 @@ public class HeartbeatMonitoringServiceTest {
         1,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         currentVersion,
         2,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         backupVersion,
         1,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         backupVersion,
         2,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         futureVersion,
         1,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         futureVersion,
         2,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     // alright, no longer null
     Assert.assertTrue(hasStore(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE));
@@ -554,19 +570,22 @@ public class HeartbeatMonitoringServiceTest {
         1,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         1,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         1,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     // make sure non hybrid is still not in there
     Assert.assertEquals(
@@ -726,7 +745,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
@@ -736,7 +756,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -754,7 +775,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
@@ -764,7 +786,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -782,7 +805,8 @@ public class HeartbeatMonitoringServiceTest {
         partition,
         replicaId,
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
@@ -792,7 +816,8 @@ public class HeartbeatMonitoringServiceTest {
         partition,
         replicaId,
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);

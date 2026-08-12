@@ -572,6 +572,7 @@ public class StorageReadRequestHandlerTest {
         false,
         false,
         false,
+        false,
         null);
     expectedAdminResponse.addPartitionConsumptionState(state);
     doReturn(expectedAdminResponse).when(ingestionMetadataRetriever)

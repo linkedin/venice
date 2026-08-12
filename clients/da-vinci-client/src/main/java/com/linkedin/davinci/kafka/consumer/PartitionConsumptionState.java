@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ArrayUtils;
@@ -395,6 +396,7 @@ public class PartitionConsumptionState {
    */
   private final VeniceStoreWriteType writeType;
   private final VeniceChunkingStatus chunkingStatus;
+  private final VeniceReplicationMode replicationMode;
   private final String localRegionName;
 
   /**
@@ -421,6 +423,7 @@ public class PartitionConsumptionState {
       boolean hybrid,
       boolean isWriteComputationEnabled,
       boolean isChunked,
+      boolean isActiveActiveReplicationEnabled,
       String localRegionName) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
@@ -472,6 +475,9 @@ public class PartitionConsumptionState {
     cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
     this.writeType = isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
     this.chunkingStatus = isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
+    this.replicationMode = isActiveActiveReplicationEnabled
+        ? VeniceReplicationMode.ACTIVE_ACTIVE
+        : VeniceReplicationMode.NON_ACTIVE_ACTIVE;
     this.localRegionName = localRegionName;
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
@@ -1632,7 +1638,15 @@ public class PartitionConsumptionState {
       if (localRegionName != null && !localRegionName.isEmpty()) {
         locality = r.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
       }
-      return new HeartbeatKey(storeName, version, getPartition(), r, writeType, chunkingStatus, locality);
+      return new HeartbeatKey(
+          storeName,
+          version,
+          getPartition(),
+          r,
+          writeType,
+          chunkingStatus,
+          locality,
+          replicationMode);
     });
   }
 

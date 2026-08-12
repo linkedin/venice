@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICATION_MODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -33,6 +34,7 @@ import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -67,6 +69,7 @@ public class HeartbeatVersionedStatsTest {
   private static final VeniceStoreWriteType WRITE_TYPE = VeniceStoreWriteType.REGULAR;
   private static final VeniceChunkingStatus CHUNKING_STATUS = VeniceChunkingStatus.UNCHUNKED;
   private static final VeniceRegionLocality LOCALITY = VeniceRegionLocality.LOCAL;
+  private static final VeniceReplicationMode REPLICATION_MODE = VeniceReplicationMode.NON_ACTIVE_ACTIVE;
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
@@ -153,7 +156,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -161,7 +165,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 200,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -169,7 +174,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 150,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify Tehuti accumulated correctly
     HeartbeatStat tehutiStats = heartbeatVersionedStats.getStatsForTesting(STORE_NAME, CURRENT_VERSION);
@@ -192,7 +198,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordFollowerLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -201,7 +208,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordFollowerLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -210,7 +218,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify Tehuti metrics
     HeartbeatStat tehutiStats = heartbeatVersionedStats.getStatsForTesting(STORE_NAME, CURRENT_VERSION);
@@ -250,7 +259,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     HeartbeatOtelStats otelStatsBefore = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
     assertNotNull(otelStatsBefore, "OTel stats should exist before deletion");
@@ -269,7 +279,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 200,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify a fresh OTel stats instance was created (different object from before deletion)
     HeartbeatOtelStats otelStatsAfter = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
@@ -311,7 +322,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify version info was initialized correctly
     HeartbeatStat stats = heartbeatVersionedStats.getStatsForTesting(newStoreName, newCurrentVersion);
@@ -335,7 +347,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Get the OTel stats and verify initial version info
     HeartbeatOtelStats otelStats = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
@@ -400,8 +413,15 @@ public class HeartbeatVersionedStatsTest {
 
     // Record metric to trigger initialization
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
-    heartbeatVersionedStats
-        .recordLeaderLag(storeName, 1, REGION, FIXED_CURRENT_TIME - 100, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
+    heartbeatVersionedStats.recordLeaderLag(
+        storeName,
+        1,
+        REGION,
+        FIXED_CURRENT_TIME - 100,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify future version is the highest STARTED/PUSHED version (3)
     HeartbeatOtelStats otelStats = heartbeatVersionedStats.getOtelStatsForTesting(storeName);
@@ -433,8 +453,15 @@ public class HeartbeatVersionedStatsTest {
     leaderMonitors.put(new HeartbeatKey(storeName, 2, 0, REGION), new IngestionTimestampEntry(0, false, false));
 
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
-    heartbeatVersionedStats
-        .recordLeaderLag(storeName, 2, REGION, FIXED_CURRENT_TIME - 100, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
+    heartbeatVersionedStats.recordLeaderLag(
+        storeName,
+        2,
+        REGION,
+        FIXED_CURRENT_TIME - 100,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
 
     HeartbeatOtelStats otelStats = heartbeatVersionedStats.getOtelStatsForTesting(storeName);
     assertNotNull(otelStats);
@@ -458,6 +485,7 @@ public class HeartbeatVersionedStatsTest {
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
         .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), WRITE_TYPE.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), CHUNKING_STATUS.getDimensionValue())
+        .put(VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(), REPLICATION_MODE.getDimensionValue())
         .build();
   }
 
@@ -491,7 +519,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -499,7 +528,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 200,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -507,7 +537,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 150,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify OTel accumulated correctly (min=100, max=200, count=3, sum=450)
     validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 200.0, 3, 450.0);
@@ -526,7 +557,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordFollowerRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -535,7 +567,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordFollowerRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -544,7 +577,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify OTel metrics: active has min=100, max=200, count=3, sum=450; squelched has all 0s
     validateRecordOtelHistogram(
@@ -578,6 +612,9 @@ public class HeartbeatVersionedStatsTest {
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
   }
 
@@ -612,15 +649,37 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 50,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Now emit per-record leader OTel metrics immediately (delays: 100ms, 200ms, 150ms)
-    heartbeatVersionedStats
-        .emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
-    heartbeatVersionedStats
-        .emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
-    heartbeatVersionedStats
-        .emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(
+        STORE_NAME,
+        CURRENT_VERSION,
+        REGION,
+        100,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(
+        STORE_NAME,
+        CURRENT_VERSION,
+        REGION,
+        200,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(
+        STORE_NAME,
+        CURRENT_VERSION,
+        REGION,
+        150,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify OTel accumulated correctly: initial 50 + 100 + 200 + 150 = 500 sum, count=4
     validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 50.0, 200.0, 4, 500.0);
@@ -640,7 +699,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Now emit per-record follower OTel metrics (delays: 100ms, 200ms, 150ms)
     // Note: emitPerRecordFollowerOtelMetric only records to the active state (no squelching)
@@ -652,7 +712,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(
         STORE_NAME,
         CURRENT_VERSION,
@@ -661,7 +722,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(
         STORE_NAME,
         CURRENT_VERSION,
@@ -670,7 +732,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify OTel metrics:
     // - recordFollowerRecordLag: records 50 to active state, 0 to inactive state (count=1 each)
@@ -689,10 +752,25 @@ public class HeartbeatVersionedStatsTest {
   @Test
   public void testEmitPerRecordOtelMetricWhenStoreNotInMetadataRepository() {
     // Should be a graceful no-op: no exception thrown, no stats entry created
-    heartbeatVersionedStats
-        .emitPerRecordLeaderOtelMetric("unknown_store", 1, REGION, 100, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
-    heartbeatVersionedStats
-        .emitPerRecordFollowerOtelMetric("unknown_store", 1, REGION, 100, true, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(
+        "unknown_store",
+        1,
+        REGION,
+        100,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(
+        "unknown_store",
+        1,
+        REGION,
+        100,
+        true,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
 
     assertNull(
         heartbeatVersionedStats.getRecordLevelDelayOtelStatsForTesting("unknown_store"),
@@ -708,12 +786,33 @@ public class HeartbeatVersionedStatsTest {
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
 
     // Call emitPerRecordLeaderOtelMetric directly without any prior recordLeaderRecordLag call
-    heartbeatVersionedStats
-        .emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
-    heartbeatVersionedStats
-        .emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
-    heartbeatVersionedStats
-        .emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(
+        STORE_NAME,
+        CURRENT_VERSION,
+        REGION,
+        100,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(
+        STORE_NAME,
+        CURRENT_VERSION,
+        REGION,
+        200,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(
+        STORE_NAME,
+        CURRENT_VERSION,
+        REGION,
+        150,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
 
     validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 200.0, 3, 450.0);
   }
@@ -731,7 +830,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(
         STORE_NAME,
         CURRENT_VERSION,
@@ -740,7 +840,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(
         STORE_NAME,
         CURRENT_VERSION,
@@ -749,7 +850,8 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     ReplicaState activeState = isReadyToServe ? ReplicaState.READY_TO_SERVE : ReplicaState.CATCHING_UP;
     validateRecordOtelHistogram(ReplicaType.FOLLOWER, activeState, 100.0, 200.0, 3, 450.0);
@@ -792,7 +894,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     HeartbeatOtelStats heartbeatOtelStats = heartbeatVersionedStats.getOtelStatsForTesting(newStoreName);
     assertNotNull(heartbeatOtelStats, "Heartbeat OTel stats should be created on first heartbeat");
@@ -812,7 +915,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 50,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     RecordLevelDelayOtelStats recordStats =
         heartbeatVersionedStats.getRecordLevelDelayOtelStatsForTesting(newStoreName);
@@ -837,7 +941,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -845,7 +950,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 50,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify initial version info in both maps
     HeartbeatOtelStats heartbeatStats = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
@@ -885,7 +991,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -893,7 +1000,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 50,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     assertNotNull(heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME));
     assertNotNull(heartbeatVersionedStats.getRecordLevelDelayOtelStatsForTesting(STORE_NAME));
@@ -924,7 +1032,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -932,7 +1041,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 50,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.handleStoreDeleted(STORE_NAME);
 
     // Recreate by recording again
@@ -943,7 +1053,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 200,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     heartbeatVersionedStats.recordLeaderRecordLag(
         STORE_NAME,
         CURRENT_VERSION,
@@ -951,7 +1062,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 75,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify fresh stats have correct version info
     HeartbeatOtelStats newHeartbeatStats = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
@@ -1038,7 +1150,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify OTel stats were created with version info from the metadata repository
     HeartbeatOtelStats heartbeatStats = heartbeatVersionedStats.getOtelStatsForTesting(trackedStore);
@@ -1060,7 +1173,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 50,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
     RecordLevelDelayOtelStats recordStats =
         heartbeatVersionedStats.getRecordLevelDelayOtelStatsForTesting(trackedStore);
     assertNotNull(recordStats, "Record-level OTel stats should be created on first record-level call");
@@ -1089,7 +1203,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify CURRENT role tagging
     Attributes currentAttributes = Attributes.builder()
@@ -1102,6 +1217,7 @@ public class HeartbeatVersionedStatsTest {
         .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), LOCALITY.getDimensionValue())
         .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), WRITE_TYPE.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), CHUNKING_STATUS.getDimensionValue())
+        .put(VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(), REPLICATION_MODE.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -1121,7 +1237,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 200,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify FUTURE role tagging
     Attributes futureAttributes = Attributes.builder()
@@ -1134,6 +1251,7 @@ public class HeartbeatVersionedStatsTest {
         .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), LOCALITY.getDimensionValue())
         .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), WRITE_TYPE.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), CHUNKING_STATUS.getDimensionValue())
+        .put(VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(), REPLICATION_MODE.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -1161,7 +1279,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify CURRENT role tagging (includes new SLO dimensions)
     validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 100.0, 1, 100.0);
@@ -1174,7 +1293,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 200,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify FUTURE role tagging
     Attributes futureAttributes = Attributes.builder()
@@ -1191,6 +1311,9 @@ public class HeartbeatVersionedStatsTest {
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -1221,10 +1344,24 @@ public class HeartbeatVersionedStatsTest {
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
 
     // Initialize both stores
-    heartbeatVersionedStats
-        .recordLeaderLag(storeA, 5, REGION, FIXED_CURRENT_TIME - 100, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
-    heartbeatVersionedStats
-        .recordLeaderLag(storeB, 10, REGION, FIXED_CURRENT_TIME - 200, WRITE_TYPE, CHUNKING_STATUS, LOCALITY);
+    heartbeatVersionedStats.recordLeaderLag(
+        storeA,
+        5,
+        REGION,
+        FIXED_CURRENT_TIME - 100,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
+    heartbeatVersionedStats.recordLeaderLag(
+        storeB,
+        10,
+        REGION,
+        FIXED_CURRENT_TIME - 200,
+        WRITE_TYPE,
+        CHUNKING_STATUS,
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify independent version info
     HeartbeatOtelStats statsA = heartbeatVersionedStats.getOtelStatsForTesting(storeA);
@@ -1262,7 +1399,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 100,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     HeartbeatOtelStats otelStats = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
     assertEquals(otelStats.getVersionInfo().getCurrentVersion(), CURRENT_VERSION);
@@ -1285,7 +1423,8 @@ public class HeartbeatVersionedStatsTest {
         FIXED_CURRENT_TIME - 200,
         WRITE_TYPE,
         CHUNKING_STATUS,
-        LOCALITY);
+        LOCALITY,
+        REPLICATION_MODE);
 
     // Verify the metric was tagged with CURRENT role (not FUTURE) for the second recording
     Attributes currentAttributes = Attributes.builder()
@@ -1298,6 +1437,7 @@ public class HeartbeatVersionedStatsTest {
         .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), LOCALITY.getDimensionValue())
         .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), WRITE_TYPE.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), CHUNKING_STATUS.getDimensionValue())
+        .put(VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(), REPLICATION_MODE.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,

@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICATION_MODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -26,6 +27,7 @@ import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -114,6 +116,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     // Verify metric was recorded with CURRENT version type
@@ -139,6 +142,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         delay);
 
     validateHeartbeatMetric(
@@ -163,6 +167,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         delay);
 
     validateHeartbeatMetric(
@@ -187,6 +192,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         delay);
 
     validateHeartbeatMetric(
@@ -211,6 +217,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     // Verify metric was recorded with BACKUP version type
@@ -236,6 +243,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     // Record for US-EAST
@@ -247,6 +255,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         200L);
 
     // Verify both regions recorded metrics
@@ -280,6 +289,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
@@ -290,6 +300,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         150L);
 
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
@@ -300,6 +311,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         200L);
 
     // Verify aggregate metrics (min=100, max=200, sum=450, count=3)
@@ -332,6 +344,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     validateHeartbeatMetric(
@@ -360,6 +373,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     validateHeartbeatMetric(REGION_US_WEST, VersionRole.CURRENT, replicaType, ReplicaState.READY_TO_SERVE, 100.0, 1);
@@ -382,6 +396,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     validateHeartbeatMetric(REGION_US_WEST, VersionRole.CURRENT, ReplicaType.FOLLOWER, replicaState, 100.0, 1);
@@ -401,6 +416,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     validateHeartbeatMetric(
@@ -423,6 +439,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         150L);
 
     // Verify version 1 is now classified as BACKUP
@@ -456,6 +473,7 @@ public class HeartbeatOtelStatsTest {
           VeniceStoreWriteType.REGULAR,
           VeniceChunkingStatus.UNCHUNKED,
           VeniceRegionLocality.LOCAL,
+          VeniceReplicationMode.NON_ACTIVE_ACTIVE,
           100L);
 
       // Verify no metrics were recorded
@@ -480,6 +498,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     validateHeartbeatMetric(
@@ -504,6 +523,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         0L);
 
     validateHeartbeatMetric(
@@ -529,6 +549,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         largeDelay);
 
     validateHeartbeatMetric(
@@ -568,6 +589,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         100L);
 
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
@@ -578,6 +600,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         200L);
 
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
@@ -588,6 +611,7 @@ public class HeartbeatOtelStatsTest {
         VeniceStoreWriteType.REGULAR,
         VeniceChunkingStatus.UNCHUNKED,
         VeniceRegionLocality.LOCAL,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE,
         300L);
 
     // Verify each combination has its own metric
@@ -667,6 +691,9 @@ public class HeartbeatOtelStatsTest {
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
         .build();
 
     validateExponentialHistogramPointData(
