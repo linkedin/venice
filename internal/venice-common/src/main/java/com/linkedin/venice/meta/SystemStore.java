@@ -591,26 +591,6 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public long getLastVersionCreationAttemptTimestampMs() {
-    return 0;
-  }
-
-  @Override
-  public void setLastVersionCreationAttemptTimestampMs(long lastVersionCreationAttemptTimestampMs) {
-    throwUnsupportedOperationException("setLastVersionCreationAttemptTimestampMs");
-  }
-
-  @Override
-  public String getLastVersionCreationAttemptPushJobId() {
-    return "";
-  }
-
-  @Override
-  public void setLastVersionCreationAttemptPushJobId(String lastVersionCreationAttemptPushJobId) {
-    throwUnsupportedOperationException("setLastVersionCreationAttemptPushJobId");
-  }
-
-  @Override
   public long getBackupVersionRetentionMs() {
     return zkSharedStore.getBackupVersionRetentionMs();
   }

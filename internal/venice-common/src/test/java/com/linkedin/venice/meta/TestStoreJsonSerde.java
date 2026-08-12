@@ -54,14 +54,10 @@ public class TestStoreJsonSerde {
     byte[] serializedStore = SERIALIZED_WITH_EMPTY_OPTIONAL.getBytes();
     Store deserializedStore = storeJSONSerializer.deserialize(serializedStore, "/");
     assertEquals(deserializedStore.getRmdVersion(), ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION);
-    assertEquals(deserializedStore.getLastVersionCreationAttemptTimestampMs(), 0);
-    assertEquals(deserializedStore.getLastVersionCreationAttemptPushJobId(), "");
     byte[] reserializedStore = storeJSONSerializer.serialize(deserializedStore, "/");
     Store redeserializedStore = storeJSONSerializer.deserialize(reserializedStore, "/");
     assertEquals(redeserializedStore, deserializedStore);
     assertEquals(redeserializedStore.getRmdVersion(), ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION);
-    assertEquals(redeserializedStore.getLastVersionCreationAttemptTimestampMs(), 0);
-    assertEquals(redeserializedStore.getLastVersionCreationAttemptPushJobId(), "");
 
     Store store = new ZKStore(
         "storeName",

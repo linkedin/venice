@@ -1080,8 +1080,6 @@ public class ReadOnlyStore implements Store {
     storeProperties.setPartitionerConfig(convertPartitionerConfig(getPartitionerConfig()));
     // storeProperties.setIncrementalPushPolicy(IncrementalPushPolicy());
     storeProperties.setLatestVersionPromoteToCurrentTimestamp(getLatestVersionPromoteToCurrentTimestamp());
-    storeProperties.setLastVersionCreationAttemptTimestampMs(getLastVersionCreationAttemptTimestampMs());
-    storeProperties.setLastVersionCreationAttemptPushJobId(getLastVersionCreationAttemptPushJobId());
     storeProperties.setBackupVersionRetentionMs(getBackupVersionRetentionMs());
     storeProperties.setReplicationFactor(getReplicationFactor());
     storeProperties.setMigrationDuplicateStore(isMigrationDuplicateStore());
@@ -1479,26 +1477,6 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public long getLastVersionCreationAttemptTimestampMs() {
-    return this.delegate.getLastVersionCreationAttemptTimestampMs();
-  }
-
-  @Override
-  public void setLastVersionCreationAttemptTimestampMs(long lastVersionCreationAttemptTimestampMs) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public String getLastVersionCreationAttemptPushJobId() {
-    return this.delegate.getLastVersionCreationAttemptPushJobId();
-  }
-
-  @Override
-  public void setLastVersionCreationAttemptPushJobId(String lastVersionCreationAttemptPushJobId) {
     throw new UnsupportedOperationException();
   }
 

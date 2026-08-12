@@ -100,8 +100,6 @@ public class StoreInfo {
     storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
     storeInfo.setStoreLifecycleHooks(store.getStoreLifecycleHooks());
     storeInfo.setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
-    storeInfo.setLastVersionCreationAttemptTimestampMs(store.getLastVersionCreationAttemptTimestampMs());
-    storeInfo.setLastVersionCreationAttemptPushJobId(store.getLastVersionCreationAttemptPushJobId());
     storeInfo.setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
     storeInfo.setKeyUrnFields(store.getKeyUrnFields());
     storeInfo.setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
@@ -407,8 +405,6 @@ public class StoreInfo {
   private boolean enumSchemaEvolutionAllowed = false;
   private List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
   private long getLatestVersionPromoteToCurrentTimestamp;
-  private long lastVersionCreationAttemptTimestampMs;
-  private String lastVersionCreationAttemptPushJobId = "";
   private boolean keyUrnCompressionEnabled = false;
   private List<String> keyUrnFields = new ArrayList<>();
   private boolean flinkVeniceViewsEnabled = false;
@@ -1113,23 +1109,6 @@ public class StoreInfo {
 
   public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
     this.getLatestVersionPromoteToCurrentTimestamp = latestVersionPromoteToCurrentTimestamp;
-  }
-
-  public long getLastVersionCreationAttemptTimestampMs() {
-    return lastVersionCreationAttemptTimestampMs;
-  }
-
-  public void setLastVersionCreationAttemptTimestampMs(long lastVersionCreationAttemptTimestampMs) {
-    this.lastVersionCreationAttemptTimestampMs = lastVersionCreationAttemptTimestampMs;
-  }
-
-  public String getLastVersionCreationAttemptPushJobId() {
-    return lastVersionCreationAttemptPushJobId;
-  }
-
-  public void setLastVersionCreationAttemptPushJobId(String lastVersionCreationAttemptPushJobId) {
-    this.lastVersionCreationAttemptPushJobId =
-        lastVersionCreationAttemptPushJobId == null ? "" : lastVersionCreationAttemptPushJobId;
   }
 
   public boolean isKeyUrnCompressionEnabled() {

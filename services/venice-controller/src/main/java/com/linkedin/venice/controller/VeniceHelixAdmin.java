@@ -80,7 +80,6 @@ import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
-import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
 import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
@@ -3065,6 +3064,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
           }
+          if (versionNumber == VERSION_ID_UNSET && startIngestion && clusterConfig.getPushRetryCooldownMs() > 0) {
+            PushRetryCooldownPolicy.enforce(
+                store,
+                pushType,
+                pushJobId,
+                clusterConfig.getPushRetryCooldownMs(),
+                System.currentTimeMillis(),
+                resources.getVeniceAdminStats());
+          }
           currentVersionBeforePush = store.getCurrentVersion();
 
           // Dest child controllers skip the version whose kafka topic is truncated
@@ -3116,20 +3124,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.containsVersion(version.getNumber())) {
               throwVersionAlreadyExists(storeName, version.getNumber());
             }
-            reserveVersionCreationAttemptAndInvokePreStoreVersionCreationHooks(
-                store,
-                repository,
-                clusterConfig,
-                resources.getVeniceAdminStats(),
+            invokePreStoreVersionCreationHooks(
                 clusterName,
                 storeName,
-                pushJobId,
-                versionNumber,
-                startIngestion,
-                pushType,
                 version.getNumber(),
-                store.getStoreLifecycleHooks(),
-                System.currentTimeMillis());
+                store.getStoreLifecycleHooks());
             // Update ZK with the new version
             store.addVersion(version, true, currentRTVersionNumber);
             repository.updateStore(store);
@@ -3147,20 +3146,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               }
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
-            reserveVersionCreationAttemptAndInvokePreStoreVersionCreationHooks(
-                store,
-                repository,
-                clusterConfig,
-                resources.getVeniceAdminStats(),
+            invokePreStoreVersionCreationHooks(
                 clusterName,
                 storeName,
-                pushJobId,
-                versionNumber,
-                startIngestion,
-                pushType,
                 version.getNumber(),
-                store.getStoreLifecycleHooks(),
-                System.currentTimeMillis());
+                store.getStoreLifecycleHooks());
             long createBatchTopicStartTime = System.currentTimeMillis();
             if (clusterConfig.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() || !isParent()) {
               topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
@@ -3413,12 +3403,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // handle the exception.
         throw e;
       }
-      if (e instanceof VeniceHttpException
-          && ((VeniceHttpException) e).getHttpStatusCode() == HttpStatus.SC_TOO_MANY_REQUESTS) {
-        // Cooldown rejection happens before version resources are created. Preserve the HTTP status instead of running
-        // version-creation failure cleanup and wrapping the rejection in a generic 500 response.
-        throw (VeniceHttpException) e;
-      }
       int failedVersionNumber = version == null ? versionNumber : version.getNumber();
       String errorMessage =
           "Failed to add version: " + failedVersionNumber + " to store: " + storeName + " in cluster: " + clusterName;
@@ -3446,38 +3430,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         topicToCreationTime.remove(version.kafkaTopicName());
       }
     }
-  }
-
-  static boolean isVersionCreationAttemptSubjectToCooldown(int versionNumber, boolean startIngestion) {
-    // Parent version creation does not start ingestion, while standalone version creation does.
-    return versionNumber == VERSION_ID_UNSET;
-  }
-
-  void reserveVersionCreationAttemptAndInvokePreStoreVersionCreationHooks(
-      Store store,
-      ReadWriteStoreRepository repository,
-      VeniceControllerClusterConfig clusterConfig,
-      VeniceAdminStats stats,
-      String clusterName,
-      String storeName,
-      String pushJobId,
-      int requestedVersionNumber,
-      boolean startIngestion,
-      PushType pushType,
-      int newVersionNumber,
-      List<LifecycleHooksRecord> lifecycleHooks,
-      long currentTimeMs) {
-    if (isVersionCreationAttemptSubjectToCooldown(requestedVersionNumber, startIngestion)
-        && VersionCreationAttemptCooldownPolicy.checkAndReserve(
-            store,
-            pushType,
-            pushJobId,
-            clusterConfig.getPushRetryCooldownMs(),
-            currentTimeMs,
-            stats)) {
-      repository.updateStore(store);
-    }
-    invokePreStoreVersionCreationHooks(clusterName, storeName, newVersionNumber, lifecycleHooks);
   }
 
   /**

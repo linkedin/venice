@@ -90,7 +90,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
@@ -112,7 +111,6 @@ import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.TestException;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -148,17 +146,11 @@ public class TestVeniceHelixAdmin {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
-    ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
-    AutoCloseableLock storeWriteLock = mock(AutoCloseableLock.class);
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     testStore.setEncryptionEnabled(true);
 
     doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
     doReturn(repository).when(resources).getStoreMetadataRepository();
-    doReturn(clusterLockManager).when(resources).getClusterLockManager();
-    doReturn(storeWriteLock).when(clusterLockManager).createStoreWriteLock(storeName);
-    doReturn(clusterConfig).when(resources).getConfig();
     doReturn(testStore).when(repository).getStore(storeName);
     doCallRealMethod().when(admin)
         .addVersionOnly(
@@ -189,82 +181,6 @@ public class TestVeniceHelixAdmin {
     testStore.addVersion(new VersionImpl(storeName, 1, "push-id"));
     addVersion.get();
     verify(repository, never()).updateStore(testStore);
-
-    testStore.setPubSubEncryptionKeyUrn("keyUrn:abc");
-    testStore.setLastVersionCreationAttemptTimestampMs(1234);
-    testStore.setLastVersionCreationAttemptPushJobId("reserved-push-id");
-    admin.addVersionOnly(
-        clusterName,
-        storeName,
-        "explicit-version-push-id",
-        2,
-        1,
-        PushType.BATCH,
-        "remote-kafka-bootstrap-server",
-        -1,
-        -1,
-        Version.DEFAULT_RT_VERSION_NUMBER);
-
-    assertTrue(testStore.containsVersion(2));
-    assertEquals(testStore.getLastVersionCreationAttemptTimestampMs(), 1234);
-    assertEquals(testStore.getLastVersionCreationAttemptPushJobId(), "reserved-push-id");
-    verify(repository).updateStore(testStore);
-  }
-
-  @DataProvider(name = "version-creation-admin-paths")
-  public static Object[][] versionCreationAdminPaths() {
-    return new Object[][] { { false }, { true } };
-  }
-
-  @Test(dataProvider = "version-creation-admin-paths")
-  public void testAdmissionReservationIsPersistedBeforePreCreationHook(boolean startIngestion) {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    Store store = mock(Store.class);
-    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    long currentTimeMs = 1234;
-
-    when(store.getName()).thenReturn(storeName);
-    when(store.getLastVersionCreationAttemptPushJobId()).thenReturn("");
-    when(store.getVersions()).thenReturn(Collections.emptyList());
-    when(clusterConfig.getPushRetryCooldownMs()).thenReturn(600_000L);
-    doCallRealMethod().when(admin)
-        .reserveVersionCreationAttemptAndInvokePreStoreVersionCreationHooks(
-            any(),
-            any(),
-            any(),
-            any(),
-            anyString(),
-            anyString(),
-            anyString(),
-            anyInt(),
-            anyBoolean(),
-            any(),
-            anyInt(),
-            any(),
-            anyLong());
-    doNothing().when(admin).invokePreStoreVersionCreationHooks(anyString(), anyString(), anyInt(), any());
-
-    admin.reserveVersionCreationAttemptAndInvokePreStoreVersionCreationHooks(
-        store,
-        repository,
-        clusterConfig,
-        null,
-        clusterName,
-        storeName,
-        "push-id",
-        VeniceHelixAdmin.VERSION_ID_UNSET,
-        startIngestion,
-        PushType.BATCH,
-        1,
-        Collections.emptyList(),
-        currentTimeMs);
-
-    InOrder inOrder = inOrder(store, repository, admin);
-    inOrder.verify(store).setLastVersionCreationAttemptTimestampMs(currentTimeMs);
-    inOrder.verify(store).setLastVersionCreationAttemptPushJobId("push-id");
-    inOrder.verify(repository).updateStore(store);
-    inOrder.verify(admin).invokePreStoreVersionCreationHooks(clusterName, storeName, 1, Collections.emptyList());
   }
 
   @Test

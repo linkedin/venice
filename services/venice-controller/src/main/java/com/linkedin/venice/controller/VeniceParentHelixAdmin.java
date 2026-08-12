@@ -1985,6 +1985,16 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
 
+      long pushRetryCooldownMs = getMultiClusterConfigs().getControllerConfig(clusterName).getPushRetryCooldownMs();
+      if (pushRetryCooldownMs > 0) {
+        PushRetryCooldownPolicy.enforce(
+            store,
+            pushType,
+            pushJobId,
+            pushRetryCooldownMs,
+            getTimer().getMilliseconds(),
+            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getVeniceAdminStats());
+      }
     }
 
     // Block all incremental pushes when any DC is degraded, regardless of AA status.

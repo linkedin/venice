@@ -8,23 +8,8 @@ import com.linkedin.venice.utils.lazy.Lazy;
 
 
 public class MockStoreLifecycleHooks extends StoreLifecycleHooks {
-  public static final String PRE_STORE_VERSION_CREATION_OUTCOME = "preStoreVersionCreationOutcome";
-
   public MockStoreLifecycleHooks(VeniceProperties defaultConfigs) {
     super(defaultConfigs);
-  }
-
-  @Override
-  public StoreVersionLifecycleEventOutcome preStoreVersionCreation(
-      String clusterName,
-      String storeName,
-      int versionNumber,
-      String regionName,
-      Lazy<JobStatusQueryResponse> jobStatus,
-      VeniceProperties storeHooksConfigs) {
-    return StoreVersionLifecycleEventOutcome.valueOf(
-        storeHooksConfigs
-            .getString(PRE_STORE_VERSION_CREATION_OUTCOME, StoreVersionLifecycleEventOutcome.PROCEED.toString()));
   }
 
   @Override

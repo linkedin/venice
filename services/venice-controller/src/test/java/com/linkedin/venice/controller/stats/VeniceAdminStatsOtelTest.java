@@ -83,11 +83,10 @@ public class VeniceAdminStatsOtelTest {
   }
 
   @Test
-  public void testRecordVersionCreationAttemptCooldownRejection() {
-    stats.recordVersionCreationAttemptCooldownRejection(PushType.STREAM_REPROCESSING);
+  public void testRecordPushRetryCooldownRejection() {
+    stats.recordPushRetryCooldownRejection(PushType.STREAM_REPROCESSING);
     validateCounter(
-        VeniceAdminStats.VeniceAdminOtelMetricEntity.ADMIN_VERSION_CREATION_ATTEMPT_COOLDOWN_REJECTION_COUNT
-            .getMetricName(),
+        VeniceAdminStats.VeniceAdminOtelMetricEntity.ADMIN_PUSH_RETRY_COOLDOWN_REJECTION_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -136,7 +135,7 @@ public class VeniceAdminStatsOtelTest {
     stats.recordUnexpectedTopicAbsenceCount(PushType.BATCH);
     stats.recordSuccessfullyStartedUserBatchPushParentAdminCount();
     stats.recordSuccessfullyStartedUserIncrementalPushParentAdminCount();
-    stats.recordVersionCreationAttemptCooldownRejection(PushType.BATCH);
+    stats.recordPushRetryCooldownRejection(PushType.BATCH);
     stats.recordFailedSerializingAdminOperationMessageCount();
 
     // Unexpected absence counter
@@ -166,10 +165,9 @@ public class VeniceAdminStatsOtelTest {
             .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.INCREMENTAL.getDimensionValue())
             .build());
 
-    // Version-creation attempt cooldown rejection counter
+    // Push retry cooldown rejection counter
     validateCounter(
-        VeniceAdminStats.VeniceAdminOtelMetricEntity.ADMIN_VERSION_CREATION_ATTEMPT_COOLDOWN_REJECTION_COUNT
-            .getMetricName(),
+        VeniceAdminStats.VeniceAdminOtelMetricEntity.ADMIN_PUSH_RETRY_COOLDOWN_REJECTION_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -193,7 +191,7 @@ public class VeniceAdminStatsOtelTest {
     disabledStats.recordUnexpectedTopicAbsenceCount(PushType.INCREMENTAL);
     disabledStats.recordSuccessfullyStartedUserBatchPushParentAdminCount();
     disabledStats.recordSuccessfullyStartedUserIncrementalPushParentAdminCount();
-    disabledStats.recordVersionCreationAttemptCooldownRejection(PushType.BATCH);
+    disabledStats.recordPushRetryCooldownRejection(PushType.BATCH);
     disabledStats.recordFailedSerializingAdminOperationMessageCount();
   }
 
@@ -207,7 +205,7 @@ public class VeniceAdminStatsOtelTest {
     plainStats.recordUnexpectedTopicAbsenceCount(PushType.BATCH);
     plainStats.recordSuccessfullyStartedUserBatchPushParentAdminCount();
     plainStats.recordSuccessfullyStartedUserIncrementalPushParentAdminCount();
-    plainStats.recordVersionCreationAttemptCooldownRejection(PushType.BATCH);
+    plainStats.recordPushRetryCooldownRejection(PushType.BATCH);
     plainStats.recordFailedSerializingAdminOperationMessageCount();
   }
 

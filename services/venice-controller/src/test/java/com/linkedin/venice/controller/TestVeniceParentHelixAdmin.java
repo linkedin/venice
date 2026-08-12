@@ -1075,6 +1075,36 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
+  @Test
+  public void testRecentVersionCreationIsRejected() {
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = "new_push_id";
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    Version recentVersion = new VersionImpl(storeName, 1, "previous_push_id");
+    recentVersion.setStatus(ONLINE);
+    store.addVersion(recentVersion);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(Collections.emptyMap()).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getPushRetryCooldownMs();
+    parentAdmin.setTimer(new TestMockTime(recentVersion.getCreatedTime() + TimeUnit.MINUTES.toMillis(1)));
+
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1));
+
+    assertEquals(exception.getHttpStatusCode(), HttpStatus.SC_TOO_MANY_REQUESTS);
+    assertTrue(exception.getMessage().contains("Retry in " + TimeUnit.MINUTES.toMillis(9) + " ms"));
+    verify(adminStats).recordPushRetryCooldownRejection(Version.PushType.BATCH);
+  }
+
   /**
    * Idempotent increment version should work because existing topic uses the same push ID as the request
    */
@@ -1335,7 +1365,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1,
           DEFAULT_RT_VERSION_NUMBER);
       assertEquals(newVersion.getNumber(), version.getNumber());
-      verify(adminStats, never()).recordVersionCreationAttemptCooldownRejection(Version.PushType.BATCH);
+      verify(adminStats, never()).recordPushRetryCooldownRejection(Version.PushType.BATCH);
     }
   }
 
@@ -3904,8 +3934,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testTargetedRegionValidation() {
-    Store store = TestUtils.createTestStore("test", "owner", System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(clusterName, "test");
     try {
       HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
       doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -3933,30 +3961,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           e.getMessage(),
           "One of the targeted region invalidRegion is not a valid region in cluster test-cluster");
     }
-    assertEquals(store.getLastVersionCreationAttemptTimestampMs(), 0);
-    assertEquals(store.getLastVersionCreationAttemptPushJobId(), "");
-    verify(internalAdmin, never()).addVersionAndTopicOnly(
-        anyString(),
-        anyString(),
-        anyString(),
-        anyInt(),
-        anyInt(),
-        anyInt(),
-        anyBoolean(),
-        anyBoolean(),
-        any(),
-        any(),
-        any(),
-        any(),
-        anyLong(),
-        anyInt(),
-        any(),
-        anyBoolean(),
-        any(),
-        anyInt(),
-        anyInt(),
-        anyInt(),
-        anyBoolean());
   }
 
   @Test

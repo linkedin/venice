@@ -132,21 +132,6 @@ public class TestZKStore {
     Assert.assertEquals(store.cloneStore().getPubSubEncryptionKeyUrn(), pubSubEncryptionKeyUrn);
   }
 
-  @Test
-  public void testVersionCreationAttemptMetadataDefaultsAndClone() {
-    Store store = TestUtils.createTestStore("versionCreationAttemptStore", "owner", System.currentTimeMillis());
-    Assert.assertEquals(store.getLastVersionCreationAttemptTimestampMs(), 0);
-    Assert.assertEquals(store.getLastVersionCreationAttemptPushJobId(), "");
-
-    store.setLastVersionCreationAttemptTimestampMs(1234);
-    store.setLastVersionCreationAttemptPushJobId("push-job-id");
-
-    Store clonedStore = store.cloneStore();
-    Assert.assertEquals(clonedStore.getLastVersionCreationAttemptTimestampMs(), 1234);
-    Assert.assertEquals(clonedStore.getLastVersionCreationAttemptPushJobId(), "push-job-id");
-    Assert.assertEquals(store, clonedStore);
-  }
-
   private static void assertVersionsEquals(
       Store store,
       int versionToPreserve,
