@@ -82,7 +82,7 @@
     },
     {
       "name": "additionalPushMetrics",
-      "doc": "Extensible map of additional push-job metrics keyed by metric name, so new metrics (e.g. per-destination write timings, error-retry counts, per-batch latency) can be added without evolving this schema again. Values reported so far: 'externalStorageWriteTimeMs' - total elapsed time in milliseconds, summed across all successful data writer task outputs of this push, spent in the external storage write path (throttling wait, batch write calls including retries and retry backoff, flush and close); 'veniceWriteTimeMs' - total elapsed time in milliseconds, summed across all successful data writer task outputs of this push, spent invoking the Venice/Kafka writes and flushing/closing the Venice writer. Both are sums of per-task wall-clock durations, NOT the push job's overall wall-clock duration, so with N parallel tasks they can be up to N times the push duration. A missing key means the push did not report that metric (no dual write configured, or an older push job version). Null when no additional metrics were reported.",
+      "doc": "Additional push-job metrics keyed by metric name. Current keys are 'externalStorageWriteTimeMs' for the external write path, including throttling, retries, flush, and close, and 'veniceWriteTimeMs' for Venice writes, flush, and close. Values are summed task wall-clock milliseconds, not overall push duration. A missing key means the metric was not reported; null means no additional metrics were reported.",
       "type": ["null", {"type": "map", "values": "long"}],
       "default": null
     }
