@@ -502,10 +502,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     }
 
     boolean isChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled();
-    LOGGER.info(
-        "Applying TTL filtering with start timestamp: {} (chunking enabled: {})",
-        pushJobSetting.repushTTLStartTimeMs,
-        isChunkingEnabled);
+    if (isChunkingEnabled) {
+      // Every row is passed through unfiltered in this method when chunking is enabled (TTL filtering
+      // is instead applied post-assembly in applyChunkAssembly()), so skip building a
+      // SparkKafkaInputTTLFilter (and the HDFS schema fetch / dictionary consumer it may create) per
+      // partition entirely, rather than constructing one that's guaranteed to be a no-op.
+      LOGGER.info("TTL filtering deferred to post-assembly (chunking enabled); skipping raw TTL filter stage");
+      return dataFrame;
+    }
+
+    LOGGER.info("Applying TTL filtering with start timestamp: {}", pushJobSetting.repushTTLStartTimeMs);
 
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
 
@@ -524,9 +530,17 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     final StageMetrics ttlMetrics = stageMetricsRegistry.register("ttl_filter");
 
     // Apply filter using mapPartitions for efficiency (one filter instance per partition)
+    boolean needsSslForDictionaryConsumer =
+        pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT;
     dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
+      // SSL is only needed here when the source is ZSTD_WITH_DICT compressed, since that's the only
+      // case where SparkKafkaInputTTLFilter's VeniceRmdTTLFilter creates a PubSub consumer to read the
+      // compression dictionary (see KafkaInputUtils#getCompressor). Gating on this avoids turning an
+      // unrelated executor-side token-file problem into a hard failure for TTL repushes of
+      // NO_OP/GZIP-compressed stores, which never needed SSL on this path.
+      VeniceProperties partitionFilterProps = new VeniceProperties(broadcastFilterProps.value());
       VeniceProperties executorFilterProps =
-          VPJSSLUtils.setupSSLForExecutor(new VeniceProperties(broadcastFilterProps.value()));
+          needsSslForDictionaryConsumer ? VPJSSLUtils.setupSSLForExecutor(partitionFilterProps) : partitionFilterProps;
       SparkKafkaInputTTLFilter ttlFilter = new SparkKafkaInputTTLFilter(executorFilterProps);
       try {
         CountingIterator countedInput = new CountingIterator(
@@ -547,14 +561,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           // handled separately in the reducer, not in the mapper's TTL filter chain).
           if (messageType == MessageType.DELETE.getValue()) {
             return true; // Keep DELETE records unchanged
-          }
-
-          // If chunking is enabled, skip ALL records in the raw TTL filter. TTL filtering
-          // will be handled post-assembly in applyChunkAssembly() instead. This avoids
-          // double-filtering where the raw filter's value/RMD modifications for
-          // PARTIALLY_UPDATED records are lost
-          if (isChunkingEnabled) {
-            return true;
           }
 
           // shouldFilter returns true if record should be removed
@@ -690,6 +696,13 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   protected Dataset<Row> applyChunkAssembly(Dataset<Row> dataFrame) {
     boolean isRmdChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isRmdChunkingEnabled();
     boolean isTTLEnabled = pushJobSetting.repushTTLEnabled;
+    // SSL is only needed ahead of TTL filtering when the source is ZSTD_WITH_DICT compressed, since
+    // that's the only case where VeniceRmdTTLFilter creates a PubSub consumer to read the compression
+    // dictionary (see KafkaInputUtils#getCompressor). Gating on this avoids turning an unrelated
+    // executor-side token-file problem into a hard failure for TTL repushes of NO_OP/GZIP-compressed
+    // stores, which never needed SSL on this path.
+    boolean needsSslForDictionaryConsumer =
+        isTTLEnabled && pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT;
 
     LOGGER.info("Chunk assembly starting (TTL filtering: {}). Input schema: {}", isTTLEnabled, dataFrame.schema());
 
@@ -725,6 +738,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             new ChunkAssemblyFunction(
                 isRmdChunkingEnabled,
                 isTTLEnabled,
+                needsSslForDictionaryConsumer,
                 broadcastFilterProps,
                 inKeyIdx,
                 inValIdx,
@@ -753,6 +767,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     private final boolean isRmdChunkingEnabled;
     private final boolean isTTLEnabled;
+    private final boolean needsSslForDictionaryConsumer;
     private final VeniceProperties broadcastFilterProps;
     private final int inKeyIdx;
     private final int inValIdx;
@@ -768,6 +783,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     ChunkAssemblyFunction(
         boolean isRmdChunkingEnabled,
         boolean isTTLEnabled,
+        boolean needsSslForDictionaryConsumer,
         VeniceProperties broadcastFilterProps,
         int inKeyIdx,
         int inValIdx,
@@ -779,6 +795,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         StageMetrics chunkMetrics) {
       this.isRmdChunkingEnabled = isRmdChunkingEnabled;
       this.isTTLEnabled = isTTLEnabled;
+      this.needsSslForDictionaryConsumer = needsSslForDictionaryConsumer;
       this.broadcastFilterProps = broadcastFilterProps;
       this.inKeyIdx = inKeyIdx;
       this.inValIdx = inValIdx;
@@ -830,13 +847,15 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     /**
      * Lazily builds the {@link SparkChunkAssembler} for this task (materializing executor-side SSL
-     * first, if TTL filtering is enabled) and registers a task-completion listener to release it once,
-     * so it isn't rebuilt for every key group processed by this task.
+     * first, only if the source is ZSTD_WITH_DICT compressed and TTL filtering will actually need a
+     * dictionary consumer) and registers a task-completion listener to release it once, so it isn't
+     * rebuilt for every key group processed by this task.
      */
     private SparkChunkAssembler getOrCreateAssembler() {
       if (assembler == null) {
-        VeniceProperties executorFilterProps =
-            isTTLEnabled ? VPJSSLUtils.setupSSLForExecutor(broadcastFilterProps) : broadcastFilterProps;
+        VeniceProperties executorFilterProps = needsSslForDictionaryConsumer
+            ? VPJSSLUtils.setupSSLForExecutor(broadcastFilterProps)
+            : broadcastFilterProps;
         SparkChunkAssembler newAssembler =
             new SparkChunkAssembler(isRmdChunkingEnabled, isTTLEnabled, executorFilterProps);
         TaskContext taskContext = TaskContext.get();

@@ -3,18 +3,8 @@ package com.linkedin.venice.spark.datawriter.jobs;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN_NAME;
-import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
-import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE;
-import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
-import static com.linkedin.venice.spark.SparkConstants.OFFSET;
-import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
-import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
-import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
-import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SCHEMA_FOR_CHUNK_ASSEMBLY;
-import static com.linkedin.venice.spark.SparkConstants.SCHEMA_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
@@ -338,17 +328,17 @@ public class DataWriterSparkJobRepushTest {
   }
 
   /**
-   * Edge/failure case regression test: when TTL filtering is enabled and an SSL configurator is configured,
-   * executor-side SSL materialization must run before the raw TTL filter is constructed in the
-   * {@code mapPartitions} closure. Before this fix, {@code SparkKafkaInputTTLFilter} was constructed directly
-   * from broadcast job properties and never attempted SSL materialization, so this scenario would silently
-   * succeed instead of failing when the Hadoop token file cannot be resolved. This test forces Spark to
-   * actually execute the closure (via {@code collectAsList()}) so the fix is exercised end-to-end.
+   * Regression test for the fail-open → fail-closed bug found in review of PR #2975: applyTTLFilter()
+   * must not attempt executor-side SSL materialization when the source compression strategy doesn't need
+   * a dictionary consumer. Only ZSTD_WITH_DICT does (see KafkaInputUtils#getCompressor). Verifies a
+   * TTL-only repush job with NO_OP compression completes successfully even when the Hadoop token file
+   * used by TempFileSSLConfigurator cannot be resolved — proving SSL setup was skipped rather than
+   * attempted and failing, instead of turning an unrelated token-file problem into a hard job failure.
    */
   @Test
-  public void testApplyTTLFilterMaterializesExecutorSSL() throws Exception {
+  public void testApplyTTLFilterSkipsSSLForNonDictCompressionStrategy() throws Exception {
     skipIfHadoopTokenFileEnvIsSet();
-    String testName = "testApplyTTLFilterMaterializesExecutorSSL";
+    String testName = "testApplyTTLFilterSkipsSSLForNonDictCompressionStrategy";
 
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
     File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
@@ -383,6 +373,7 @@ public class DataWriterSparkJobRepushTest {
       setting.partitionerClass = DefaultVenicePartitioner.class.getName();
       setting.partitionCount = 1;
       setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+      setting.sourceVersionCompressionStrategy = CompressionStrategy.NO_OP;
       // enableSSL must be true for setupCommonSparkConf() to propagate the SSL configurator class
       // into the Spark session conf, which is how applyTTLFilter()/applyChunkAssembly() broadcast
       // properties pick it up on the executor side.
@@ -394,14 +385,10 @@ public class DataWriterSparkJobRepushTest {
       Dataset<Row> inputDF = job.getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
       Dataset<Row> outputDF = job.testableApplyTTLFilter(inputDF);
 
-      try {
-        outputDF.collectAsList();
-        fail("Expected executor-side SSL materialization to fail with an unresolved Hadoop token file");
-      } catch (Exception e) {
-        assertTrue(
-            containsCauseMessage(e, "Failed to setup SSL for executor-side PubSub client creation"),
-            "Unexpected failure while executing the TTL filter mapPartitions closure: " + e);
-      }
+      // If SSL setup were attempted here (the pre-fix behavior), TempFileSSLConfigurator would throw
+      // because the Hadoop token file is unresolved. Successfully collecting proves SSL was skipped.
+      List<Row> outputRows = outputDF.collectAsList();
+      assertEquals(outputRows.size(), rows.size(), "Chunk manifest rows should pass through unfiltered");
     } finally {
       if (previousTokenFileLocation != null) {
         System.setProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION, previousTokenFileLocation);
@@ -412,31 +399,52 @@ public class DataWriterSparkJobRepushTest {
   }
 
   /**
-   * Edge/failure case regression test: the same SSL materialization gap existed in the chunk assembly
-   * {@code flatMapGroups} closure when TTL filtering is enabled. Before this fix, {@code SparkChunkAssembler}
-   * was constructed directly from broadcast job properties, so this scenario would silently succeed instead
-   * of failing when the Hadoop token file cannot be resolved.
+   * Regression test for the fail-open → fail-closed bug found in review of PR #2975: applyChunkAssembly()'s
+   * post-assembly TTL filter must not attempt executor-side SSL materialization when the source compression
+   * strategy doesn't need a dictionary consumer. Only ZSTD_WITH_DICT does (see KafkaInputUtils#getCompressor).
+   * Verifies a chunking + TTL repush job with NO_OP compression assembles and TTL-checks its record
+   * successfully even when the Hadoop token file used by TempFileSSLConfigurator cannot be resolved --
+   * proving SSL setup was skipped rather than attempted and failing.
    */
   @Test
-  public void testApplyChunkAssemblyMaterializesExecutorSSL() throws Exception {
+  public void testApplyChunkAssemblySkipsSSLForNonDictCompressionStrategy() throws Exception {
     skipIfHadoopTokenFileEnvIsSet();
-    String testName = "testApplyChunkAssemblyMaterializesExecutorSSL";
+    String testName = "testApplyChunkAssemblySkipsSSLForNonDictCompressionStrategy";
 
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
     File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
     String previousTokenFileLocation = System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
     System.clearProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
     try {
+      Schema valueSchema = new Schema.Parser()
+          .parse("{\"type\":\"record\",\"name\":\"TestValue\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}");
+      Schema rmdSchema = new Schema.Parser().parse(
+          "{\"type\":\"record\",\"name\":\"RmdRecord\",\"fields\":[{\"name\":\"timestamp\",\"type\":\"long\"}]}");
+      Files.write(new File(valueSchemaTempDir, "1").toPath(), valueSchema.toString().getBytes());
+      Files.write(new File(rmdSchemaTempDir, "1_1").toPath(), rmdSchema.toString().getBytes());
+
+      long ttlStartTime = System.currentTimeMillis();
+      GenericRecord valueRecord = new GenericData.Record(valueSchema);
+      valueRecord.put("id", "fresh-value");
+      GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
+      rmdRecord.put("timestamp", ttlStartTime + 1_000);
+
+      RecordSerializer<GenericRecord> valueSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
+      RecordSerializer<GenericRecord> rmdSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema);
+      byte[] serializedValue = valueSerializer.serialize(valueRecord);
+      byte[] serializedRmd = rmdSerializer.serialize(rmdRecord);
+
       TestableDataWriterSparkJob job = new TestableDataWriterSparkJob(testName);
       currentTestJob = job;
 
-      long ttlStartTime = System.currentTimeMillis();
       Properties props = createDefaultTestProperties();
       props.setProperty("repush.ttl.policy", "0"); // RT_WRITE_ONLY
       props.setProperty("repush.ttl.start.timestamp", String.valueOf(ttlStartTime));
       props.setProperty("value.schema.dir", valueSchemaTempDir.getAbsolutePath());
       props.setProperty("rmd.schema.dir", rmdSchemaTempDir.getAbsolutePath());
-      props.setProperty("kafka.input.source.compression.strategy", "NO_OP");
+      props.setProperty("kafka.input.source.compression.strategy", CompressionStrategy.NO_OP.name());
       props.setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, "true");
       props.setProperty(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName());
       props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "identity.p12");
@@ -457,7 +465,9 @@ public class DataWriterSparkJobRepushTest {
       setting.partitionCount = 1;
       VersionImpl sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
       sourceVersion.setChunkingEnabled(true);
+      sourceVersion.setCompressionStrategy(CompressionStrategy.NO_OP);
       setting.sourceKafkaInputVersionInfo = sourceVersion;
+      setting.sourceVersionCompressionStrategy = CompressionStrategy.NO_OP;
       // enableSSL must be true for setupCommonSparkConf() to propagate the SSL configurator class
       // into the Spark session conf, which is how applyTTLFilter()/applyChunkAssembly() broadcast
       // properties pick it up on the executor side.
@@ -465,31 +475,17 @@ public class DataWriterSparkJobRepushTest {
 
       job.configure(new VeniceProperties(props), setting);
 
-      // A single non-chunked row is enough: the chunk assembler is constructed for any non-empty key group,
-      // regardless of whether the record turns out to be an actual chunk.
-      List<Row> rows = Arrays.asList(createPutRow("key1", "value1", 1L));
-      Dataset<Row> rawInputDF = job.getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
-      // applyChunkAssembly() expects the same key/value/rmd/(+chunking metadata) shape that
-      // getInputDataFrame() produces for chunked input, not the raw pubsub schema.
-      Dataset<Row> chunkAssemblyInputDF = rawInputDF.selectExpr(
-          KEY_COLUMN_NAME,
-          VALUE_COLUMN_NAME,
-          "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME,
-          SCHEMA_ID_COLUMN_NAME + " as " + SCHEMA_ID_COLUMN_NAME,
-          RMD_VERSION_ID_COLUMN_NAME + " as " + RMD_VERSION_ID_COLUMN_NAME,
-          OFFSET + " as " + OFFSET_COLUMN_NAME,
-          MESSAGE_TYPE + " as " + MESSAGE_TYPE_COLUMN_NAME,
-          CHUNKED_KEY_SUFFIX_COLUMN_NAME + " as " + CHUNKED_KEY_SUFFIX_COLUMN_NAME);
-      Dataset<Row> outputDF = job.testableApplyChunkAssembly(chunkAssemblyInputDF);
+      byte[] regularKey = "regular-key".getBytes();
+      List<Row> rows =
+          Collections.singletonList(createAssemblyRow(regularKey, serializedValue, serializedRmd, 1, 1, 1L, null));
+      Dataset<Row> inputDF = job.getSparkSession().createDataFrame(rows, SCHEMA_FOR_CHUNK_ASSEMBLY);
 
-      try {
-        outputDF.collectAsList();
-        fail("Expected executor-side SSL materialization to fail with an unresolved Hadoop token file");
-      } catch (Exception e) {
-        assertTrue(
-            containsCauseMessage(e, "Failed to setup SSL for executor-side PubSub client creation"),
-            "Unexpected failure while executing the chunk assembly flatMapGroups closure: " + e);
-      }
+      // If SSL setup were attempted here (the pre-fix behavior), TempFileSSLConfigurator would throw
+      // because the Hadoop token file is unresolved. Successfully collecting the assembled, TTL-checked
+      // record proves SSL was skipped entirely.
+      List<Row> outputRows = job.testableApplyChunkAssembly(inputDF).collectAsList();
+      assertEquals(outputRows.size(), 1);
+      assertTrue(Arrays.equals((byte[]) outputRows.get(0).getAs(VALUE_COLUMN_NAME), serializedValue));
     } finally {
       if (previousTokenFileLocation != null) {
         System.setProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION, previousTokenFileLocation);
@@ -557,6 +553,7 @@ public class DataWriterSparkJobRepushTest {
       Version sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
       sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
       setting.sourceKafkaInputVersionInfo = sourceVersion;
+      setting.sourceVersionCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
 
       job.configure(new VeniceProperties(props), setting);
 
@@ -662,6 +659,7 @@ public class DataWriterSparkJobRepushTest {
       sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
       sourceVersion.setChunkingEnabled(true);
       setting.sourceKafkaInputVersionInfo = sourceVersion;
+      setting.sourceVersionCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
 
       job.configure(new VeniceProperties(props), setting);
       job.getSparkSession().conf().set("spark.sql.shuffle.partitions", "1");
@@ -708,17 +706,6 @@ public class DataWriterSparkJobRepushTest {
           "Skipping because " + UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION
               + " is set in the test environment and would make the failure scenario unreachable");
     }
-  }
-
-  private boolean containsCauseMessage(Throwable t, String expectedMessageFragment) {
-    Throwable current = t;
-    while (current != null) {
-      if (current.getMessage() != null && current.getMessage().contains(expectedMessageFragment)) {
-        return true;
-      }
-      current = current.getCause();
-    }
-    return false;
   }
 
   private Row createChunkedRow(String key, String chunkData, int negativeSchemaId, long offset) {
