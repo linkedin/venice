@@ -10,7 +10,6 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -217,7 +216,6 @@ class AbstractTestVeniceHelixAdmin {
     Properties properties = getControllerProperties(clusterName);
     properties.put(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
     properties.put(CONTROLLER_INSTANCE_TAG_LIST, "GENERAL,TEST");
-    properties.put(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, 0);
     properties.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100);
     controllerProps = new VeniceProperties(properties);
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);

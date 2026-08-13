@@ -19,13 +19,17 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -216,40 +220,84 @@ public class VeniceParentHelixAdminTest {
             cooldownFixture.getMultiRegionMultiClusterWrapper().getControllerConnectString())) {
       String storeName = Utils.getUniqueString("testPushRetryCooldown");
       assertCommand(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\""));
+      assertCommand(
+          parentControllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams()
+                  .setStoreLifecycleHooks(createLifecycleHooks(StoreVersionLifecycleEventOutcome.ROLLBACK))));
 
-      ControllerResponse firstPushResponse =
-          parentControllerClient.sendEmptyPushAndWait(storeName, "completed-push", 1000, TimeUnit.MINUTES.toMillis(1));
-      assertCommand(firstPushResponse);
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        StoreResponse storeResponse = assertCommand(parentControllerClient.getStore(storeName));
-        Assert.assertEquals(
-            storeResponse.getStore().getCurrentVersion(),
-            1,
-            "The first push should complete successfully");
-        assertTrue(storeResponse.getStore().getVersion(1).isPresent());
-      });
+      VersionCreationResponse firstPushResponse = requestBatchPush(parentControllerClient, storeName, "retryable-push");
+      assertTrue(firstPushResponse.isError());
+      assertTrue(firstPushResponse.getError().contains("preStoreVersionCreation hook"));
 
-      VersionCreationResponse retryResponse = parentControllerClient.requestTopicForWrites(
-          storeName,
-          1000,
-          Version.PushType.BATCH,
-          "next-push",
-          true,
-          true,
-          false,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          false,
-          -1);
+      String cooldownClusterName = cooldownFixture.getClusterName();
+      VeniceControllerWrapper parentController =
+          cooldownFixture.getMultiRegionMultiClusterWrapper().getLeaderParentControllerWithRetries(cooldownClusterName);
+      VeniceControllerWrapper childController = cooldownFixture.getMultiRegionMultiClusterWrapper()
+          .getChildRegions()
+          .get(0)
+          .getLeaderController(cooldownClusterName);
+      String versionTopicName = Version.composeKafkaTopic(storeName, 1);
+      PubSubTopic versionTopic = new PubSubTopicRepository().getTopic(versionTopicName);
+      Assert.assertNull(parentController.getVeniceAdmin().getStore(cooldownClusterName, storeName).getVersion(1));
+      Assert.assertNull(childController.getVeniceHelixAdmin().getStore(cooldownClusterName, storeName).getVersion(1));
+      assertFalse(parentController.getVeniceAdmin().getTopicManager().containsTopic(versionTopic));
+      assertFalse(childController.getVeniceHelixAdmin().getTopicManager().containsTopic(versionTopic));
+      assertFalse(
+          childController.getVeniceHelixAdmin()
+              .getHelixAdmin()
+              .getResourcesInCluster(cooldownClusterName)
+              .contains(versionTopicName));
+
+      VersionCreationResponse retryResponse = requestBatchPush(parentControllerClient, storeName, "different-push");
 
       assertTrue(retryResponse.isError());
       assertTrue(retryResponse.getError().contains("Http Status 429"));
-      assertTrue(retryResponse.getError().contains("version-creating pushes must be spaced at least"));
-      Assert.assertFalse(
-          assertCommand(parentControllerClient.getStore(storeName)).getStore().getVersion(2).isPresent(),
-          "Rejected push should not create another version");
+      assertTrue(retryResponse.getError().contains("Retry in"));
+      Assert.assertNull(parentController.getVeniceAdmin().getStore(cooldownClusterName, storeName).getVersion(1));
+      assertFalse(parentController.getVeniceAdmin().getTopicManager().containsTopic(versionTopic));
+      assertFalse(childController.getVeniceHelixAdmin().getTopicManager().containsTopic(versionTopic));
+      assertFalse(
+          childController.getVeniceHelixAdmin()
+              .getHelixAdmin()
+              .getResourcesInCluster(cooldownClusterName)
+              .contains(versionTopicName));
+
+      assertCommand(
+          parentControllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams()
+                  .setStoreLifecycleHooks(createLifecycleHooks(StoreVersionLifecycleEventOutcome.PROCEED))));
+      VersionCreationResponse samePushRetry = requestBatchPush(parentControllerClient, storeName, "retryable-push");
+      assertCommand(samePushRetry);
+      Assert.assertEquals(samePushRetry.getVersion(), 1);
     }
+  }
+
+  private static List<LifecycleHooksRecord> createLifecycleHooks(StoreVersionLifecycleEventOutcome outcome) {
+    return Collections.singletonList(
+        new LifecycleHooksRecordImpl(
+            MockStoreVersionCreationLifecycleHooks.class.getName(),
+            Collections.singletonMap("outcome", outcome.toString())));
+  }
+
+  private static VersionCreationResponse requestBatchPush(
+      ControllerClient parentControllerClient,
+      String storeName,
+      String pushJobId) {
+    return parentControllerClient.requestTopicForWrites(
+        storeName,
+        1000,
+        Version.PushType.BATCH,
+        pushJobId,
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS * 2)

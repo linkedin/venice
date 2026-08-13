@@ -207,6 +207,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -248,6 +249,11 @@ public class VeniceParentHelixAdmin implements Admin {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Map<String, Map<String, ReentrantLock>> perStoreAdminLocks = new ConcurrentHashMap<>();
   private final Map<String, ReentrantLock> perClusterAdminLocks = new ConcurrentHashMap<>();
+  /**
+   * Best-effort abuse protection for version creation. This state is intentionally process-local and starts empty after
+   * a parent-controller restart or leadership handoff.
+   */
+  private final ConcurrentHashMap<String, VersionCreationAttempt> pushRetryCooldownAttempts = new ConcurrentHashMap<>();
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
   // Only used for setup work which are intended to be short lived and is bounded by the number of venice clusters.
@@ -1122,6 +1128,7 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = deleteStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      pushRetryCooldownAttempts.remove(getPushRetryCooldownKey(clusterName, storeName));
     } catch (AdminMessageConsumptionTimeoutException timeoutException) {
       LOGGER.info(
           "Timed out while waiting for delete store admin message to be consumed for store: {} in cluster: {}",
@@ -1984,17 +1991,6 @@ public class VeniceParentHelixAdmin implements Admin {
           return existingVersion;
         }
       }
-
-      long pushRetryCooldownMs = getMultiClusterConfigs().getControllerConfig(clusterName).getPushRetryCooldownMs();
-      if (pushRetryCooldownMs > 0) {
-        PushRetryCooldownPolicy.enforce(
-            store,
-            pushType,
-            pushJobId,
-            pushRetryCooldownMs,
-            getTimer().getMilliseconds(),
-            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getVeniceAdminStats());
-      }
     }
 
     // Block all incremental pushes when any DC is degraded, regardless of AA status.
@@ -2078,6 +2074,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       validateTargetedRegions(effectiveTargetedRegions, clusterName);
 
+      checkAndRecordPushAttempt(clusterName, storeName, pushJobId, pushType);
       newVersion = addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -2112,6 +2109,66 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  @VisibleForTesting
+  void checkAndRecordPushAttempt(String clusterName, String storeName, String pushJobId, Version.PushType pushType) {
+    long cooldownMs = getMultiClusterConfigs().getControllerConfig(clusterName).getPushRetryCooldownMs();
+    if (cooldownMs <= 0 || !pushType.isBatchOrStreamReprocessing() || VeniceSystemStoreUtils.isSystemStore(storeName)) {
+      return;
+    }
+
+    long attemptTimestampMs = getTimer().getMilliseconds();
+    AtomicReference<VersionCreationAttempt> rejectedByAttempt = new AtomicReference<>();
+    pushRetryCooldownAttempts.compute(getPushRetryCooldownKey(clusterName, storeName), (key, previousAttempt) -> {
+      if (previousAttempt == null) {
+        return new VersionCreationAttempt(pushJobId, attemptTimestampMs);
+      }
+      if (previousAttempt.pushJobId.equals(pushJobId)) {
+        return previousAttempt;
+      }
+
+      long elapsedMs = Math.max(0, attemptTimestampMs - previousAttempt.attemptTimestampMs);
+      if (elapsedMs >= cooldownMs) {
+        return new VersionCreationAttempt(pushJobId, attemptTimestampMs);
+      }
+
+      rejectedByAttempt.set(previousAttempt);
+      return previousAttempt;
+    });
+
+    VersionCreationAttempt previousAttempt = rejectedByAttempt.get();
+    if (previousAttempt == null) {
+      return;
+    }
+
+    long elapsedMs = Math.max(0, attemptTimestampMs - previousAttempt.attemptTimestampMs);
+    long remainingCooldownMs = cooldownMs - elapsedMs;
+    getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+        .getVeniceAdminStats()
+        .recordPushRetryCooldownRejection(pushType);
+    VeniceHttpException exception = new VeniceHttpException(
+        HttpStatus.SC_TOO_MANY_REQUESTS,
+        "Cannot start " + pushType + " version-creation attempt with pushJobId " + pushJobId + " for store " + storeName
+            + " in cluster " + clusterName + ": pushJobId " + previousAttempt.pushJobId + " was admitted within the "
+            + cooldownMs + " ms cooldown. Retry in " + remainingCooldownMs + " ms.",
+        ErrorType.BAD_REQUEST);
+    exception.setStackTrace(EMPTY_STACK_TRACE);
+    throw exception;
+  }
+
+  private static String getPushRetryCooldownKey(String clusterName, String storeName) {
+    return clusterName + "/" + storeName;
+  }
+
+  private static class VersionCreationAttempt {
+    private final String pushJobId;
+    private final long attemptTimestampMs;
+
+    private VersionCreationAttempt(String pushJobId, long attemptTimestampMs) {
+      this.pushJobId = pushJobId;
+      this.attemptTimestampMs = attemptTimestampMs;
+    }
   }
 
   /**

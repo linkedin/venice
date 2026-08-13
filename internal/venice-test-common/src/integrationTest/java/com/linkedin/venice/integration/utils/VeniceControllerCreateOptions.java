@@ -367,6 +367,9 @@ public class VeniceControllerCreateOptions {
 
     private void verifyAndAddParentControllerSpecificDefaults() {
       extraProperties.setProperty(LOCAL_REGION_NAME, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+      if (!extraProperties.containsKey(CONTROLLER_PUSH_RETRY_COOLDOWN_MS)) {
+        extraProperties.setProperty(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, "0");
+      }
       if (!extraProperties.containsKey(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE)) {
         extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
       }
@@ -382,9 +385,6 @@ public class VeniceControllerCreateOptions {
     private void addDefaults() {
       if (extraProperties == null) {
         extraProperties = new Properties();
-      }
-      if (!extraProperties.containsKey(CONTROLLER_PUSH_RETRY_COOLDOWN_MS)) {
-        extraProperties.setProperty(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, "0");
       }
 
       if (childControllers != null && childControllers.length != 0) {

@@ -39,7 +39,7 @@ public class VeniceAdminOtelMetricEntityTest {
             "admin.push.retry_cooldown_rejection_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Version-creating pushes rejected by the push retry cooldown",
+            "Version-creation attempts rejected by the push retry cooldown",
             setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)));
     map.put(
         VeniceAdminOtelMetricEntity.ADMIN_OPERATION_SERIALIZATION_FAILURE_COUNT,

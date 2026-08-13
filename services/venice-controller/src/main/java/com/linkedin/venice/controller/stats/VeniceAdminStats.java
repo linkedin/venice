@@ -45,7 +45,7 @@ public class VeniceAdminStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<PushType> incrementalPushStartedMetric;
 
   /**
-   * A counter reporting user-store version-creating pushes rejected by the push retry cooldown.
+   * A counter reporting user-store version-creation attempts rejected by the push retry cooldown.
    */
   private final MetricEntityStateOneEnum<PushType> pushRetryCooldownRejectionMetric;
 
@@ -149,10 +149,11 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         "Successful push starts from parent admin, differentiated by push type",
         setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)
     ),
-    /** Version-creating pushes rejected by the push retry cooldown */
+    /** Version-creation attempts rejected by the push retry cooldown */
     ADMIN_PUSH_RETRY_COOLDOWN_REJECTION_COUNT(
         "admin.push.retry_cooldown_rejection_count", MetricType.COUNTER, MetricUnit.NUMBER,
-        "Version-creating pushes rejected by the push retry cooldown", setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)
+        "Version-creation attempts rejected by the push retry cooldown",
+        setOf(VENICE_CLUSTER_NAME, VENICE_PUSH_JOB_TYPE)
     ),
     /** Failed admin operation serializations */
     ADMIN_OPERATION_SERIALIZATION_FAILURE_COUNT(
