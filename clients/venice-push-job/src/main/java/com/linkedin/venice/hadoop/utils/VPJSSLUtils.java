@@ -9,6 +9,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -54,24 +55,62 @@ public class VPJSSLUtils {
   }
 
   /**
+   * JVM-level cache of the materialized SSL properties (keystore/truststore temp file locations, etc).
+   * The Hadoop token file and SSL configurator class are fixed for the lifetime of an executor JVM, so
+   * the (potentially expensive) token-file read and temp-file materialization only need to happen once
+   * per executor, no matter how many times {@link #setupSSLForExecutor(VeniceProperties)} is called
+   * (e.g. once per Spark task, or once per key group). Failures are never cached so a transient issue
+   * (e.g. token file not yet mounted) can be retried on a subsequent call.
+   */
+  private static volatile Properties cachedExecutorSslProps = null;
+  private static final Object EXECUTOR_SSL_PROPS_LOCK = new Object();
+
+  /**
    * Sets up SSL on the executor side before creating a PubSub consumer, by materializing SSL properties
-   * from the Hadoop token file. This is a no-op when no SSL configurator class is configured.
+   * from the Hadoop token file. This is a no-op when no SSL configurator class is configured. The
+   * materialized SSL properties are cached per-JVM (see {@link #cachedExecutorSslProps}) so repeated
+   * calls on the same executor don't re-read the token file or re-write temp certificate files.
    */
   public static VeniceProperties setupSSLForExecutor(VeniceProperties config) {
     if (!config.containsKey(SSL_CONFIGURATOR_CLASS_CONFIG)) {
       return config;
     }
     try {
-      Properties sslProps = getSslProperties(config);
+      Properties sslProps = getCachedExecutorSslProperties(config);
       Properties merged = config.toProperties();
       merged.putAll(sslProps);
       return new VeniceProperties(merged);
     } catch (Exception e) {
       String msg = "Failed to setup SSL for executor-side PubSub client creation. "
-          + "Ensure the Hadoop token file is accessible and SSL certificates are valid. " + "SSL configurator class: "
+          + "Ensure the Hadoop token file is accessible and SSL certificates are valid. SSL configurator class: "
           + config.getString(SSL_CONFIGURATOR_CLASS_CONFIG);
       LOGGER.error(msg, e);
       throw new VeniceException(msg, e);
+    }
+  }
+
+  private static Properties getCachedExecutorSslProperties(VeniceProperties config) throws IOException {
+    Properties cached = cachedExecutorSslProps;
+    if (cached != null) {
+      return cached;
+    }
+    synchronized (EXECUTOR_SSL_PROPS_LOCK) {
+      cached = cachedExecutorSslProps;
+      if (cached == null) {
+        cached = getSslProperties(config);
+        cachedExecutorSslProps = cached;
+      }
+      return cached;
+    }
+  }
+
+  /**
+   * Test-only hook to reset the per-JVM SSL properties cache between test cases.
+   */
+  @VisibleForTesting
+  public static void resetExecutorSslPropsCacheForTests() {
+    synchronized (EXECUTOR_SSL_PROPS_LOCK) {
+      cachedExecutorSslProps = null;
     }
   }
 

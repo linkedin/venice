@@ -7,6 +7,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -18,10 +19,19 @@ import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.util.Properties;
 import org.apache.spark.sql.connector.read.InputPartition;
 import org.apache.spark.sql.connector.read.PartitionReader;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class SparkPubSubPartitionReaderFactoryTest {
+  @BeforeMethod
+  public void resetExecutorSslPropsCache() {
+    // VPJSSLUtils caches materialized SSL properties per-JVM; reset before every test so
+    // SSL-configurator invocation-count assertions aren't affected by caching from a previous test
+    // running in the same JVM/test worker.
+    VPJSSLUtils.resetExecutorSslPropsCacheForTests();
+  }
+
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testCreateReaderWithInvalidPartitionType() {
     Properties p = new Properties();

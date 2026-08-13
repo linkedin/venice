@@ -33,6 +33,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
+import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
@@ -73,6 +74,7 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.testng.SkipException;
 import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -84,6 +86,14 @@ import org.testng.annotations.Test;
  */
 public class DataWriterSparkJobRepushTest {
   private DataWriterSparkJob currentTestJob = null;
+
+  @BeforeMethod
+  public void resetExecutorSslPropsCache() {
+    // VPJSSLUtils caches materialized SSL properties per-JVM (see VPJSSLUtils#setupSSLForExecutor).
+    // Reset before every test so SSL-configurator invocation-count assertions aren't affected by
+    // caching from a previous test running in the same JVM/test worker.
+    VPJSSLUtils.resetExecutorSslPropsCacheForTests();
+  }
 
   @AfterMethod
   public void cleanupSparkSession() {
@@ -569,21 +579,21 @@ public class DataWriterSparkJobRepushTest {
   }
 
   /**
-   * Adapted from PR #2955's DataWriterSparkJobRepushTest.testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL().
+   * Ported from PR #2955's DataWriterSparkJobRepushTest.testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL().
    * Exercises the real bug scenario end-to-end for the chunk-assembly path: TTL filtering with ZSTD_WITH_DICT
    * compression after chunk reassembly, which makes SparkChunkAssembler create a second, internal "dictionary"
    * PubSub consumer on the executor. Verifies the SSL configurator and PubSub consumer factory are invoked with
    * correctly materialized SSL properties and that chunk reassembly still produces the correct output.
    *
-   * Unlike the original PR #2955 test, this does NOT assert that the SSL configurator/consumer factory are
-   * invoked exactly once across both key groups in the task - that de-duplication comes from PR #2955's
-   * per-task assembler caching refactor, which is intentionally out of scope for this simplified fix (see PR
-   * description). This simplified fix constructs a new SparkChunkAssembler per key group, so SSL materialization
-   * and dictionary-consumer creation happen once per key group (twice here, for the two key groups below).
+   * Also asserts that SSL materialization and dictionary-consumer creation happen exactly once across both key
+   * groups in the task, not once per key group, matching PR #2955's original assertion. That de-duplication
+   * comes from ChunkAssemblyFunction (see AbstractDataWriterSparkJob#applyChunkAssembly), which caches the
+   * SparkChunkAssembler once per Spark task and reuses it across key groups instead of PR #2955's per-task
+   * caching refactor.
    */
   @Test
-  public void testApplyChunkAssemblyMaterializesSSLBeforePostAssemblyTTL() throws Exception {
-    String testName = "testApplyChunkAssemblyMaterializesSSLBeforePostAssemblyTTL";
+  public void testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL() throws Exception {
+    String testName = "testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL";
 
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
     File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
@@ -674,11 +684,13 @@ public class DataWriterSparkJobRepushTest {
             .orElse(null);
         assertNotNull(assembledChunk, "Chunked value should survive post-assembly TTL filtering");
         assertTrue(Arrays.equals((byte[]) assembledChunk.getAs("value"), compressedValue));
-        // No per-task assembler caching in this simplified fix: SSL is materialized and a dictionary
-        // consumer is created once per key group (2 key groups here), not once per task.
-        assertEquals(SparkExecutorTestUtils.getSslConfiguratorInvocations(), 2);
-        assertEquals(SparkExecutorTestUtils.getConsumerFactoryInvocations(), 2);
-        assertEquals(SparkExecutorTestUtils.getDictionaryConsumerInvocations(), 2);
+        // ChunkAssemblyFunction caches the SparkChunkAssembler (and the SSL/consumer setup behind it)
+        // once per Spark task and reuses it across all key groups in that task (2 key groups here,
+        // both landing in the single task from spark.sql.shuffle.partitions=1 above), so SSL
+        // materialization and dictionary-consumer creation happen exactly once, not once per key group.
+        assertEquals(SparkExecutorTestUtils.getSslConfiguratorInvocations(), 1);
+        assertEquals(SparkExecutorTestUtils.getConsumerFactoryInvocations(), 1);
+        assertEquals(SparkExecutorTestUtils.getDictionaryConsumerInvocations(), 1);
       });
     } finally {
       deleteDirectory(valueSchemaTempDir);

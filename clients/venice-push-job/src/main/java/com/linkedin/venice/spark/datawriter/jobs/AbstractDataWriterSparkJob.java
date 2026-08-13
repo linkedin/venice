@@ -135,6 +135,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
+import org.apache.spark.TaskContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapGroupsFunction;
 import org.apache.spark.api.java.function.MapFunction;
@@ -155,6 +156,7 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.LongAccumulator;
+import org.apache.spark.util.TaskCompletionListener;
 
 
 /**
@@ -716,52 +718,135 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     dataFrame = dataFrame
         // Group by key
         .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
-        // For each key group, sort by offset DESC and assemble
-        .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
-          long groupStartNs = System.nanoTime();
-          // Collect rows and sort by offset DESC (highest first)
-          List<Row> rowsList = new ArrayList<>();
-          rowsIterator.forEachRemaining(row -> {
-            chunkMetrics.recordsIn.add(1);
-            chunkMetrics.bytesIn.add(CountingIterator.computeByteSizeByIndices(row, inKeyIdx, inValIdx, inRmdIdx));
-            rowsList.add(row);
-          });
-
-          if (rowsList.isEmpty()) {
-            chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
-            return Collections.emptyIterator();
-          }
-
-          // Sort by offset DESC
-          rowsList.sort((r1, r2) -> {
-            long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
-            long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
-            return Long.compare(offset2, offset1);
-          });
-
-          // Assemble chunks (and apply TTL filtering if enabled)
-          VeniceProperties executorFilterProps =
-              isTTLEnabled ? VPJSSLUtils.setupSSLForExecutor(broadcastFilterProps) : broadcastFilterProps;
-          SparkChunkAssembler assembler =
-              new SparkChunkAssembler(isRmdChunkingEnabled, isTTLEnabled, executorFilterProps);
-          Row assembled = assembler.assembleChunks(keyBytes, rowsList.iterator());
-
-          if (assembled == null) {
-            // Latest record is DELETE, chunks incomplete, or filtered by TTL
-            emptyRecordAcc.add(1);
-            chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
-            return Collections.emptyIterator();
-          }
-
-          chunkMetrics.recordsOut.add(1);
-          chunkMetrics.bytesOut
-              .add(CountingIterator.computeByteSizeByIndices(assembled, outKeyIdx, outValIdx, outRmdIdx));
-          chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
-          return Collections.singletonList(assembled).iterator();
-        }, encoder);
+        // For each key group, sort by offset DESC and assemble. ChunkAssemblyFunction caches the
+        // SparkChunkAssembler (and the SSL materialization it needs) once per Spark task and reuses it
+        // across all key groups processed by that task, instead of rebuilding it per key group.
+        .flatMapGroups(
+            new ChunkAssemblyFunction(
+                isRmdChunkingEnabled,
+                isTTLEnabled,
+                broadcastFilterProps,
+                inKeyIdx,
+                inValIdx,
+                inRmdIdx,
+                outKeyIdx,
+                outValIdx,
+                outRmdIdx,
+                emptyRecordAcc,
+                chunkMetrics),
+            encoder);
 
     LOGGER.info("Chunk assembly completed. Output schema: {}", dataFrame.schema());
     return dataFrame;
+  }
+
+  /**
+   * {@link FlatMapGroupsFunction} used by {@link #applyChunkAssembly(Dataset)}. Spark reuses the same
+   * deserialized function instance across every key group processed within a given task, so the
+   * {@link SparkChunkAssembler} (and, transitively, the executor-side SSL materialization and any
+   * dictionary/schema PubSub consumer it needs) is built lazily on the first key group and reused for
+   * the rest of the task, instead of being rebuilt per key group. The assembler is released via a
+   * {@link TaskContext} completion listener so its resources don't outlive the task.
+   */
+  private static class ChunkAssemblyFunction implements FlatMapGroupsFunction<byte[], Row, Row> {
+    private static final long serialVersionUID = 1L;
+
+    private final boolean isRmdChunkingEnabled;
+    private final boolean isTTLEnabled;
+    private final VeniceProperties broadcastFilterProps;
+    private final int inKeyIdx;
+    private final int inValIdx;
+    private final int inRmdIdx;
+    private final int outKeyIdx;
+    private final int outValIdx;
+    private final int outRmdIdx;
+    private final LongAccumulator emptyRecordAcc;
+    private final StageMetrics chunkMetrics;
+
+    private transient SparkChunkAssembler assembler;
+
+    ChunkAssemblyFunction(
+        boolean isRmdChunkingEnabled,
+        boolean isTTLEnabled,
+        VeniceProperties broadcastFilterProps,
+        int inKeyIdx,
+        int inValIdx,
+        int inRmdIdx,
+        int outKeyIdx,
+        int outValIdx,
+        int outRmdIdx,
+        LongAccumulator emptyRecordAcc,
+        StageMetrics chunkMetrics) {
+      this.isRmdChunkingEnabled = isRmdChunkingEnabled;
+      this.isTTLEnabled = isTTLEnabled;
+      this.broadcastFilterProps = broadcastFilterProps;
+      this.inKeyIdx = inKeyIdx;
+      this.inValIdx = inValIdx;
+      this.inRmdIdx = inRmdIdx;
+      this.outKeyIdx = outKeyIdx;
+      this.outValIdx = outValIdx;
+      this.outRmdIdx = outRmdIdx;
+      this.emptyRecordAcc = emptyRecordAcc;
+      this.chunkMetrics = chunkMetrics;
+    }
+
+    @Override
+    public Iterator<Row> call(byte[] keyBytes, Iterator<Row> rowsIterator) {
+      long groupStartNs = System.nanoTime();
+      // Collect rows and sort by offset DESC (highest first)
+      List<Row> rowsList = new ArrayList<>();
+      rowsIterator.forEachRemaining(row -> {
+        chunkMetrics.recordsIn.add(1);
+        chunkMetrics.bytesIn.add(CountingIterator.computeByteSizeByIndices(row, inKeyIdx, inValIdx, inRmdIdx));
+        rowsList.add(row);
+      });
+
+      if (rowsList.isEmpty()) {
+        chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
+        return Collections.emptyIterator();
+      }
+
+      // Sort by offset DESC
+      rowsList.sort((r1, r2) -> {
+        long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
+        long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
+        return Long.compare(offset2, offset1);
+      });
+
+      Row assembled = getOrCreateAssembler().assembleChunks(keyBytes, rowsList.iterator());
+
+      if (assembled == null) {
+        // Latest record is DELETE, chunks incomplete, or filtered by TTL
+        emptyRecordAcc.add(1);
+        chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
+        return Collections.emptyIterator();
+      }
+
+      chunkMetrics.recordsOut.add(1);
+      chunkMetrics.bytesOut.add(CountingIterator.computeByteSizeByIndices(assembled, outKeyIdx, outValIdx, outRmdIdx));
+      chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
+      return Collections.singletonList(assembled).iterator();
+    }
+
+    /**
+     * Lazily builds the {@link SparkChunkAssembler} for this task (materializing executor-side SSL
+     * first, if TTL filtering is enabled) and registers a task-completion listener to release it once,
+     * so it isn't rebuilt for every key group processed by this task.
+     */
+    private SparkChunkAssembler getOrCreateAssembler() {
+      if (assembler == null) {
+        VeniceProperties executorFilterProps =
+            isTTLEnabled ? VPJSSLUtils.setupSSLForExecutor(broadcastFilterProps) : broadcastFilterProps;
+        SparkChunkAssembler newAssembler =
+            new SparkChunkAssembler(isRmdChunkingEnabled, isTTLEnabled, executorFilterProps);
+        TaskContext taskContext = TaskContext.get();
+        if (taskContext != null) {
+          taskContext.addTaskCompletionListener((TaskCompletionListener) context -> newAssembler.close());
+        }
+        assembler = newAssembler;
+      }
+      return assembler;
+    }
   }
 
   /**

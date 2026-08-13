@@ -13,10 +13,18 @@ import java.util.Properties;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.testng.Assert;
 import org.testng.SkipException;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestVPJSSLUtils {
+  @BeforeMethod
+  public void resetExecutorSslPropsCache() {
+    // Ensure each test starts from a clean per-JVM SSL properties cache, since Gradle may reuse the
+    // same test worker JVM across test methods/classes.
+    VPJSSLUtils.resetExecutorSslPropsCacheForTests();
+  }
+
   @Test(expectedExceptions = VeniceException.class)
   public void testValidateInvalidSslProperties() {
     VPJSSLUtils.validateSslProperties(VeniceProperties.empty());
