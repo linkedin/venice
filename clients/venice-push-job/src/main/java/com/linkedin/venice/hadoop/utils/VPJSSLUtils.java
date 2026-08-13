@@ -53,6 +53,28 @@ public class VPJSSLUtils {
     return newSslProperties;
   }
 
+  /**
+   * Sets up SSL on the executor side before creating a PubSub consumer, by materializing SSL properties
+   * from the Hadoop token file. This is a no-op when no SSL configurator class is configured.
+   */
+  public static VeniceProperties setupSSLForExecutor(VeniceProperties config) {
+    if (!config.containsKey(SSL_CONFIGURATOR_CLASS_CONFIG)) {
+      return config;
+    }
+    try {
+      Properties sslProps = getSslProperties(config);
+      Properties merged = config.toProperties();
+      merged.putAll(sslProps);
+      return new VeniceProperties(merged);
+    } catch (Exception e) {
+      String msg = "Failed to setup SSL for executor-side PubSub client creation. "
+          + "Ensure the Hadoop token file is accessible and SSL certificates are valid. " + "SSL configurator class: "
+          + config.getString(SSL_CONFIGURATOR_CLASS_CONFIG);
+      LOGGER.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
   public static void validateSslProperties(VeniceProperties props) {
     String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
         SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
