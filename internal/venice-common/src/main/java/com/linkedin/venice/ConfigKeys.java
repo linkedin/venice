@@ -3271,6 +3271,42 @@ public class ConfigKeys {
       "server.lag.based.replica.auto.resubscribe.max.replica.count";
 
   /**
+   * Config to enable/disable blocking the OFFLINE-&gt;STANDBY transition for future-version replicas whose push
+   * is still in progress (i.e. not yet PUSHED/ONLINE), until the replica's local version topic consumption lag
+   * drops to or below {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD}. This prevents Helix from electing a
+   * brand-new/lagging replica as leader immediately after it reaches STANDBY. Default is false.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED =
+      "server.future.version.standby.lag.check.enabled";
+
+  /**
+   * Config to control the acceptable local version topic lag (number of records behind the end of the topic)
+   * for a future-version, in-progress-push replica to be allowed to complete the OFFLINE-&gt;STANDBY transition.
+   * Only used when {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 1000 records,
+   * a small buffer to absorb normal producer/consumer jitter rather than requiring an exact catch-up.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD =
+      "server.future.version.standby.lag.threshold";
+
+  /**
+   * Config to control the maximum duration, in minutes, to block the OFFLINE-&gt;STANDBY transition while waiting
+   * for a future-version, in-progress-push replica's lag to become acceptable. This is a best-effort wait: once
+   * the timeout elapses, the transition proceeds regardless of the measured lag, to avoid liveness issues.
+   * Only used when {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 120 min = 2 hours,
+   * to accommodate replicas that are still bootstrapping.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES =
+      "server.future.version.standby.lag.check.timeout.minutes";
+
+  /**
+   * Config to control the interval, in minutes, between successive lag re-measurements while waiting for a
+   * future-version, in-progress-push replica's lag to become acceptable. Only used when
+   * {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 15 min.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES =
+      "server.future.version.standby.lag.check.poll.interval.minutes";
+
+  /**
    * Whether to enable producer throughput optimization for realtime workload or not.
    * Two strategies:
    * 1. Disable compression.

@@ -105,6 +105,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       // A future version is ready to serve if it's status is either PUSHED or ONLINE
       // PUSHED is set for future versions of a target region push with deferred swap
       // ONLINE is set for future versions of a push with deferred swap
+      boolean isFutureVersion = Utils.isFutureVersion(resourceName, getStoreRepo());
       boolean isFutureVersionReady = Utils.isFutureVersionReady(resourceName, getStoreRepo());
       /**
        * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
@@ -136,6 +137,10 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
           Utils.getReplicaId(message.getResourceName(), getPartition()));
       if (isCurrentVersion || isFutureVersionReady) {
         waitConsumptionCompleted(resourceName, notifier);
+      } else if (isFutureVersion && getStoreAndServerConfigs().isFutureVersionStandbyLagCheckEnabled()) {
+        // Future version whose push is still in progress: best-effort wait for lag to become acceptable before
+        // this replica becomes eligible for leader election (no-op unless explicitly enabled).
+        waitUntilFutureVersionLagAcceptable(resourceName);
       }
     });
   }

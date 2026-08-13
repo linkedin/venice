@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -28,6 +29,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -616,6 +618,199 @@ public class LeaderFollowerPartitionStateModelTest {
         System.err.println("Failed to cleanup test directory: " + testDataPath + ", error: " + e.getMessage());
       }
     }
+  }
+
+  /**
+   * When {@link com.linkedin.venice.ConfigKeys#SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is not enabled
+   * (the default), {@code onBecomeStandbyFromOffline} must not invoke {@code waitUntilFutureVersionLagAcceptable}
+   * at all for an in-progress future-version push, preserving the pre-existing (no-wait) behavior.
+   */
+  @Test
+  public void testWaitUntilFutureVersionLagAcceptableDisabledByDefault() throws InterruptedException {
+    Message message = mock(Message.class);
+    NotificationContext context = mock(NotificationContext.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+
+    Store store = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED); // push still in progress, not ready
+    when(store.getVersion(storeVersion)).thenReturn(mockVersion);
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    doReturn(store).when(metadataRepo).getStore(anyString());
+
+    LeaderFollowerPartitionStateModel spyModel = spy(leaderFollowerPartitionStateModel);
+    spyModel.onBecomeStandbyFromOffline(message, context);
+
+    verify(spyModel, never()).waitUntilFutureVersionLagAcceptable(anyString());
+  }
+
+  /**
+   * When lag is already within the configured threshold, the wait must return immediately after a single
+   * measurement, without sleeping/polling further.
+   */
+  @Test
+  public void testWaitUntilFutureVersionLagAcceptableProceedsWhenLagWithinThreshold() {
+    when(storeAndServerConfigs.isFutureVersionStandbyLagCheckEnabled()).thenReturn(true);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(100L);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(5);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(1);
+
+    StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
+    doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
+    doReturn(50L).when(ingestionTask).getLocalVersionTopicLag(partition);
+
+    leaderFollowerPartitionStateModel.waitUntilFutureVersionLagAcceptable(resourceName);
+
+    verify(ingestionTask, times(1)).getLocalVersionTopicLag(partition);
+  }
+
+  /**
+   * When lag starts above the threshold but catches up within the timeout window, the wait must keep polling
+   * (re-measuring lag) until it becomes acceptable, then return.
+   */
+  @Test
+  public void testWaitUntilFutureVersionLagAcceptablePollsUntilLagCatchesUp() {
+    when(storeAndServerConfigs.isFutureVersionStandbyLagCheckEnabled()).thenReturn(true);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(100L);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(5);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(0);
+
+    StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
+    doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
+    doReturn(200L, 200L, 50L).when(ingestionTask).getLocalVersionTopicLag(partition);
+
+    leaderFollowerPartitionStateModel.waitUntilFutureVersionLagAcceptable(resourceName);
+
+    verify(ingestionTask, times(3)).getLocalVersionTopicLag(partition);
+  }
+
+  /**
+   * When lag never catches up, the wait must give up after the configured timeout and proceed anyway
+   * (best-effort semantics), rather than blocking indefinitely.
+   */
+  @Test
+  public void testWaitUntilFutureVersionLagAcceptableTimesOutAndProceeds() {
+    when(storeAndServerConfigs.isFutureVersionStandbyLagCheckEnabled()).thenReturn(true);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(100L);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(0);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(0);
+
+    StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
+    doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
+    doReturn(200L).when(ingestionTask).getLocalVersionTopicLag(partition);
+
+    // Must return promptly (best-effort timeout) instead of looping forever.
+    leaderFollowerPartitionStateModel.waitUntilFutureVersionLagAcceptable(resourceName);
+
+    verify(ingestionTask, atLeastOnce()).getLocalVersionTopicLag(partition);
+  }
+
+  /**
+   * When lag cannot be measured (e.g. PubSub error surfaced as {@code Long.MAX_VALUE}), the wait must fail open
+   * and proceed immediately, matching the pre-existing (no-wait) behavior.
+   */
+  @Test
+  public void testWaitUntilFutureVersionLagAcceptableFailsOpenWhenLagCannotBeMeasured() {
+    when(storeAndServerConfigs.isFutureVersionStandbyLagCheckEnabled()).thenReturn(true);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(0L);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(5);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(1);
+
+    StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
+    doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
+    doReturn(Long.MAX_VALUE).when(ingestionTask).getLocalVersionTopicLag(partition);
+
+    leaderFollowerPartitionStateModel.waitUntilFutureVersionLagAcceptable(resourceName);
+
+    verify(ingestionTask, times(1)).getLocalVersionTopicLag(partition);
+  }
+
+  /**
+   * When no ingestion task is found for the resource (e.g. torn down concurrently), the wait must fail open and
+   * return without throwing.
+   */
+  @Test
+  public void testWaitUntilFutureVersionLagAcceptableFailsOpenWhenNoIngestionTask() {
+    when(storeAndServerConfigs.isFutureVersionStandbyLagCheckEnabled()).thenReturn(true);
+    doReturn(null).when(storeIngestionService).getStoreIngestionTask(resourceName);
+
+    // Should not throw NPE and should return immediately.
+    leaderFollowerPartitionStateModel.waitUntilFutureVersionLagAcceptable(resourceName);
+  }
+
+  /**
+   * OFFLINE-&gt;STANDBY for a future version whose push is still in progress (neither current version nor an
+   * already-ready future version) must route through {@link LeaderFollowerPartitionStateModel#waitUntilFutureVersionLagAcceptable}
+   * instead of the full-completion {@code waitConsumptionCompleted} path.
+   */
+  @Test
+  public void testOnBecomeStandbyFromOfflineUsesLagWaitForInProgressFutureVersion() throws InterruptedException {
+    Message message = mock(Message.class);
+    NotificationContext context = mock(NotificationContext.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+
+    Store store = mock(Store.class);
+    // getCurrentVersion() defaults to 0 (Mockito primitive default), which is not equal to storeVersion (3),
+    // so this replica is not the current version.
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED); // push still in progress, not ready
+    when(store.getVersion(storeVersion)).thenReturn(mockVersion);
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    // Utils.isFutureVersion() uses getStore() (not getStoreOrThrow()) to resolve the store.
+    doReturn(store).when(metadataRepo).getStore(anyString());
+    when(storeAndServerConfigs.isFutureVersionStandbyLagCheckEnabled()).thenReturn(true);
+
+    LeaderFollowerPartitionStateModel spyModel = spy(leaderFollowerPartitionStateModel);
+    spyModel.onBecomeStandbyFromOffline(message, context);
+
+    verify(spyModel, times(1)).waitUntilFutureVersionLagAcceptable(resourceName);
+    verify(notifier, never()).waitConsumptionCompleted(anyString(), anyInt(), anyInt(), any());
+  }
+
+  /**
+   * OFFLINE-&gt;STANDBY for the current version must continue to use the full-completion
+   * {@code waitConsumptionCompleted} path, and must not invoke the new lag-based wait.
+   */
+  @Test
+  public void testOnBecomeStandbyFromOfflineUsesFullWaitForCurrentVersion() throws InterruptedException {
+    Message message = mock(Message.class);
+    NotificationContext context = mock(NotificationContext.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+
+    Store store = mock(Store.class);
+    when(store.getCurrentVersion()).thenReturn(storeVersion);
+    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+
+    LeaderFollowerPartitionStateModel spyModel = spy(leaderFollowerPartitionStateModel);
+    spyModel.onBecomeStandbyFromOffline(message, context);
+
+    verify(spyModel, never()).waitUntilFutureVersionLagAcceptable(anyString());
+    verify(notifier, times(1)).waitConsumptionCompleted(eq(resourceName), eq(partition), anyInt(), any());
+  }
+
+  /**
+   * OFFLINE-&gt;STANDBY for a backup version (older than the current serving version) must not use either wait
+   * path: it's neither the current version nor a future version, so it should proceed immediately.
+   */
+  @Test
+  public void testOnBecomeStandbyFromOfflineSkipsBothWaitsForBackupVersion() throws InterruptedException {
+    Message message = mock(Message.class);
+    NotificationContext context = mock(NotificationContext.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+
+    Store store = mock(Store.class);
+    // Current version is newer than this replica's version, so this replica is a backup version.
+    when(store.getCurrentVersion()).thenReturn(storeVersion + 1);
+    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    doReturn(store).when(metadataRepo).getStore(anyString());
+
+    LeaderFollowerPartitionStateModel spyModel = spy(leaderFollowerPartitionStateModel);
+    spyModel.onBecomeStandbyFromOffline(message, context);
+
+    verify(spyModel, never()).waitUntilFutureVersionLagAcceptable(anyString());
+    verify(notifier, never()).waitConsumptionCompleted(anyString(), anyInt(), anyInt(), any());
   }
 
 }

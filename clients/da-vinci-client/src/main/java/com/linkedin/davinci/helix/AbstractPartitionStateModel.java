@@ -1,9 +1,11 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.PartitionReplicaIngestionContext;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -405,6 +407,64 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       logger.error(errorMsg, e);
       // Please note, after throwing this exception, this node will become ERROR for this resource.
       throw new VeniceException(errorMsg, e);
+    }
+  }
+
+  /**
+   * Best-effort wait, applicable to a future-version replica whose push is still in progress (i.e. neither the
+   * current version, nor a future version which has already finished ingesting), for the replica's local version
+   * topic lag to drop to or below an acceptable threshold before completing the OFFLINE -> STANDBY transition.
+   *
+   * Callers are expected to only invoke this method when
+   * {@link VeniceServerConfig#isFutureVersionStandbyLagCheckEnabled()} is true.
+   *
+   * Unlike {@link #waitConsumptionCompleted}, this does not wait for ingestion to fully complete: it only waits
+   * until the measured lag is within {@link VeniceServerConfig#getFutureVersionStandbyLagThreshold()}, or until
+   * {@link VeniceServerConfig#getFutureVersionStandbyLagCheckTimeoutMinutes()} elapses, whichever happens first.
+   * If lag cannot be measured, or the ingestion task is not found, this method returns immediately, preserving
+   * the pre-existing (no-wait) behavior for this case.
+   */
+  protected void waitUntilFutureVersionLagAcceptable(String resourceName) {
+    VeniceServerConfig serverConfig = storeAndServerConfigs;
+    String replicaId = Utils.getReplicaId(resourceName, partition);
+    StoreIngestionTask ingestionTask = getStoreIngestionService().getStoreIngestionTask(resourceName);
+    if (ingestionTask == null) {
+      logger.warn(
+          "No ingestion task found for replica {} when checking future version standby lag, proceeding to STANDBY without waiting.",
+          replicaId);
+      return;
+    }
+    long lagThreshold = serverConfig.getFutureVersionStandbyLagThreshold();
+    long timeoutMs = TimeUnit.MINUTES.toMillis(serverConfig.getFutureVersionStandbyLagCheckTimeoutMinutes());
+    long pollIntervalMs = TimeUnit.MINUTES.toMillis(serverConfig.getFutureVersionStandbyLagCheckPollIntervalMinutes());
+    long deadlineMs = System.currentTimeMillis() + timeoutMs;
+    while (true) {
+      long lag = ingestionTask.getLocalVersionTopicLag(partition);
+      if (lag == Long.MAX_VALUE) {
+        logger.warn(
+            "Could not measure local version topic lag for replica {}, proceeding to STANDBY without waiting.",
+            replicaId);
+        return;
+      }
+      if (lag <= lagThreshold) {
+        logger.info(
+            "Future version replica {} local version topic lag {} is within threshold {}, proceeding to STANDBY.",
+            replicaId,
+            lag,
+            lagThreshold);
+        return;
+      }
+      long remainingMs = deadlineMs - System.currentTimeMillis();
+      if (remainingMs <= 0) {
+        logger.warn(
+            "Future version replica {} local version topic lag {} still above threshold {} after {}min timeout, proceeding to STANDBY.",
+            replicaId,
+            lag,
+            lagThreshold,
+            serverConfig.getFutureVersionStandbyLagCheckTimeoutMinutes());
+        return;
+      }
+      Utils.sleep(Math.min(pollIntervalMs, remainingMs));
     }
   }
 
