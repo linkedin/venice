@@ -2,6 +2,7 @@ package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE;
@@ -12,6 +13,7 @@ import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SC
 import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.SCHEMA_FOR_CHUNK_ASSEMBLY;
 import static com.linkedin.venice.spark.SparkConstants.SCHEMA_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
@@ -31,21 +33,37 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.spark.SparkExecutorTestUtils;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.writer.TestSparkPartitionWriter;
+import com.linkedin.venice.storage.protocol.ChunkId;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
@@ -472,6 +490,203 @@ public class DataWriterSparkJobRepushTest {
   }
 
   /**
+   * Ported from PR #2955's DataWriterSparkJobRepushTest.testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary().
+   * Exercises the real bug scenario end-to-end: TTL filtering with ZSTD_WITH_DICT compression, which makes
+   * SparkKafkaInputTTLFilter create a second, internal "dictionary" PubSub consumer on the executor. Verifies
+   * the SSL configurator and PubSub consumer factory are actually invoked with correctly materialized SSL
+   * properties (not just that failure surfaces when SSL setup is skipped).
+   */
+  @Test
+  public void testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary() throws Exception {
+    String testName = "testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary";
+
+    File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
+    File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
+
+    try {
+      TestableDataWriterSparkJob job = new TestableDataWriterSparkJob(testName);
+      currentTestJob = job;
+
+      String valueSchemaStr =
+          "{\"type\":\"record\",\"name\":\"TestValue\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}";
+      String rmdSchemaStr =
+          "{\"type\":\"record\",\"name\":\"RmdRecord\",\"fields\":[{\"name\":\"timestamp\",\"type\":\"long\"}]}";
+      Files.write(new File(valueSchemaTempDir, "1").toPath(), valueSchemaStr.getBytes());
+      Files.write(new File(rmdSchemaTempDir, "1_1").toPath(), rmdSchemaStr.getBytes());
+
+      long ttlStartTime = System.currentTimeMillis();
+      Properties props = createDefaultTestProperties();
+      props.setProperty("repush.ttl.policy", "0");
+      props.setProperty("repush.ttl.start.timestamp", String.valueOf(ttlStartTime));
+      props.setProperty("value.schema.dir", valueSchemaTempDir.getAbsolutePath());
+      props.setProperty("rmd.schema.dir", rmdSchemaTempDir.getAbsolutePath());
+      props.setProperty("kafka.input.source.compression.strategy", CompressionStrategy.ZSTD_WITH_DICT.name());
+      props.setProperty(SSL_CONFIGURATOR_CLASS_CONFIG, SparkExecutorTestUtils.RecordingSSLConfigurator.class.getName());
+      props.setProperty(
+          PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          SparkExecutorTestUtils.AssertingPubSubConsumerAdapterFactory.class.getName());
+      props.setProperty("pass.through.config.prefixes.list", "pubsub.");
+      props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test-keystore-credential");
+      props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test-truststore-credential");
+      props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test-key-password-credential");
+
+      PushJobSetting setting = new PushJobSetting();
+      setting.isSourceKafka = true;
+      setting.enableSSL = true;
+      setting.sslToKafka = true;
+      setting.kafkaInputTopic = "test_store_v1";
+      setting.repushSourcePubsubBroker = "localhost:9092";
+      setting.repushTTLEnabled = true;
+      setting.repushTTLStartTimeMs = ttlStartTime;
+      setting.valueSchemaDir = valueSchemaTempDir.getAbsolutePath();
+      setting.rmdSchemaDir = rmdSchemaTempDir.getAbsolutePath();
+      setting.topic = "test_store_v1";
+      setting.pushDestinationPubsubBroker = "localhost:9092";
+      setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+      setting.partitionCount = 1;
+      Version sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
+      sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      setting.sourceKafkaInputVersionInfo = sourceVersion;
+
+      job.configure(new VeniceProperties(props), setting);
+
+      List<Row> rows =
+          Arrays.asList(createChunkedRow("key1", "chunk1", -1, 1L), createChunkedRow("key2", "chunk2", -20, 2L));
+      Dataset<Row> inputDF = job.getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+
+      SparkExecutorTestUtils.resetInvocations();
+      SparkExecutorTestUtils.withTokenFile(() -> {
+        List<Row> outputRows = job.testableApplyTTLFilter(inputDF).collectAsList();
+        assertEquals(outputRows.size(), rows.size());
+        assertTrue(SparkExecutorTestUtils.getSslConfiguratorInvocations() > 0);
+        assertTrue(SparkExecutorTestUtils.getConsumerFactoryInvocations() > 0);
+        assertTrue(SparkExecutorTestUtils.getDictionaryConsumerInvocations() > 0);
+      });
+    } finally {
+      deleteDirectory(valueSchemaTempDir);
+      deleteDirectory(rmdSchemaTempDir);
+    }
+  }
+
+  /**
+   * Adapted from PR #2955's DataWriterSparkJobRepushTest.testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL().
+   * Exercises the real bug scenario end-to-end for the chunk-assembly path: TTL filtering with ZSTD_WITH_DICT
+   * compression after chunk reassembly, which makes SparkChunkAssembler create a second, internal "dictionary"
+   * PubSub consumer on the executor. Verifies the SSL configurator and PubSub consumer factory are invoked with
+   * correctly materialized SSL properties and that chunk reassembly still produces the correct output.
+   *
+   * Unlike the original PR #2955 test, this does NOT assert that the SSL configurator/consumer factory are
+   * invoked exactly once across both key groups in the task - that de-duplication comes from PR #2955's
+   * per-task assembler caching refactor, which is intentionally out of scope for this simplified fix (see PR
+   * description). This simplified fix constructs a new SparkChunkAssembler per key group, so SSL materialization
+   * and dictionary-consumer creation happen once per key group (twice here, for the two key groups below).
+   */
+  @Test
+  public void testApplyChunkAssemblyMaterializesSSLBeforePostAssemblyTTL() throws Exception {
+    String testName = "testApplyChunkAssemblyMaterializesSSLBeforePostAssemblyTTL";
+
+    File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
+    File rmdSchemaTempDir = Files.createTempDirectory("rmd-schemas").toFile();
+
+    try {
+      Schema valueSchema = new Schema.Parser()
+          .parse("{\"type\":\"record\",\"name\":\"TestValue\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}");
+      Schema rmdSchema = new Schema.Parser().parse(
+          "{\"type\":\"record\",\"name\":\"RmdRecord\",\"fields\":[{\"name\":\"timestamp\",\"type\":\"long\"}]}");
+      Files.write(new File(valueSchemaTempDir, "1").toPath(), valueSchema.toString().getBytes());
+      Files.write(new File(rmdSchemaTempDir, "1_1").toPath(), rmdSchema.toString().getBytes());
+
+      long ttlStartTime = System.currentTimeMillis();
+      GenericRecord valueRecord = new GenericData.Record(valueSchema);
+      valueRecord.put("id", "fresh-value");
+      GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
+      rmdRecord.put("timestamp", ttlStartTime + 1_000);
+
+      RecordSerializer<GenericRecord> valueSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
+      RecordSerializer<GenericRecord> rmdSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema);
+      byte[] serializedValue = valueSerializer.serialize(valueRecord);
+      byte[] serializedRmd = rmdSerializer.serialize(rmdRecord);
+
+      CompressorFactory compressorFactory = new CompressorFactory();
+      VeniceCompressor zstdCompressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
+          CompressionStrategy.ZSTD_WITH_DICT,
+          "spark-chunked-ttl-test",
+          SparkExecutorTestUtils.getTestDictionary());
+      byte[] compressedValue = ByteUtils.extractByteArray(zstdCompressor.compress(ByteBuffer.wrap(serializedValue), 0));
+
+      TestableDataWriterSparkJob job = new TestableDataWriterSparkJob(testName);
+      currentTestJob = job;
+
+      Properties props = createDefaultTestProperties();
+      props.setProperty("repush.ttl.policy", "0");
+      props.setProperty("repush.ttl.start.timestamp", String.valueOf(ttlStartTime));
+      props.setProperty("value.schema.dir", valueSchemaTempDir.getAbsolutePath());
+      props.setProperty("rmd.schema.dir", rmdSchemaTempDir.getAbsolutePath());
+      props.setProperty("kafka.input.source.compression.strategy", CompressionStrategy.ZSTD_WITH_DICT.name());
+      props.setProperty(SSL_CONFIGURATOR_CLASS_CONFIG, SparkExecutorTestUtils.RecordingSSLConfigurator.class.getName());
+      props.setProperty(
+          PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          SparkExecutorTestUtils.AssertingPubSubConsumerAdapterFactory.class.getName());
+      props.setProperty("pass.through.config.prefixes.list", "pubsub.");
+      props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test-keystore-credential");
+      props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test-truststore-credential");
+      props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test-key-password-credential");
+
+      PushJobSetting setting = new PushJobSetting();
+      setting.isSourceKafka = true;
+      setting.enableSSL = true;
+      setting.sslToKafka = true;
+      setting.kafkaInputTopic = "test_store_v1";
+      setting.repushSourcePubsubBroker = "localhost:9092";
+      setting.repushTTLEnabled = true;
+      setting.repushTTLStartTimeMs = ttlStartTime;
+      setting.valueSchemaDir = valueSchemaTempDir.getAbsolutePath();
+      setting.rmdSchemaDir = rmdSchemaTempDir.getAbsolutePath();
+      setting.topic = "test_store_v1";
+      setting.pushDestinationPubsubBroker = "localhost:9092";
+      setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+      setting.partitionCount = 1;
+      Version sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
+      sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      sourceVersion.setChunkingEnabled(true);
+      setting.sourceKafkaInputVersionInfo = sourceVersion;
+
+      job.configure(new VeniceProperties(props), setting);
+      job.getSparkSession().conf().set("spark.sql.shuffle.partitions", "1");
+
+      byte[] chunkedKey = "chunked-key".getBytes();
+      byte[] regularKey = "regular-key".getBytes();
+      List<Row> rows = new ArrayList<>();
+      rows.addAll(createSingleChunkRows(chunkedKey, compressedValue, serializedRmd));
+      rows.add(createAssemblyRow(regularKey, compressedValue, serializedRmd, 1, 1, 3L, null));
+      Dataset<Row> inputDF = job.getSparkSession().createDataFrame(rows, SCHEMA_FOR_CHUNK_ASSEMBLY);
+
+      SparkExecutorTestUtils.resetInvocations();
+      SparkExecutorTestUtils.withTokenFile(() -> {
+        List<Row> outputRows = job.testableApplyChunkAssembly(inputDF).collectAsList();
+
+        assertEquals(outputRows.size(), 2);
+        Row assembledChunk = outputRows.stream()
+            .filter(row -> Arrays.equals((byte[]) row.getAs("key"), chunkedKey))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(assembledChunk, "Chunked value should survive post-assembly TTL filtering");
+        assertTrue(Arrays.equals((byte[]) assembledChunk.getAs("value"), compressedValue));
+        // No per-task assembler caching in this simplified fix: SSL is materialized and a dictionary
+        // consumer is created once per key group (2 key groups here), not once per task.
+        assertEquals(SparkExecutorTestUtils.getSslConfiguratorInvocations(), 2);
+        assertEquals(SparkExecutorTestUtils.getConsumerFactoryInvocations(), 2);
+        assertEquals(SparkExecutorTestUtils.getDictionaryConsumerInvocations(), 2);
+      });
+    } finally {
+      deleteDirectory(valueSchemaTempDir);
+      deleteDirectory(rmdSchemaTempDir);
+    }
+  }
+
+  /**
    * Hadoop token file resolution prefers the environment variable over the system property. If the test
    * environment already has it set, clearing the system property alone can't force the failure scenario.
    */
@@ -499,6 +714,59 @@ public class DataWriterSparkJobRepushTest {
         new Object[] { "region1", 0, offset, MessageType.PUT.getValue(), negativeSchemaId, key.getBytes(),
             chunkData.getBytes(), -1, new byte[0], null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  private List<Row> createSingleChunkRows(byte[] key, byte[] value, byte[] rmd) {
+    ChunkId chunkId = new ChunkId();
+    chunkId.segmentNumber = 1;
+    chunkId.messageSequenceNumber = 1;
+    chunkId.chunkIndex = 0;
+    chunkId.producerGUID = new GUID();
+
+    ChunkedKeySuffix suffix = new ChunkedKeySuffix();
+    suffix.chunkId = chunkId;
+    suffix.isChunk = true;
+
+    ChunkedKeySuffixSerializer suffixSerializer = new ChunkedKeySuffixSerializer();
+    byte[] suffixBytes = suffixSerializer.serialize("ignored", suffix);
+
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix =
+        Collections.singletonList(new KeyWithChunkingSuffixSerializer().serializeChunkedKey(key, suffix));
+    manifest.schemaId = 1;
+    manifest.size = value.length;
+    byte[] manifestBytes = ByteUtils.extractByteArray(new ChunkedValueManifestSerializer(true).serialize(manifest));
+
+    Row manifestRow = createAssemblyRow(
+        key,
+        manifestBytes,
+        rmd,
+        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+        1,
+        2L,
+        null);
+    Row chunkRow = createAssemblyRow(
+        key,
+        value,
+        new byte[0],
+        AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+        -1,
+        1L,
+        suffixBytes);
+    return Arrays.asList(manifestRow, chunkRow);
+  }
+
+  private Row createAssemblyRow(
+      byte[] key,
+      byte[] value,
+      byte[] rmd,
+      int schemaId,
+      int rmdVersionId,
+      long offset,
+      byte[] chunkedKeySuffix) {
+    return new GenericRowWithSchema(
+        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, MessageType.PUT.getValue(), chunkedKeySuffix },
+        SCHEMA_FOR_CHUNK_ASSEMBLY);
   }
 
   /**
