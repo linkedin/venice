@@ -164,16 +164,28 @@ public class LeaderFollowerPartitionStateModelTest {
     NotificationContext context = mock(NotificationContext.class);
     when(message.getResourceName()).thenReturn(resourceName);
     LeaderSessionIdChecker[] demotionChecker = new LeaderSessionIdChecker[1];
+    Runnable[] delayedDemotion = new Runnable[1];
     doAnswer(invocation -> {
       demotionChecker[0] = invocation.getArgument(2);
+      delayedDemotion[0] = () -> {
+        if (demotionChecker[0].isSessionIdValid()) {
+          heartbeatMonitoringService.updateLagMonitor(
+              resourceName,
+              partition,
+              HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+              Utils.getReplicaId(resourceName, partition));
+        }
+      };
       return null;
     }).when(storeIngestionService).demoteToStandby(eq(storeAndServerConfigs), eq(partition), any());
 
     leaderFollowerPartitionStateModel.onBecomeStandbyFromLeader(message, context);
     assertNotNull(demotionChecker[0]);
+    assertNotNull(delayedDemotion[0]);
     assertTrue(demotionChecker[0].isSessionIdValid());
 
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, context);
+    delayedDemotion[0].run();
 
     assertFalse(demotionChecker[0].isSessionIdValid());
     verify(heartbeatMonitoringService, never()).updateLagMonitor(
