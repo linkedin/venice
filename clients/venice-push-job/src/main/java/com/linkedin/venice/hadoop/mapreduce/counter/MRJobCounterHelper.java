@@ -43,6 +43,17 @@ public class MRJobCounterHelper {
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
   private static final String COUNTER_GROUP_EXTERNAL_STORAGE = "External storage";
   private static final String EXTERNAL_STORAGE_FAILED_REGION_COUNTER_NAME_PREFIX = "failed region: ";
+  /**
+   * Summed across every successful reducer of the job: wall-clock time spent in the external-storage
+   * write path, including throttling wait, batchPut retries/backoff, flush and close. This is
+   * a sum of per-task durations, not the job's wall-clock duration.
+   */
+  private static final String EXTERNAL_STORAGE_WRITE_TIME_MS = "external storage write time (ms)";
+  /**
+   * Summed across every successful reducer of the job: wall-clock time spent invoking the Venice/Kafka writes
+   * and flushing/closing the Venice writer. Sum of per-task durations, not job wall-clock duration.
+   */
+  private static final String VENICE_WRITE_TIME_MS = "venice write time (ms)";
 
   private static final String REPUSH_TTL_FILTERED_COUNT = "Repush ttl filtered count";
 
@@ -96,6 +107,12 @@ public class MRJobCounterHelper {
 
   public static final GroupAndCounterNames INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA, INCREMENTAL_PUSH_THROTTLE_TIME_MS);
+
+  public static final GroupAndCounterNames EXTERNAL_STORAGE_WRITE_TIME_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_EXTERNAL_STORAGE, EXTERNAL_STORAGE_WRITE_TIME_MS);
+
+  public static final GroupAndCounterNames VENICE_WRITE_TIME_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_KAFKA, VENICE_WRITE_TIME_MS);
 
   private MRJobCounterHelper() {
     // Util class
@@ -173,6 +190,30 @@ public class MRJobCounterHelper {
         reporter,
         new GroupAndCounterNames(COUNTER_GROUP_EXTERNAL_STORAGE, getFailedExternalStorageRegionCounterName(regionName)),
         amount);
+  }
+
+  public static void incrExternalStorageWriteTime(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, EXTERNAL_STORAGE_WRITE_TIME_GROUP_COUNTER_NAME, amount);
+  }
+
+  public static void incrVeniceWriteTime(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, VENICE_WRITE_TIME_GROUP_COUNTER_NAME, amount);
+  }
+
+  public static long getExternalStorageWriteTimeMs(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, EXTERNAL_STORAGE_WRITE_TIME_GROUP_COUNTER_NAME);
+  }
+
+  public static long getExternalStorageWriteTimeMs(Counters counters) {
+    return getCountFromCounters(counters, EXTERNAL_STORAGE_WRITE_TIME_GROUP_COUNTER_NAME);
+  }
+
+  public static long getVeniceWriteTimeMs(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, VENICE_WRITE_TIME_GROUP_COUNTER_NAME);
+  }
+
+  public static long getVeniceWriteTimeMs(Counters counters) {
+    return getCountFromCounters(counters, VENICE_WRITE_TIME_GROUP_COUNTER_NAME);
   }
 
   public static long getWriteAclAuthorizationFailureCount(Reporter reporter) {

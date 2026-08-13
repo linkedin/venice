@@ -97,4 +97,14 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
   Set<String> getFailedExternalStorageRegions() {
     return dataWriterTaskTracker.getFailedExternalStorageRegions();
   }
+
+  /** @return time this task spent in the external-storage write path, in ms. */
+  long getExternalStorageWriteTimeMs() {
+    return dataWriterTaskTracker.getExternalStorageWriteTimeMs();
+  }
+
+  /** @return time this task spent in the Venice/Kafka write path, in ms. */
+  long getVeniceWriteTimeMs() {
+    return dataWriterTaskTracker.getVeniceWriteTimeMs();
+  }
 }

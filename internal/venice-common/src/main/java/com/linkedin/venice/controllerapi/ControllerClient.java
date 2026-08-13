@@ -78,6 +78,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STO
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.meta.Version.PushType;
@@ -93,6 +94,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
@@ -1172,9 +1174,31 @@ public class ControllerClient implements Closeable {
       int version,
       StorageMode storageMode,
       String regionsFilter) {
+    return updateStoreVersionStorageMode(
+        storeName,
+        version,
+        storageMode,
+        regionsFilter,
+        VersionStorageModeUpdateReason.UNSPECIFIED);
+  }
+
+  /**
+   * Update the storage mode of a single store version, optionally restricted to {@code regionsFilter} and
+   * optionally annotated with why the update is being made. The reason is telemetry intent only: it never changes
+   * the resulting storage mode, and a controller that does not understand it simply ignores it.
+   */
+  public ControllerResponse updateStoreVersionStorageMode(
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionsFilter,
+      VersionStorageModeUpdateReason reason) {
     QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(STORAGE_MODE, storageMode.name());
     if (StringUtils.isNotEmpty(regionsFilter)) {
       params.add(REGIONS_FILTER, regionsFilter);
+    }
+    if (reason != null && reason != VersionStorageModeUpdateReason.UNSPECIFIED) {
+      params.add(VERSION_STORAGE_MODE_UPDATE_REASON, reason.name());
     }
     return request(ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE, params, ControllerResponse.class);
   }

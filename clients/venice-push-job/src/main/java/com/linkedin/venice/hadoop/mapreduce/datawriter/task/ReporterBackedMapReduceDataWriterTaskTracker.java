@@ -138,6 +138,26 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   }
 
   @Override
+  public void trackExternalStorageWriteTime(long timeMs) {
+    MRJobCounterHelper.incrExternalStorageWriteTime(reporter, timeMs);
+  }
+
+  @Override
+  public void trackVeniceWriteTime(long timeMs) {
+    MRJobCounterHelper.incrVeniceWriteTime(reporter, timeMs);
+  }
+
+  @Override
+  public long getExternalStorageWriteTimeMs() {
+    return MRJobCounterHelper.getExternalStorageWriteTimeMs(reporter);
+  }
+
+  @Override
+  public long getVeniceWriteTimeMs() {
+    return MRJobCounterHelper.getVeniceWriteTimeMs(reporter);
+  }
+
+  @Override
   public long getTotalKeySize() {
     return MRJobCounterHelper.getTotalKeySize(reporter);
   }

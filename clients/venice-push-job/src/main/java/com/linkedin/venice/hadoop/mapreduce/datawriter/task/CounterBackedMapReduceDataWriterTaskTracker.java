@@ -95,4 +95,14 @@ public class CounterBackedMapReduceDataWriterTaskTracker implements DataWriterTa
   public Set<String> getFailedExternalStorageRegions() {
     return MRJobCounterHelper.getFailedExternalStorageRegions(counters);
   }
+
+  @Override
+  public long getExternalStorageWriteTimeMs() {
+    return MRJobCounterHelper.getExternalStorageWriteTimeMs(counters);
+  }
+
+  @Override
+  public long getVeniceWriteTimeMs() {
+    return MRJobCounterHelper.getVeniceWriteTimeMs(counters);
+  }
 }

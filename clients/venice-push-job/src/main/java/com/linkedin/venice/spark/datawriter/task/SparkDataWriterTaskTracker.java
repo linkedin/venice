@@ -15,6 +15,15 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   private final DataWriterAccumulators accumulators;
   private Map<Integer, Long> perPartitionRecordCounts = Collections.emptyMap();
   private final Set<String> failedExternalStorageRegions = new HashSet<>();
+  /**
+   * Deliberately plain fields rather than {@code LongAccumulator}s: with speculative execution enabled a
+   * partition can be attempted twice and both attempts' accumulator updates reach the driver, inflating a
+   * summed duration. On an executor these hold this task attempt's own accrued time and are shipped to the
+   * driver as task-output row columns; on the driver they hold the sum over the one surviving row per
+   * partition, set via {@link #setExternalStorageWriteTimeMs}/{@link #setVeniceWriteTimeMs}.
+   */
+  private long externalStorageWriteTimeMs;
+  private long veniceWriteTimeMs;
 
   public SparkDataWriterTaskTracker(DataWriterAccumulators accumulators) {
     this.accumulators = accumulators;
@@ -106,6 +115,22 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
       return;
     }
     failedExternalStorageRegions.add(regionName);
+  }
+
+  @Override
+  public void trackExternalStorageWriteTime(long timeMs) {
+    if (timeMs <= 0) {
+      return;
+    }
+    externalStorageWriteTimeMs += timeMs;
+  }
+
+  @Override
+  public void trackVeniceWriteTime(long timeMs) {
+    if (timeMs <= 0) {
+      return;
+    }
+    veniceWriteTimeMs += timeMs;
   }
 
   @Override
@@ -205,6 +230,30 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
     if (failedRegions != null) {
       failedExternalStorageRegions.addAll(failedRegions);
     }
+  }
+
+  /**
+   * Sets the total external-storage write time summed on the driver from the successful task-output rows.
+   */
+  public void setExternalStorageWriteTimeMs(long timeMs) {
+    this.externalStorageWriteTimeMs = timeMs;
+  }
+
+  /**
+   * Sets the total Venice write time summed on the driver from the successful task-output rows.
+   */
+  public void setVeniceWriteTimeMs(long timeMs) {
+    this.veniceWriteTimeMs = timeMs;
+  }
+
+  @Override
+  public long getExternalStorageWriteTimeMs() {
+    return externalStorageWriteTimeMs;
+  }
+
+  @Override
+  public long getVeniceWriteTimeMs() {
+    return veniceWriteTimeMs;
   }
 
   @Override
