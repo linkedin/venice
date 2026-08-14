@@ -39,12 +39,22 @@ public class InMemoryExternalStorageWriter implements ExternalStorageWriter {
   private static final ConcurrentMap<String, ConcurrentMap<String, AtomicInteger>> BATCH_PUT_INVOCATIONS =
       new ConcurrentHashMap<>();
 
+  /** region → topic → total number of {@code batchPut} attempts across all tasks, including failed attempts. */
+  private static final ConcurrentMap<String, ConcurrentMap<String, AtomicInteger>> BATCH_PUT_ATTEMPTS =
+      new ConcurrentHashMap<>();
+
   /**
    * Key that the integration test uses to verify the OSS prefix-forwarding rule end-to-end: any
    * {@code push.job.external.storage.*} property set by the test on the driver must reach
    * {@link #configure}'s {@code VeniceProperties} on the executor.
    */
   static final String FORWARDED_CONFIG_PROBE_KEY = "push.job.external.storage.test.forwarded.value";
+
+  /**
+   * Optional integration-test knob: if set to a region name, every writer instance configured for that
+   * region throws from {@link #batchPut(List)} before persisting anything.
+   */
+  static final String FAIL_ALWAYS_IN_REGION_KEY = "push.job.external.storage.test.fail.always.in.region";
 
   /** region → topic → snapshot of {@link #FORWARDED_CONFIG_PROBE_KEY} captured at configure() time. */
   private static final ConcurrentMap<String, ConcurrentMap<String, String>> FORWARDED_CONFIG_OBSERVED =
@@ -53,6 +63,7 @@ public class InMemoryExternalStorageWriter implements ExternalStorageWriter {
   private String region;
   private String topicName;
   private ConcurrentMap<ByteBuffer, byte[]> shard;
+  private boolean failAlways;
 
   public InMemoryExternalStorageWriter() {
   }
@@ -69,12 +80,19 @@ public class InMemoryExternalStorageWriter implements ExternalStorageWriter {
     if (!observed.isEmpty()) {
       FORWARDED_CONFIG_OBSERVED.computeIfAbsent(region, r -> new ConcurrentHashMap<>()).put(topicName, observed);
     }
+    failAlways = region.equals(jobProps.getString(FAIL_ALWAYS_IN_REGION_KEY, ""));
   }
 
   @Override
   public void batchPut(List<ExternalStorageRecord> records) {
     if (records.isEmpty()) {
       return;
+    }
+    BATCH_PUT_ATTEMPTS.computeIfAbsent(region, r -> new ConcurrentHashMap<>())
+        .computeIfAbsent(topicName, k -> new AtomicInteger())
+        .incrementAndGet();
+    if (failAlways) {
+      throw new RuntimeException("Injected external-storage failure for region " + region);
     }
     BATCH_PUT_INVOCATIONS.computeIfAbsent(region, r -> new ConcurrentHashMap<>())
         .computeIfAbsent(topicName, k -> new AtomicInteger())
@@ -155,6 +173,16 @@ public class InMemoryExternalStorageWriter implements ExternalStorageWriter {
     return total;
   }
 
+  /** Total number of {@code batchPut} attempts for {@code (region, topic)}, including failed attempts. */
+  public static int batchPutAttemptsForRegionAndTopic(String region, String topicName) {
+    ConcurrentMap<String, AtomicInteger> byTopic = BATCH_PUT_ATTEMPTS.get(region);
+    if (byTopic == null) {
+      return 0;
+    }
+    AtomicInteger counter = byTopic.get(topicName);
+    return counter == null ? 0 : counter.get();
+  }
+
   /**
    * Value of {@link #FORWARDED_CONFIG_PROBE_KEY} seen by {@code configure()} for {@code topic} in any region.
    * {@code null} if no instance observed it (either because nothing was configured for that topic or because
@@ -175,6 +203,7 @@ public class InMemoryExternalStorageWriter implements ExternalStorageWriter {
     SINK.clear();
     MAX_BATCH_SIZE_OBSERVED.clear();
     BATCH_PUT_INVOCATIONS.clear();
+    BATCH_PUT_ATTEMPTS.clear();
     FORWARDED_CONFIG_OBSERVED.clear();
   }
 }

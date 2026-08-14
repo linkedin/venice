@@ -2543,9 +2543,24 @@ public class ConfigKeys {
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT =
       "controller.pubsub.alternative.backend.hybrid.user.store.rt";
 
+  /** Create batch job heartbeat system store version topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_VT =
+      "controller.pubsub.alternative.backend.batch.job.heartbeat.store.vt";
+
+  /** Create batch job heartbeat system store RT topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_RT =
+      "controller.pubsub.alternative.backend.batch.job.heartbeat.store.rt";
+
   /** Comma-separated store names excluded from alternative pubsub backend. Default: empty */
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST =
       "controller.pubsub.alternative.backend.exclusion.list";
+
+  /**
+   * Comma-separated store names always routed to the alternative pubsub backend, overriding the
+   * per-topic-type flags. The exclusion list takes precedence over this inclusion list. Default: empty
+   */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST =
+      "controller.pubsub.alternative.backend.inclusion.list";
 
   /**
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
@@ -2951,6 +2966,16 @@ public class ConfigKeys {
    */
   public static final String SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS =
       "server.require.leader.complete.for.catch.up.vt.rts";
+
+  /**
+   * How long a hybrid follower or DaVinci replica waits without observing a fresh leader-complete heartbeat before
+   * presuming the leader dead and falling back to offset catch-up alone for the ready-to-serve check. The silence
+   * window is anchored on the later of the last observed signal and the consumption start time. Default is 3 hours;
+   * {@code 0} or less disables the fallback. When positive it must be larger than
+   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}, otherwise server startup fails.
+   */
+  public static final String SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS =
+      "server.dead.leader.ready.to.serve.fallback.threshold.ms";
 
   /**
    * Whether to enable stuck consumer repair in Server.

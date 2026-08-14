@@ -52,6 +52,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -137,6 +138,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -188,6 +190,55 @@ public final class StoreConfigUpdater {
     if (quota.isPresent() && quota.get() < -1) {
       throw new VeniceException(
           configName + " must be greater than or equal to -1 (where -1 means no limit), but was: " + quota.get());
+    }
+  }
+
+  /**
+   * Validates a requested PubSub encryption key URN update.
+   *
+   * <p>{@code validateAgainstStoreState} gates the checks that read the store's existing metadata.
+   * Those belong only where the request originates -- the parent in a multi-region deployment, or the
+   * lone controller in a single-region one. A child applying a replicated admin message sees
+   * region-local state the originator could not: {@code encryptionEnabled} is derived per region from
+   * {@code cluster.encryption.enabled} when the store is created and is never replicated, so it can
+   * be true on the parent and false in a region that has not been flipped yet. Rejecting there would
+   * fail an already-accepted admin message on every retry and stall that region's admin queue.
+   */
+  private static void validatePubSubEncryptionKeyUrn(
+      Store store,
+      Optional<String> pubSubEncryptionKeyUrn,
+      boolean validateAgainstStoreState) {
+    if (!pubSubEncryptionKeyUrn.isPresent()) {
+      return;
+    }
+    String newUrn = pubSubEncryptionKeyUrn.get();
+    if (StringUtils.isBlank(newUrn)) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "PubSub encryption key URN must be non-blank",
+          ErrorType.BAD_REQUEST);
+    }
+    if (!validateAgainstStoreState) {
+      return;
+    }
+    if (!store.isEncryptionEnabled()) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "PubSub encryption key URN can only be configured for an encryption-enabled store",
+          ErrorType.BAD_REQUEST);
+    }
+    /**
+     * The key URN is write-once, but re-submitting the current value must stay a no-op: a
+     * replicate-all-configs update-store echoes every existing config back, so rejecting an
+     * unchanged value would fail the resulting admin message on every controller that consumes it
+     * and stall the store's admin queue.
+     */
+    String currentUrn = store.getPubSubEncryptionKeyUrn();
+    if (StringUtils.isNotBlank(currentUrn) && !newUrn.equals(currentUrn)) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "PubSub encryption key URN is already configured as " + currentUrn + " and cannot be updated",
+          ErrorType.BAD_REQUEST);
     }
   }
 
@@ -299,6 +350,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThresholdMilliseconds = params.getCompactionThresholdMilliseconds();
+    Optional<String> pubSubEncryptionKeyUrn = params.getPubSubEncryptionKeyUrn();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -307,6 +359,10 @@ public final class StoreConfigUpdater {
     Optional<Long> throughputQuotaInRecords = params.getThroughputQuotaInRecords();
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
+    validatePubSubEncryptionKeyUrn(
+        originalStore,
+        pubSubEncryptionKeyUrn,
+        !admin.getMultiClusterConfigs().isMultiRegion());
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
@@ -708,6 +764,12 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
+      pubSubEncryptionKeyUrn
+          .ifPresent(value -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setPubSubEncryptionKeyUrn(value);
+            return store;
+          }));
+
       if (minCompactionLagSeconds.isPresent()) {
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
@@ -959,6 +1021,7 @@ public final class StoreConfigUpdater {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
     Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
+    Optional<String> pubSubEncryptionKeyUrn = params.getPubSubEncryptionKeyUrn();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -976,6 +1039,7 @@ public final class StoreConfigUpdater {
       LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
       throw new VeniceNoStoreException(storeName, clusterName);
     }
+    validatePubSubEncryptionKeyUrn(currStore, pubSubEncryptionKeyUrn, true);
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
@@ -1340,6 +1404,9 @@ public final class StoreConfigUpdater {
         compactionThreshold.map(admin.addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
             .orElseGet(currStore::getCompactionThresholdMilliseconds);
     setStore.encryptionEnabled = currStore.isEncryptionEnabled();
+    setStore.pubSubEncryptionKeyUrn =
+        pubSubEncryptionKeyUrn.map(admin.addToUpdatedConfigList(updatedConfigsList, PUB_SUB_ENCRYPTION_KEY_URN))
+            .orElseGet(currStore::getPubSubEncryptionKeyUrn);
     setStore.minCompactionLagSeconds =
         minCompactionLagSeconds.map(admin.addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
             .orElseGet(currStore::getMinCompactionLagSeconds);

@@ -8,6 +8,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.stats.metrics.MetricType.HISTOGRAM;
 import static java.util.Collections.singletonList;
 import static org.mockito.ArgumentMatchers.any;
@@ -553,6 +554,26 @@ public class MetricEntityStateTest {
     @Override
     public VeniceMetricsDimensions getDimensionName() {
       return VENICE_REQUEST_FANOUT_TYPE; // Dummy dimension
+    }
+
+    @Override
+    public String getDimensionValue() {
+      return dimensionValue;
+    }
+  }
+
+  enum DimensionEnum6 implements VeniceDimensionInterface {
+    DIMENSION_ONE(), DIMENSION_TWO();
+
+    private final String dimensionValue;
+
+    DimensionEnum6() {
+      this.dimensionValue = "value_" + name().toLowerCase();
+    }
+
+    @Override
+    public VeniceMetricsDimensions getDimensionName() {
+      return VENICE_STORE_WRITE_TYPE; // Dummy dimension
     }
 
     @Override

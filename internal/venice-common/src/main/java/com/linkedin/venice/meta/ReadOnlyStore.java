@@ -1090,6 +1090,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setCompactionEnabled(isCompactionEnabled());
     storeProperties.setCompactionThresholdMilliseconds(getCompactionThresholdMilliseconds());
     storeProperties.setEncryptionEnabled(isEncryptionEnabled());
+    storeProperties.setPubSubEncryptionKeyUrn(getPubSubEncryptionKeyUrn());
     storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
@@ -1639,6 +1640,11 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setVersionStorageMode(int versionNumber, StorageMode storageMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   @Nonnull
   public Version getVersionOrThrow(int versionNumber) throws StoreVersionNotFoundException {
     return new ReadOnlyVersion(this.delegate.getVersionOrThrow(versionNumber));
@@ -1704,6 +1710,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setEncryptionEnabled(boolean encryptionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public String getPubSubEncryptionKeyUrn() {
+    return this.delegate.getPubSubEncryptionKeyUrn();
+  }
+
+  @Override
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
     throw new UnsupportedOperationException();
   }
 

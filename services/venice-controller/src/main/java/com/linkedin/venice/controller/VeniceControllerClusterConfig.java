@@ -91,10 +91,13 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERS
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
@@ -741,6 +744,8 @@ public class VeniceControllerClusterConfig {
     META_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT),
     PUSH_STATUS_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT),
     PUSH_STATUS_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT),
+    BATCH_JOB_HEARTBEAT_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_VT),
+    BATCH_JOB_HEARTBEAT_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_RT),
     BATCH_USER_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT),
     HYBRID_USER_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT),
     HYBRID_USER_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT);
@@ -754,6 +759,7 @@ public class VeniceControllerClusterConfig {
 
   private final EnumMap<AlternativePubSubBackendTopic, Boolean> alternativePubSubBackendEnabled;
   private final Set<String> alternativeBackendExclusionList;
+  private final Set<String> alternativeBackendInclusionList;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1366,12 +1372,30 @@ public class VeniceControllerClusterConfig {
       flags.put(topic, props.getBoolean(topic.configKey, enableAll));
     }
     this.alternativePubSubBackendEnabled = flags;
-    String exclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "");
-    this.alternativeBackendExclusionList = exclusionListStr.isEmpty()
-        ? Collections.emptySet()
-        : Collections.unmodifiableSet(new HashSet<>(Arrays.asList(exclusionListStr.split("\\s*,\\s*"))));
+    this.alternativeBackendExclusionList =
+        parseStoreNameSet(props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, ""));
+    this.alternativeBackendInclusionList =
+        parseStoreNameSet(props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, ""));
 
     this.logClusterConfig();
+  }
+
+  /**
+   * Parses a comma-separated store-name list into an immutable set, trimming whitespace around each entry and
+   * dropping empty values so leading/trailing whitespace or stray commas do not cause silent match failures.
+   */
+  private static Set<String> parseStoreNameSet(String csv) {
+    if (csv == null || csv.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<String> result = new HashSet<>();
+    for (String entry: csv.split(",")) {
+      String trimmed = entry.trim();
+      if (!trimmed.isEmpty()) {
+        result.add(trimmed);
+      }
+    }
+    return result.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet(result);
   }
 
   private void logClusterConfig() {
@@ -1394,33 +1418,69 @@ public class VeniceControllerClusterConfig {
   }
 
   /**
-   * Whether to use alternative pubsub backend for this store/topic combination.
-   * Checks the exact store name against the exclusion list, then resolves the appropriate
-   * {@link AlternativePubSubBackendTopic} flag via {@link #resolveAlternativePubSubBackendTopic}.
+   * Whether to use the alternative pubsub backend for this store/topic combination. Resolves the
+   * {@link AlternativePubSubBackendTopic} for the store + topic role, then applies the per-store overrides via
+   * {@link #shouldUseAlternativePubSubBackend(String, AlternativePubSubBackendTopic)}.
    * Excluding a user store does not affect its system stores; each must be excluded independently.
    *
    * <p>For user store VTs, {@code isHybridStore} selects between {@link AlternativePubSubBackendTopic#BATCH_USER_STORE_VT}
    * and {@link AlternativePubSubBackendTopic#HYBRID_USER_STORE_VT}. It is ignored for RT topics and system stores.
+   * Callers must derive {@code isHybridStore} from the store (e.g. {@code store.isHybrid()}), not from a freshly
+   * constructed version whose hybrid config is not yet populated, otherwise a hybrid store's VT is misrouted to the
+   * batch backend.
    */
   public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime, boolean isHybridStore) {
+    return shouldUseAlternativePubSubBackend(
+        storeName,
+        resolveAlternativePubSubBackendTopic(storeName, isRealTime, isHybridStore));
+  }
+
+  /**
+   * Whether to use the alternative pubsub backend for an explicitly resolved {@link AlternativePubSubBackendTopic}.
+   * Precedence: exclusion list (deny) &gt; inclusion list (force on) &gt; per-topic-type flag.
+   */
+  public boolean shouldUseAlternativePubSubBackend(String storeName, AlternativePubSubBackendTopic topicType) {
     if (alternativeBackendExclusionList.contains(storeName)) {
       return false;
     }
-    return alternativePubSubBackendEnabled
-        .get(resolveAlternativePubSubBackendTopic(storeName, isRealTime, isHybridStore));
+    if (alternativeBackendInclusionList.contains(storeName)) {
+      return true;
+    }
+    return alternativePubSubBackendEnabled.get(topicType);
   }
 
-  private AlternativePubSubBackendTopic resolveAlternativePubSubBackendTopic(
+  /**
+   * Maps a store name + topic role to its {@link AlternativePubSubBackendTopic}. System stores are distinguished by
+   * name first (each system store type has its own topic type); {@code isHybridStore} only affects user store VTs.
+   * The switch is exhaustive over {@link VeniceSystemStoreType} so a newly added system store type fails fast here
+   * instead of silently falling through to the user-store routing.
+   */
+  AlternativePubSubBackendTopic resolveAlternativePubSubBackendTopic(
       String storeName,
       boolean isRealTime,
       boolean isHybridStore) {
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (systemStoreType == VeniceSystemStoreType.META_STORE) {
-      return isRealTime ? AlternativePubSubBackendTopic.META_STORE_RT : AlternativePubSubBackendTopic.META_STORE_VT;
-    } else if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-      return isRealTime
-          ? AlternativePubSubBackendTopic.PUSH_STATUS_STORE_RT
-          : AlternativePubSubBackendTopic.PUSH_STATUS_STORE_VT;
+    // BATCH_JOB_HEARTBEAT_STORE is a non-per-user shared system store whose full name is its prefix, for which
+    // VeniceSystemStoreType.getSystemStoreType() returns null; detect it explicitly here.
+    VeniceSystemStoreType systemStoreType =
+        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)
+            ? VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE
+            : VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (systemStoreType != null) {
+      switch (systemStoreType) {
+        case META_STORE:
+          return isRealTime ? AlternativePubSubBackendTopic.META_STORE_RT : AlternativePubSubBackendTopic.META_STORE_VT;
+        case DAVINCI_PUSH_STATUS_STORE:
+          return isRealTime
+              ? AlternativePubSubBackendTopic.PUSH_STATUS_STORE_RT
+              : AlternativePubSubBackendTopic.PUSH_STATUS_STORE_VT;
+        case BATCH_JOB_HEARTBEAT_STORE:
+          return isRealTime
+              ? AlternativePubSubBackendTopic.BATCH_JOB_HEARTBEAT_STORE_RT
+              : AlternativePubSubBackendTopic.BATCH_JOB_HEARTBEAT_STORE_VT;
+        default:
+          throw new IllegalStateException(
+              "Unhandled system store type for alternative pubsub backend routing: " + systemStoreType);
+      }
     }
     if (isRealTime) {
       return AlternativePubSubBackendTopic.HYBRID_USER_STORE_RT;
@@ -1428,12 +1488,6 @@ public class VeniceControllerClusterConfig {
     return isHybridStore
         ? AlternativePubSubBackendTopic.HYBRID_USER_STORE_VT
         : AlternativePubSubBackendTopic.BATCH_USER_STORE_VT;
-  }
-
-  /** @deprecated use {@link #shouldUseAlternativePubSubBackend(String, boolean, boolean)} */
-  @Deprecated
-  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
-    return shouldUseAlternativePubSubBackend(storeName, isRealTime, false);
   }
 
   public VeniceProperties getProps() {

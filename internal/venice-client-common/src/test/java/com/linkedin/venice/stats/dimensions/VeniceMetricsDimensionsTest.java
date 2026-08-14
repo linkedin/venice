@@ -34,6 +34,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.status_code_category");
           break;
+        case VENICE_BLOB_TRANSFER_SENDER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.sender_source");
+          break;
+        case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.blob_transfer.fallback_reason");
+          break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.retry_type");
           break;
@@ -190,6 +196,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.store.write_type");
           break;
+        case VENICE_REPLICATION_MODE:
+          assertEquals(dimension.getDimensionName(format), "venice.replication.mode");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -221,6 +230,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.statusCodeCategory");
+          break;
+        case VENICE_BLOB_TRANSFER_SENDER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.senderSource");
+          break;
+        case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.blobTransfer.fallbackReason");
           break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.retryType");
@@ -378,6 +393,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.store.writeType");
           break;
+        case VENICE_REPLICATION_MODE:
+          assertEquals(dimension.getDimensionName(format), "venice.replication.mode");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -409,6 +427,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "Venice.Response.StatusCodeCategory");
+          break;
+        case VENICE_BLOB_TRANSFER_SENDER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.SenderSource");
+          break;
+        case VENICE_BLOB_TRANSFER_FALLBACK_REASON:
+          assertEquals(dimension.getDimensionName(format), "Venice.BlobTransfer.FallbackReason");
           break;
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.RetryType");
@@ -565,6 +589,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_STORE_WRITE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Store.WriteType");
+          break;
+        case VENICE_REPLICATION_MODE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Replication.Mode");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

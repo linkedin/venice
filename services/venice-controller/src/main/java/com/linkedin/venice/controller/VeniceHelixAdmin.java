@@ -2597,6 +2597,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           storeName,
           clusterName);
     } else {
+      validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
         if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
@@ -2833,7 +2834,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void createBatchTopics(
+  void createBatchTopics(
       Version version,
       PushType pushType,
       TopicManager topicManager,
@@ -2841,14 +2842,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerClusterConfig clusterConfig,
       boolean useFastKafkaOperationTimeout) {
     List<PubSubTopic> topicNamesToCreate = new ArrayList<>(2);
-    topicNamesToCreate.add(pubSubTopicRepository.getTopic(version.kafkaTopicName()));
+    topicNamesToCreate.add(getPubSubTopicRepository().getTopic(version.kafkaTopicName()));
     if (pushType.isStreamReprocessing()) {
-      PubSubTopic streamReprocessingTopic = pubSubTopicRepository
+      PubSubTopic streamReprocessingTopic = getPubSubTopicRepository()
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
+    /**
+     * Resolve the alternative-backend decision from the authoritative store hybrid status rather than
+     * {@code version.isHybrid()}: a freshly constructed {@link Version} may not have its hybrid config populated yet
+     * when this runs (see the version-supplied addVersion path), which would misroute a hybrid store's VT to the
+     * batch backend.
+     */
+    Store store = getStore(clusterConfig.getClusterName(), version.getStoreName());
+    if (store == null) {
+      throw new VeniceNoStoreException(version.getStoreName(), clusterConfig.getClusterName());
+    }
+    boolean isHybridStore = store.isHybrid();
     boolean useAltBackend =
-        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, version.isHybrid());
+        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, isHybridStore);
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
@@ -2957,6 +2969,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return srcStoreResponse.getStore().getVersion(versionNumber);
   }
 
+  static void validatePubSubEncryptionKeyUrnForVersionCreation(String clusterName, Store store, PushType pushType) {
+    if (!store.isEncryptionEnabled() || store.isSystemStore() || pushType.isIncremental()) {
+      return;
+    }
+    if (StringUtils.isBlank(store.getPubSubEncryptionKeyUrn())) {
+      throw new VeniceException(
+          "Cannot create a version for encryption-enabled store " + store.getName() + " in cluster " + clusterName
+              + " because pubSubEncryptionKeyUrn is empty; set pubSubEncryptionKeyUrn through update-store first");
+    }
+  }
+
   /**
    * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
    * Add version is a multi step process that can be broken down to three main steps:
@@ -3057,6 +3080,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterName);
             return new Pair<>(false, null);
           }
+
+          validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, store, pushType);
 
           backupStrategy = store.getBackupStrategy();
           offlinePushStrategy = store.getOffLinePushStrategy();
@@ -5819,6 +5844,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       storeRepository.updateStore(store);
       LOGGER.info("Updated store {} v{} status to {} in cluster {}", storeName, version, status, clusterName);
     }
+  }
+
+  @Override
+  public void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter) {
+    if (StringUtils.isNotEmpty(regionFilter) && !isRegionPartOfRegionsFilterList(getRegionName(), regionFilter)) {
+      LOGGER.info(
+          "Skipping version storage-mode update for store {} v{} in cluster {} because region filter {} does not include {}",
+          storeName,
+          version,
+          clusterName,
+          regionFilter,
+          getRegionName());
+      return;
+    }
+
+    storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+      Version storeVersion = store.getVersion(version);
+      if (storeVersion == null) {
+        throw new VeniceException(
+            "Version " + version + " does not exist for store " + storeName + " in cluster " + clusterName);
+      }
+      if (storeVersion.getStorageMode() == storageMode) {
+        return store;
+      }
+      store.setVersionStorageMode(version, storageMode);
+      LOGGER.info(
+          "Updated store {} v{} storageMode to {} in cluster {} for region {}",
+          storeName,
+          version,
+          storageMode,
+          clusterName,
+          getRegionName());
+      return store;
+    });
   }
 
   /**

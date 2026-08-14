@@ -116,6 +116,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.VALIDATE_STORE_DELETED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
@@ -419,6 +420,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         UPDATE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.updateStore(admin)));
+    httpService.post(
+        UPDATE_STORE_VERSION_STORAGE_MODE.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.updateStoreVersionStorageMode(admin)));
 
     httpService.post(
         AUTO_MIGRATE_STORE.getPath(),

@@ -32,6 +32,12 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceResponseStatusCategory} */
   VENICE_RESPONSE_STATUS_CODE_CATEGORY("venice.response.status_code_category"),
 
+  /** {@link VeniceBlobTransferSource} */
+  VENICE_BLOB_TRANSFER_SENDER_SOURCE("venice.blob_transfer.sender_source"),
+
+  /** {@link VeniceBlobTransferFallbackReason} */
+  VENICE_BLOB_TRANSFER_FALLBACK_REASON("venice.blob_transfer.fallback_reason"),
+
   /** {@link RequestRetryType} */
   VENICE_REQUEST_RETRY_TYPE("venice.request.retry_type"),
 
@@ -186,7 +192,10 @@ public enum VeniceMetricsDimensions {
   VENICE_RECORD_TRANSFORMER_OPERATION("venice.record_transformer.operation"),
 
   /** {@link VeniceStoreWriteType} Store write type: regular or write_compute. */
-  VENICE_STORE_WRITE_TYPE("venice.store.write_type");
+  VENICE_STORE_WRITE_TYPE("venice.store.write_type"),
+
+  /** {@link VeniceReplicationMode} Store-version replication mode: non_active_active or active_active. */
+  VENICE_REPLICATION_MODE("venice.replication.mode");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

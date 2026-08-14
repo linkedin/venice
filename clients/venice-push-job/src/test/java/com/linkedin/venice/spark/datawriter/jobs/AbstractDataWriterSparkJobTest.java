@@ -50,15 +50,21 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.fs.Path;
+import org.apache.spark.TaskContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
@@ -75,6 +81,7 @@ import org.apache.spark.sql.types.StructType;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import scala.collection.JavaConverters;
 
 
 public class AbstractDataWriterSparkJobTest {
@@ -481,8 +488,33 @@ public class AbstractDataWriterSparkJobTest {
     }
   }
 
+  @Test
+  public void testRunComputeJobAggregatesFailedExternalStorageRegionsFromTaskOutput() throws IOException {
+    PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
+    setting.partitionCount = 2;
+
+    try (TaskOutputTestingDataWriterSparkJob job = new TaskOutputTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      job.runComputeJob();
+
+      Map<Integer, Long> expectedCounts = new HashMap<>();
+      expectedCounts.put(0, 3L);
+      expectedCounts.put(1, 5L);
+      Assert.assertEquals(job.getTaskTracker().getPerPartitionRecordCounts(), expectedCounts);
+
+      Set<String> expectedFailedRegions = new HashSet<>();
+      expectedFailedRegions.add("dc-0");
+      expectedFailedRegions.add("dc-1");
+      Assert.assertEquals(job.getTaskTracker().getFailedExternalStorageRegions(), expectedFailedRegions);
+    }
+  }
+
   private static long getTotalInputDataSize(QuotaTestingDataWriterSparkJob job) {
     return job.getTaskTracker().getTotalKeySize() + job.getTaskTracker().getTotalValueSize();
+  }
+
+  private static scala.collection.Seq<String> toScalaSeq(String... values) {
+    return JavaConverters.asScalaBuffer(new ArrayList<>(Arrays.asList(values))).toSeq();
   }
 
   private PushJobSetting getDefaultKafkaInputPushJobSetting() {
@@ -713,7 +745,44 @@ public class AbstractDataWriterSparkJobTest {
           accumulators.outputRecordCounter.add(1);
         }
         accumulators.partitionWriterCloseCounter.add(1);
-        return Collections.singletonList(RowFactory.create(partitionId, recordCount)).iterator();
+        return Collections.singletonList(RowFactory.create(partitionId, recordCount, toScalaSeq())).iterator();
+      };
+    }
+  }
+
+  private static class TaskOutputTestingDataWriterSparkJob extends DataWriterSparkJob {
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      List<Row> rows = Arrays.asList(
+          new GenericRowWithSchema(
+              new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "test-key-1".getBytes(),
+                  "test-value-1".getBytes(), 1, "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA),
+          new GenericRowWithSchema(
+              new Object[] { "region1", 1, 101L, MessageType.PUT.getValue(), 1, "test-key-2".getBytes(),
+                  "test-value-2".getBytes(), 1, "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA));
+      return getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    }
+
+    @Override
+    protected MapPartitionsFunction<Row, Row> createPartitionWriterFactory(
+        Broadcast<Properties> broadcastProperties,
+        DataWriterAccumulators accumulators) {
+      return iterator -> {
+        while (iterator.hasNext()) {
+          iterator.next();
+        }
+
+        int partitionId = TaskContext.get().partitionId();
+        switch (partitionId) {
+          case 0:
+            return Collections.singletonList(RowFactory.create(0, 3L, toScalaSeq("dc-1", "dc-0"))).iterator();
+          case 1:
+            return Collections.singletonList(RowFactory.create(1, 5L, toScalaSeq("dc-1"))).iterator();
+          default:
+            return Collections.singletonList(RowFactory.create(partitionId, 0L, toScalaSeq())).iterator();
+        }
       };
     }
   }

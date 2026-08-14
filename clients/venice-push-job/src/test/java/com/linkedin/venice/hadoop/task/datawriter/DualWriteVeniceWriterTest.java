@@ -23,7 +23,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.testng.annotations.Test;
@@ -262,6 +265,71 @@ public class DualWriteVeniceWriterTest {
       } catch (Exception ignored) {
       }
     }
+  }
+
+  @Test
+  public void failOpenDisablesOnlyTheFailedRegionAndContinuesKafkaAndHealthyRegions() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter failing = new RecordingExternalStorageWriter();
+    RecordingExternalStorageWriter healthy = new RecordingExternalStorageWriter();
+    failing.failBatchPutTimes = Integer.MAX_VALUE;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+    try (DualWriteVeniceWriter writer = new DualWriteVeniceWriter(
+        TOPIC,
+        kafkaWriter,
+        Arrays.asList(failing, healthy),
+        Arrays.asList("dc-fail", "dc-healthy"),
+        null,
+        1,
+        2,
+        0L,
+        true,
+        tracker)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+      writer.put(key(2), value(2), SCHEMA_ID, null);
+    }
+
+    assertEquals(
+        failing.batchPutAttempts,
+        3,
+        "Failed region should exhaust the initial attempt plus 2 retries exactly once, then be skipped");
+    assertEquals(
+        healthy.batchPutInvocations.size(),
+        2,
+        "Healthy region should continue receiving every batch after the other region is disabled");
+    assertTrue(failing.flushCount > 0, "Disabled writer must still be flushed before close");
+    assertTrue(failing.closed, "Disabled writer must still be closed");
+    assertEquals(tracker.failedExternalStorageRegions, Collections.singleton("dc-fail"));
+    verify(kafkaWriter, times(2)).put(any(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void transientRetrySuccessDoesNotMarkOrDisableTheRegion() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter recovering = new RecordingExternalStorageWriter();
+    recovering.failBatchPutTimes = 2;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+    try (DualWriteVeniceWriter writer = new DualWriteVeniceWriter(
+        TOPIC,
+        kafkaWriter,
+        Arrays.asList(recovering),
+        Arrays.asList("dc-recovering"),
+        null,
+        1,
+        3,
+        0L,
+        true,
+        tracker)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+      writer.put(key(2), value(2), SCHEMA_ID, null);
+    }
+
+    assertEquals(recovering.batchPutAttempts, 4, "Writer should retry through success and remain enabled afterwards");
+    assertEquals(recovering.batchPutInvocations.size(), 2, "Both puts should eventually reach the recovering region");
+    assertTrue(
+        tracker.failedExternalStorageRegions.isEmpty(),
+        "A transient failure that recovers within retry budget must not disable or report the region");
+    verify(kafkaWriter, times(2)).put(any(), any(), anyInt(), any());
   }
 
   // --- Failure-mode tests --------------------------------------------------------------------------
@@ -610,6 +678,15 @@ public class DualWriteVeniceWriterTest {
       if (throwOnClose != null) {
         throw throwOnClose;
       }
+    }
+  }
+
+  private static final class RecordingDataWriterTaskTracker implements DataWriterTaskTracker {
+    final Set<String> failedExternalStorageRegions = new HashSet<>();
+
+    @Override
+    public void trackFailedExternalStorageRegion(String regionName) {
+      failedExternalStorageRegions.add(regionName);
     }
   }
 
