@@ -765,6 +765,17 @@ public class TestUtils {
     return properties;
   }
 
+  /**
+   * Configs for unit tests that do not start a pub-sub broker and therefore have no backend to resolve adapter
+   * factory classes from. Enabling the fallback lets {@link com.linkedin.venice.pubsub.PubSubClientsFactory} build
+   * the default adapter factory without pinning a specific backend in the test.
+   */
+  public static Properties getPubSubClientConfigsWithFallbackEnabled() {
+    Properties properties = new Properties();
+    properties.setProperty(ConfigKeys.PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, "true");
+    return properties;
+  }
+
   public static Properties getPropertiesForControllerConfig() {
     Properties properties = new Properties();
     properties.putAll(getPubSubApacheKafkaAdapterFactoryConfigs());

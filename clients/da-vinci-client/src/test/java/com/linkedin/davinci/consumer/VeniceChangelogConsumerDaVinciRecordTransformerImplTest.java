@@ -115,7 +115,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         .setStoreName(TEST_STORE_NAME)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-        .setConsumerProperties(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
+        .setConsumerProperties(TestUtils.getPubSubClientConfigsWithFallbackEnabled())
         .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
         .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
         .setD2Client(mock(D2Client.class))

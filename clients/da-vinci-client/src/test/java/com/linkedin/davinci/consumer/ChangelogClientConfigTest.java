@@ -38,7 +38,7 @@ public class ChangelogClientConfigTest {
   @SuppressWarnings("rawtypes")
   private static ChangelogClientConfig newGlobalConfig() {
     Properties consumerProperties = new Properties();
-    consumerProperties.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    consumerProperties.putAll(TestUtils.getPubSubClientConfigsWithFallbackEnabled());
     return new ChangelogClientConfig(GLOBAL_STORE).setConsumerProperties(consumerProperties);
   }
 
