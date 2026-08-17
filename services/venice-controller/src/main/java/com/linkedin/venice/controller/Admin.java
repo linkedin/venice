@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1028,6 +1029,27 @@ public interface Admin extends AutoCloseable, Closeable {
       int version,
       StorageMode storageMode,
       String regionFilter) {
+    updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        version,
+        storageMode,
+        regionFilter,
+        VersionStorageModeUpdateReason.UNSPECIFIED);
+  }
+
+  /**
+   * Same as {@link #updateStoreVersionStorageMode(String, String, int, StorageMode, String)}, plus why the update
+   * was requested. The reason only drives controller telemetry — notably the alertable per-region counter emitted
+   * for {@link VersionStorageModeUpdateReason#EXTERNAL_WRITE_FAILURE} — and never changes the resulting mode.
+   */
+  default void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter,
+      VersionStorageModeUpdateReason reason) {
     throw new VeniceUnsupportedOperationException("updateStoreVersionStorageMode");
   }
 

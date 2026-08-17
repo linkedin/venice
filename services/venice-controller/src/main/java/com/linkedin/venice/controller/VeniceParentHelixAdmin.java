@@ -136,6 +136,7 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
@@ -3183,7 +3184,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       int version,
       StorageMode storageMode,
-      String regionFilter) {
+      String regionFilter,
+      VersionStorageModeUpdateReason reason) {
     Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (controllerClientMap.isEmpty()) {
       throw new VeniceException("No child controller clients found for cluster " + clusterName);
@@ -3203,7 +3205,12 @@ public class VeniceParentHelixAdmin implements Admin {
       ControllerClient childControllerClient = controllerClientMap.get(region);
       ControllerResponse response;
       try {
-        response = childControllerClient.updateStoreVersionStorageMode(storeName, version, storageMode);
+        /**
+         * The region filter is already resolved into one request per target region, so the child call carries no
+         * filter of its own. The reason is forwarded so the child — which is the affected region — is the one that
+         * emits the fail-open metric.
+         */
+        response = childControllerClient.updateStoreVersionStorageMode(storeName, version, storageMode, null, reason);
       } catch (Exception e) {
         throw new VeniceException(
             "Failed to update version storage mode for store " + storeName + " v" + version + " in region " + region,

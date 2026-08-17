@@ -104,6 +104,9 @@ public enum VeniceMetricsDimensions {
   /** {@link VenicePushJobStatus} */
   VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
 
+  /** {@link VenicePushJobDataWriterSink} */
+  VENICE_PUSH_JOB_DATA_WRITER_SINK("venice.push_job.data_writer.sink"),
+
   /** {@link VeniceSystemStoreType} */
   VENICE_SYSTEM_STORE_TYPE("venice.system_store.type"),
 

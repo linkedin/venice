@@ -69,6 +69,31 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   /**
+   * Report elapsed wall-clock time this task spent inside the external-storage write path.
+   * This covers the complete external leg: the per-region write throttling wait, the
+   * {@code ExternalStorageWriter.batchPut} calls including their retries and retry backoff sleeps, the
+   * external {@code flush}, and the external {@code close}. It excludes anything spent producing to
+   * Venice/Kafka.
+   *
+   * <p>Callers report monotonic deltas as they accrue, so the aggregate is the <em>sum of per-task
+   * durations</em>, not the push's wall-clock duration: with N concurrent data-writer tasks the total can be
+   * up to N times the push's elapsed time.
+   */
+  default void trackExternalStorageWriteTime(long timeMs) {
+  }
+
+  /**
+   * Report elapsed wall-clock time this task spent invoking the Venice/Kafka write path: the
+   * {@code VeniceWriter.put} invocations plus flushing and closing the Venice writer. It excludes anything
+   * spent in the external-storage path.
+   *
+   * <p>Same aggregation semantics as {@link #trackExternalStorageWriteTime(long)}: summed task durations,
+   * not push wall-clock time.
+   */
+  default void trackVeniceWriteTime(long timeMs) {
+  }
+
+  /**
    * Report that the external writer for {@code regionName} exhausted its retry budget and was disabled for
    * the remainder of the task. Callers should report each region at most once per task.
    */
@@ -140,6 +165,24 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default long getIncrementalPushThrottledTimeMs() {
+    return 0;
+  }
+
+  /**
+   * @return the summed per-task duration (ms) spent in the external-storage write path across all successful
+   *         task outputs of this push. See {@link #trackExternalStorageWriteTime(long)} for exactly what is
+   *         included; this is <em>not</em> the push's wall-clock time.
+   */
+  default long getExternalStorageWriteTimeMs() {
+    return 0;
+  }
+
+  /**
+   * @return the summed per-task duration (ms) spent in the Venice/Kafka write path across all successful task
+   *         outputs of this push. See {@link #trackVeniceWriteTime(long)}; this is <em>not</em> the push's
+   *         wall-clock time.
+   */
+  default long getVeniceWriteTimeMs() {
     return 0;
   }
 

@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -50,6 +51,29 @@ import org.apache.logging.log4j.Logger;
  * <p>{@code update} and {@code delete} are not supported — batch pushes from clean input never call either.
  * Both throw {@link UnsupportedOperationException} so a stray invocation fails the Spark task loudly rather
  * than silently leaving the external sink and Venice in divergent states.
+ *
+ * <p><b>Write-path timing.</b> The wrapper measures how long this task spends in each of the two legs and
+ * reports the accrued time to the {@link DataWriterTaskTracker}:
+ * <ul>
+ *   <li><b>external</b> — per-region throttling wait, {@code batchPut} including its retries and retry
+ *       backoff sleeps, external {@code flush} and external {@code close}.</li>
+ *   <li><b>venice</b> — the {@code kafkaWriter.put} invocations plus {@code kafkaWriter.flush()} and
+ *       {@code kafkaWriter.close()}.</li>
+ * </ul>
+ * The two legs are measured over disjoint intervals on the single partition-writer task thread, so no
+ * wall-clock instant is counted twice. Timing uses {@link System#nanoTime()} (monotonic, immune to wall-clock
+ * adjustments) and is accrued in {@code try/finally} blocks so a failing batch still contributes the time it
+ * burned. Accrued time is published to the tracker as whole-millisecond deltas after every drain, flush and
+ * close, so work done while flushing/closing is always captured even if the task later fails.
+ *
+ * <p><b>Caveat: the two legs are not symmetric cost measurements.</b> {@code kafkaWriter.put(...)} is an
+ * asynchronous enqueue — the actual produce work happens on the producer's background I/O thread and is
+ * mostly captured later, in {@code kafkaWriter.flush()}. Because that background thread keeps draining the
+ * producer's buffer <em>while</em> this task thread is blocked inside the external-write leg, some of the
+ * real Kafka produce cost is hidden from {@code veniceWriteTimeMs} whenever the external leg is the slower
+ * one. Treat {@code externalStorageWriteTimeMs} vs {@code veniceWriteTimeMs} as an indicator of which leg to
+ * look at first, not a precise cost split — it structurally under-reports the Venice leg's true cost, more so
+ * the slower external storage is.
  */
 public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], byte[]> {
   private static final Logger LOGGER = LogManager.getLogger(DualWriteVeniceWriter.class);
@@ -71,6 +95,13 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
   private final boolean failOpenOnExternalStorageRegionFailure;
   private final DataWriterTaskTracker dataWriterTaskTracker;
   private final boolean[] disabledExternalWriters;
+  /** Monotonic nanos accrued in the external-storage leg (throttle + batchPut/retries + flush + close). */
+  private long externalStorageWriteNanos;
+  /** Monotonic nanos accrued in the Venice leg (kafka put + flush + close). */
+  private long veniceWriteNanos;
+  /** Whole milliseconds already handed to the tracker, so republishing only reports the new delta. */
+  private long reportedExternalStorageWriteTimeMs;
+  private long reportedVeniceWriteTimeMs;
 
   /**
    * Convenience constructor for callers that don't need the buffered retry policy (e.g. unit tests that
@@ -291,22 +322,37 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
 
   @Override
   public void flush() {
-    drainBuffer();
-    for (int i = 0; i < externalWriters.size(); i++) {
+    try {
+      // drainBuffer() accrues its own external/venice time, so it stays outside the intervals timed below.
+      drainBuffer();
+      long externalStartNs = System.nanoTime();
       try {
-        externalWriters.get(i).flush();
-      } catch (RuntimeException e) {
-        if (shouldSuppressDisabledWriterFailure(i)) {
-          LOGGER.warn(
-              "Suppressing flush failure from disabled external writer for region {} because fail-open is enabled",
-              externalWriterRegions.get(i),
-              e);
-          continue;
+        for (int i = 0; i < externalWriters.size(); i++) {
+          try {
+            externalWriters.get(i).flush();
+          } catch (RuntimeException e) {
+            if (shouldSuppressDisabledWriterFailure(i)) {
+              LOGGER.warn(
+                  "Suppressing flush failure from disabled external writer for region {} because fail-open is enabled",
+                  externalWriterRegions.get(i),
+                  e);
+              continue;
+            }
+            throw e;
+          }
         }
-        throw e;
+      } finally {
+        externalStorageWriteNanos += System.nanoTime() - externalStartNs;
       }
+      long veniceStartNs = System.nanoTime();
+      try {
+        kafkaWriter.flush();
+      } finally {
+        veniceWriteNanos += System.nanoTime() - veniceStartNs;
+      }
+    } finally {
+      publishAccruedTimings();
     }
-    kafkaWriter.flush();
   }
 
   @Override
@@ -317,46 +363,60 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
   @Override
   public void close(boolean gracefulClose) throws IOException {
     IOException firstError = null;
-    // Self-flush so close() alone is sufficient to meet the ExternalStorageWriter lifecycle contract:
-    // drains the wrapper's buffer and forces every regional externalWriter.flush() + kafkaWriter.flush()
-    // before any of them are closed. AbstractPartitionWriter.close() also calls flush() explicitly before
-    // close(), but self-flushing here protects any caller that uses the wrapper in a different lifecycle.
     try {
-      flush();
-    } catch (RuntimeException e) {
-      firstError = new IOException("Failed to flush before close", e);
-    }
-    for (int i = 0; i < externalWriters.size(); i++) {
+      // Self-flush so close() alone is sufficient to meet the ExternalStorageWriter lifecycle contract:
+      // drains the wrapper's buffer and forces every regional externalWriter.flush() + kafkaWriter.flush()
+      // before any of them are closed. AbstractPartitionWriter.close() also calls flush() explicitly before
+      // close(), but self-flushing here protects any caller that uses the wrapper in a different lifecycle.
       try {
-        externalWriters.get(i).close();
-      } catch (IOException | RuntimeException e) {
-        if (shouldSuppressDisabledWriterFailure(i)) {
-          LOGGER.warn(
-              "Suppressing close failure from disabled external writer for region {} because fail-open is enabled",
-              externalWriterRegions.get(i),
-              e);
-          continue;
+        flush();
+      } catch (RuntimeException e) {
+        firstError = new IOException("Failed to flush before close", e);
+      }
+      long externalStartNs = System.nanoTime();
+      try {
+        for (int i = 0; i < externalWriters.size(); i++) {
+          try {
+            externalWriters.get(i).close();
+          } catch (IOException | RuntimeException e) {
+            if (shouldSuppressDisabledWriterFailure(i)) {
+              LOGGER.warn(
+                  "Suppressing close failure from disabled external writer for region {} because fail-open is enabled",
+                  externalWriterRegions.get(i),
+                  e);
+              continue;
+            }
+            // External impls are pluggable — an unchecked throw from one regional writer must not skip closing
+            // the remaining regional writers or kafkaWriter.close() below, otherwise resources leak during task
+            // shutdown.
+            IOException wrapped = e instanceof IOException ? (IOException) e : new IOException(e);
+            if (firstError == null) {
+              firstError = wrapped;
+            } else {
+              firstError.addSuppressed(wrapped);
+            }
+          }
         }
-        // External impls are pluggable — an unchecked throw from one regional writer must not skip closing
-        // the remaining regional writers or kafkaWriter.close() below, otherwise resources leak during task
-        // shutdown.
+      } finally {
+        externalStorageWriteNanos += System.nanoTime() - externalStartNs;
+      }
+      long veniceStartNs = System.nanoTime();
+      try {
+        kafkaWriter.close(gracefulClose);
+      } catch (IOException | RuntimeException e) {
         IOException wrapped = e instanceof IOException ? (IOException) e : new IOException(e);
         if (firstError == null) {
           firstError = wrapped;
         } else {
           firstError.addSuppressed(wrapped);
         }
+      } finally {
+        veniceWriteNanos += System.nanoTime() - veniceStartNs;
       }
-    }
-    try {
-      kafkaWriter.close(gracefulClose);
-    } catch (IOException | RuntimeException e) {
-      IOException wrapped = e instanceof IOException ? (IOException) e : new IOException(e);
-      if (firstError == null) {
-        firstError = wrapped;
-      } else {
-        firstError.addSuppressed(wrapped);
-      }
+    } finally {
+      // Publish whatever accrued while closing, even when a regional writer or the Kafka writer threw, so the
+      // push still reports the time this task actually burned.
+      publishAccruedTimings();
     }
     if (firstError != null) {
       throw firstError;
@@ -413,35 +473,49 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
       // blocking limiter waits until the per-region budget admits the batch, enforcing independent per-region
       // budgets without reordering the external-first writes. (If a limiter threw instead of blocking it would
       // propagate before the write; the GuavaRateLimiter used here blocks rather than rejecting.)
-      for (int i = 0; i < externalWriters.size(); i++) {
-        if (shouldSkipExternalWriter(i)) {
-          continue;
-        }
-        if (throttlers != null) {
-          ExternalStorageWriteThrottler throttler = throttlers.get(i);
-          if (throttler != null) {
-            throttler.throttle(recordCount, byteCount);
+      //
+      // The whole fan-out is timed as external-storage work: the throttling wait, every batchPut attempt and
+      // the backoff sleeps between retries all happen inside this interval and none of it overlaps the Kafka
+      // produce loop below.
+      long externalStartNs = System.nanoTime();
+      try {
+        for (int i = 0; i < externalWriters.size(); i++) {
+          if (shouldSkipExternalWriter(i)) {
+            continue;
+          }
+          if (throttlers != null) {
+            ExternalStorageWriteThrottler throttler = throttlers.get(i);
+            if (throttler != null) {
+              throttler.throttle(recordCount, byteCount);
+            }
+          }
+          try {
+            batchPutWithRetry(externalWriters.get(i), externalWriterRegions.get(i), externalRecords);
+          } catch (RuntimeException e) {
+            if (!failOpenOnExternalStorageRegionFailure || Thread.currentThread().isInterrupted()) {
+              throw e;
+            }
+            disableFailedExternalWriter(i, e);
           }
         }
-        try {
-          batchPutWithRetry(externalWriters.get(i), externalWriterRegions.get(i), externalRecords);
-        } catch (RuntimeException e) {
-          if (!failOpenOnExternalStorageRegionFailure || Thread.currentThread().isInterrupted()) {
-            throw e;
-          }
-          disableFailedExternalWriter(i, e);
-        }
+      } finally {
+        externalStorageWriteNanos += System.nanoTime() - externalStartNs;
       }
-      for (BufferedPut buffered: putBuffer) {
-        CompletableFuture<PubSubProduceResult> kafkaFuture = invokeKafkaPut(buffered);
-        kafkaFuture.whenComplete((result, error) -> {
-          if (error != null) {
-            buffered.future.completeExceptionally(error);
-          } else {
-            buffered.future.complete(result);
-          }
-        });
-        last = buffered.future;
+      long veniceStartNs = System.nanoTime();
+      try {
+        for (BufferedPut buffered: putBuffer) {
+          CompletableFuture<PubSubProduceResult> kafkaFuture = invokeKafkaPut(buffered);
+          kafkaFuture.whenComplete((result, error) -> {
+            if (error != null) {
+              buffered.future.completeExceptionally(error);
+            } else {
+              buffered.future.complete(result);
+            }
+          });
+          last = buffered.future;
+        }
+      } finally {
+        veniceWriteNanos += System.nanoTime() - veniceStartNs;
       }
       return last;
     } catch (Throwable t) {
@@ -456,6 +530,34 @@ public class DualWriteVeniceWriter extends AbstractVeniceWriter<byte[], byte[], 
       // Always clear the buffer so the next drainBuffer() (e.g. close() self-flushing after this failure)
       // does not replay the same records to the external sink.
       putBuffer.clear();
+      // Report what this batch burned even when it failed, so a fail-open push still accounts for the time
+      // spent on the regions that gave up.
+      publishAccruedTimings();
+    }
+  }
+
+  /**
+   * Hand the newly accrued external/Venice time to the task tracker as whole-millisecond deltas.
+   *
+   * <p>Nanos are accumulated internally and only the difference against what was already reported is
+   * published, so repeated calls (after every drain, flush and close) never double count and sub-millisecond
+   * batches still add up across a task instead of each rounding to zero.
+   */
+  private void publishAccruedTimings() {
+    if (dataWriterTaskTracker == null) {
+      return;
+    }
+    long externalMs = TimeUnit.NANOSECONDS.toMillis(externalStorageWriteNanos);
+    long externalDeltaMs = externalMs - reportedExternalStorageWriteTimeMs;
+    if (externalDeltaMs > 0) {
+      reportedExternalStorageWriteTimeMs = externalMs;
+      dataWriterTaskTracker.trackExternalStorageWriteTime(externalDeltaMs);
+    }
+    long veniceMs = TimeUnit.NANOSECONDS.toMillis(veniceWriteNanos);
+    long veniceDeltaMs = veniceMs - reportedVeniceWriteTimeMs;
+    if (veniceDeltaMs > 0) {
+      reportedVeniceWriteTimeMs = veniceMs;
+      dataWriterTaskTracker.trackVeniceWriteTime(veniceDeltaMs);
     }
   }
 

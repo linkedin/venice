@@ -971,12 +971,15 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
       /*
        * collect() returns exactly one successful task-output row per Spark partition:
-       * (partitionId, recordCount, failedExternalStorageRegions). With speculative execution, if
-       * the original task and a speculative attempt both finish at the same time, Spark's
-       * TaskScheduler accepts the result from whichever one successfully communicates completion
-       * first and immediately kills the other; the duplicate's work is discarded to prevent
-       * duplicate data processing. So no two rows in the collected list will ever share the same
-       * partition id, and only the winning task's final disabled-region set contributes here.
+       * (partitionId, recordCount, failedExternalStorageRegions, externalStorageWriteTimeMs,
+       * veniceWriteTimeMs). With speculative execution, if the original task and a speculative attempt both
+       * finish at the same time, Spark's TaskScheduler accepts the result from whichever one successfully
+       * communicates completion first and immediately kills the other; the duplicate's work is discarded to
+       * prevent duplicate data processing. So no two rows in the collected list will ever share the same
+       * partition id, and only the winning task's final disabled-region set and accrued write times
+       * contribute here. This is exactly why the two duration totals travel as row columns instead of
+       * LongAccumulators: accumulator updates from a killed speculative attempt would still be added on the
+       * driver and inflate the sums.
        *
        * The collected data volume is bounded by numPartitions plus a small failed-region list per
        * partition (e.g. 10K partitions with record counts only is ~160KB), so collectAsList() is
@@ -986,18 +989,28 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       List<Row> taskOutputRows = dataFrame.collectAsList();
       Map<Integer, Long> perPartitionRecordCounts = new HashMap<>(taskOutputRows.size());
       Set<String> failedExternalStorageRegions = new HashSet<>();
+      // Summed task wall-clock durations across partitions, not the push's wall-clock duration.
+      long externalStorageWriteTimeMs = 0;
+      long veniceWriteTimeMs = 0;
       for (Row row: taskOutputRows) {
         perPartitionRecordCounts.put(row.getInt(0), row.getLong(1));
         if (!row.isNullAt(2)) {
           failedExternalStorageRegions.addAll(row.getList(2));
         }
+        externalStorageWriteTimeMs += row.getLong(3);
+        veniceWriteTimeMs += row.getLong(4);
       }
       taskTracker.setPerPartitionRecordCounts(perPartitionRecordCounts);
       taskTracker.setFailedExternalStorageRegions(failedExternalStorageRegions);
+      taskTracker.setExternalStorageWriteTimeMs(externalStorageWriteTimeMs);
+      taskTracker.setVeniceWriteTimeMs(veniceWriteTimeMs);
       LOGGER.info(
-          "Collected per-partition record counts for topic: {} ({} partitions)",
+          "Collected per-partition record counts for topic: {} ({} partitions). Summed task durations: "
+              + "externalStorageWriteTimeMs={}, veniceWriteTimeMs={}",
           topicName,
-          perPartitionRecordCounts.size());
+          perPartitionRecordCounts.size(),
+          externalStorageWriteTimeMs,
+          veniceWriteTimeMs);
     } finally {
       // Release the DataFrame cached by the pre-write quota check now that the write is done.
       if (quotaCheckedInput != null) {
@@ -1074,6 +1087,13 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   /**
    * Creates the partition writer factory. Can be overridden for testing purposes.
+   *
+   * <p><b>Breaking change note:</b> the returned function's output rows must conform to
+   * {@link com.linkedin.venice.spark.SparkConstants#PARTITION_RECORD_COUNT_SCHEMA}, which this change extends
+   * from 3 columns to 5 by appending {@code externalStorageWriteTimeMs} and {@code veniceWriteTimeMs} (both
+   * non-nullable {@code long}). Any out-of-tree override that still emits the old 3-column shape will fail
+   * row-encoder validation.
+   *
    * @param broadcastProperties the broadcast job properties
    * @param accumulators the data writer accumulators
    * @return the partition writer factory

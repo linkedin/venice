@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop.task.datawriter;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -34,6 +35,10 @@ import org.testng.annotations.Test;
 
 public class DualWriteVeniceWriterTest {
   private static final String TOPIC = "test_store_v1";
+  /** Simulated latency for the leg under test; large enough that scheduling noise cannot mask it. */
+  private static final long SLOW_LEG_SLEEP_MS = 120;
+  /** Smaller simulated latency for assertions that sum several sleeps. */
+  private static final long BATCH_SLEEP_MS = 40;
   private static final byte[] KEY_PREFIX = "key_".getBytes();
   private static final byte[] VALUE_PREFIX = "value_".getBytes();
   private static final int SCHEMA_ID = 7;
@@ -608,6 +613,225 @@ public class DualWriteVeniceWriterTest {
         () -> new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(dc0, dc1), oneThrottler, 1, 0, 0L));
   }
 
+  /**
+   * The two legs are timed over disjoint intervals, so a slow external sink must not be charged to the Venice
+   * leg. Timing assertions use generous margins because they measure real elapsed time.
+   */
+  @Test
+  public void externalStorageLatencyIsNotChargedToTheVeniceLeg() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    external.sleepMsPerBatchPut = SLOW_LEG_SLEEP_MS;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+
+    try (DualWriteVeniceWriter writer = newTrackedWriter(kafkaWriter, external, tracker, 1)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+    }
+
+    assertTrue(
+        tracker.externalStorageWriteTimeMs >= SLOW_LEG_SLEEP_MS - 1,
+        "External leg should account for the sink latency, got " + tracker.externalStorageWriteTimeMs + "ms");
+    assertTrue(
+        tracker.veniceWriteTimeMs < SLOW_LEG_SLEEP_MS / 2,
+        "External latency must not leak into the Venice leg, got " + tracker.veniceWriteTimeMs + "ms");
+  }
+
+  @Test
+  public void veniceLatencyIsNotChargedToTheExternalLeg() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    doAnswer(invocation -> {
+      sleepQuietly(SLOW_LEG_SLEEP_MS);
+      return CompletableFuture.completedFuture(null);
+    }).when(kafkaWriter).put(any(), any(), anyInt(), any());
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+
+    try (DualWriteVeniceWriter writer = newTrackedWriter(kafkaWriter, external, tracker, 1)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+    }
+
+    assertTrue(
+        tracker.veniceWriteTimeMs >= SLOW_LEG_SLEEP_MS - 1,
+        "Venice leg should account for the Kafka produce latency, got " + tracker.veniceWriteTimeMs + "ms");
+    assertTrue(
+        tracker.externalStorageWriteTimeMs < SLOW_LEG_SLEEP_MS / 2,
+        "Kafka latency must not leak into the external leg, got " + tracker.externalStorageWriteTimeMs + "ms");
+  }
+
+  @Test
+  public void writeTimesAccumulateAcrossBatches() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    external.sleepMsPerBatchPut = BATCH_SLEEP_MS;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+
+    int batches = 3;
+    try (DualWriteVeniceWriter writer = newTrackedWriter(kafkaWriter, external, tracker, 1)) {
+      for (int i = 0; i < batches; i++) {
+        writer.put(key(i), value(i), SCHEMA_ID, null);
+      }
+    }
+
+    assertEquals(external.batchPutInvocations.size(), batches);
+    assertTrue(
+        tracker.externalStorageWriteTimeMs >= batches * BATCH_SLEEP_MS - 1,
+        "Every batch should contribute to the total, got " + tracker.externalStorageWriteTimeMs + "ms for " + batches
+            + " batches");
+    assertTrue(
+        tracker.externalStorageWriteTimeReports > 1,
+        "Time should be published incrementally rather than only once at close");
+  }
+
+  @Test
+  public void externalWriteTimeIncludesThrottlingWait() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    RecordingRateLimiter rateLimiter = new RecordingRateLimiter();
+    rateLimiter.sleepMsPerAcquire = SLOW_LEG_SLEEP_MS;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+
+    try (DualWriteVeniceWriter writer = new DualWriteVeniceWriter(
+        TOPIC,
+        kafkaWriter,
+        Collections.singletonList(external),
+        Collections.singletonList("dc-0"),
+        Collections.singletonList(new ExternalStorageWriteThrottler(rateLimiter, null)),
+        1,
+        0,
+        0L,
+        false,
+        tracker)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+    }
+
+    assertEquals(rateLimiter.acquired, Collections.singletonList(1));
+    assertTrue(
+        tracker.externalStorageWriteTimeMs >= SLOW_LEG_SLEEP_MS - 1,
+        "Throttling wait belongs to the external leg, got " + tracker.externalStorageWriteTimeMs + "ms");
+  }
+
+  @Test
+  public void externalWriteTimeIncludesRetriesAndBackoff() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter recovering = new RecordingExternalStorageWriter();
+    recovering.failBatchPutTimes = 2;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+
+    long backoffMs = BATCH_SLEEP_MS;
+    try (DualWriteVeniceWriter writer = new DualWriteVeniceWriter(
+        TOPIC,
+        kafkaWriter,
+        Collections.singletonList(recovering),
+        Collections.singletonList("dc-0"),
+        null,
+        1,
+        2,
+        backoffMs,
+        false,
+        tracker)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+    }
+
+    assertEquals(recovering.batchPutAttempts, 3, "Two failures then a success");
+    // Two backoff sleeps sit between the three attempts and are part of the external leg.
+    assertTrue(
+        tracker.externalStorageWriteTimeMs >= 2 * backoffMs - 1,
+        "Retry backoff belongs to the external leg, got " + tracker.externalStorageWriteTimeMs + "ms");
+  }
+
+  @Test
+  public void writeTimesIncludeFlushAndClose() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    doAnswer(invocation -> {
+      sleepQuietly(BATCH_SLEEP_MS);
+      return null;
+    }).when(kafkaWriter).flush();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    external.sleepMsPerFlush = BATCH_SLEEP_MS;
+    external.sleepMsPerClose = BATCH_SLEEP_MS;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+
+    DualWriteVeniceWriter writer = newTrackedWriter(kafkaWriter, external, tracker, 1);
+    writer.put(key(1), value(1), SCHEMA_ID, null);
+    long externalAfterPut = tracker.externalStorageWriteTimeMs;
+    long veniceAfterPut = tracker.veniceWriteTimeMs;
+    writer.close();
+
+    assertTrue(external.closed);
+    // close() self-flushes, so the external total picks up both the flush and the close latency.
+    assertTrue(
+        tracker.externalStorageWriteTimeMs - externalAfterPut >= 2 * BATCH_SLEEP_MS - 1,
+        "External flush and close must be captured, got " + (tracker.externalStorageWriteTimeMs - externalAfterPut)
+            + "ms");
+    assertTrue(
+        tracker.veniceWriteTimeMs - veniceAfterPut >= BATCH_SLEEP_MS - 1,
+        "Venice flush must be captured, got " + (tracker.veniceWriteTimeMs - veniceAfterPut) + "ms");
+  }
+
+  @Test
+  public void failOpenStillReportsAccruedExternalWriteTime() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter failing = new RecordingExternalStorageWriter();
+    failing.failBatchPutTimes = Integer.MAX_VALUE;
+    failing.sleepMsPerBatchPut = BATCH_SLEEP_MS;
+    RecordingDataWriterTaskTracker tracker = new RecordingDataWriterTaskTracker();
+
+    try (DualWriteVeniceWriter writer = new DualWriteVeniceWriter(
+        TOPIC,
+        kafkaWriter,
+        Collections.singletonList(failing),
+        Collections.singletonList("dc-fail"),
+        null,
+        1,
+        1,
+        0L,
+        true,
+        tracker)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+      writer.put(key(2), value(2), SCHEMA_ID, null);
+    }
+
+    assertEquals(tracker.failedExternalStorageRegions, Collections.singleton("dc-fail"));
+    // Both attempts ran before the region was disabled; that time is still the push's cost.
+    assertTrue(
+        tracker.externalStorageWriteTimeMs >= 2 * BATCH_SLEEP_MS - 1,
+        "Fail-open must still report the time burned on the failed region, got " + tracker.externalStorageWriteTimeMs
+            + "ms");
+    verify(kafkaWriter, times(2)).put(any(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void writeTimesAreNotReportedWithoutATracker() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter external = new RecordingExternalStorageWriter();
+    external.sleepMsPerBatchPut = BATCH_SLEEP_MS;
+
+    // No tracker configured (the non-dual-write-aware constructors): must not NPE.
+    try (DualWriteVeniceWriter writer = new DualWriteVeniceWriter(TOPIC, kafkaWriter, external, 1)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+    }
+
+    assertEquals(external.batchPutInvocations.size(), 1);
+  }
+
+  private static DualWriteVeniceWriter newTrackedWriter(
+      AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter,
+      ExternalStorageWriter external,
+      DataWriterTaskTracker tracker,
+      int batchSize) {
+    return new DualWriteVeniceWriter(
+        TOPIC,
+        kafkaWriter,
+        Collections.singletonList(external),
+        Collections.singletonList("dc-0"),
+        null,
+        batchSize,
+        0,
+        0L,
+        false,
+        tracker);
+  }
+
   private static int expectedBytes(int i) {
     return key(i).length + ExternalStorageRecord.SCHEMA_ID_PREFIX_LENGTH + value(i).length;
   }
@@ -630,6 +854,18 @@ public class DualWriteVeniceWriterTest {
     return concat(VALUE_PREFIX, Integer.toString(i).getBytes());
   }
 
+  private static void sleepQuietly(long millis) {
+    if (millis <= 0) {
+      return;
+    }
+    try {
+      Thread.sleep(millis);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Interrupted while simulating latency", e);
+    }
+  }
+
   private static byte[] concat(byte[] a, byte[] b) {
     byte[] out = new byte[a.length + b.length];
     System.arraycopy(a, 0, out, 0, a.length);
@@ -650,6 +886,10 @@ public class DualWriteVeniceWriterTest {
     /** Number of leading {@code batchPut} attempts that should throw before the first success. */
     int failBatchPutTimes = 0;
     IOException throwOnClose = null;
+    /** Simulated per-call latency, so timing assertions have something deterministic to measure. */
+    long sleepMsPerBatchPut = 0;
+    long sleepMsPerFlush = 0;
+    long sleepMsPerClose = 0;
 
     @Override
     public void configure(VeniceProperties jobProps, String topicName, int partitionId) {
@@ -658,6 +898,7 @@ public class DualWriteVeniceWriterTest {
     @Override
     public void batchPut(List<ExternalStorageRecord> records) {
       batchPutAttempts++;
+      sleepQuietly(sleepMsPerBatchPut);
       if (throwOnBatchPut != null) {
         throw throwOnBatchPut;
       }
@@ -670,11 +911,13 @@ public class DualWriteVeniceWriterTest {
     @Override
     public void flush() {
       flushCount++;
+      sleepQuietly(sleepMsPerFlush);
     }
 
     @Override
     public void close() throws IOException {
       closed = true;
+      sleepQuietly(sleepMsPerClose);
       if (throwOnClose != null) {
         throw throwOnClose;
       }
@@ -683,10 +926,36 @@ public class DualWriteVeniceWriterTest {
 
   private static final class RecordingDataWriterTaskTracker implements DataWriterTaskTracker {
     final Set<String> failedExternalStorageRegions = new HashSet<>();
+    long externalStorageWriteTimeMs = 0;
+    long veniceWriteTimeMs = 0;
+    int externalStorageWriteTimeReports = 0;
+    int veniceWriteTimeReports = 0;
 
     @Override
     public void trackFailedExternalStorageRegion(String regionName) {
       failedExternalStorageRegions.add(regionName);
+    }
+
+    @Override
+    public void trackExternalStorageWriteTime(long timeMs) {
+      externalStorageWriteTimeReports++;
+      externalStorageWriteTimeMs += timeMs;
+    }
+
+    @Override
+    public void trackVeniceWriteTime(long timeMs) {
+      veniceWriteTimeReports++;
+      veniceWriteTimeMs += timeMs;
+    }
+
+    @Override
+    public long getExternalStorageWriteTimeMs() {
+      return externalStorageWriteTimeMs;
+    }
+
+    @Override
+    public long getVeniceWriteTimeMs() {
+      return veniceWriteTimeMs;
     }
   }
 
@@ -698,6 +967,8 @@ public class DualWriteVeniceWriterTest {
   private static final class RecordingRateLimiter implements VeniceRateLimiter {
     final List<Integer> acquired = new ArrayList<>();
     RuntimeException throwOnAcquire = null;
+    /** Simulated blocking wait, standing in for a real limiter that makes the caller wait for budget. */
+    long sleepMsPerAcquire = 0;
 
     @Override
     public boolean tryAcquirePermit(int units) {
@@ -710,6 +981,7 @@ public class DualWriteVeniceWriterTest {
 
     @Override
     public void acquirePermit(int units) {
+      sleepQuietly(sleepMsPerAcquire);
       if (throwOnAcquire != null) {
         throw throwOnAcquire;
       }

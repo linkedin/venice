@@ -135,6 +135,8 @@ public class ControllerApiConstants {
   public static final String INGESTION_PAUSED_REGIONS = "ingestion_paused_regions";
 
   public static final String STORAGE_MODE = "storage_mode";
+  /** Optional {@link com.linkedin.venice.meta.VersionStorageModeUpdateReason} name; absent means UNSPECIFIED. */
+  public static final String VERSION_STORAGE_MODE_UPDATE_REASON = "version_storage_mode_update_reason";
   public static final String EXTERNAL_STORAGE_READ_MODE = "external_storage_read_mode";
 
   public static final String AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED = "auto_auto_register_for_pushjob_enabled";

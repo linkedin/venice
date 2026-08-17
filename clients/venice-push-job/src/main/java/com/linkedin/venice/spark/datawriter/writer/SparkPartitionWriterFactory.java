@@ -31,12 +31,20 @@ public class SparkPartitionWriterFactory implements MapPartitionsFunction<Row, R
       partitionWriter.processRows(rows);
       recordCount = partitionWriter.getRecordCount();
     }
-    // Read this after close so the task output reflects any regions disabled while flushing or closing the writer.
+    // Read these after close so the task output reflects any regions disabled while flushing or closing the
+    // writer, and includes the time the flush/close themselves took.
     ArrayList<String> failedExternalStorageRegions = new ArrayList<>(partitionWriter.getFailedExternalStorageRegions());
     Collections.sort(failedExternalStorageRegions);
+    long externalStorageWriteTimeMs = partitionWriter.getExternalStorageWriteTimeMs();
+    long veniceWriteTimeMs = partitionWriter.getVeniceWriteTimeMs();
     int partitionId = TaskContext.get().partitionId();
     return Collections.singletonList(
-        RowFactory.create(partitionId, recordCount, JavaConverters.asScalaBuffer(failedExternalStorageRegions).toSeq()))
+        RowFactory.create(
+            partitionId,
+            recordCount,
+            JavaConverters.asScalaBuffer(failedExternalStorageRegions).toSeq(),
+            externalStorageWriteTimeMs,
+            veniceWriteTimeMs))
         .iterator();
   }
 }

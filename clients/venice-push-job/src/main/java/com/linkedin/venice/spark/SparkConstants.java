@@ -5,6 +5,7 @@ import static org.apache.spark.sql.types.DataTypes.IntegerType;
 import static org.apache.spark.sql.types.DataTypes.LongType;
 import static org.apache.spark.sql.types.DataTypes.StringType;
 
+import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
@@ -21,6 +22,8 @@ public class SparkConstants {
   public static final String PARTITION_COLUMN_NAME = "__partition__";
   public static final String RECORD_COUNT_COLUMN_NAME = "__record_count__";
   public static final String FAILED_EXTERNAL_STORAGE_REGIONS_COLUMN_NAME = "__failed_external_storage_regions__";
+  public static final String EXTERNAL_STORAGE_WRITE_TIME_MS_COLUMN_NAME = "__external_storage_write_time_ms__";
+  public static final String VENICE_WRITE_TIME_MS_COLUMN_NAME = "__venice_write_time_ms__";
   public static final String SCHEMA_ID_COLUMN_NAME = "__schema_id__";
   public static final String RMD_VERSION_ID_COLUMN_NAME = "__replication_metadata_version_id__";
   public static final String OFFSET_COLUMN_NAME = "__offset__";
@@ -32,6 +35,17 @@ public class SparkConstants {
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
+  /**
+   * Task output emitted once per Spark partition by the partition writer. Everything the driver needs from a
+   * data-writer task that must not be collected via accumulators travels through these columns: Spark
+   * speculative execution can run two attempts for the same partition and accumulator updates from both
+   * attempts are visible on the driver, which would double count. Exactly one successful task output row per
+   * partition survives {@code collect()}, so the row-based values stay exact.
+   *
+   * <p>The two timing columns are per-task wall-clock durations (see
+   * {@link DataWriterTaskTracker#trackExternalStorageWriteTime}),
+   * summed by the driver across partitions. They are a sum of task durations, not the push's wall-clock time.
+   */
   public static final StructType PARTITION_RECORD_COUNT_SCHEMA = new StructType(
       new StructField[] { new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()),
           new StructField(RECORD_COUNT_COLUMN_NAME, LongType, false, Metadata.empty()),
@@ -39,7 +53,9 @@ public class SparkConstants {
               FAILED_EXTERNAL_STORAGE_REGIONS_COLUMN_NAME,
               DataTypes.createArrayType(StringType),
               false,
-              Metadata.empty()) });
+              Metadata.empty()),
+          new StructField(EXTERNAL_STORAGE_WRITE_TIME_MS_COLUMN_NAME, LongType, false, Metadata.empty()),
+          new StructField(VENICE_WRITE_TIME_MS_COLUMN_NAME, LongType, false, Metadata.empty()) });
 
   public static final StructType DEFAULT_SCHEMA_WITH_PARTITION = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),

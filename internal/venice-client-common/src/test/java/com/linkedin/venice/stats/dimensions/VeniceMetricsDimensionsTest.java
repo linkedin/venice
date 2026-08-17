@@ -106,6 +106,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.push_job.status");
           break;
+        case VENICE_PUSH_JOB_DATA_WRITER_SINK:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.data_writer.sink");
+          break;
         case VENICE_SYSTEM_STORE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.system_store.type");
           break;
@@ -303,6 +306,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.pushJob.status");
           break;
+        case VENICE_PUSH_JOB_DATA_WRITER_SINK:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.dataWriter.sink");
+          break;
         case VENICE_SYSTEM_STORE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.systemStore.type");
           break;
@@ -499,6 +505,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Status");
+          break;
+        case VENICE_PUSH_JOB_DATA_WRITER_SINK:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.DataWriter.Sink");
           break;
         case VENICE_SYSTEM_STORE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.SystemStore.Type");

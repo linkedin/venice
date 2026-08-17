@@ -28,6 +28,9 @@ import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.EXTERNAL_STORAGE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.VENICE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.getMetric;
 import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
@@ -35,6 +38,8 @@ import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.PARTITION_COUNT;
 import static com.linkedin.venice.views.ViewUtils.USE_FAST_KAFKA_OPERATION_TIMEOUT;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -174,6 +179,7 @@ import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.participant.protocol.KillPushJob;
@@ -218,6 +224,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -282,6 +289,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -417,6 +425,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
   private final Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
   private final Map<String, AddVersionLatencyStats> addVersionLatencyStatsMap = new HashMap<>();
+
+  /**
+   * Push jobs whose data-writer sink durations have already been observed, so a re-reported terminal
+   * PushJobDetails does not add a second histogram observation for the same push. A push job sends its
+   * terminal update once, but retries, parent-to-child dual writes and re-sends can deliver the same terminal
+   * record more than once, and unlike the push-status counters a duplicated duration would skew the
+   * distribution.
+   *
+   * <p>Bounded and expiring so a controller that stays up for weeks cannot accumulate push ids forever; a
+   * push that somehow re-reports after the TTL just records once more, which is acceptable for a distribution
+   * metric. Caffeine is already a controller dependency (see {@link DeferredVersionSwapService}).
+   */
+  private final Cache<String, Boolean> dataWriterSinkWriteTimeEmittedPushIds =
+      Caffeine.newBuilder().maximumSize(10_000).expireAfterWrite(6, TimeUnit.HOURS).build();
 
   // This map stores the time when topics were created. It only contains topics whose information has not yet been
   // persisted to Zk.
@@ -773,16 +795,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         logCompactionStatsMap.putIfAbsent(clusterName, new LogCompactionStats(metricsRepository, clusterName));
       }
 
+      /**
+       * Push job stats are not tied to error-leader-replica fail over: every cluster reports push job status and
+       * the external-storage write failure counter, so register them before the fail-over specific short circuit
+       * below.
+       */
+      pushJobStatusStatsMap.putIfAbsent(clusterName, new PushJobStatusStats(metricsRepository, clusterName));
+
       if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
         continue;
       }
 
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.helixZkClient, clusterName);
       DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
-      PushJobStatusStats pushJobStatusStats = new PushJobStatusStats(metricsRepository, clusterName);
       disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
       liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
-      pushJobStatusStatsMap.put(clusterName, pushJobStatusStats);
       addVersionLatencyStatsMap.put(clusterName, new AddVersionLatencyStats(metricsRepository, clusterName));
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
@@ -1521,7 +1548,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Map<String, LogCompactionStats> logCompactionStatsMap,
       PushJobStatusRecordKey pushJobDetailsKey,
       PushJobDetails pushJobDetailsValue,
-      Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
+      Set<PushJobCheckpoints> pushJobUserErrorCheckpoints,
+      Cache<String, Boolean> dataWriterSinkWriteTimeEmittedPushIds) {
     List<PushJobDetailsStatusTuple> overallStatuses = pushJobDetailsValue.getOverallStatus();
     if (overallStatuses.isEmpty()) {
       return;
@@ -1576,6 +1604,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (Version.isPushIdRePush(pushJobDetailsValue.getPushId().toString())) {
             logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
           }
+          // Only a completed push's data-writer timings are meaningful for "why was this push slow" — a push
+          // that failed partway through would contribute a partial duration to the same histogram as a
+          // completed push, with no status dimension to tell them apart.
+          emitDataWriterSinkWriteTimeMetrics(
+              pushJobStatusStatsMap.get(cluster),
+              pushJobDetailsKey,
+              pushJobDetailsValue,
+              isIncrementalPush,
+              dataWriterSinkWriteTimeEmittedPushIds);
         }
         // Append job duration in minutes to log message
         double jobDurationInMinutes = pushJobDetailsValue.getJobDurationInMs() / 60000.0;
@@ -1593,6 +1630,60 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           pushJobDetailsKey.toString(),
           pushJobDetailsValue.toString(),
           e);
+    }
+  }
+
+  /**
+   * Record one histogram observation per sink for a successfully completed push, using the summed data-writer
+   * task durations the push job reported in {@link PushJobDetails#additionalPushMetrics}.
+   *
+   * <p>Only called for a push whose terminal status is {@link PushJobDetailsStatus#isSucceeded}: a push that
+   * failed partway through would otherwise contribute a partial duration to the same histogram as a completed
+   * push, and the metric carries no status dimension to tell the two apart.
+   *
+   * <p>A null map means the push reported no additional metrics at all — an older push job, whose v5 record a
+   * v6 reader resolves to null — and an absent key means that particular leg was not reported, typically
+   * because no external storage was configured. Both are skipped rather than recorded as zero. The push id —
+   * deliberately never a metric dimension, since it is unbounded cardinality — is only used to dedup: a
+   * terminal push is observed once even if its terminal PushJobDetails record is delivered repeatedly. The
+   * dedup entry is only written once the metric has actually been recorded, so a missing stats registration or
+   * a recording failure does not permanently suppress the (still-unobserved) push.
+   */
+  private static void emitDataWriterSinkWriteTimeMetrics(
+      PushJobStatusStats pushJobStatusStats,
+      PushJobStatusRecordKey pushJobDetailsKey,
+      PushJobDetails pushJobDetailsValue,
+      boolean isIncrementalPush,
+      Cache<String, Boolean> dataWriterSinkWriteTimeEmittedPushIds) {
+    if (pushJobStatusStats == null) {
+      return;
+    }
+    Long externalStorageWriteTimeMs = getMetric(pushJobDetailsValue, EXTERNAL_STORAGE_WRITE_TIME_MS);
+    Long veniceWriteTimeMs = getMetric(pushJobDetailsValue, VENICE_WRITE_TIME_MS);
+    if (externalStorageWriteTimeMs == null && veniceWriteTimeMs == null) {
+      return;
+    }
+    String storeName = pushJobDetailsKey.getStoreName().toString();
+    if (dataWriterSinkWriteTimeEmittedPushIds != null) {
+      String dedupKey = storeName + "_v" + pushJobDetailsKey.getVersionNumber() + "_pushId_"
+          + (pushJobDetailsValue.getPushId() == null ? "unknown" : pushJobDetailsValue.getPushId().toString());
+      // getIfPresent + put is a check-then-act race between concurrent deliveries of the same terminal record;
+      // putIfAbsent on the underlying map makes the check-and-mark atomic.
+      if (dataWriterSinkWriteTimeEmittedPushIds.asMap().putIfAbsent(dedupKey, Boolean.TRUE) != null) {
+        return;
+      }
+    }
+    PushType pushType = isIncrementalPush ? PushType.INCREMENTAL : PushType.BATCH;
+    if (externalStorageWriteTimeMs != null) {
+      pushJobStatusStats.recordDataWriterSinkWriteTime(
+          storeName,
+          pushType,
+          VenicePushJobDataWriterSink.EXTERNAL_STORAGE,
+          externalStorageWriteTimeMs);
+    }
+    if (veniceWriteTimeMs != null) {
+      pushJobStatusStats
+          .recordDataWriterSinkWriteTime(storeName, pushType, VenicePushJobDataWriterSink.VENICE, veniceWriteTimeMs);
     }
   }
 
@@ -1647,7 +1738,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
-    emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
+    emitPushJobStatusMetrics(
+        pushJobStatusStatsMap,
+        logCompactionStatsMap,
+        key,
+        value,
+        pushJobUserErrorCheckpoints,
+        dataWriterSinkWriteTimeEmittedPushIds);
     pushJobDetailsManager.writeToLocalRTTopic(key, value);
   }
 
@@ -5852,37 +5949,80 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int version,
       StorageMode storageMode,
-      String regionFilter) {
-    if (StringUtils.isNotEmpty(regionFilter) && !isRegionPartOfRegionsFilterList(getRegionName(), regionFilter)) {
+      String regionFilter,
+      VersionStorageModeUpdateReason reason) {
+    String regionName = getRegionName();
+    if (StringUtils.isNotEmpty(regionFilter) && !isRegionPartOfRegionsFilterList(regionName, regionFilter)) {
       LOGGER.info(
           "Skipping version storage-mode update for store {} v{} in cluster {} because region filter {} does not include {}",
           storeName,
           version,
           clusterName,
           regionFilter,
-          getRegionName());
+          regionName);
       return;
     }
 
+    /**
+     * Set only when this call is the one that actually moves the version off an external-write mode. An idempotent
+     * retry of the same request finds the version already INTERNAL, changes nothing, and therefore must not be
+     * counted a second time.
+     */
+    AtomicBoolean downgradedFromExternalWrite = new AtomicBoolean(false);
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       Version storeVersion = store.getVersion(version);
       if (storeVersion == null) {
         throw new VeniceException(
             "Version " + version + " does not exist for store " + storeName + " in cluster " + clusterName);
       }
-      if (storeVersion.getStorageMode() == storageMode) {
+      StorageMode previousStorageMode = storeVersion.getStorageMode();
+      if (previousStorageMode == storageMode) {
         return store;
       }
       store.setVersionStorageMode(version, storageMode);
+      if (storageMode == StorageMode.INTERNAL) {
+        downgradedFromExternalWrite.set(true);
+      }
       LOGGER.info(
-          "Updated store {} v{} storageMode to {} in cluster {} for region {}",
+          "Updated store {} v{} storageMode from {} to {} in cluster {} for region {}",
           storeName,
           version,
+          previousStorageMode,
           storageMode,
           clusterName,
-          getRegionName());
+          regionName);
       return store;
     });
+
+    if (reason == VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE && downgradedFromExternalWrite.get()) {
+      recordExternalStorageWriteFailure(clusterName, storeName, regionName);
+    }
+  }
+
+  /**
+   * Emit the alertable counter for a region whose external-storage writes were given up on. This runs on the
+   * controller of the affected region — the parent fans the request out to one child controller per region in
+   * {@code regionsFilter}, and each child knows its own region — so the region dimension is the region that lost
+   * its external-storage copy, not the controller that first received the push job's request.
+   *
+   * <p>Package private so tests can assert exactly when it fires without reaching into the stats registry.
+   */
+  void recordExternalStorageWriteFailure(String clusterName, String storeName, String regionName) {
+    PushJobStatusStats pushJobStatusStats = pushJobStatusStatsMap.get(clusterName);
+    if (pushJobStatusStats == null) {
+      LOGGER.warn(
+          "No push job status stats registered for cluster {}, skipping the external-storage write failure metric for store {} in region {}",
+          clusterName,
+          storeName,
+          regionName);
+      return;
+    }
+    LOGGER.warn(
+        "External-storage writes failed for store {} in cluster {} region {}; the version storage mode was failed open to INTERNAL",
+        storeName,
+        clusterName,
+        regionName);
+    pushJobStatusStats.recordExternalStorageWriteFailure(storeName, regionName);
   }
 
   /**

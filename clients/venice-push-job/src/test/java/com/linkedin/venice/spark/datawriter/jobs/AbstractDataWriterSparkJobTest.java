@@ -44,6 +44,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
+import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -506,6 +507,33 @@ public class AbstractDataWriterSparkJobTest {
       expectedFailedRegions.add("dc-0");
       expectedFailedRegions.add("dc-1");
       Assert.assertEquals(job.getTaskTracker().getFailedExternalStorageRegions(), expectedFailedRegions);
+
+      // Durations are summed over one successful row per partition, never via accumulators.
+      Assert.assertEquals(job.getTaskTracker().getExternalStorageWriteTimeMs(), 1000L);
+      Assert.assertEquals(job.getTaskTracker().getVeniceWriteTimeMs(), 42L);
+    }
+  }
+
+  @Test
+  public void testRunComputeJobDoesNotUseAccumulatorsForWriteTimes() throws IOException {
+    PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
+    setting.partitionCount = 2;
+
+    try (TaskOutputTestingDataWriterSparkJob job = new TaskOutputTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      job.runComputeJob();
+
+      /*
+       * The task-output rows above are the only source of the two totals. A tracker built on the very same
+       * accumulator set, but never fed the collected rows, must therefore report nothing: proof that no
+       * LongAccumulator is carrying these durations, which is what makes them safe under speculative
+       * execution.
+       */
+      SparkDataWriterTaskTracker accumulatorOnlyView =
+          new SparkDataWriterTaskTracker(job.getAccumulatorsForDataWriterJob());
+      Assert.assertEquals(accumulatorOnlyView.getExternalStorageWriteTimeMs(), 0L);
+      Assert.assertEquals(accumulatorOnlyView.getVeniceWriteTimeMs(), 0L);
+      Assert.assertEquals(job.getTaskTracker().getExternalStorageWriteTimeMs(), 1000L);
     }
   }
 
@@ -745,7 +773,7 @@ public class AbstractDataWriterSparkJobTest {
           accumulators.outputRecordCounter.add(1);
         }
         accumulators.partitionWriterCloseCounter.add(1);
-        return Collections.singletonList(RowFactory.create(partitionId, recordCount, toScalaSeq())).iterator();
+        return Collections.singletonList(RowFactory.create(partitionId, recordCount, toScalaSeq(), 0L, 0L)).iterator();
       };
     }
   }
@@ -777,11 +805,12 @@ public class AbstractDataWriterSparkJobTest {
         int partitionId = TaskContext.get().partitionId();
         switch (partitionId) {
           case 0:
-            return Collections.singletonList(RowFactory.create(0, 3L, toScalaSeq("dc-1", "dc-0"))).iterator();
+            return Collections.singletonList(RowFactory.create(0, 3L, toScalaSeq("dc-1", "dc-0"), 700L, 40L))
+                .iterator();
           case 1:
-            return Collections.singletonList(RowFactory.create(1, 5L, toScalaSeq("dc-1"))).iterator();
+            return Collections.singletonList(RowFactory.create(1, 5L, toScalaSeq("dc-1"), 300L, 2L)).iterator();
           default:
-            return Collections.singletonList(RowFactory.create(partitionId, 0L, toScalaSeq())).iterator();
+            return Collections.singletonList(RowFactory.create(partitionId, 0L, toScalaSeq(), 0L, 0L)).iterator();
         }
       };
     }

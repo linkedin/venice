@@ -40,6 +40,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
@@ -127,6 +128,8 @@ public class StoresRoutesTest {
     doReturn("1").when(request).queryParams(eq(ControllerApiConstants.VERSION));
     doReturn(StorageMode.INTERNAL.name()).when(request).queryParams(eq(ControllerApiConstants.STORAGE_MODE));
     doReturn("dc-1").when(request).queryParamOrDefault(eq(ControllerApiConstants.REGIONS_FILTER), eq(""));
+    doReturn("").when(request)
+        .queryParamOrDefault(eq(ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON), eq(""));
 
     Route route =
         new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).updateStoreVersionStorageMode(mockAdmin);
@@ -136,7 +139,43 @@ public class StoresRoutesTest {
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(response.getName(), TEST_STORE_NAME);
-    verify(mockAdmin).updateStoreVersionStorageMode(TEST_CLUSTER, TEST_STORE_NAME, 1, StorageMode.INTERNAL, "dc-1");
+    // A request that predates the reason parameter must still be accepted, and must not look like a fail-open.
+    verify(mockAdmin).updateStoreVersionStorageMode(
+        TEST_CLUSTER,
+        TEST_STORE_NAME,
+        1,
+        StorageMode.INTERNAL,
+        "dc-1",
+        VersionStorageModeUpdateReason.UNSPECIFIED);
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeForwardsExternalWriteFailureReason() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("1").when(request).queryParams(eq(ControllerApiConstants.VERSION));
+    doReturn(StorageMode.INTERNAL.name()).when(request).queryParams(eq(ControllerApiConstants.STORAGE_MODE));
+    doReturn("dc-1").when(request).queryParamOrDefault(eq(ControllerApiConstants.REGIONS_FILTER), eq(""));
+    doReturn(VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE.name()).when(request)
+        .queryParamOrDefault(eq(ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON), eq(""));
+
+    Route route =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).updateStoreVersionStorageMode(mockAdmin);
+    ControllerResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+
+    Assert.assertFalse(response.isError());
+    verify(mockAdmin).updateStoreVersionStorageMode(
+        TEST_CLUSTER,
+        TEST_STORE_NAME,
+        1,
+        StorageMode.INTERNAL,
+        "dc-1",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
   }
 
   @Test
@@ -150,6 +189,8 @@ public class StoresRoutesTest {
     doReturn("1").when(request).queryParams(eq(ControllerApiConstants.VERSION));
     doReturn(StorageMode.INTERNAL.name()).when(request).queryParams(eq(ControllerApiConstants.STORAGE_MODE));
     doReturn("dc-1").when(request).queryParamOrDefault(eq(ControllerApiConstants.REGIONS_FILTER), eq(""));
+    doReturn("").when(request)
+        .queryParamOrDefault(eq(ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON), eq(""));
 
     StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository) {
       @Override
@@ -167,7 +208,13 @@ public class StoresRoutesTest {
         .readValue(route.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
 
     Assert.assertFalse(response.isError());
-    verify(mockAdmin).updateStoreVersionStorageMode(TEST_CLUSTER, TEST_STORE_NAME, 1, StorageMode.INTERNAL, "dc-1");
+    verify(mockAdmin).updateStoreVersionStorageMode(
+        TEST_CLUSTER,
+        TEST_STORE_NAME,
+        1,
+        StorageMode.INTERNAL,
+        "dc-1",
+        VersionStorageModeUpdateReason.UNSPECIFIED);
   }
 
   @Test

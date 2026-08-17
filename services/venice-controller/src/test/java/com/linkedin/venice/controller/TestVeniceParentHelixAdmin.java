@@ -95,6 +95,7 @@ import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
@@ -3035,6 +3036,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertThrows(VeniceException.class, () -> parentAdmin.getStorageModePerRegion(clusterName, storeName));
   }
 
+  /**
+   * The parent resolves the regions filter into one call per target region, so only the targeted region's child
+   * controller — the one that knows it is the affected region — is asked to downgrade and to count the failure.
+   */
   @Test
   public void testUpdateStoreVersionStorageModeTargetsOnlyRequestedRegions() {
     String storeName = "test_store_version_storage_mode_targeted";
@@ -3046,12 +3051,56 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
 
     ControllerResponse response = new ControllerResponse();
-    doReturn(response).when(dc1Client).updateStoreVersionStorageMode(storeName, 1, StorageMode.INTERNAL);
+    doReturn(response).when(dc1Client)
+        .updateStoreVersionStorageMode(
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            null,
+            VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
 
-    parentAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-1");
+    parentAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-1",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
 
-    verify(dc0Client, never()).updateStoreVersionStorageMode(anyString(), anyInt(), any());
-    verify(dc1Client).updateStoreVersionStorageMode(storeName, 1, StorageMode.INTERNAL);
+    verify(dc0Client, never()).updateStoreVersionStorageMode(anyString(), anyInt(), any(), any(), any());
+    verify(dc1Client).updateStoreVersionStorageMode(
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        null,
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+  }
+
+  /** A caller that supplies no reason must reach the children unchanged, as UNSPECIFIED. */
+  @Test
+  public void testUpdateStoreVersionStorageModeWithoutReasonForwardsUnspecified() {
+    String storeName = "test_store_version_storage_mode_no_reason";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient dc0Client = mock(ControllerClient.class);
+    controllerClientMap.put("dc-0", dc0Client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    doReturn(new ControllerResponse()).when(dc0Client)
+        .updateStoreVersionStorageMode(
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            null,
+            VersionStorageModeUpdateReason.UNSPECIFIED);
+
+    parentAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    verify(dc0Client).updateStoreVersionStorageMode(
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        null,
+        VersionStorageModeUpdateReason.UNSPECIFIED);
   }
 
   @Test
@@ -3064,11 +3113,23 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     ControllerResponse errorResponse = new ControllerResponse();
     errorResponse.setError("simulated child failure");
-    doReturn(errorResponse).when(dc0Client).updateStoreVersionStorageMode(storeName, 1, StorageMode.INTERNAL);
+    doReturn(errorResponse).when(dc0Client)
+        .updateStoreVersionStorageMode(
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            null,
+            VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
 
     assertThrows(
         VeniceException.class,
-        () -> parentAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0"));
+        () -> parentAdmin.updateStoreVersionStorageMode(
+            clusterName,
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            "dc-0",
+            VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE));
   }
 
   @Test

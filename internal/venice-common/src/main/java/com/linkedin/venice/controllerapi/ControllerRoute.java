@@ -95,6 +95,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STO
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 
@@ -289,7 +290,7 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   ),
   UPDATE_STORE_VERSION_STORAGE_MODE(
       "/update_store_version_storage_mode", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION, STORAGE_MODE),
-      REGIONS_FILTER
+      REGIONS_FILTER, VERSION_STORAGE_MODE_UPDATE_REASON
   ),
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(

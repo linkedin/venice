@@ -68,6 +68,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -242,25 +243,50 @@ public class TestVeniceHelixAdmin {
         () -> veniceHelixAdmin.getStorageModePerRegion(clusterName, missingStoreName));
   }
 
-  @Test
-  public void testUpdateStoreVersionStorageModeMutatesOnlyTheVersion() {
+  /**
+   * Wire a mocked admin so the real storage-mode update runs against {@code store} in region {@code regionName},
+   * with the metric hook left mocked so tests can assert on it.
+   */
+  private static VeniceHelixAdmin mockAdminForVersionStorageModeUpdate(
+      String clusterName,
+      Store store,
+      String regionName) {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    String storeName = "store_version_storage_mode_update";
+    doReturn(regionName).when(veniceHelixAdmin).getRegionName();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(veniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(store.getName()), any());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(anyString(), anyString(), anyInt(), any(), any(), any());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(anyString(), anyString(), anyInt(), any(), any());
+    return veniceHelixAdmin;
+  }
+
+  private static Store dualWriteStoreWithVersion(String storeName) {
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.setStorageMode(StorageMode.DUAL_WRITE);
     VersionImpl version = new VersionImpl(storeName, 1, "test-push");
     version.setStorageMode(StorageMode.DUAL_WRITE);
     store.addVersion(version);
-    doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
-    doAnswer(invocation -> {
-      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
-      operation.update(store, null);
-      return null;
-    }).when(veniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
-    doCallRealMethod().when(veniceHelixAdmin)
-        .updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+    return store;
+  }
 
-    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+  @Test
+  public void testUpdateStoreVersionStorageModeMutatesOnlyTheVersion() {
+    String storeName = "store_version_storage_mode_update";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-0",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
 
     assertEquals(store.getStorageMode(), StorageMode.DUAL_WRITE);
     assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
@@ -271,11 +297,119 @@ public class TestVeniceHelixAdmin {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
     doCallRealMethod().when(veniceHelixAdmin)
-        .updateStoreVersionStorageMode(clusterName, "store", 1, StorageMode.INTERNAL, "dc-1");
+        .updateStoreVersionStorageMode(anyString(), anyString(), anyInt(), any(), any(), any());
 
-    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, "store", 1, StorageMode.INTERNAL, "dc-1");
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        "store",
+        1,
+        StorageMode.INTERNAL,
+        "dc-1",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
 
     verify(veniceHelixAdmin, never()).storeMetadataUpdate(anyString(), anyString(), any());
+    // A region the push never touched must not contribute to the fail-open alert.
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
+  }
+
+  /**
+   * The affected region is the one whose controller applies the downgrade, so the metric must carry that
+   * controller's own region rather than anything derived from the original request.
+   */
+  @Test
+  public void testUpdateStoreVersionStorageModeRecordsExternalWriteFailureForMatchingRegion() {
+    String storeName = "store_version_storage_mode_external_write_failure";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-1");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-0,dc-1",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    verify(veniceHelixAdmin).recordExternalStorageWriteFailure(clusterName, storeName, "dc-1");
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeDoesNotRecordForUnrelatedReason() {
+    String storeName = "store_version_storage_mode_manual_downgrade";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-0",
+        VersionStorageModeUpdateReason.UNSPECIFIED);
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    // A manual or operational downgrade is not an external write failure and must not page anyone.
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
+  }
+
+  /** Callers still on the overload without a reason must behave exactly as they did before. */
+  @Test
+  public void testUpdateStoreVersionStorageModeWithoutReasonDoesNotRecord() {
+    String storeName = "store_version_storage_mode_no_reason";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
+  }
+
+  /**
+   * The push job retries the fail-open request, so the same downgrade can arrive several times. Only the
+   * transition itself counts: a repeat finds the version already INTERNAL and must not inflate the alert.
+   */
+  @Test
+  public void testUpdateStoreVersionStorageModeDoesNotDoubleCountIdempotentRetry() {
+    String storeName = "store_version_storage_mode_idempotent_retry";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    for (int attempt = 0; attempt < 3; attempt++) {
+      veniceHelixAdmin.updateStoreVersionStorageMode(
+          clusterName,
+          storeName,
+          1,
+          StorageMode.INTERNAL,
+          "dc-0",
+          VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+    }
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    verify(veniceHelixAdmin, times(1)).recordExternalStorageWriteFailure(clusterName, storeName, "dc-0");
+  }
+
+  /** Failing open is a downgrade to INTERNAL; re-enabling dual write is not a failure. */
+  @Test
+  public void testUpdateStoreVersionStorageModeDoesNotRecordOnUpgradeToDualWrite() {
+    String storeName = "store_version_storage_mode_upgrade";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    VersionImpl version = new VersionImpl(storeName, 1, "test-push");
+    version.setStorageMode(StorageMode.INTERNAL);
+    store.addVersion(version);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.DUAL_WRITE,
+        "dc-0",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
   }
 
   /**
