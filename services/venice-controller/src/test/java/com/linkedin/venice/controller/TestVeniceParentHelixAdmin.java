@@ -1187,6 +1187,70 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(adminStats, never()).recordPushRetryCooldownRejection(any());
   }
 
+  @Test
+  public void testPushRetryCooldownClearedOnSuccessfulJobCompletion() {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(1);
+
+    // Simulate the first push job reaching a terminal COMPLETED status.
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(VersionStatus.STARTED).when(store).getVersionStatus(anyInt());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(1);
+    doReturn(VersionStatus.CREATED).when(version).getStatus();
+    doReturn(Version.PushType.BATCH).when(version).getPushType();
+    doReturn("first-push").when(version).getPushJobId();
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> completeMap = new HashMap<>();
+    completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    parentAdmin.getOffLineJobStatus(clusterName, kafkaTopic, completeMap);
+
+    // The successfully-completed push should release the cooldown slot immediately, so a different push ID is
+    // admitted right away instead of waiting out the remainder of the 10-minute cooldown window.
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "second-push", Version.PushType.BATCH);
+    verify(adminStats, never()).recordPushRetryCooldownRejection(Version.PushType.BATCH);
+  }
+
+  @Test
+  public void testPushRetryCooldownNotClearedByStaleSuccessNotification() {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    // A later push is admitted first...
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(PUSH_RETRY_COOLDOWN_MS);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "second-push", Version.PushType.BATCH);
+
+    // ...then a stale COMPLETED notification for the earlier, already-superseded push ID arrives. It must not clear
+    // the cooldown slot that is now tracking "second-push".
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(VersionStatus.STARTED).when(store).getVersionStatus(anyInt());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(1);
+    doReturn(VersionStatus.CREATED).when(version).getStatus();
+    doReturn(Version.PushType.BATCH).when(version).getPushType();
+    doReturn("first-push").when(version).getPushJobId();
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> completeMap = new HashMap<>();
+    completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    parentAdmin.getOffLineJobStatus(clusterName, kafkaTopic, completeMap);
+
+    mockTime.addMilliseconds(1);
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "third-push", Version.PushType.BATCH));
+    assertEquals(exception.getHttpStatusCode(), HttpStatus.SC_TOO_MANY_REQUESTS);
+  }
+
   /**
    * Idempotent increment version should work because existing topic uses the same push ID as the request
    */

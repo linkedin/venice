@@ -2157,6 +2157,30 @@ public class VeniceParentHelixAdmin implements Admin {
     throw exception;
   }
 
+  /**
+   * Allow the next distinct push to be admitted immediately once this push job has been observed to complete
+   * successfully, instead of waiting out the remainder of the cooldown window. This keeps the cooldown scoped to
+   * blocking retries of a failing/stuck push rather than throttling legitimate back-to-back successful pushes.
+   * Only clears the entry if it still corresponds to this push job ID, so a newer, already-admitted push attempt
+   * isn't inadvertently un-throttled.
+   */
+  private void clearPushRetryCooldownAttemptIfSucceeded(
+      String clusterName,
+      String storeName,
+      Version version,
+      ExecutionStatus currentReturnStatus) {
+    if (version == null || !currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+      return;
+    }
+    String completedPushJobId = version.getPushJobId();
+    if (completedPushJobId == null) {
+      return;
+    }
+    pushRetryCooldownAttempts.computeIfPresent(
+        getPushRetryCooldownKey(clusterName, storeName),
+        (key, recordedAttempt) -> completedPushJobId.equals(recordedAttempt.pushJobId) ? null : recordedAttempt);
+  }
+
   private static String getPushRetryCooldownKey(String clusterName, String storeName) {
     return clusterName + "/" + storeName;
   }
@@ -3683,6 +3707,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       if (currentReturnStatus.isTerminal()) {
         LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
+        clearPushRetryCooldownAttemptIfSucceeded(clusterName, storeName, version, currentReturnStatus);
 
         // Do not truncate the parent version topic if it is a push w/ deferred swap to prevent concurrent pushes
         // Otherwise, truncate the parent version topic and update the version status
