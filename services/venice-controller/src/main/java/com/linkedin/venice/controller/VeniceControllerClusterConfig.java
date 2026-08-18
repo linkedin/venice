@@ -102,6 +102,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
@@ -334,6 +335,7 @@ public class VeniceControllerClusterConfig {
   private final int adminConsumptionMaxWorkerThreadPoolSize;
   private final double storageEngineOverheadRatio;
   private final long deprecatedJobTopicRetentionMs;
+  private final long pushRetryCooldownMs;
 
   private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
@@ -788,6 +790,10 @@ public class VeniceControllerClusterConfig {
     // this so the request_topic call does not expire client-side and retry the non-idempotent create
     // while the controller is still waiting.
     this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(16));
+    this.pushRetryCooldownMs = props.getLong(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, TimeUnit.MINUTES.toMillis(10));
+    if (pushRetryCooldownMs < 0) {
+      throw new ConfigurationException(CONTROLLER_PUSH_RETRY_COOLDOWN_MS + " cannot be negative.");
+    }
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -1591,6 +1597,10 @@ public class VeniceControllerClusterConfig {
 
   public long getOffLineJobWaitTimeInMilliseconds() {
     return offLineJobWaitTimeInMilliseconds;
+  }
+
+  public long getPushRetryCooldownMs() {
+    return pushRetryCooldownMs;
   }
 
   public long getDelayToRebalanceMS() {
