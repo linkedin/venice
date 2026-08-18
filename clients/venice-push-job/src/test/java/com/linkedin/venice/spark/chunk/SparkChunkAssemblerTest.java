@@ -1,6 +1,9 @@
 package com.linkedin.venice.spark.chunk;
 
+import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SCHEMA_FOR_CHUNK_ASSEMBLY;
@@ -12,7 +15,12 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.common.ChunkAssembler;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
+import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -44,6 +52,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -587,6 +596,116 @@ public class SparkChunkAssemblerTest {
         (int) assembledChunked.getAs(SCHEMA_ID_COLUMN_NAME),
         REGULAR_SCHEMA_ID,
         "Assembled record should have original schema ID from manifest");
+  }
+
+  /**
+   * Regression test for the MR/Spark error-parity gap documented in
+   * docs/vpj-spark-migration-bugs/02-chunk-assembly-error-parity.md: when a manifest is present but one or
+   * more of its declared chunks is missing (e.g. KafkaInputFormat only read a partial set of a large
+   * message's chunks), {@link ChunkAssembler#assembleAndGetValue} throws a {@link VeniceException} ("Cannot
+   * assemble a large value. Missing N / M chunks."). MR's {@code VeniceKafkaInputReducer#extractChunkedMessage}
+   * calls that method with no try/catch, so this fails the reducer task. {@link SparkChunkAssembler#assembleChunks}
+   * catches every non-{@link IllegalStateException} thrown by the same call and returns {@code null}, which the
+   * caller treats identically to a DELETE, incomplete-chunk, or TTL-filtered record: the key is silently dropped
+   * instead of failing the job. This test proves both halves of that gap from the exact same serialized input.
+   */
+  @Test
+  public void testMissingChunksPropagateInSparkSameAsMR() {
+    byte[] key = "missing-chunk-key".getBytes();
+    int declaredChunkCount = 2; // manifest declares 2 chunks are needed to reassemble the value
+    int chunkSize = 10;
+    int segmentNumber = 1;
+    int sequenceNumber = 100;
+
+    KeyWithChunkingSuffixSerializer keySerializer = new KeyWithChunkingSuffixSerializer();
+    List<ByteBuffer> chunkKeysWithSuffix = new ArrayList<>();
+    for (int i = 0; i < declaredChunkCount; i++) {
+      ChunkedKeySuffix suffix = createChunkedKeySuffix(segmentNumber, sequenceNumber, i);
+      chunkKeysWithSuffix.add(keySerializer.serializeChunkedKey(key, suffix));
+    }
+
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = chunkKeysWithSuffix;
+    manifest.schemaId = REGULAR_SCHEMA_ID;
+    manifest.size = declaredChunkCount * chunkSize;
+    ChunkedValueManifestSerializer manifestSerializer = new ChunkedValueManifestSerializer(true);
+    byte[] manifestBytes = ByteUtils.extractByteArray(manifestSerializer.serialize(manifest));
+
+    // Only supply chunk index 0; chunk index 1 (declared in the manifest) is missing.
+    ChunkedKeySuffix presentChunkSuffix = createChunkedKeySuffix(segmentNumber, sequenceNumber, 0);
+    byte[] presentChunkSuffixBytes = serializeChunkedKeySuffix(presentChunkSuffix);
+    byte[] presentChunkData = new byte[chunkSize];
+    Arrays.fill(presentChunkData, (byte) 7);
+
+    // Rows in DESCENDING order by offset: manifest (highest offset) first, then the single available chunk.
+    Row manifestRow = createRowWithSuffix(
+        key,
+        manifestBytes,
+        new byte[0],
+        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+        -1,
+        201L,
+        0, // PUT
+        null);
+    Row chunkRow = createRowWithSuffix(
+        key,
+        presentChunkData,
+        new byte[0],
+        CHUNK_SCHEMA_ID,
+        -1,
+        200L,
+        0, // PUT
+        presentChunkSuffixBytes);
+    List<Row> rows = Arrays.asList(manifestRow, chunkRow);
+
+    // Spark: SparkChunkAssembler#assembleChunks now propagates the VeniceException from ChunkAssembler
+    // instead of swallowing it, matching MR's behavior of failing the task rather than silently dropping the key.
+    SparkChunkAssembler sparkAssembler = new SparkChunkAssembler(false);
+    try {
+      sparkAssembler.assembleChunks(key, new ArrayList<>(rows).iterator());
+      Assert.fail("Expected a VeniceException for missing chunks, matching MR's reducer-task failure");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("Missing 1 / 2 chunks"), "Unexpected exception message: " + e.getMessage());
+    }
+
+    // MR: VeniceKafkaInputReducer#extractChunkedMessage calls ChunkAssembler#assembleAndGetValue directly,
+    // with no try/catch, so the identical serialized input fails the reducer task with a VeniceException.
+    List<byte[]> serializedMapperValues = new ArrayList<>();
+    for (Row row: rows) {
+      serializedMapperValues.add(rowToSerializedMapperValue(row));
+    }
+    ChunkAssembler mrChunkAssembler = new ChunkAssembler(false);
+    try {
+      mrChunkAssembler.assembleAndGetValue(key, serializedMapperValues.iterator());
+      Assert.fail("Expected a VeniceException for missing chunks, matching MR's reducer-task failure");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("Missing 1 / 2 chunks"), "Unexpected exception message: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Converts a test {@link Row} (built with the {@code SCHEMA_FOR_CHUNK_ASSEMBLY} schema) into a serialized
+   * {@link KafkaInputMapperValue}, mirroring the conversion {@link SparkChunkAssembler}'s internal
+   * {@code RowToSerializedValueIterator} performs, so the same input bytes can be fed directly into
+   * {@link ChunkAssembler#assembleAndGetValue} to simulate the MR reducer path.
+   */
+  private byte[] rowToSerializedMapperValue(Row row) {
+    KafkaInputMapperValue mapperValue = new KafkaInputMapperValue();
+    mapperValue.schemaId = row.getAs(SCHEMA_ID_COLUMN_NAME);
+    mapperValue.offset = row.getAs(OFFSET_COLUMN_NAME);
+    int messageType = row.getAs(MESSAGE_TYPE_COLUMN_NAME);
+    mapperValue.valueType = messageType == MessageType.PUT.getValue() ? MapperValueType.PUT : MapperValueType.DELETE;
+    byte[] valueBytes = row.getAs(VALUE_COLUMN_NAME);
+    mapperValue.value = valueBytes != null ? ByteBuffer.wrap(valueBytes) : ByteBuffer.allocate(0);
+    mapperValue.replicationMetadataVersionId = row.getAs(RMD_VERSION_ID_COLUMN_NAME);
+    byte[] rmdBytes = row.getAs(RMD_COLUMN_NAME);
+    mapperValue.replicationMetadataPayload = rmdBytes != null ? ByteBuffer.wrap(rmdBytes) : ByteBuffer.allocate(0);
+    byte[] chunkedKeySuffixBytes = row.getAs(CHUNKED_KEY_SUFFIX_COLUMN_NAME);
+    mapperValue.chunkedKeySuffix =
+        chunkedKeySuffixBytes != null ? ByteBuffer.wrap(chunkedKeySuffixBytes) : ByteBuffer.allocate(0);
+    RecordSerializer<KafkaInputMapperValue> serializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
+    return serializer.serialize(mapperValue);
   }
 
   private Row createRow(byte[] key, byte[] value, byte[] rmd, int schemaId, int rmdVersionId, long offset) {
