@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -578,6 +579,45 @@ public class AdminExecutionTaskTest {
         "updateStore must not be called with targetRegionPromoted=true when message.targetRegionPromoted=false");
   }
 
+  @Test(dataProvider = "ttlRepushEnabledValues")
+  public void testHandleSetStoreTTLRepushEnabledPropagatedToParams(boolean ttlRepushEnabled) {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+
+    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
+    UpdateStore updateStore = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
+    updateStore.ttlRepushEnabled = ttlRepushEnabled;
+    updateStore.replicateAllConfigs = false;
+    updateStore.updatedConfigsList.add(TTL_REPUSH_ENABLED);
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(wrapper);
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        false,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    task.call();
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
+    assertTrue(
+        captor.getAllValues().stream().anyMatch(p -> p.isTTLRepushEnabled().equals(Optional.of(ttlRepushEnabled))));
+  }
+
+  @DataProvider(name = "ttlRepushEnabledValues")
+  public Object[][] ttlRepushEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
   @Test
   public void testHandleSetStore_ThroughputQuota_PropagatedToParams() {
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
@@ -708,6 +748,7 @@ public class AdminExecutionTaskTest {
     updateStore.targetSwapRegionWaitTime = 60;
     updateStore.isDaVinciHeartBeatReported = false;
     updateStore.globalRtDivEnabled = false;
+    updateStore.ttlRepushEnabled = false;
     updateStore.enumSchemaEvolutionAllowed = false;
     updateStore.flinkVeniceViewsEnabled = false;
     updateStore.unusedSchemaDeletionEnabled = false;

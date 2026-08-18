@@ -72,6 +72,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SW
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
@@ -1373,6 +1374,10 @@ public final class StoreConfigUpdater {
     setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))
         .orElseGet((currStore::isGlobalRtDivEnabled));
+
+    setStore.ttlRepushEnabled = params.isTTLRepushEnabled()
+        .map(admin.addToUpdatedConfigList(updatedConfigsList, TTL_REPUSH_ENABLED))
+        .orElseGet((currStore::isTTLRepushEnabled));
 
     setStore.enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, ENUM_SCHEMA_EVOLUTION_ALLOWED))
