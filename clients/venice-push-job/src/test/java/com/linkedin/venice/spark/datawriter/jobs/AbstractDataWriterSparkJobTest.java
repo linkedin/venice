@@ -45,6 +45,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
+import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -115,6 +116,61 @@ public class AbstractDataWriterSparkJobTest {
 
       // Properties with SPARK_DATA_WRITER_CONF_PREFIX should get applied after stripping the prefix
       Assert.assertEquals(jobConf.get(dummyConfig), dummyConfigValue);
+    }
+  }
+
+  /**
+   * {@code spark.data.writer.conf.*} is documented as the mechanism for passing custom configuration into VPJ's
+   * Spark custom input format (the {@code VeniceHdfsSource}/{@code VeniceHdfsInputTable}/
+   * {@code VeniceHdfsInputScanBuilder} DataSource V2 chain), analogous to MR's {@code hadoop-conf.*} mechanism
+   * (which strips its prefix directly into the {@code JobConf} that MR's InputFormat and tasks read from).
+   *
+   * {@link #testConfigure} only proves the stripped key lands in {@code SparkSession.conf()}, which is visible on
+   * the driver. It does NOT prove the value reaches the DataSource V2 table/scan (i.e. what
+   * {@code VeniceHdfsSource#getTable} actually receives as its {@code configs} map) or executor partition readers.
+   *
+   * This test forces the real production custom-input-format path to run and records what
+   * {@link VeniceHdfsSource#getTable} actually received, proving the custom option reaches the DataFrameReader
+   * options that DataSource V2 threads through to the table/scan, not just the driver-side SparkSession runtime
+   * config.
+   */
+  @Test
+  public void testCustomDataWriterConfigForwardedToHdfsDataSource() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    String customOptionKey = "custom.reader.option";
+    String customOptionValue = "custom-reader-value";
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + customOptionKey, customOptionValue);
+
+    VeniceHdfsSource.lastReceivedConfigs = null;
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
+
+      // The custom option does reach SparkSession runtime config (driver-visible)...
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertEquals(jobConf.get(customOptionKey), customOptionValue);
+
+      // ...force the real custom-input-format DataSource V2 resolution to run...
+      Dataset<Row> dataFrame = dataWriterSparkJob.getUserInputDataFrame();
+      dataFrame.count();
+
+      // ...and confirm VeniceHdfsSource#getTable was invoked and its `configs` map (the DataFrameReader/reader
+      // options DataSource V2 actually threads through to the table/scan/executors) received the custom option
+      // too: SparkSession.conf() alone is a driver-only channel that this DataSource cannot see.
+      Assert.assertNotNull(
+          VeniceHdfsSource.lastReceivedConfigs,
+          "Expected VeniceHdfsSource#getTable to have been invoked while resolving the custom input format");
+      Assert.assertEquals(
+          VeniceHdfsSource.lastReceivedConfigs.get(customOptionKey),
+          customOptionValue,
+          "spark.data.writer.conf.* options must be forwarded as DataFrameReader options as well as SparkSession "
+              + "runtime config, so they reach the custom DataSource and executor partition readers");
+    } finally {
+      VeniceHdfsSource.lastReceivedConfigs = null;
     }
   }
 
