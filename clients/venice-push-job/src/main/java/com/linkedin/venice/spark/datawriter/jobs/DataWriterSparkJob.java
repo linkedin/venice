@@ -194,23 +194,8 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     setInputConf(
         sparkSession,
         dataFrameReader,
-        VENICE_REPUSH_SOURCE_PUBSUB_BROKER,
-        pushJobSetting.repushSourcePubsubBroker);
-    dataFrameReader.option(PUBSUB_BROKER_ADDRESS, pushJobSetting.repushSourcePubsubBroker);
-    setInputConf(
-        sparkSession,
-        dataFrameReader,
-        KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
-        AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
-    setInputConf(
-        sparkSession,
-        dataFrameReader,
         KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED,
         String.valueOf(pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()));
-
-    // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
-    KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)
-        .forEach((key, value) -> setInputConf(sparkSession, dataFrameReader, key, value));
 
     // SSL defaults: set SSL configurator class (with default) and security protocol.
     // These may not be in the job props, so set them explicitly before the bulk forwarding.
@@ -228,6 +213,22 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     for (String key: allJobProps.keySet()) {
       setInputConf(sparkSession, dataFrameReader, key, allJobProps.getString(key));
     }
+
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        VENICE_REPUSH_SOURCE_PUBSUB_BROKER,
+        pushJobSetting.repushSourcePubsubBroker);
+    dataFrameReader.option(PUBSUB_BROKER_ADDRESS, pushJobSetting.repushSourcePubsubBroker);
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
+        AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
+
+    // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
+    KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)
+        .forEach((key, value) -> setInputConf(sparkSession, dataFrameReader, key, value));
 
     return dataFrameReader.load();
   }
