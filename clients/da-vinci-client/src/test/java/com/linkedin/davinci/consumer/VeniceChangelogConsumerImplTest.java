@@ -266,6 +266,23 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testSubscribeUsesSingleStoreMetadataSubscription() throws ExecutionException, InterruptedException {
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    veniceChangelogConsumer.subscribe(Collections.singleton(0)).get();
+
+    verify(mockRepository).subscribe(storeName);
+    verify(mockRepository).getStore(storeName);
+    verify(mockPubSubConsumer)
+        .subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), PubSubSymbolicPosition.EARLIEST);
+  }
+
+  @Test
   public void testSeekToCheckpointSubscribesBeforeCheckingLiveVersion()
       throws ExecutionException, InterruptedException, TimeoutException {
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(

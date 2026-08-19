@@ -105,6 +105,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
+  private static final long SUBSCRIBE_RETRY_BACKOFF_IN_MS = Time.MS_PER_SECOND;
   private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
   protected long subscribeTime = Long.MAX_VALUE;
 
@@ -295,6 +296,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   public void throwIfReadsDisabled() {
     Store store = getStore();
+    throwIfReadsDisabled(store);
+  }
+
+  private void throwIfReadsDisabled(Store store) {
     if (!store.isEnableReads()) {
       throw new StoreDisabledException(store.getName(), "read");
     }
@@ -321,10 +326,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
-    throwIfReadsDisabled();
+    Store store = getStore();
+    throwIfReadsDisabled(store);
     return CompletableFuture.supplyAsync(() -> {
-      subscribeStoreRepository();
-
       if (versionSwapByControlMessage) {
         boolean lockAcquiredAndNoOngoingVersionSwap = false;
         for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
@@ -355,7 +359,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       try {
         PubSubTopic topicToSubscribe;
         if (topic == null) {
-          topicToSubscribe = getCurrentServingVersionTopic();
+          topicToSubscribe = getCurrentServingVersionTopic(store);
         } else {
           topicToSubscribe = topic;
         }
@@ -504,6 +508,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected PubSubTopic getCurrentServingVersionTopic() {
     Store store = getStore();
+    return getCurrentServingVersionTopic(store);
+  }
+
+  private PubSubTopic getCurrentServingVersionTopic(Store store) {
     int currentVersion = store.getCurrentVersion();
     if (currentVersion == Store.NON_EXISTING_VERSION) {
       throw new VeniceException("Store: " + storeName + " does not have a current serving version");
@@ -749,11 +757,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       } catch (Exception ex) {
         if (i < MAX_SUBSCRIBE_RETRIES) {
           LOGGER.warn("Store Repository subscription failed for store: {}! Will retry...", storeName, ex);
+          sleepBeforeSubscribeRetry();
         } else {
           LOGGER.error("Store Repository subscription failed for store: {}! Aborting!!", storeName, ex);
           throw new VeniceException("Failed to subscribe to store metadata for store: " + storeName, ex);
         }
       }
+    }
+  }
+
+  private void sleepBeforeSubscribeRetry() {
+    try {
+      TimeUnit.MILLISECONDS.sleep(SUBSCRIBE_RETRY_BACKOFF_IN_MS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while retrying store metadata subscription for store: " + storeName, e);
     }
   }
 
