@@ -326,9 +326,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
-    Store store = getStore();
-    throwIfReadsDisabled(store);
+    Store store = null;
+    if (!versionSwapByControlMessage) {
+      store = getStore();
+      throwIfReadsDisabled(store);
+    }
+    Store subscribedStore = store;
     return CompletableFuture.supplyAsync(() -> {
+      PubSubTopic topicToSubscribe = null;
       if (versionSwapByControlMessage) {
         boolean lockAcquiredAndNoOngoingVersionSwap = false;
         for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
@@ -338,12 +343,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           } catch (InterruptedException e) {
             throw new RuntimeException(e);
           }
+          Store latestStore = getStore();
+          throwIfReadsDisabled(latestStore);
+          PubSubTopic latestTopicToSubscribe = getTopicToSubscribe(topic, latestStore);
           subscriptionLock.writeLock().lock();
           if (versionSwapMessageState != null) {
             // A new version swap is in progress, wait for it to finish again
             subscriptionLock.writeLock().unlock();
           } else {
             // No version swap is in progress, proceed with subscription
+            topicToSubscribe = latestTopicToSubscribe;
             lockAcquiredAndNoOngoingVersionSwap = true;
             break;
           }
@@ -353,15 +362,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           throw new VeniceException("Unable to subscribe to new partitions due to conflicting version swaps");
         }
       } else {
+        topicToSubscribe = getTopicToSubscribe(topic, subscribedStore);
         subscriptionLock.writeLock().lock();
       }
 
       try {
-        PubSubTopic topicToSubscribe;
-        if (topic == null) {
-          topicToSubscribe = getCurrentServingVersionTopic(store);
-        } else {
-          topicToSubscribe = topic;
+        if (topicToSubscribe == null) {
+          throw new VeniceException("Unable to resolve topic to subscribe for store: " + storeName);
         }
         Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
         for (PubSubTopicPartition topicPartition: topicPartitionSet) {
@@ -387,6 +394,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       isSubscribed.set(true);
       return null;
     }, seekExecutorService);
+  }
+
+  private PubSubTopic getTopicToSubscribe(PubSubTopic topic, Store store) {
+    if (topic == null) {
+      return getCurrentServingVersionTopic(store);
+    }
+    return topic;
   }
 
   protected VeniceCompressor getVersionCompressor(PubSubTopic pubSubTopic) {

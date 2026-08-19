@@ -283,6 +283,48 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testSubscribeUsesStoreMetadataAfterVersionSwapWait()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    ChangelogClientConfig versionSwapConfig = getChangelogClientConfig().setVersionSwapByControlMessageEnabled(true);
+    versionSwapConfig.setClientRegionName("region1").setTotalRegionCount(1);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        versionSwapConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    NativeMetadataRepositoryViewAdapter repository = mock(NativeMetadataRepositoryViewAdapter.class);
+    Store oldStore = mock(Store.class);
+    Store newStore = mock(Store.class);
+    Version oldVersion = new VersionImpl(storeName, 1, "foo");
+    Version newVersion = new VersionImpl(storeName, 2, "foo");
+    PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    oldVersion.setPartitionCount(partitionCount);
+    newVersion.setPartitionCount(partitionCount);
+    when(oldStore.getName()).thenReturn(storeName);
+    when(newStore.getName()).thenReturn(storeName);
+    when(oldStore.isEnableReads()).thenReturn(true);
+    when(newStore.isEnableReads()).thenReturn(true);
+    when(oldStore.getCurrentVersion()).thenReturn(1);
+    when(newStore.getCurrentVersion()).thenReturn(2);
+    when(oldStore.getVersion(1)).thenReturn(oldVersion);
+    when(newStore.getVersion(2)).thenReturn(newVersion);
+    CountDownLatch versionSwapCompleted = new CountDownLatch(1);
+    when(repository.getStore(storeName))
+        .thenAnswer(invocation -> versionSwapCompleted.getCount() == 0 ? newStore : oldStore);
+    veniceChangelogConsumer.setStoreRepository(repository);
+    veniceChangelogConsumer.onGoingVersionSwapSignal.set(versionSwapCompleted);
+
+    CompletableFuture<Void> subscribeFuture = veniceChangelogConsumer.subscribe(Collections.singleton(0));
+    versionSwapCompleted.countDown();
+    subscribeFuture.get(10, TimeUnit.SECONDS);
+
+    verify(mockPubSubConsumer, never())
+        .subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), PubSubSymbolicPosition.EARLIEST);
+    verify(mockPubSubConsumer)
+        .subscribe(new PubSubTopicPartitionImpl(newVersionTopic, 0), PubSubSymbolicPosition.EARLIEST);
+  }
+
+  @Test
   public void testSeekToCheckpointSubscribesBeforeCheckingLiveVersion()
       throws ExecutionException, InterruptedException, TimeoutException {
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
