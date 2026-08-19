@@ -6427,6 +6427,59 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
+   * versionFlag, isHybrid, isDaVinci, expectedEnabled.
+   * Global RT DIV is enabled only for a hybrid, non-DaVinci store whose version flag is on; batch-only stores
+   * and DaVinci clients force it off.
+   */
+  @DataProvider(name = "globalRtDivGatingParams")
+  public Object[][] globalRtDivGatingParams() {
+    return new Object[][] { { true, true, false, true }, { true, false, false, false }, { true, true, true, false },
+        { false, true, false, false } };
+  }
+
+  @Test(dataProvider = "globalRtDivGatingParams")
+  public void testGlobalRtDivGating(boolean versionFlag, boolean isHybrid, boolean isDaVinci, boolean expectedEnabled) {
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    HybridStoreConfig hybridStoreConfig =
+        isHybrid ? new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP) : null;
+    MockStoreVersionConfigs storeAndVersionConfigs =
+        setupStoreAndVersionMocks(2, partitionerConfig, Optional.ofNullable(hybridStoreConfig), false, true, AA_OFF);
+    Version version = storeAndVersionConfigs.version;
+    version.setGlobalRtDivEnabled(versionFlag);
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        new HashMap<>(),
+        false,
+        null,
+        null,
+        this.mockStorageService).setIsDaVinciClient(isDaVinci)
+            .setAggKafkaConsumerService(aggKafkaConsumerService)
+            .build();
+
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+    StoreIngestionTask ingestionTask = ingestionTaskFactory.getNewIngestionTask(
+        this.mockStorageService,
+        storeAndVersionConfigs.store,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeAndVersionConfigs.storeVersionConfig,
+        PARTITION_FOO,
+        Optional.empty(),
+        null,
+        null);
+    try {
+      assertEquals(ingestionTask.isGlobalRtDivEnabled(), expectedEnabled);
+    } finally {
+      ingestionTask.close();
+    }
+  }
+
+  /**
    * Tests that the {@link StoreIngestionTask#isGlobalRtDivEnabled} feature flag stops the drainer from syncing
    * OffsetRecord from {@link StoreIngestionTask#updateOffsetMetadataAndSyncOffset}, and the {@link ConsumptionTask}
    * should send Global RT DIV in {@link LeaderFollowerStoreIngestionTask#sendGlobalRtDivMessage} instead.

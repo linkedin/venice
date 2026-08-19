@@ -788,7 +788,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
-    this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled() && hybridStoreConfig.isPresent() && !isDaVinciClient();
+    this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled() && hybridStoreConfig.isPresent() && !isDaVinciClient;
     this.nearlineLatencyTimestampSource = serverConfig.getNearlineLatencyTimestampSource();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
