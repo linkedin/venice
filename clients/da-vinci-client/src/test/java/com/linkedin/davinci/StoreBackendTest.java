@@ -53,8 +53,10 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.File;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -940,9 +942,7 @@ public class StoreBackendTest {
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
 
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
-      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
-    }
+    assertEquals(storeBackend.getSubscribedVersionNumbers(), Collections.singleton(version1.getNumber()));
     assertFalse(
         versionMap.containsKey(version2.kafkaTopicName()),
         "A restarted DVC must not subscribe a retained " + terminalStatus + " version as its future version");
@@ -960,6 +960,9 @@ public class StoreBackendTest {
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
 
+    assertEquals(
+        storeBackend.getSubscribedVersionNumbers(),
+        new HashSet<>(Arrays.asList(version1.getNumber(), version2.getNumber())));
     assertTrue(
         versionMap.containsKey(version2.kafkaTopicName()),
         "A restarted DVC must still subscribe a retained " + subscribableStatus
@@ -992,9 +995,7 @@ public class StoreBackendTest {
         versionMap.containsKey(version2.kafkaTopicName()),
         "Future version must be deleted once its status becomes " + terminalStatus);
     verify(ingestionBackend, times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
-      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
-    }
+    assertEquals(storeBackend.getSubscribedVersionNumbers(), Collections.singleton(version1.getNumber()));
   }
 
   @Test(dataProvider = "terminalVersionStatuses")
