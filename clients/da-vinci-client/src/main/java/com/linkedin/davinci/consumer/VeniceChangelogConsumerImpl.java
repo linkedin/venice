@@ -323,23 +323,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
     throwIfReadsDisabled();
     return CompletableFuture.supplyAsync(() -> {
-      try {
-        for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
-          try {
-            storeRepository.subscribe(storeName);
-            break;
-          } catch (Exception ex) {
-            if (i < MAX_SUBSCRIBE_RETRIES) {
-              LOGGER.error("Store Repository subscription failed!  Will Retry...", ex);
-            } else {
-              LOGGER.error("Store Repository subscription failed! Aborting!!", ex);
-              throw ex;
-            }
-          }
-        }
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
-      }
+      subscribeStoreRepository();
 
       if (versionSwapByControlMessage) {
         boolean lockAcquiredAndNoOngoingVersionSwap = false;
@@ -519,13 +503,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected PubSubTopic getCurrentServingVersionTopic() {
-    Store store = storeRepository.getStore(storeName);
+    Store store = getStore();
     int currentVersion = store.getCurrentVersion();
+    if (currentVersion == Store.NON_EXISTING_VERSION) {
+      throw new VeniceException("Store: " + storeName + " does not have a current serving version");
+    }
     if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()) {
       return pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, currentVersion));
     }
 
-    return pubSubTopicRepository.getTopic(store.getVersion(currentVersion).kafkaTopicName());
+    Version version = store.getVersion(currentVersion);
+    if (version == null) {
+      throw new VeniceException(
+          "Current serving version: " + currentVersion + " does not exist in metadata for store: " + storeName);
+    }
+    return pubSubTopicRepository.getTopic(version.kafkaTopicName());
   }
 
   @Override
@@ -738,12 +730,31 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   private Store getStore() {
-    try {
-      storeRepository.subscribe(storeName);
-    } catch (InterruptedException e) {
-      throw new VeniceException("Failed to get store info with exception:", e);
+    subscribeStoreRepository();
+    Store store = storeRepository.getStore(storeName);
+    if (store == null) {
+      throw new VeniceException("Store metadata is unavailable for store: " + storeName);
     }
-    return storeRepository.getStore(storeName);
+    return store;
+  }
+
+  private void subscribeStoreRepository() {
+    for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
+      try {
+        storeRepository.subscribe(storeName);
+        return;
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Interrupted while subscribing to store metadata for store: " + storeName, e);
+      } catch (Exception ex) {
+        if (i < MAX_SUBSCRIBE_RETRIES) {
+          LOGGER.error("Store Repository subscription failed for store: {}! Will retry...", storeName, ex);
+        } else {
+          LOGGER.error("Store Repository subscription failed for store: {}! Aborting!!", storeName, ex);
+          throw new VeniceException("Failed to subscribe to store metadata for store: " + storeName, ex);
+        }
+      }
+    }
   }
 
   @Override

@@ -215,6 +215,57 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testGetCurrentServingVersionTopicSubscribesBeforeReadingStoreMetadata() throws InterruptedException {
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    assertEquals(veniceChangelogConsumer.getCurrentServingVersionTopic(), oldVersionTopic);
+
+    org.mockito.InOrder inOrder = Mockito.inOrder(mockRepository);
+    inOrder.verify(mockRepository).subscribe(storeName);
+    inOrder.verify(mockRepository).getStore(storeName);
+  }
+
+  @Test
+  public void testGetCurrentServingVersionTopicFailsWhenStoreMetadataIsUnavailable() throws InterruptedException {
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    NativeMetadataRepositoryViewAdapter coldRepository = mock(NativeMetadataRepositoryViewAdapter.class);
+    when(coldRepository.getStore(storeName)).thenReturn(null);
+    veniceChangelogConsumer.setStoreRepository(coldRepository);
+
+    VeniceException exception =
+        Assert.expectThrows(VeniceException.class, veniceChangelogConsumer::getCurrentServingVersionTopic);
+    assertTrue(exception.getMessage().contains("Store metadata is unavailable for store: " + storeName));
+    verify(coldRepository).subscribe(storeName);
+  }
+
+  @Test
+  public void testGetCurrentServingVersionTopicFailsWhenCurrentVersionIsMissing() {
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    NativeMetadataRepositoryViewAdapter repository = mock(NativeMetadataRepositoryViewAdapter.class);
+    Store store = mock(Store.class);
+    when(store.getCurrentVersion()).thenReturn(Store.NON_EXISTING_VERSION);
+    when(repository.getStore(storeName)).thenReturn(store);
+    veniceChangelogConsumer.setStoreRepository(repository);
+
+    VeniceException exception =
+        Assert.expectThrows(VeniceException.class, veniceChangelogConsumer::getCurrentServingVersionTopic);
+    assertTrue(exception.getMessage().contains("does not have a current serving version"));
+  }
+
+  @Test
   public void testAfterImageConsumerSeek() throws ExecutionException, InterruptedException {
     MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
     MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
