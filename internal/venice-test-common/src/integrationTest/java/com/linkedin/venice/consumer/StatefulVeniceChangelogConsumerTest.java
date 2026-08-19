@@ -45,6 +45,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.StatefulVeniceChangelogConsumer;
@@ -55,7 +56,9 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogKey;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
@@ -64,7 +67,9 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -76,6 +81,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.view.TestView;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.file.Files;
@@ -359,6 +365,116 @@ public class StatefulVeniceChangelogConsumerTest {
     } finally {
       cleanUpStoreAndVerify(storeName);
     }
+  }
+
+  /**
+   * Incident-15857 regression: after a rollback, a restarted Stateful CDC consumer — a fresh
+   * {@link com.linkedin.davinci.DaVinciBackend} with an empty in-memory faulty-version set, bootstrapping from the
+   * same on-disk data directory — must not resurrect the rolled-back version. It must serve the rollback-target
+   * current version (v1), retain no future version, and emit only v1 change events, never events from the
+   * ROLLED_BACK v2.
+   */
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testStatefulCdcDoesNotResurrectRolledBackVersionAfterRestart() throws Exception {
+    String storeName = Utils.getUniqueString("store");
+    String inputDirPath = setUpStore(storeName); // batch push -> v1 becomes current
+
+    Properties testConsumerProperties =
+        ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath);
+    testConsumerProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(zkAddress)
+            .setControllerRequestRetryCount(3)
+            .setD2Client(d2Client);
+
+    try {
+      // Phase 1: start on v1, push v2, and let DVC promote v2 to current so v2 is fully ingested on disk.
+      VeniceChangelogConsumerClientFactory factory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+      try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> consumer =
+          factory.getStatefulChangelogConsumer(storeName)) {
+        consumer.start().get();
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 1.0);
+        });
+
+        Properties props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
+        IntegrationTestPushUtils.runVPJ(props);
+        clusterWrapper.useControllerClient(controllerClient -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+            assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
+          });
+        });
+        // DVC promotes v2 to current once it finishes ingesting; this guarantees the v2 engine is on disk.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 2.0);
+        });
+      }
+      // Fully drain the shared backend reference count so the restart starts with an empty in-memory
+      // faulty-version set, modelling a real process restart.
+      AvroGenericDaVinciClient.resetDaVinciBackendForTests();
+
+      // Phase 2: roll back to v1; wait until v2 is authoritatively ROLLED_BACK and still retained.
+      clusterWrapper.useControllerClient(controllerClient -> {
+        ControllerResponse rollbackResponse = controllerClient.rollbackToBackupVersion(storeName);
+        assertFalse(rollbackResponse.isError(), "rollback failed: " + rollbackResponse.getError());
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          StoreResponse storeResponse = controllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError(), "getStore error: " + storeResponse.getError());
+          assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+          assertTrue(
+              storeResponse.getStore().getVersion(2).isPresent()
+                  && storeResponse.getStore().getVersion(2).get().getStatus() == VersionStatus.ROLLED_BACK,
+              "Expected v2 to be ROLLED_BACK after rollback, got: " + storeResponse.getStore().getVersion(2));
+        });
+      });
+
+      // Phase 3: restart on the SAME data directory with a fresh factory/backend.
+      VeniceChangelogConsumerClientFactory restartedFactory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+      Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> restartEventsMap =
+          new HashMap<>();
+      List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> restartEventsList =
+          new ArrayList<>();
+      try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> restartedConsumer =
+          restartedFactory.getStatefulChangelogConsumer(storeName)) {
+        restartedConsumer.start().get();
+
+        // The rollback-target v1 must be current, and the ROLLED_BACK v2 must NOT be retained as a future version.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 1.0);
+          assertEquals(getDaVinciVersionGauge(storeName, "future_version_number"), (double) Store.NON_EXISTING_VERSION);
+        });
+
+        // Produce fresh nearline records against v1 and confirm every emitted event originates from v1, never v2.
+        try (VeniceSystemProducer veniceProducer =
+            IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
+          runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 0, 200, false);
+        }
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+          pollChangeEventsFromChangeCaptureConsumer(restartEventsMap, restartEventsList, restartedConsumer);
+          assertTrue(restartEventsMap.size() >= 10, "Expected at least the 10 fresh v1 nearline puts after restart");
+        });
+        for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> message: restartEventsList) {
+          int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
+          assertEquals(versionFromMessage, 1, "No change event may originate from the rolled-back v2");
+        }
+
+        // The future slot must stay empty: v2 is never resurrected.
+        assertEquals(getDaVinciVersionGauge(storeName, "future_version_number"), (double) Store.NON_EXISTING_VERSION);
+      }
+    } finally {
+      cleanUpStoreAndVerify(storeName);
+    }
+  }
+
+  private double getDaVinciVersionGauge(String storeName, String gaugeName) {
+    Metric metric = metricsRepository.getMetric("." + storeName + "--" + gaugeName + ".Gauge");
+    assertNotNull(metric, "Expected DVC gauge " + gaugeName + " for store " + storeName + " to be registered");
+    return metric.value();
   }
 
   /**

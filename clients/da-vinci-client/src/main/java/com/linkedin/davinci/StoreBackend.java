@@ -441,14 +441,17 @@ public class StoreBackend {
     if (daVinciFutureVersion != null) {
       Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
       int versionNumber = daVinciFutureVersion.getVersion().getNumber();
-      if (store.getVersion(versionNumber) == null) {
+      Version futureVersion = store.getVersion(versionNumber);
+      if (futureVersion == null) {
         LOGGER.info(
             "Deleting obsolete future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
+        return;
       }
-      if (faultyVersionSet.contains(versionNumber)) {
+      if (DaVinciBackend.isDaVinciVersionIneligible(futureVersion, faultyVersionSet)) {
         LOGGER.info(
-            "Deleting faulty future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
+            "Deleting ineligible future version " + daVinciFutureVersion + " (status=" + futureVersion.getStatus()
+                + "), currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
       }
     }
@@ -469,12 +472,12 @@ public class StoreBackend {
       }
       int veniceCurrentVersionNumber = veniceCurrentVersion.getNumber();
       int daVinciFutureVersionNumber = daVinciFutureVersion.getVersion().getNumber();
+      // Re-read the future version's authoritative metadata so an ingestion-completion callback cannot race
+      // a rollback/kill and promote a terminal (or removed) version. A null here means it no longer exists.
+      Version futureVersion =
+          backend.getStoreRepository().getStoreOrThrow(storeName).getVersion(daVinciFutureVersionNumber);
       boolean isDaVinciFutureVersionInvalid =
-          faultyVersionSet.contains(daVinciFutureVersionNumber) || backend.getStoreRepository()
-              .getStoreOrThrow(storeName)
-              .getVersions()
-              .stream()
-              .noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
+          DaVinciBackend.isDaVinciVersionIneligible(futureVersion, faultyVersionSet);
       /**
        * We will only swap it to current version slot when it is fully pushed and the version number is (or was) the
        * current version in store config.
