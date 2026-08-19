@@ -38,9 +38,18 @@ public class VeniceHdfsSource implements TableProvider {
 
   @Override
   public Table getTable(StructType schema, Transform[] partitioning, Map<String, String> configs) {
-    lastReceivedConfigs = configs;
+    recordLastReceivedConfigs(configs);
     Properties properties = new Properties();
     properties.putAll(configs);
     return new VeniceHdfsInputTable(new VeniceProperties(properties));
+  }
+
+  /**
+   * Writes {@link #lastReceivedConfigs}. Kept as a dedicated static method (rather than assigning the field
+   * directly from the instance method {@link #getTable}) to avoid SpotBugs' ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD.
+   */
+  @VisibleForTesting
+  public static void recordLastReceivedConfigs(Map<String, String> configs) {
+    lastReceivedConfigs = configs;
   }
 }

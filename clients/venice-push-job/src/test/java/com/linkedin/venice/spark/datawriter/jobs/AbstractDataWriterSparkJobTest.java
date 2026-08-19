@@ -146,7 +146,7 @@ public class AbstractDataWriterSparkJobTest {
     Properties properties = new Properties();
     properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + customOptionKey, customOptionValue);
 
-    VeniceHdfsSource.lastReceivedConfigs = null;
+    VeniceHdfsSource.recordLastReceivedConfigs(null);
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
 
@@ -170,7 +170,7 @@ public class AbstractDataWriterSparkJobTest {
           "spark.data.writer.conf.* options must be forwarded as DataFrameReader options as well as SparkSession "
               + "runtime config, so they reach the custom DataSource and executor partition readers");
     } finally {
-      VeniceHdfsSource.lastReceivedConfigs = null;
+      VeniceHdfsSource.recordLastReceivedConfigs(null);
     }
   }
 
