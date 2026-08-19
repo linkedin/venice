@@ -367,17 +367,10 @@ public class StatefulVeniceChangelogConsumerTest {
     }
   }
 
-  /**
-   * Incident-15857 regression: after a rollback, a restarted Stateful CDC consumer — a fresh
-   * {@link com.linkedin.davinci.DaVinciBackend} with an empty in-memory faulty-version set, bootstrapping from the
-   * same on-disk data directory — must not resurrect the rolled-back version. It must serve the rollback-target
-   * current version (v1), retain no future version, and emit only v1 change events, never events from the
-   * ROLLED_BACK v2.
-   */
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testStatefulCdcDoesNotResurrectRolledBackVersionAfterRestart() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    String inputDirPath = setUpStore(storeName); // batch push -> v1 becomes current
+    String inputDirPath = setUpStore(storeName);
 
     Properties testConsumerProperties =
         ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath);
@@ -391,7 +384,6 @@ public class StatefulVeniceChangelogConsumerTest {
             .setD2Client(d2Client);
 
     try {
-      // Phase 1: start on v1, push v2, and let DVC promote v2 to current so v2 is fully ingested on disk.
       VeniceChangelogConsumerClientFactory factory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
       try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> consumer =
@@ -408,16 +400,13 @@ public class StatefulVeniceChangelogConsumerTest {
             assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
           });
         });
-        // DVC promotes v2 to current once it finishes ingesting; this guarantees the v2 engine is on disk.
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 2.0);
         });
       }
-      // Fully drain the shared backend reference count so the restart starts with an empty in-memory
-      // faulty-version set, modelling a real process restart.
+      // Reset process-local state while preserving the on-disk engines used by the restarted client.
       AvroGenericDaVinciClient.resetDaVinciBackendForTests();
 
-      // Phase 2: roll back to v1; wait until v2 is authoritatively ROLLED_BACK and still retained.
       clusterWrapper.useControllerClient(controllerClient -> {
         ControllerResponse rollbackResponse = controllerClient.rollbackToBackupVersion(storeName);
         assertFalse(rollbackResponse.isError(), "rollback failed: " + rollbackResponse.getError());
@@ -432,7 +421,6 @@ public class StatefulVeniceChangelogConsumerTest {
         });
       });
 
-      // Phase 3: restart on the SAME data directory with a fresh factory/backend.
       VeniceChangelogConsumerClientFactory restartedFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
       Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> restartEventsMap =
@@ -443,13 +431,11 @@ public class StatefulVeniceChangelogConsumerTest {
           restartedFactory.getStatefulChangelogConsumer(storeName)) {
         restartedConsumer.start().get();
 
-        // The rollback-target v1 must be current, and the ROLLED_BACK v2 must NOT be retained as a future version.
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 1.0);
           assertEquals(getDaVinciVersionGauge(storeName, "future_version_number"), (double) Store.NON_EXISTING_VERSION);
         });
 
-        // Produce fresh nearline records against v1 and confirm every emitted event originates from v1, never v2.
         try (VeniceSystemProducer veniceProducer =
             IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
           runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 0, 200, false);
@@ -463,7 +449,6 @@ public class StatefulVeniceChangelogConsumerTest {
           assertEquals(versionFromMessage, 1, "No change event may originate from the rolled-back v2");
         }
 
-        // The future slot must stay empty: v2 is never resurrected.
         assertEquals(getDaVinciVersionGauge(storeName, "future_version_number"), (double) Store.NON_EXISTING_VERSION);
       }
     } finally {

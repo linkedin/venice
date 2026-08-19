@@ -472,8 +472,7 @@ public class StoreBackend {
       }
       int veniceCurrentVersionNumber = veniceCurrentVersion.getNumber();
       int daVinciFutureVersionNumber = daVinciFutureVersion.getVersion().getNumber();
-      // Re-read the future version's authoritative metadata so an ingestion-completion callback cannot race
-      // a rollback/kill and promote a terminal (or removed) version. A null here means it no longer exists.
+      // Re-read authoritative metadata before promotion to catch a concurrent terminal transition.
       Version futureVersion =
           backend.getStoreRepository().getStoreOrThrow(storeName).getVersion(daVinciFutureVersionNumber);
       boolean isDaVinciFutureVersionInvalid =

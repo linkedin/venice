@@ -659,13 +659,7 @@ public class DaVinciBackend implements Closeable {
     return store.getVersion(store.getCurrentVersion());
   }
 
-  /**
-   * A candidate version must not be selected, retained, ingested, or promoted by a regular Da Vinci client
-   * (including Stateful CDC) when it is either locally faulty or its authoritative {@link VersionStatus} is
-   * terminal: {@link VersionStatus#ROLLED_BACK}, {@link VersionStatus#ERROR}, or {@link VersionStatus#KILLED}.
-   * The rollback target itself is not filtered here because its status is not terminal once it becomes the
-   * current version; the ineligible version is the rolled-back-from version.
-   */
+  /** Terminal versions and versions with process-local ingestion failures are not Da Vinci candidates. */
   static boolean isDaVinciVersionIneligible(Version version, Set<Integer> faultyVersions) {
     if (version == null) {
       return true;

@@ -928,18 +928,12 @@ public class StoreBackendTest {
     return new Object[][] { { VersionStatus.STARTED }, { VersionStatus.PUSHED } };
   }
 
-  /**
-   * Incident-15857: a regular Da Vinci client restarting with a current v1 and a retained higher v2 whose
-   * authoritative status is terminal (ROLLED_BACK/ERROR/KILLED) must not select v2 as its future version,
-   * even when v2 carries the local target-swap region. A fresh {@link StoreBackend} models process memory
-   * after restart (empty {@code faultyVersionSet}), so the terminal status is the only signal available.
-   */
   @Test(dataProvider = "terminalVersionStatuses")
   public void testRestartDoesNotSubscribeRetainedTerminalTargetVersion(VersionStatus terminalStatus) throws Exception {
     int partition = 0;
     version1.setStatus(VersionStatus.ONLINE);
     version2.setStatus(terminalStatus);
-    version2.setTargetSwapRegion("dc-0"); // local region — exercises the target-region active path
+    version2.setTargetSwapRegion("dc-0");
     store.setCurrentVersion(version1.getNumber());
 
     CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
@@ -954,17 +948,12 @@ public class StoreBackendTest {
         "A restarted DVC must not subscribe a retained " + terminalStatus + " version as its future version");
   }
 
-  /**
-   * Positive control for the terminal-status filter: a retained higher target-region version whose status is
-   * still in flight (STARTED/PUSHED) must remain subscribable as the future version. This guards against the
-   * fix over-rejecting legal deferred-swap candidates.
-   */
   @Test(dataProvider = "nonTerminalSubscribableStatuses")
   public void testRestartSubscribesRetainedNonTerminalTargetVersion(VersionStatus subscribableStatus) throws Exception {
     int partition = 0;
     version1.setStatus(VersionStatus.ONLINE);
     version2.setStatus(subscribableStatus);
-    version2.setTargetSwapRegion("dc-0"); // local region — active target-region push
+    version2.setTargetSwapRegion("dc-0");
     store.setCurrentVersion(version1.getNumber());
 
     CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
@@ -977,10 +966,6 @@ public class StoreBackendTest {
             + " target-region version as its future version");
   }
 
-  /**
-   * The numeric-highest selector used for future-version selection and startup storage-engine retention must
-   * skip a terminal higher version and fall back to the highest non-terminal version.
-   */
   @Test(dataProvider = "terminalVersionStatuses")
   public void testLatestNonFaultyVersionSkipsTerminalStatus(VersionStatus terminalStatus) {
     version1.setStatus(VersionStatus.ONLINE);
@@ -992,10 +977,6 @@ public class StoreBackendTest {
         "Latest non-faulty selection must skip the terminal higher version " + terminalStatus);
   }
 
-  /**
-   * A version already occupying the DVC future slot must be deleted once its authoritative status becomes
-   * terminal, and must not be re-subscribed on the same store change.
-   */
   @Test(dataProvider = "terminalVersionStatuses")
   public void testExistingFutureVersionDeletedWhenStatusBecomesTerminal(VersionStatus terminalStatus) throws Exception {
     int partition = 0;
@@ -1016,11 +997,6 @@ public class StoreBackendTest {
     }
   }
 
-  /**
-   * Promotion-race guard: an ingestion-completion callback must not promote a future version to current when
-   * metadata has marked that version terminal, even though its number would otherwise satisfy the promotion
-   * bound ({@code futureNumber <= veniceCurrentNumber}).
-   */
   @Test(dataProvider = "terminalVersionStatuses")
   public void testTerminalFutureVersionNotPromotedByIngestionCompletion(VersionStatus terminalStatus) throws Exception {
     int partition = 0;
@@ -1029,13 +1005,11 @@ public class StoreBackendTest {
     subscribeResult.get(3, TimeUnit.SECONDS);
     assertTrue(versionMap.containsKey(version2.kafkaTopicName()), "version2 must first be subscribed as future");
 
-    // Future v2 finished ingesting and its number satisfies the promotion bound, but metadata invalidation
-    // has marked it terminal. Drive the ingestion-completion swap path directly to avoid depending on the
-    // asynchronous bootstrapping-aware callback timing.
     versionMap.get(version2.kafkaTopicName()).completePartition(partition);
     store.setCurrentVersion(version2.getNumber());
     store.updateVersionStatus(version2.getNumber(), terminalStatus);
 
+    // Isolate the promotion race from asynchronous bootstrapping callback timing.
     storeBackend.trySwapDaVinciCurrentVersion(null);
 
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
