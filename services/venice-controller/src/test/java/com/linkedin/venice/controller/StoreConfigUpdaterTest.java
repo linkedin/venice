@@ -26,6 +26,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -473,6 +474,41 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     if (!failures.isEmpty()) {
       fail("Parent round-trip failed for " + failures.size() + " field(s):\n  - " + String.join("\n  - ", failures));
     }
+  }
+
+  @Test(dataProvider = "ttlRepushEnabledValues")
+  public void testApplyOnParentTTLRepushEnabledRoundTrip(boolean ttlRepushEnabled) {
+    String storeName = Utils.getUniqueString("ttl-repush-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setTTLRepushEnabled(ttlRepushEnabled));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.ttlRepushEnabled, ttlRepushEnabled);
+    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(TTL_REPUSH_ENABLED::equals));
+  }
+
+  @DataProvider(name = "ttlRepushEnabledValues")
+  public Object[][] ttlRepushEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test
+  public void testApplyOnParentPreservesTTLRepushEnabledWhenUnset() {
+    String storeName = Utils.getUniqueString("ttl-repush-unset-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setTTLRepushEnabled(true);
+    boolean existingTTLRepushEnabled = store.isTTLRepushEnabled();
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.ttlRepushEnabled, existingTTLRepushEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(TTL_REPUSH_ENABLED::equals));
   }
 
   @DataProvider(name = "pubSubEncryptionKeyUrnUpdates")

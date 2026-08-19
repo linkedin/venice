@@ -1462,6 +1462,7 @@ public class AdminTool {
     integerParam(cmd, Arg.TARGET_SWAP_REGION_WAIT_TIME, p -> params.setTargetRegionSwapWaitTime(p), argSet);
     booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
     booleanParam(cmd, Arg.GLOBAL_RT_DIV_ENABLED, params::setGlobalRtDivEnabled, argSet);
+    booleanParam(cmd, Arg.TTL_REPUSH_ENABLED, params::setTTLRepushEnabled, argSet);
     booleanParam(cmd, Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED, params::setEnumSchemaEvolutionAllowed, argSet);
 
     String storeLifecycleHooksStr = getOptionalArgument(cmd, Arg.STORE_LIFECYCLE_HOOKS_LIST);
