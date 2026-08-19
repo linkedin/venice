@@ -551,7 +551,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   void checkLiveVersion(String topicName) {
-    Store store = storeRepository.getStore(storeName);
+    Store store = getStore();
     try {
       store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicName));
     } catch (StoreVersionNotFoundException ex) {

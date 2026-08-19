@@ -266,6 +266,46 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testSeekToCheckpointSubscribesBeforeCheckingLiveVersion()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    VeniceChangeCoordinate checkpoint = new VeniceChangeCoordinate(oldVersionTopic.getName(), mockPubSubPosition, 0);
+
+    veniceChangelogConsumer.seekToCheckpoint(Collections.singleton(checkpoint)).get(10, TimeUnit.SECONDS);
+
+    org.mockito.InOrder inOrder = Mockito.inOrder(mockRepository, mockPubSubConsumer);
+    inOrder.verify(mockRepository).subscribe(storeName);
+    inOrder.verify(mockRepository).getStore(storeName);
+    inOrder.verify(mockPubSubConsumer)
+        .subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), mockPubSubPosition, true);
+  }
+
+  @Test
+  public void testSeekToCheckpointFailsWhenStoreMetadataIsUnavailable() {
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    NativeMetadataRepositoryViewAdapter coldRepository = mock(NativeMetadataRepositoryViewAdapter.class);
+    when(coldRepository.getStore(storeName)).thenReturn(null);
+    veniceChangelogConsumer.setStoreRepository(coldRepository);
+    VeniceChangeCoordinate checkpoint = new VeniceChangeCoordinate(oldVersionTopic.getName(), mockPubSubPosition, 0);
+
+    ExecutionException exception = Assert.expectThrows(
+        ExecutionException.class,
+        () -> veniceChangelogConsumer.seekToCheckpoint(Collections.singleton(checkpoint)).get(10, TimeUnit.SECONDS));
+    assertTrue(exception.getCause() instanceof VeniceException);
+    assertTrue(exception.getCause().getMessage().contains("Store metadata is unavailable for store: " + storeName));
+    verify(mockPubSubConsumer, never()).subscribe(any(), any(PubSubPosition.class), anyBoolean());
+  }
+
+  @Test
   public void testAfterImageConsumerSeek() throws ExecutionException, InterruptedException {
     MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
     MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
