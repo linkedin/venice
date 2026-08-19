@@ -6427,9 +6427,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * versionFlag, isHybrid, isDaVinci, expectedEnabled.
-   * Global RT DIV is enabled only for a hybrid, non-DaVinci store whose version flag is on; batch-only stores
-   * and DaVinci clients force it off.
+   * versionFlag, isHybrid, isDaVinci, expectedEnabled: Global RT DIV is enabled only for a hybrid, non-DaVinci
+   * store whose version flag is on; batch-only stores and DaVinci clients force it off.
    */
   @DataProvider(name = "globalRtDivGatingParams")
   public Object[][] globalRtDivGatingParams() {
@@ -6439,15 +6438,18 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "globalRtDivGatingParams")
   public void testGlobalRtDivGating(boolean versionFlag, boolean isHybrid, boolean isDaVinci, boolean expectedEnabled) {
-    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     HybridStoreConfig hybridStoreConfig =
         isHybrid ? new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP) : null;
-    MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(2, partitionerConfig, Optional.ofNullable(hybridStoreConfig), false, true, AA_OFF);
-    Version version = storeAndVersionConfigs.version;
-    version.setGlobalRtDivEnabled(versionFlag);
+    MockStoreVersionConfigs configs = setupStoreAndVersionMocks(
+        2,
+        new PartitionerConfigImpl(),
+        Optional.ofNullable(hybridStoreConfig),
+        false,
+        true,
+        AA_OFF);
+    configs.version.setGlobalRtDivEnabled(versionFlag);
 
-    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+    StoreIngestionTaskFactory factory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
         Utils.setOf(PARTITION_FOO),
         Optional.empty(),
@@ -6461,22 +6463,19 @@ public abstract class StoreIngestionTaskTest {
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
-    StoreIngestionTask ingestionTask = ingestionTaskFactory.getNewIngestionTask(
+    StoreIngestionTask ingestionTask = factory.getNewIngestionTask(
         this.mockStorageService,
-        storeAndVersionConfigs.store,
-        version,
+        configs.store,
+        configs.version,
         kafkaProps,
         isCurrentVersion,
-        storeAndVersionConfigs.storeVersionConfig,
+        configs.storeVersionConfig,
         PARTITION_FOO,
         Optional.empty(),
         null,
         null);
-    try {
-      assertEquals(ingestionTask.isGlobalRtDivEnabled(), expectedEnabled);
-    } finally {
-      ingestionTask.close();
-    }
+
+    assertEquals(ingestionTask.isGlobalRtDivEnabled(), expectedEnabled);
   }
 
   /**
