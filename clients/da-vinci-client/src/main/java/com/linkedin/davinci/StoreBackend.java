@@ -3,6 +3,7 @@ package com.linkedin.davinci;
 import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -119,6 +120,18 @@ public class StoreBackend {
 
   public ReferenceCounted<VersionBackend> getDaVinciCurrentVersion() {
     return daVinciCurrentVersionRef.get();
+  }
+
+  @VisibleForTesting
+  synchronized Set<Integer> getSubscribedVersionNumbers() {
+    Set<Integer> versionNumbers = new HashSet<>(2);
+    if (daVinciCurrentVersion != null) {
+      versionNumbers.add(daVinciCurrentVersion.getVersion().getNumber());
+    }
+    if (daVinciFutureVersion != null) {
+      versionNumbers.add(daVinciFutureVersion.getVersion().getNumber());
+    }
+    return versionNumbers;
   }
 
   private synchronized void setDaVinciCurrentVersion(VersionBackend version) {

@@ -67,7 +67,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -81,17 +80,18 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.view.TestView;
-import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -390,7 +390,7 @@ public class StatefulVeniceChangelogConsumerTest {
           factory.getStatefulChangelogConsumer(storeName)) {
         consumer.start().get();
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-          assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 1.0);
+          assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(1));
         });
 
         Properties props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
@@ -401,7 +401,7 @@ public class StatefulVeniceChangelogConsumerTest {
           });
         });
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-          assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 2.0);
+          assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(2));
         });
       }
       // Reset process-local state while preserving the on-disk engines used by the restarted client.
@@ -432,8 +432,7 @@ public class StatefulVeniceChangelogConsumerTest {
         restartedConsumer.start().get();
 
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-          assertEquals(getDaVinciVersionGauge(storeName, "current_version_number"), 1.0);
-          assertEquals(getDaVinciVersionGauge(storeName, "future_version_number"), (double) Store.NON_EXISTING_VERSION);
+          assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(1));
         });
 
         try (VeniceSystemProducer veniceProducer =
@@ -449,17 +448,15 @@ public class StatefulVeniceChangelogConsumerTest {
           assertEquals(versionFromMessage, 1, "No change event may originate from the rolled-back v2");
         }
 
-        assertEquals(getDaVinciVersionGauge(storeName, "future_version_number"), (double) Store.NON_EXISTING_VERSION);
+        assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(1));
       }
     } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
 
-  private double getDaVinciVersionGauge(String storeName, String gaugeName) {
-    Metric metric = metricsRepository.getMetric("." + storeName + "--" + gaugeName + ".Gauge");
-    assertNotNull(metric, "Expected DVC gauge " + gaugeName + " for store " + storeName + " to be registered");
-    return metric.value();
+  private Set<Integer> getSubscribedVersionNumbers(String storeName) {
+    return AvroGenericDaVinciClient.getBackend().getSubscribedVersionNumbers(storeName);
   }
 
   /**

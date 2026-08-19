@@ -642,6 +642,12 @@ public class DaVinciBackend implements Closeable {
     return currentVersion == null ? -1 : currentVersion.getNumber();
   }
 
+  @VisibleForTesting
+  public Set<Integer> getSubscribedVersionNumbers(String storeName) {
+    StoreBackend storeBackend = storeByNameMap.get(storeName);
+    return storeBackend == null ? Collections.emptySet() : storeBackend.getSubscribedVersionNumbers();
+  }
+
   private Version getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
     Version latestNonFaultyVersion = null;
     for (Version version: store.getVersions()) {
