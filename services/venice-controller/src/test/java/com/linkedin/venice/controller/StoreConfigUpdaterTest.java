@@ -495,6 +495,22 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     return new Object[][] { { true }, { false } };
   }
 
+  @Test
+  public void testApplyOnParentPreservesTTLRepushEnabledWhenUnset() {
+    String storeName = Utils.getUniqueString("ttl-repush-unset-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setTTLRepushEnabled(true);
+    boolean existingTTLRepushEnabled = store.isTTLRepushEnabled();
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.ttlRepushEnabled, existingTTLRepushEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(TTL_REPUSH_ENABLED::equals));
+  }
+
   @DataProvider(name = "pubSubEncryptionKeyUrnUpdates")
   public Object[][] pubSubEncryptionKeyUrnUpdates() {
     return new Object[][] { { true, "", "keyUrn:abc", null }, { false, "", "keyUrn:abc", "encryption-enabled store" },
