@@ -748,7 +748,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         throw new VeniceException("Interrupted while subscribing to store metadata for store: " + storeName, e);
       } catch (Exception ex) {
         if (i < MAX_SUBSCRIBE_RETRIES) {
-          LOGGER.error("Store Repository subscription failed for store: {}! Will retry...", storeName, ex);
+          LOGGER.warn("Store Repository subscription failed for store: {}! Will retry...", storeName, ex);
         } else {
           LOGGER.error("Store Repository subscription failed for store: {}! Aborting!!", storeName, ex);
           throw new VeniceException("Failed to subscribe to store metadata for store: " + storeName, ex);
