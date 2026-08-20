@@ -3,6 +3,7 @@ package com.linkedin.venice.spark.datawriter.jobs;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
+import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
@@ -117,6 +118,21 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       setInputConf(sparkSession, dataFrameReader, VSON_PUSH, String.valueOf(true));
       setInputConf(sparkSession, dataFrameReader, FILE_KEY_SCHEMA, pushJobSetting.vsonInputKeySchemaString);
       setInputConf(sparkSession, dataFrameReader, FILE_VALUE_SCHEMA, pushJobSetting.vsonInputValueSchemaString);
+    }
+
+    // Forward custom `spark.data.writer.conf.*` properties (with the prefix stripped) as DataFrameReader options
+    // too, not just SparkSession runtime config. Custom Spark DataSource V2 implementations (VeniceHdfsSource and
+    // its scan/table classes) only ever see options passed through the DataFrameReader/`configs` map at
+    // table/scan resolution time -- they cannot see SparkSession.conf() -- so without this, the documented
+    // `spark.data.writer.conf.*` passthrough would silently never reach the custom DataSource or executor
+    // partition readers.
+    VeniceProperties allJobProps = getJobProperties();
+    for (String key: allJobProps.keySet()) {
+      String lowerCaseKey = key.toLowerCase();
+      if (lowerCaseKey.startsWith(SPARK_DATA_WRITER_CONF_PREFIX)) {
+        String strippedKey = key.substring(SPARK_DATA_WRITER_CONF_PREFIX.length());
+        setInputConf(sparkSession, dataFrameReader, strippedKey, allJobProps.getString(key));
+      }
     }
     return dataFrameReader.load();
   }
