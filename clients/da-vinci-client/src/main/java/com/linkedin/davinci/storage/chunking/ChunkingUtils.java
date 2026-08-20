@@ -344,7 +344,9 @@ public class ChunkingUtils {
     if (manifestContainer != null) {
       manifestContainer.setManifest(chunkedValueManifest);
       if (manifestContainer.isSizeLimitExceeded()) {
-        return null; // caller distinguishes null from missing via ChunkedValueManifestContainer.isSizeLimitExceeded()
+        // The caller distinguishes this null from a genuinely missing value via isSizeLimitExceeded(). Serving reads
+        // are unaffected: only the partial-update path passes a size ceiling, so they still assemble oversized records.
+        return null;
       }
     }
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);

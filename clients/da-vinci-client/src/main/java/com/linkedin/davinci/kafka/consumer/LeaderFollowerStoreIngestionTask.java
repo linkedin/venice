@@ -5015,25 +5015,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Whether the stored value for this key already exceeds the nearline record size limit, in which case this partial
-   * update is skipped. A value only grows past the limit by being chunked, and a chunked value is stored as a
-   * {@link ChunkedValueManifest} whose {@code size} field records the fully assembled byte count, so the answer is
-   * read straight off the manifest and the chunks are never fetched or assembled. The caller declares the ceiling by
-   * passing {@link #getMaxNearlineRecordSizeBytes()} to the container, and must consult this before using the value
-   * that came back: a vetoed read returns {@code null}, which is otherwise indistinguishable from "key not found".
-   *
-   * <p><b>The limit is enforced after the fact, not before.</b> The write that first takes a record over the limit is
-   * allowed through; only the updates that follow it are skipped. Rejecting the offending write instead would leave
-   * the last compliant value in storage, so the manifest would never report an oversized record and every subsequent
-   * update would keep paying the full cost — read every chunk, assemble a multi-megabyte value, merge, then throw the
-   * result away. Letting the record cross once and freezing it there is what actually removes that cost: from the next
-   * update onwards the manifest short-circuits before the read, so nothing is fetched, assembled, merged or
-   * re-chunked. The price is that a record may settle one update's worth of growth above the limit.
-   *
-   * <p>This also makes the skip a property of the stored record rather than of server memory: it survives restarts and
-   * leader handoff, and it clears by itself as soon as a full put or a delete brings the record back under the limit.
-   * Because the signal is the chunk manifest, only records large enough to be chunked are governed, which is the
-   * intended scope: a smaller record is read in one lookup and updated without re-chunking.
+   * Returns whether the stored chunk manifest exceeds the nearline size limit. Once exceeded, subsequent partial
+   * updates are skipped before fetching or assembling chunks, avoiding that cost on every update. The update that
+   * first crosses the limit is allowed through so the manifest can identify the record as oversized. A full PUT or
+   * DELETE resets the record.
    */
   protected boolean isRecordTooLargeForPartialUpdate(
       PartitionConsumptionState pcs,
@@ -5042,20 +5027,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (!valueManifestContainer.isSizeLimitExceeded()) {
       return false;
     }
+
     versionedIngestionStats.recordPartialUpdateLargeRecordSkippedCount(storeName, versionNumber, 1);
+
     String keyHex = ByteUtils.toHexString(consumerRecord.getKey().getKey());
     // An oversized key is skipped on every partial update, so this would otherwise log on each one.
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "partialUpdateLargeRecordSkipped-" + keyHex)) {
       LOGGER.warn(
           "Skipped a partial update in {} for key 0x{} at position {}: the stored record is {} bytes, over the {} byte "
-              + "limit. Dump the source topic at this position to identify the update. A full PUT or DELETE resets the "
-              + "record.",
+              + "limit. Dump the topic at this position to identify the update. A full PUT or DELETE resets the record.",
           pcs.getReplicaId(),
           keyHex,
           consumerRecord.getPosition(),
           valueManifestContainer.getManifest().getSize(),
           getMaxNearlineRecordSizeBytes());
     }
+
     return true;
   }
 

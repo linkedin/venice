@@ -570,7 +570,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         throw new VeniceMessageException(
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
-    // The read ceiling is declared only for partial updates. Full puts and deletes must always read the complete old
+    // The read ceiling is declared only for partial updates. Full PUTs and DELETEs must always read the complete old
     // value, because view writers such as a ComplexVeniceWriter materialized view depend on it to route correctly.
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer(
         msgType == MessageType.UPDATE ? getMaxNearlineRecordSizeBytes() : ChunkedValueManifestContainer.UNLIMITED_SIZE);
@@ -650,9 +650,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             kafkaClusterId,
             valueManifestContainer);
         if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
-          // The stored record is already over the limit, so its chunk manifest short-circuited the read and the merge
-          // above ran against a null old value. That result must be discarded rather than produced: it was built from
-          // this update alone and would silently replace the oversized record instead of rejecting the write.
+          // The stored record is already over the limit, so its manifest skipped the read and the merge above
+          // ran against a null old value, so that result must be discarded rather than produced
           return buildIgnoredMergeConflictResult(
               oldValueProvider,
               oldValueByteBufferProvider,
