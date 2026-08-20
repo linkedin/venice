@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -25,6 +26,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel.LeaderSessionIdChecker;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -154,6 +156,43 @@ public class LeaderFollowerPartitionStateModelTest {
     leaderFollowerPartitionStateModelSpy.onBecomeOfflineFromStandby(message, context);
     verify(heartbeatMonitoringService)
         .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.REMOVE_MONITOR), anyString());
+  }
+
+  @Test
+  public void testOfflineTransitionInvalidatesDelayedLeaderToStandbyAction() {
+    Message message = mock(Message.class);
+    NotificationContext context = mock(NotificationContext.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    LeaderSessionIdChecker[] demotionChecker = new LeaderSessionIdChecker[1];
+    Runnable[] delayedDemotion = new Runnable[1];
+    doAnswer(invocation -> {
+      demotionChecker[0] = invocation.getArgument(2);
+      delayedDemotion[0] = () -> {
+        if (demotionChecker[0].isSessionIdValid()) {
+          heartbeatMonitoringService.updateLagMonitor(
+              resourceName,
+              partition,
+              HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+              Utils.getReplicaId(resourceName, partition));
+        }
+      };
+      return null;
+    }).when(storeIngestionService).demoteToStandby(eq(storeAndServerConfigs), eq(partition), any());
+
+    leaderFollowerPartitionStateModel.onBecomeStandbyFromLeader(message, context);
+    assertNotNull(demotionChecker[0]);
+    assertNotNull(delayedDemotion[0]);
+    assertTrue(demotionChecker[0].isSessionIdValid());
+
+    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, context);
+    delayedDemotion[0].run();
+
+    assertFalse(demotionChecker[0].isSessionIdValid());
+    verify(heartbeatMonitoringService, never()).updateLagMonitor(
+        eq(resourceName),
+        eq(partition),
+        eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+        anyString());
   }
 
   @Test

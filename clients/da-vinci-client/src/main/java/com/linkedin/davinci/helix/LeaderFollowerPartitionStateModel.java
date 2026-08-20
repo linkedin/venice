@@ -170,6 +170,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
+    // Invalidate any queued LEADER_TO_STANDBY action before stopping consumption. Otherwise, a delayed demotion
+    // could run after this transition and restore follower-only state, such as the follower heartbeat monitor.
+    leaderSessionId.incrementAndGet();
     heartbeatMonitoringService.updateLagMonitor(
         message.getResourceName(),
         getPartition(),
