@@ -114,6 +114,18 @@ public class LeaderFollowerPartitionStateModelTest {
         resourceName);
   }
 
+  /**
+   * Stubs {@code metadataRepo} so the version under test resolves to {@link VersionStatus#STARTED}, satisfying
+   * the per-poll status re-check inside {@code waitUntilFutureVersionLagAcceptable}.
+   */
+  private void stubVersionStarted() {
+    Store store = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED);
+    when(store.getVersion(storeVersion)).thenReturn(mockVersion);
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+  }
+
   @Test
   public void testUpdateLagMonitor() {
     Message message = mock(Message.class);
@@ -654,6 +666,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(100L);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(5);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(1);
+    stubVersionStarted();
 
     StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
     doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
@@ -674,6 +687,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(100L);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(5);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(0);
+    stubVersionStarted();
 
     StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
     doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
@@ -682,6 +696,36 @@ public class LeaderFollowerPartitionStateModelTest {
     leaderFollowerPartitionStateModel.waitUntilFutureVersionLagAcceptable(resourceName);
 
     verify(ingestionTask, times(3)).getLocalVersionTopicLag(partition);
+  }
+
+  /**
+   * If the version transitions away from {@link VersionStatus#STARTED} (e.g. to {@link VersionStatus#KILLED})
+   * while polling, the wait must stop re-checking lag and return immediately on the next poll, rather than
+   * continuing to occupy the state-transition worker thread until the timeout elapses.
+   */
+  @Test
+  public void testWaitUntilFutureVersionLagAcceptableStopsWhenVersionNoLongerStarted() {
+    when(storeAndServerConfigs.isFutureVersionStandbyLagCheckEnabled()).thenReturn(true);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(100L);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(5);
+    when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(0);
+
+    Store store = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    // First poll: still STARTED (so lag is measured once); subsequent polls: version has been killed.
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED, VersionStatus.KILLED);
+    when(store.getVersion(storeVersion)).thenReturn(mockVersion);
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+
+    StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
+    doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
+    // Lag never catches up, so the only way the loop can exit before the timeout is via the status re-check.
+    doReturn(200L).when(ingestionTask).getLocalVersionTopicLag(partition);
+
+    leaderFollowerPartitionStateModel.waitUntilFutureVersionLagAcceptable(resourceName);
+
+    // Lag should only have been measured once, before the version's status flipped away from STARTED.
+    verify(ingestionTask, times(1)).getLocalVersionTopicLag(partition);
   }
 
   /**
@@ -694,6 +738,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(100L);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(0);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(0);
+    stubVersionStarted();
 
     StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
     doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);
@@ -715,6 +760,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(storeAndServerConfigs.getFutureVersionStandbyLagThreshold()).thenReturn(0L);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckTimeoutMinutes()).thenReturn(5);
     when(storeAndServerConfigs.getFutureVersionStandbyLagCheckPollIntervalMinutes()).thenReturn(1);
+    stubVersionStarted();
 
     StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
     doReturn(ingestionTask).when(storeIngestionService).getStoreIngestionTask(resourceName);

@@ -13,6 +13,8 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
@@ -107,6 +109,13 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       // ONLINE is set for future versions of a push with deferred swap
       boolean isFutureVersion = Utils.isFutureVersion(resourceName, getStoreRepo());
       boolean isFutureVersionReady = Utils.isFutureVersionReady(resourceName, getStoreRepo());
+      // An explicitly active future-version push: the version is a future version and its push is still in
+      // progress (status is STARTED). Using the explicit status, rather than "future and not ready", avoids
+      // racing with terminal states (KILLED/ERROR/ROLLED_BACK) that can overlap with an in-flight
+      // OFFLINE -> STANDBY transition when a version is killed and cleaned up asynchronously.
+      Version version = store.getVersion(getVersionNumber());
+      boolean isFutureVersionInProgress =
+          isFutureVersion && version != null && version.getStatus() == VersionStatus.STARTED;
       /**
        * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
        * for ingestion completion to make sure that the state transition waits until this new replica finished consuming
@@ -137,7 +146,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
           Utils.getReplicaId(message.getResourceName(), getPartition()));
       if (isCurrentVersion || isFutureVersionReady) {
         waitConsumptionCompleted(resourceName, notifier);
-      } else if (isFutureVersion && getStoreAndServerConfigs().isFutureVersionStandbyLagCheckEnabled()) {
+      } else if (isFutureVersionInProgress && getStoreAndServerConfigs().isFutureVersionStandbyLagCheckEnabled()) {
         // Future version whose push is still in progress: best-effort wait for lag to become acceptable before
         // this replica becomes eligible for leader election (no-op unless explicitly enabled).
         waitUntilFutureVersionLagAcceptable(resourceName);
