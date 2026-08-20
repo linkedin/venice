@@ -1,5 +1,6 @@
 package com.linkedin.venice.helixrebalance;
 
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -137,6 +138,13 @@ public class FutureVersionStandbyLagCheckTest {
     extraProperties.put(ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD, 0);
     extraProperties.put(ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES, timeoutMinutes);
     extraProperties.put(ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES, pollIntervalMinutes);
+    if (lagCheckEnabled) {
+      // The lag-based wait synchronously occupies a state-transition worker thread, so it is only allowed when
+      // future-version transitions run on their own dedicated pool.
+      extraProperties.put(
+          ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
+          LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY.name());
+    }
 
     cluster.addVeniceServer(new Properties(), extraProperties);
     cluster.addVeniceServer(new Properties(), extraProperties);

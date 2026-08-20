@@ -1365,6 +1365,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT, 3);
     this.futureVersionStandbyLagCheckEnabled =
         serverProperties.getBoolean(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED, false);
+    if (this.futureVersionStandbyLagCheckEnabled
+        && leaderFollowerThreadPoolStrategy != LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY) {
+      String errorMessage = String.format(
+          "%s can only be enabled when %s is set to %s, since the lag-based wait synchronously occupies a "
+              + "state-transition worker thread and could otherwise delay current/backup-version transitions "
+              + "on a shared pool. Current strategy: %s. Please either set %s to %s or disable %s.",
+          SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED,
+          LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
+          LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY,
+          leaderFollowerThreadPoolStrategy,
+          LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
+          LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY,
+          SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED);
+      LOGGER.error(errorMessage);
+      throw new VeniceException(errorMessage);
+    }
     this.futureVersionStandbyLagThreshold =
         serverProperties.getLong(SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD, 1000L);
     this.futureVersionStandbyLagCheckTimeoutMinutes =
