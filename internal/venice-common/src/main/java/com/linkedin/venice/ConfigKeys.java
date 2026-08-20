@@ -3617,32 +3617,6 @@ public class ConfigKeys {
       "partial.update.amplification.report.interval.ms";
 
   /**
-   * Whether the server rejects partial updates whose assembled value exceeds the nearline record size limit
-   * ({@link com.linkedin.venice.meta.Store#getMaxNearlineRecordSizeBytes()}, backfilled by
-   * {@link #DEFAULT_MAX_RECORD_SIZE_BYTES}). Only partial updates are rejected; full puts and deletes always pass
-   * through so that an oversized record can still be reset. Ingestion is never paused: the offending write is skipped
-   * and the offset advances. Default: false.
-   */
-  public static final String SERVER_NEARLINE_LARGE_RECORD_BLOCKING_ENABLED =
-      "server.nearline.large.record.blocking.enabled";
-
-  /**
-   * How often (in ms) to emit a per-partition summary of the keys whose partial updates are being rejected for
-   * exceeding the nearline record size limit. A newly blocked key always arms a report, so the interval only bounds
-   * how often repeat rejections are re-logged. Default: 5 minutes.
-   */
-  public static final String SERVER_NEARLINE_LARGE_RECORD_BLOCK_REPORT_INTERVAL_MS =
-      "server.nearline.large.record.block.report.interval.ms";
-
-  /**
-   * Maximum number of blocked keys tracked per partition, with LRU eviction. This map is only a fast path that lets
-   * repeat offenders skip the expensive merge; eviction never weakens enforcement, because the post-merge size check
-   * re-detects an evicted key. Default: 1000.
-   */
-  public static final String SERVER_NEARLINE_LARGE_RECORD_MAX_TRACKED_KEYS =
-      "server.nearline.large.record.max.tracked.keys";
-
-  /**
    * TEST-ONLY. Regions allowed for A/A DCR bug injection: EI (ei4, ei-ltx1). Map of store->region used to inject a
    * bug into A/A DCR for testing in EI. MUST NEVER be enabled in prod. Injection is refused (and logged) for regions
    * not in the server's EI allowlist.

@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_LARGE_RECORD_BLOCKING_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -23,9 +22,11 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.ArrayList;
@@ -46,29 +47,30 @@ import org.testng.annotations.Test;
 
 
 /**
- * End-to-end coverage for nearline large-record write blocking on an Active/Active + write-compute store.
+ * End-to-end coverage for nearline large-record write skipping on an Active/Active + write-compute store.
  *
  * <p>Partial updates from the realtime topic are the only way a record can grow past the record size limit, because
- * the realtime path has no chunking. Once a partial update would push the assembled value over
- * {@code maxNearlineRecordSizeBytes}, the server drops that write instead of producing it, and keeps dropping partial
- * updates to that key until a full put or a delete resets it. Ingestion is never paused, so unrelated keys are
- * unaffected — that property is asserted here too, since a previous attempt at this feature paused whole partitions
- * and turned one pathological key into a store-wide outage.
+ * the realtime path has no chunking. The limit is enforced <em>after the fact</em>: the write that first takes a
+ * record over {@code maxNearlineRecordSizeBytes} is allowed through, and every partial update after it is skipped
+ * until a full put or a delete resets the key. The skip is read straight off the stored record's chunk manifest, so
+ * an oversized record costs nothing to skip — no chunk is fetched, assembled, merged or re-chunked. Ingestion is
+ * never paused, so unrelated keys are unaffected — that property is asserted here too, since a previous attempt at
+ * this feature paused whole partitions and turned one pathological key into a store-wide outage.
  *
- * <p>The blocking decision is made independently by the leader in each region, so every assertion is made against both
+ * <p>The skip decision is made independently by the leader in each region, so every assertion is made against both
  * regions.
  *
- * <p>Determinism note: a blocked write is a non-event, and "the value did not change" is indistinguishable from "the
+ * <p>Determinism note: a skipped write is a non-event, and "the value did not change" is indistinguishable from "the
  * value has not changed *yet*". Every test therefore sends a sentinel write to a second key from the same producer
  * after the oversized write. The store has a single partition, so the two keys share a partition and are consumed in
  * order; once the sentinel is visible in a region, the oversized write ahead of it has necessarily been processed
  * there.
  *
  * <p>All tests share one store, because the empty push that brings it online dominates the runtime. They are isolated
- * from each other by writing to a distinct key, which is sufficient because blocking is tracked per key.
+ * from each other by writing to a distinct key, which is sufficient because each write is judged on its own key.
  */
-public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
-  private static final Logger LOGGER = LogManager.getLogger(TestNearlineLargeRecordBlocking.class);
+public class TestNearlineLargeRecordSkipping extends AbstractMultiRegionTest {
+  private static final Logger LOGGER = LogManager.getLogger(TestNearlineLargeRecordSkipping.class);
   private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   /**
    * An empty push on a hybrid store is only reported {@code COMPLETED} once buffer replay has caught up, which is
@@ -90,6 +92,12 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
    * same code path without making the test build multi-megabyte records.
    */
   private static final int MAX_NEARLINE_RECORD_SIZE_BYTES = 10 * 1024;
+  /**
+   * Small enough that an oversized test record is split into several chunks and stored behind a manifest, but large
+   * enough that the servers' routine internal writes (system store pushes, heartbeats) still fit in a single message.
+   * Dropping much below this starves system store pushes and makes cluster setup time out.
+   */
+  private static final int CHUNK_SIZE = 16 * 1024;
   private static final int SMALL_PAYLOAD_LENGTH = 512;
   private static final int OVERSIZED_PAYLOAD_LENGTH = 50 * 1024;
 
@@ -118,7 +126,7 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
   /**
    * One replica per region, so that a read is served by exactly one server. A follower lags its leader by a version
    * topic round trip, so with more than one replica two consecutive reads can land on replicas at different points in
-   * the stream — which would make the "this write was dropped" assertions below nondeterministic. Blocking is decided
+   * the stream — which would make the "this write was dropped" assertions below nondeterministic. Skipping is decided
    * by the leader, and the leader is still exercised in both regions, so replication factor is orthogonal here.
    */
   @Override
@@ -126,10 +134,15 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
     return 1;
   }
 
+  /**
+   * Force chunking at a small size so that a stored value can be made to exceed the nearline limit without building
+   * megabyte-sized records. Chunking is what causes a value to be stored as a {@link ChunkedValueManifest}, and the
+   * manifest's {@code size} field is what lets an already-oversized record be rejected without being assembled.
+   */
   @Override
   protected Properties getExtraServerProperties() {
     Properties serverProps = new Properties();
-    serverProps.setProperty(SERVER_NEARLINE_LARGE_RECORD_BLOCKING_ENABLED, "true");
+    serverProps.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, String.valueOf(CHUNK_SIZE));
     return serverProps;
   }
 
@@ -155,7 +168,7 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
    * One store and one empty push for the whole class. An empty push on a hybrid store only reaches {@code COMPLETED}
    * after buffer replay catches up, so it is both slow and the most timing-sensitive part of the setup; doing it once
    * per test method made the class spend most of its time pushing and occasionally time out mid-replay. Tests are
-   * isolated by using a distinct key each, which is sufficient because blocking state is tracked per key.
+   * isolated by using a distinct key each, which is sufficient because each write is judged on its own key.
    */
   private void createStoreAndPushInitialVersion() {
     storeName = Utils.getUniqueString("test-store-nearline-large-record");
@@ -217,44 +230,39 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
   }
 
   /**
-   * The core behavior: a partial update that would push the record over the limit is dropped in every region, the
-   * record stays at its last compliant value, and subsequent partial updates to the same key stay blocked even when
-   * they are individually small — the record is already over the limit, so only a reset can bring it back.
+   * The core behavior. The write that takes the record over the limit is deliberately allowed through; it is every
+   * partial update after it that is skipped, in every region, from the stored chunk manifest alone.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testOversizedPartialUpdateIsBlockedInAllRegions() {
-    String key = "key-blocked-in-all-regions";
+  public void testUpdatesAfterARecordCrossesTheLimitAreSkippedInAllRegions() {
+    String key = "key-skipped-in-all-regions";
     sendPartialUpdate(0, key, "compliant", generatePayload(SMALL_PAYLOAD_LENGTH));
     waitForRecordInAllRegions(key, "compliant", SMALL_PAYLOAD_LENGTH);
 
+    // Allowed through: rejecting it would leave a compliant value in storage, so every later update would keep
+    // paying the full read-assemble-merge cost instead of being short-circuited by the manifest.
     sendPartialUpdate(0, key, "oversized", generatePayload(OVERSIZED_PAYLOAD_LENGTH));
-    awaitSentinel("after-oversized-write");
+    waitForRecordInAllRegions(key, "oversized", OVERSIZED_PAYLOAD_LENGTH);
 
+    sendPartialUpdate(0, key, "must-be-skipped", generatePayload(SMALL_PAYLOAD_LENGTH));
+    awaitSentinel("after-skipped-write");
     assertRecordInAllRegions(
         key,
-        "compliant",
-        SMALL_PAYLOAD_LENGTH,
-        "The oversized partial update must have been dropped, leaving the last compliant value in place");
-
-    // A small follow-up update must also be rejected: the key is blocked, not merely this one write.
-    sendPartialUpdate(0, key, "small-follow-up", generatePayload(SMALL_PAYLOAD_LENGTH));
-    awaitSentinel("after-follow-up-write");
-    assertRecordInAllRegions(
-        key,
-        "compliant",
-        SMALL_PAYLOAD_LENGTH,
-        "Partial updates must stay blocked until the record is reset by a full put or a delete");
+        "oversized",
+        OVERSIZED_PAYLOAD_LENGTH,
+        "Once the stored record is oversized, later partial updates must be skipped and leave it untouched");
   }
 
   /**
-   * Blocking must not stop the world. A previous iteration of this feature paused consumption on every partition when
+   * Skipping must not stop the world. A previous iteration of this feature paused consumption on every partition when
    * a single key was too large, which is precisely the multitenant failure mode this design avoids.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testUnrelatedKeysKeepIngestingWhileAKeyIsBlocked() {
-    String blockedKey = "key-blocked-while-others-ingest";
-    sendPartialUpdate(0, blockedKey, "oversized", generatePayload(OVERSIZED_PAYLOAD_LENGTH));
-    awaitSentinel("first-write-after-block");
+  public void testUnrelatedKeysKeepIngestingWhileAKeyIsSkipped() {
+    String skippedKey = "key-skipped-while-others-ingest";
+    makeStoredRecordExceedTheLimit(skippedKey);
+    sendPartialUpdate(0, skippedKey, "must-be-skipped", generatePayload(SMALL_PAYLOAD_LENGTH));
+    awaitSentinel("first-write-after-skip");
 
     String unrelatedKey = "unrelated-key";
     for (int i = 0; i < 3; i++) {
@@ -263,17 +271,24 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
       waitForRecordInAllRegions(unrelatedKey, name, SMALL_PAYLOAD_LENGTH);
     }
 
-    assertRecordInAllRegions(blockedKey, null, -1, "The oversized key must never have been written at all");
+    assertRecordInAllRegions(
+        skippedKey,
+        "grown",
+        OVERSIZED_PAYLOAD_LENGTH,
+        "The oversized key must still be skipped after unrelated keys kept ingesting");
   }
 
   /**
-   * A full put is one of the two documented ways to reset an oversized record, so it must always be applied and must
-   * restore partial updates for the key. Blocking it would make an oversized record permanently unwritable.
+   * The scenario the size limit is really rolled out for: a record that is already over the limit, because it was
+   * grown before the limit applied to it. It is stored chunked, so its size is read straight off the
+   * {@link ChunkedValueManifest} and partial updates against it are rejected without ever assembling the chunks. A
+   * full put is one of the two documented ways to reset such a record, so it must be applied and must make the key
+   * writable again.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testFullPutResetsAnOversizedRecordAndRestoresPartialUpdates() {
+  public void testFullPutResetsAnAlreadyOversizedRecordAndRestoresPartialUpdates() {
     String key = "key-reset-by-full-put";
-    establishBlockedKey(key);
+    makeStoredRecordExceedTheLimit(key);
 
     GenericRecord resetValue = new GenericData.Record(valueSchema);
     resetValue.put(NAME_FIELD, "reset-by-put");
@@ -285,11 +300,11 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
     waitForRecordInAllRegions(key, "writable-again", SMALL_PAYLOAD_LENGTH);
   }
 
-  /** The other documented reset path: a delete must clear the block so the key can be rebuilt from scratch. */
+  /** The other documented reset path: a delete must make the key writable again so it can be rebuilt from scratch. */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testDeleteResetsAnOversizedRecordAndRestoresPartialUpdates() {
+  public void testDeleteResetsAnAlreadyOversizedRecordAndRestoresPartialUpdates() {
     String key = "key-reset-by-delete";
-    establishBlockedKey(key);
+    makeStoredRecordExceedTheLimit(key);
 
     sendStreamingRecord(systemProducerMap.get(0), storeName, key, null);
     waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
@@ -303,20 +318,13 @@ public class TestNearlineLargeRecordBlocking extends AbstractMultiRegionTest {
   }
 
   /**
-   * Drives the key over the limit from a known-good starting value, and confirms the block took effect, so the reset
-   * tests start from an unambiguous state.
+   * Leaves the key holding a stored record that is over the nearline limit and large enough to be chunked, so it is
+   * stored behind a {@link ChunkedValueManifest} and subsequent partial updates against it are skipped from that
+   * manifest alone. The growing write is simply allowed through, which is the designed behavior.
    */
-  private void establishBlockedKey(String key) {
-    sendPartialUpdate(0, key, "compliant", generatePayload(SMALL_PAYLOAD_LENGTH));
-    waitForRecordInAllRegions(key, "compliant", SMALL_PAYLOAD_LENGTH);
-
-    sendPartialUpdate(0, key, "oversized", generatePayload(OVERSIZED_PAYLOAD_LENGTH));
-    awaitSentinel("establish-block");
-    assertRecordInAllRegions(
-        key,
-        "compliant",
-        SMALL_PAYLOAD_LENGTH,
-        "The key must be blocked before the reset is exercised");
+  private void makeStoredRecordExceedTheLimit(String key) {
+    sendPartialUpdate(0, key, "grown", generatePayload(OVERSIZED_PAYLOAD_LENGTH));
+    waitForRecordInAllRegions(key, "grown", OVERSIZED_PAYLOAD_LENGTH);
   }
 
   /**

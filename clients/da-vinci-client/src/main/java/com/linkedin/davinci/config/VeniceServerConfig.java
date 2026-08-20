@@ -171,9 +171,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_WINDOW_SIZE_
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_REQUEST_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
-import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_LARGE_RECORD_BLOCKING_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_LARGE_RECORD_BLOCK_REPORT_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_LARGE_RECORD_MAX_TRACKED_KEYS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_LATENCY_TIMESTAMP_SOURCE;
 import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -272,7 +269,6 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
-import com.linkedin.davinci.kafka.consumer.LargeRecordBlockDetector;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
@@ -784,9 +780,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean activeKeyCountForHybridStoreEnabled;
   private final int partialUpdateLargeResultLogThresholdBytes;
   private final long partialUpdateAmplificationReportIntervalMs;
-  private final boolean nearlineLargeRecordBlockingEnabled;
-  private final long nearlineLargeRecordBlockReportIntervalMs;
-  private final int nearlineLargeRecordMaxTrackedKeys;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1390,12 +1383,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES, 100 * 1024);
     this.partialUpdateAmplificationReportIntervalMs =
         serverProperties.getLong(PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS, -1);
-    this.nearlineLargeRecordBlockingEnabled =
-        serverProperties.getBoolean(SERVER_NEARLINE_LARGE_RECORD_BLOCKING_ENABLED, false);
-    this.nearlineLargeRecordBlockReportIntervalMs =
-        serverProperties.getLong(SERVER_NEARLINE_LARGE_RECORD_BLOCK_REPORT_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));
-    this.nearlineLargeRecordMaxTrackedKeys = serverProperties
-        .getInt(SERVER_NEARLINE_LARGE_RECORD_MAX_TRACKED_KEYS, LargeRecordBlockDetector.DEFAULT_MAX_TRACKED_KEYS);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2514,17 +2501,5 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getPartialUpdateAmplificationReportIntervalMs() {
     return partialUpdateAmplificationReportIntervalMs;
-  }
-
-  public boolean isNearlineLargeRecordBlockingEnabled() {
-    return nearlineLargeRecordBlockingEnabled;
-  }
-
-  public long getNearlineLargeRecordBlockReportIntervalMs() {
-    return nearlineLargeRecordBlockReportIntervalMs;
-  }
-
-  public int getNearlineLargeRecordMaxTrackedKeys() {
-    return nearlineLargeRecordMaxTrackedKeys;
   }
 }

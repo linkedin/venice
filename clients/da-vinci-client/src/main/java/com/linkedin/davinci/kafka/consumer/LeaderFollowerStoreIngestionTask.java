@@ -4182,8 +4182,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     switch (msgType) {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
-        // A full put replaces the record outright, so it can rescue a key that was blocked for being oversized.
-        unblockNearlineRecordIfPresent(partitionConsumptionState, keyBytes);
         // Value provider should use un-compressed data.
         final ByteBuffer rawPutValue = put.putValue;
         final boolean needToDecompress = !partitionConsumptionState.isEndOfPushReceived();
@@ -4243,11 +4241,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          *  deserialized record does not contain that field because the reader schema does not contain that field.
          */
         Update update = (Update) kafkaValue.payloadUnion;
-        if (isNearlineUpdateBlocked(partitionConsumptionState, keyBytes)) {
-          // This key already exceeds the nearline record size limit. Skip before the merge, which is the expensive
-          // part. Producing is skipped, so the follower and local storage are left untouched.
-          return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
-        }
         final int readerValueSchemaId;
         final int readerUpdateProtocolVersion;
         if (isIngestingSystemStore()) {
@@ -4263,19 +4256,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           readerUpdateProtocolVersion = update.updateSchemaId;
         }
         ChunkedValueManifestContainer valueManifestContainer =
-            new ChunkedValueManifestContainer(getNearlineOldValueReadCeiling());
+            new ChunkedValueManifestContainer(getMaxNearlineRecordSizeBytes());
         final GenericRecord currValue = readStoredValueRecord(
             partitionConsumptionState,
             keyBytes,
             readerValueSchemaId,
             consumerRecord.getTopicPartition(),
             valueManifestContainer);
-        if (isStoredValueAlreadyTooLarge(partitionConsumptionState, keyBytes, valueManifestContainer)) {
-          // The chunk manifest already puts this record over the limit, so it was never assembled and the merge is
-          // skipped outright. Producing is skipped, leaving local storage and the transient cache untouched.
+        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
+          // The record size is over the limit, so it was never assembled and the merge is skipped outright.
+          // Producing is skipped, leaving local storage and the transient cache untouched.
           return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
         }
-
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
         final int incomingUpdatePayloadSize = update.updateValue.remaining();
@@ -4311,12 +4303,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               updatedValueBytes.length,
               storeName,
               versionNumber);
-          if (shouldBlockLargeNearlineRecord(partitionConsumptionState, keyBytes, updatedValueBytes.length)) {
-            // The assembled record exceeds the nearline size limit. Drop this write rather than pausing the partition,
-            // so ingestion keeps advancing for every other key. The transient record cache is deliberately left
-            // untouched so it continues to reflect the last value that was actually persisted.
-            return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
-          }
         }
 
         if (updatedValueBytes == null) {
@@ -4356,8 +4342,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   Lazy.of(writeComputeResult::getUpdatedValue)));
         }
       case DELETE:
-        // A delete removes the record outright, so it can rescue a key that was blocked for being oversized.
-        unblockNearlineRecordIfPresent(partitionConsumptionState, keyBytes);
         Lazy<GenericRecord> oldValueProvider;
         if (hasComplexVenicePartitionerMaterializedView) {
           // Best-effort to provide the old value for delete operation in case needed by a ComplexVeniceWriter to
@@ -5031,131 +5015,48 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Fast path: whether this key is already known to exceed the nearline record size limit, so the caller can skip the
-   * merge entirely. The merge is the expensive part (chunk assembly, Avro deserialization, re-serialization,
-   * compression), and a hot oversized key would otherwise pay it on every update forever.
+   * Whether the stored value for this key already exceeds the nearline record size limit, in which case this partial
+   * update is skipped. A value only grows past the limit by being chunked, and a chunked value is stored as a
+   * {@link ChunkedValueManifest} whose {@code size} field records the fully assembled byte count, so the answer is
+   * read straight off the manifest and the chunks are never fetched or assembled. The caller declares the ceiling by
+   * passing {@link #getMaxNearlineRecordSizeBytes()} to the container, and must consult this before using the value
+   * that came back: a vetoed read returns {@code null}, which is otherwise indistinguishable from "key not found".
    *
-   * <p>A {@code false} result does not mean the write is within the limit — it only means this key has not been seen
-   * to exceed it. The authoritative check is {@link #shouldBlockLargeNearlineRecord}, which runs post-merge.
+   * <p><b>The limit is enforced after the fact, not before.</b> The write that first takes a record over the limit is
+   * allowed through; only the updates that follow it are skipped. Rejecting the offending write instead would leave
+   * the last compliant value in storage, so the manifest would never report an oversized record and every subsequent
+   * update would keep paying the full cost — read every chunk, assemble a multi-megabyte value, merge, then throw the
+   * result away. Letting the record cross once and freezing it there is what actually removes that cost: from the next
+   * update onwards the manifest short-circuits before the read, so nothing is fetched, assembled, merged or
+   * re-chunked. The price is that a record may settle one update's worth of growth above the limit.
+   *
+   * <p>This also makes the skip a property of the stored record rather than of server memory: it survives restarts and
+   * leader handoff, and it clears by itself as soon as a full put or a delete brings the record back under the limit.
+   * Because the signal is the chunk manifest, only records large enough to be chunked are governed, which is the
+   * intended scope: a smaller record is read in one lookup and updated without re-chunking.
    */
-  protected boolean isNearlineUpdateBlocked(PartitionConsumptionState partitionConsumptionState, byte[] keyBytes) {
-    if (!serverConfig.isNearlineLargeRecordBlockingEnabled()) {
-      return false;
-    }
-    LargeRecordBlockDetector detector = partitionConsumptionState.getLargeRecordBlockDetectorIfPresent();
-    if (detector == null || !detector.isBlocked(keyBytes)) {
-      return false;
-    }
-    // Re-record so repeat rejections are counted and the key stays hot in the LRU. The value was never assembled on
-    // this path, so its size is unknown.
-    recordNearlineRecordBlock(
-        partitionConsumptionState,
-        keyBytes,
-        LargeRecordBlockDetector.BlockedKeyStats.SIZE_UNKNOWN,
-        getMaxNearlineRecordSizeBytes());
-    return true;
-  }
-
-  /**
-   * Authoritative check: whether the assembled value exceeds the nearline record size limit and the write must
-   * therefore be dropped. Called post-merge and post-compression, before the record is produced to the version topic.
-   *
-   * <p>Only partial updates are subject to this. Full puts and deletes always pass, because they are the only way to
-   * shrink or reset an oversized record.
-   *
-   * @param assembledSizeBytes size of the compressed value after applying the partial update
-   * @return {@code true} if the caller must skip producing this record
-   */
-  protected boolean shouldBlockLargeNearlineRecord(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] keyBytes,
-      int assembledSizeBytes) {
-    if (!serverConfig.isNearlineLargeRecordBlockingEnabled()) {
-      return false;
-    }
-    int limitBytes = getMaxNearlineRecordSizeBytes();
-    if (limitBytes == VeniceWriter.UNLIMITED_MAX_RECORD_SIZE || assembledSizeBytes <= limitBytes) {
-      return false;
-    }
-    recordNearlineRecordBlock(partitionConsumptionState, keyBytes, assembledSizeBytes, limitBytes);
-    return true;
-  }
-
-  private void recordNearlineRecordBlock(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] keyBytes,
-      int assembledSizeBytes,
-      int limitBytes) {
-    LargeRecordBlockDetector detector = partitionConsumptionState.getOrCreateLargeRecordBlockDetector(
-        serverConfig.getNearlineLargeRecordBlockReportIntervalMs(),
-        serverConfig.getNearlineLargeRecordMaxTrackedKeys());
-    LargeRecordBlockDetector.BlockReport report =
-        detector.recordBlockAndMaybeReport(keyBytes, assembledSizeBytes, limitBytes);
-    versionedIngestionStats.recordNearlineLargeRecordBlockedCount(storeName, versionNumber, 1);
-    if (report != null) {
-      LOGGER.warn("Nearline large-record write blocking for {}\n{}", partitionConsumptionState.getReplicaId(), report);
-    }
-  }
-
-  /**
-   * Size ceiling to declare on the old-value read for a partial update, so that a record which is already over the
-   * nearline limit is identified from its chunk manifest and never assembled. Returns
-   * {@link ChunkedValueManifestContainer#UNLIMITED_SIZE} when blocking is disabled, which is the pre-existing read
-   * behavior.
-   *
-   * <p>Applied on both the A/A and non-A/A paths, and only for partial updates. It adds no reads to either: non-A/A
-   * reads the old value unconditionally before the merge, and on A/A the read is lazy and is triggered from inside
-   * the merge, after the staleness short-circuit, so an update that loses conflict resolution still reads nothing.
-   * Full puts and deletes never declare a ceiling, because view writers depend on seeing the complete old value.
-   *
-   * <p>Callers must check {@link ChunkedValueManifestContainer#isSizeLimitExceeded()} before using the value that
-   * comes back. A vetoed read returns {@code null}, which is indistinguishable from "key not found" — treating it as
-   * absent would silently replace an oversized record instead of rejecting the write.
-   */
-  protected int getNearlineOldValueReadCeiling() {
-    if (!serverConfig.isNearlineLargeRecordBlockingEnabled()) {
-      return ChunkedValueManifestContainer.UNLIMITED_SIZE;
-    }
-    int limitBytes = getMaxNearlineRecordSizeBytes();
-    return limitBytes == VeniceWriter.UNLIMITED_MAX_RECORD_SIZE
-        ? ChunkedValueManifestContainer.UNLIMITED_SIZE
-        : limitBytes;
-  }
-
-  /**
-   * Whether the stored value for this key already exceeds the nearline record size limit. This is detected from the
-   * chunk manifest, which records the fully assembled size, so the value itself is never read or assembled.
-   *
-   * <p>A record that is already over the limit can only be brought back under it by a full put or a delete, so a
-   * partial update against it is rejected without attempting the merge.
-   */
-  protected boolean isStoredValueAlreadyTooLarge(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] keyBytes,
+  protected boolean isRecordTooLargeForPartialUpdate(
+      PartitionConsumptionState pcs,
+      DefaultPubSubMessage consumerRecord,
       ChunkedValueManifestContainer valueManifestContainer) {
     if (!valueManifestContainer.isSizeLimitExceeded()) {
       return false;
     }
-    recordNearlineRecordBlock(
-        partitionConsumptionState,
-        keyBytes,
-        valueManifestContainer.getAssembledSizeBytes(),
-        getMaxNearlineRecordSizeBytes());
-    return true;
-  }
-
-  /**
-   * Stop blocking writes to this key. Called for full puts and deletes, which can only shrink or reset the record, so
-   * that a reset event restores writes without operator action.
-   */
-  protected void unblockNearlineRecordIfPresent(PartitionConsumptionState partitionConsumptionState, byte[] keyBytes) {
-    LargeRecordBlockDetector detector = partitionConsumptionState.getLargeRecordBlockDetectorIfPresent();
-    if (detector != null && detector.unblock(keyBytes)) {
-      LOGGER.info(
-          "Nearline writes restored for key 0x{} in {} following a full put or delete.",
-          ByteUtils.toHexString(keyBytes),
-          partitionConsumptionState.getReplicaId());
+    versionedIngestionStats.recordPartialUpdateLargeRecordSkippedCount(storeName, versionNumber, 1);
+    String keyHex = ByteUtils.toHexString(consumerRecord.getKey().getKey());
+    // An oversized key is skipped on every partial update, so this would otherwise log on each one.
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "partialUpdateLargeRecordSkipped-" + keyHex)) {
+      LOGGER.warn(
+          "Skipped a partial update in {} for key 0x{} at position {}: the stored record is {} bytes, over the {} byte "
+              + "limit. Dump the source topic at this position to identify the update. A full PUT or DELETE resets the "
+              + "record.",
+          pcs.getReplicaId(),
+          keyHex,
+          consumerRecord.getPosition(),
+          valueManifestContainer.getManifest().getSize(),
+          getMaxNearlineRecordSizeBytes());
     }
+    return true;
   }
 
   /**

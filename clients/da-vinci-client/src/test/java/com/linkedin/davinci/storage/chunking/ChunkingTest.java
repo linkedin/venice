@@ -303,7 +303,7 @@ public class ChunkingTest {
   /**
    * The A/A path reads the old value via {@code getWithSchemaId}. A vetoed read must come back with a {@code null}
    * value and, critically, without fetching any chunks — assembling a pathological multi-megabyte record just to
-   * discover the write has to be rejected is exactly the ingestion cost nearline large-record blocking exists to
+   * discover the write has to be rejected is exactly the ingestion cost nearline large-record skipping exists to
    * avoid. The wrapper itself is non-null, which is what {@code unwrapByteBufferFromOldValueProvider} relies on.
    */
   @Test
@@ -315,7 +315,7 @@ public class ChunkingTest {
 
     Assert.assertNull(retrieved.value(), "An over-ceiling value must not be assembled");
     Assert.assertTrue(container.isSizeLimitExceeded(), "The caller must be able to tell this from 'not found'");
-    Assert.assertEquals(container.getAssembledSizeBytes(), fixture.assembledSize);
+    Assert.assertEquals(container.getManifest().size, fixture.assembledSize);
     fixture.verifyNoChunksFetched();
   }
 

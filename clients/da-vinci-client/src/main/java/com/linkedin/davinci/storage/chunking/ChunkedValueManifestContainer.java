@@ -11,7 +11,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
  * without fetching and concatenating any of its chunks. The lookup then returns {@code null}, and the caller
  * distinguishes that from a genuinely missing value via {@link #isSizeLimitExceeded()}.
  *
- * <p>This is used by nearline large-record blocking so that a pathological multi-megabyte record is never assembled
+ * <p>This is used by nearline large-record skipping so that a pathological multi-megabyte record is never assembled
  * just to discover that the write must be rejected. Callers that do not declare a ceiling are unaffected.
  */
 public class ChunkedValueManifestContainer {
@@ -27,8 +27,8 @@ public class ChunkedValueManifestContainer {
   }
 
   /**
-   * @param maxAssembledSizeBytes largest assembled value the caller is willing to have read, or {@link #UNLIMITED_SIZE}
-   *                              to impose no ceiling
+   * @param maxAssembledSizeBytes largest assembled value the caller is willing to have read. Any non-positive value,
+   *                              such as {@link #UNLIMITED_SIZE}, imposes no ceiling.
    */
   public ChunkedValueManifestContainer(int maxAssembledSizeBytes) {
     this.maxAssembledSizeBytes = maxAssembledSizeBytes;
@@ -36,8 +36,7 @@ public class ChunkedValueManifestContainer {
 
   public void setManifest(ChunkedValueManifest manifest) {
     this.manifest = manifest;
-    this.sizeLimitExceeded =
-        manifest != null && maxAssembledSizeBytes != UNLIMITED_SIZE && manifest.size > maxAssembledSizeBytes;
+    this.sizeLimitExceeded = manifest != null && maxAssembledSizeBytes > 0 && manifest.size > maxAssembledSizeBytes;
   }
 
   public ChunkedValueManifest getManifest() {
@@ -50,10 +49,5 @@ public class ChunkedValueManifestContainer {
    */
   public boolean isSizeLimitExceeded() {
     return sizeLimitExceeded;
-  }
-
-  /** Assembled size of the value from the manifest, or {@link #UNLIMITED_SIZE} if no manifest was read. */
-  public int getAssembledSizeBytes() {
-    return manifest == null ? UNLIMITED_SIZE : manifest.size;
   }
 }

@@ -262,7 +262,7 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
-  public void recordNearlineLargeRecordBlockedCount(int version, long value) {
+  public void recordPartialUpdateLargeRecordSkippedCount(int version, long value) {
   }
 
   @Override

@@ -344,12 +344,7 @@ public class ChunkingUtils {
     if (manifestContainer != null) {
       manifestContainer.setManifest(chunkedValueManifest);
       if (manifestContainer.isSizeLimitExceeded()) {
-        /**
-         * The caller declared a ceiling on the assembled size and this value is already above it. The manifest alone
-         * tells us that, so the chunks are never fetched or concatenated. The caller distinguishes this null from a
-         * missing value via {@link ChunkedValueManifestContainer#isSizeLimitExceeded()}.
-         */
-        return null;
+        return null; // caller distinguishes null from missing via ChunkedValueManifestContainer.isSizeLimitExceeded()
       }
     }
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);

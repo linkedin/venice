@@ -406,11 +406,10 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
-  NEARLINE_LARGE_RECORD_BLOCKED_COUNT(
-      "ingestion.partial_update.large_record_blocked_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of partial updates rejected because the assembled record exceeds the nearline record size limit. "
-          + "A non-zero value means writes to at least one key are being dropped; the offending keys are named in the "
-          + "server log.",
+  PARTIAL_UPDATE_LARGE_RECORD_SKIPPED_COUNT(
+      "ingestion.partial_update.large_record_skipped_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of partial updates rejected because the nearline record size limit was exceeded. "
+          + "The pubsub topic positions of the offending keys are named in the server logs.",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 

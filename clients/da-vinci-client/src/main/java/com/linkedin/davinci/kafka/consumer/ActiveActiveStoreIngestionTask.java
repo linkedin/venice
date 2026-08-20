@@ -555,8 +555,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       case PUT:
         incomingValueSchemaId = ((Put) kafkaValue.payloadUnion).schemaId;
         incomingWriteComputeSchemaId = -1;
-        // A full put replaces the record outright, so it can rescue a key that was blocked for being oversized.
-        unblockNearlineRecordIfPresent(partitionConsumptionState, keyBytes);
         break;
       case UPDATE:
         Update incomingUpdate = (Update) kafkaValue.payloadUnion;
@@ -567,8 +565,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       case DELETE:
         incomingValueSchemaId = -1; // Ignored since we don't need the schema id for DELETE operations.
         incomingWriteComputeSchemaId = -1;
-        // A delete removes the record outright, so it can rescue a key that was blocked for being oversized.
-        unblockNearlineRecordIfPresent(partitionConsumptionState, keyBytes);
         break;
       default:
         throw new VeniceMessageException(
@@ -577,9 +573,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // The read ceiling is declared only for partial updates. Full puts and deletes must always read the complete old
     // value, because view writers such as a ComplexVeniceWriter materialized view depend on it to route correctly.
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer(
-        msgType == MessageType.UPDATE
-            ? getNearlineOldValueReadCeiling()
-            : ChunkedValueManifestContainer.UNLIMITED_SIZE);
+        msgType == MessageType.UPDATE ? getMaxNearlineRecordSizeBytes() : ChunkedValueManifestContainer.UNLIMITED_SIZE);
     Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
         () -> getValueBytesForKey(
             partitionConsumptionState,
@@ -646,15 +640,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
 
       case UPDATE:
-        if (isNearlineUpdateBlocked(partitionConsumptionState, keyBytes)) {
-          // This key already exceeds the nearline record size limit. Skip before the merge, which is the expensive
-          // part. Reported separately from updateIgnoredDCR, which tracks stale messages losing conflict resolution.
-          return buildIgnoredMergeConflictResult(
-              oldValueProvider,
-              oldValueByteBufferProvider,
-              rmdWithValueSchemaID,
-              valueManifestContainer);
-        }
         mergeConflictResult = mergeConflictResolver.update(
             oldValueByteBufferProvider,
             rmdWithValueSchemaID,
@@ -664,7 +649,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             writeTimestamp,
             kafkaClusterId,
             valueManifestContainer);
-        if (isStoredValueAlreadyTooLarge(partitionConsumptionState, keyBytes, valueManifestContainer)) {
+        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
           // The stored record is already over the limit, so its chunk manifest short-circuited the read and the merge
           // above ran against a null old value. That result must be discarded rather than produced: it was built from
           // this update alone and would silently replace the oversized record instead of rejecting the write.
@@ -687,18 +672,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
       aggVersionedIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
-      return new PubSubMessageProcessedResult(
-          new MergeConflictResultWrapper(
-              mergeConflictResult,
-              oldValueProvider,
-              oldValueByteBufferProvider,
-              false,
-              ACTIVE_KEY_COUNT_NOT_TRACKED, // ignored update — no signal computed
-              rmdWithValueSchemaID,
-              valueManifestContainer,
-              null,
-              null,
-              (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
+      return buildIgnoredMergeConflictResult(
+          oldValueProvider,
+          oldValueByteBufferProvider,
+          rmdWithValueSchemaID,
+          valueManifestContainer);
     } else {
       // If rmdWithValueSchemaID is not null this implies Venice has processed this key before
       // it will be produced to VT with as a duplicate key message. emit this info for log compaction
@@ -720,16 +698,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             updatedValueBytes.remaining(),
             storeName,
             versionNumber);
-        if (shouldBlockLargeNearlineRecord(partitionConsumptionState, keyBytes, updatedValueBytes.remaining())) {
-          // The assembled record exceeds the nearline size limit. Drop this write rather than pausing the partition,
-          // so ingestion keeps advancing for every other key. Returning before setTransientRecord() below leaves the
-          // transient cache reflecting the last value that was actually persisted.
-          return buildIgnoredMergeConflictResult(
-              oldValueProvider,
-              oldValueByteBufferProvider,
-              rmdWithValueSchemaID,
-              valueManifestContainer);
-        }
       }
 
       final int valueSchemaId = mergeConflictResult.getValueSchemaId();
@@ -783,9 +751,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * Build a result that tells the produce path to skip this record. Distinct from the {@code updateIgnoredDCR} path,
-   * which tracks stale messages that lost conflict resolution; this one is used when a partial update is rejected for
-   * exceeding the nearline record size limit.
+   * Build a result that carries no new value, so the produce path writes nothing for this record. Used both when the
+   * update lost conflict resolution and when it is skipped for exceeding the nearline record size limit; the two are
+   * distinguished by their own metrics, not by the result.
    */
   private PubSubMessageProcessedResult buildIgnoredMergeConflictResult(
       Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider,
@@ -798,7 +766,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             oldValueProvider,
             oldValueByteBufferProvider,
             false,
-            ACTIVE_KEY_COUNT_NOT_TRACKED,
+            ACTIVE_KEY_COUNT_NOT_TRACKED, // ignored update — no signal computed
             rmdWithValueSchemaID,
             valueManifestContainer,
             null,

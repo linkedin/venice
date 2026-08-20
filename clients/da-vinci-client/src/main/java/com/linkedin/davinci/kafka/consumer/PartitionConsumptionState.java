@@ -416,9 +416,6 @@ public class PartitionConsumptionState {
   /** Lazily allocated per-partition detector for partial-update amplification. */
   private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
 
-  /** Lazily allocated per-partition tracker for keys blocked by the nearline record size limit. */
-  private volatile LargeRecordBlockDetector largeRecordBlockDetector;
-
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
@@ -1667,28 +1664,5 @@ public class PartitionConsumptionState {
       }
     }
     return partialUpdateAmplificationDetector;
-  }
-
-  /**
-   * Get or create the per-partition large-record block tracker. Lazily allocated using double-checked locking, so only
-   * partitions that actually reject an oversized write allocate. The parameters are only used on first creation.
-   */
-  public LargeRecordBlockDetector getOrCreateLargeRecordBlockDetector(long reportIntervalMs, int maxTrackedKeys) {
-    if (largeRecordBlockDetector == null) {
-      synchronized (this) {
-        if (largeRecordBlockDetector == null) {
-          largeRecordBlockDetector = new LargeRecordBlockDetector(reportIntervalMs, maxTrackedKeys);
-        }
-      }
-    }
-    return largeRecordBlockDetector;
-  }
-
-  /**
-   * The large-record block tracker, or {@code null} if this partition has never rejected an oversized write. Callers
-   * on the hot path use this to avoid allocating a tracker just to ask whether a key is blocked.
-   */
-  public LargeRecordBlockDetector getLargeRecordBlockDetectorIfPresent() {
-    return largeRecordBlockDetector;
   }
 }
