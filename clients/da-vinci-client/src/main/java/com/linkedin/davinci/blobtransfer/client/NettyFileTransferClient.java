@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.AdaptiveRecvByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -140,6 +141,14 @@ public class NettyFileTransferClient {
     // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
     clientBootstrap
         .option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(64 * 1024, 512 * 1024, 1 << 20));
+    // Blob transfer moves large, infrequent bursts of data rather than the high-churn small allocations pooling
+    // is meant for. The shared JVM-wide pooled allocator's arenas (used for both the incoming file-content buffers
+    // and the SSL/TLS wrap-unwrap buffers on this receiving side) grow to fit those bursts but never shrink back,
+    // so isolate this client's blob-transfer connections onto an unpooled allocator whose direct memory is freed
+    // once GC'd, instead of retained indefinitely in the pool. Unlike the sending side (see
+    // P2PFileTransferServerHandler#sendFile), this client has no deliberately pooled/reused heap-chunk path to
+    // preserve, so it is safe to route both heap and direct allocations here through the unpooled allocator.
+    clientBootstrap.option(ChannelOption.ALLOCATOR, UnpooledByteBufAllocator.DEFAULT);
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
