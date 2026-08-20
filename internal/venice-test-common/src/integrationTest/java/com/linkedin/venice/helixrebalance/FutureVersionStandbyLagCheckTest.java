@@ -30,9 +30,9 @@ import org.testng.annotations.Test;
  */
 public class FutureVersionStandbyLagCheckTest {
   private VeniceClusterWrapper cluster;
-  private final int replicaFactor = 2;
-  private final int partitionSize = 1000;
-  private final int partitionNum = 1;
+  private static final int replicaFactor = 2;
+  private static final int partitionSize = 1000;
+  private static final int partitionNum = 1;
 
   @BeforeMethod
   public void setUp() {
