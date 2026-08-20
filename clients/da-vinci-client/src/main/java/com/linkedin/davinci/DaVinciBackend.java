@@ -53,6 +53,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
@@ -641,10 +642,16 @@ public class DaVinciBackend implements Closeable {
     return currentVersion == null ? -1 : currentVersion.getNumber();
   }
 
+  @VisibleForTesting
+  public Set<Integer> getSubscribedVersionNumbers(String storeName) {
+    StoreBackend storeBackend = storeByNameMap.get(storeName);
+    return storeBackend == null ? Collections.emptySet() : storeBackend.getSubscribedVersionNumbers();
+  }
+
   private Version getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
     Version latestNonFaultyVersion = null;
     for (Version version: store.getVersions()) {
-      if (faultyVersions.contains(version.getNumber())) {
+      if (isDaVinciVersionIneligible(version, faultyVersions)) {
         continue;
       }
       if (latestNonFaultyVersion == null || latestNonFaultyVersion.getNumber() < version.getNumber()) {
@@ -656,6 +663,17 @@ public class DaVinciBackend implements Closeable {
 
   private Version getVeniceCurrentVersion(Store store) {
     return store.getVersion(store.getCurrentVersion());
+  }
+
+  /** Terminal versions and versions with process-local ingestion failures are not Da Vinci candidates. */
+  static boolean isDaVinciVersionIneligible(Version version, Set<Integer> faultyVersions) {
+    if (version == null) {
+      return true;
+    }
+    VersionStatus status = version.getStatus();
+    boolean terminalStatus = VersionStatus.isVersionRolledBack(status) || VersionStatus.isVersionErrored(status)
+        || VersionStatus.isVersionKilled(status);
+    return terminalStatus || faultyVersions.contains(version.getNumber());
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
