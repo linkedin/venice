@@ -833,7 +833,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       Row assembled = getOrCreateAssembler().assembleChunks(keyBytes, rowsList.iterator());
 
       if (assembled == null) {
-        // Latest record is DELETE, chunks incomplete, or filtered by TTL
+        // Latest record is DELETE, orphan chunks (no manifest), or filtered by TTL
         emptyRecordAcc.add(1);
         chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
         return Collections.emptyIterator();

@@ -85,7 +85,14 @@ public class SparkChunkAssembler implements Serializable, AutoCloseable {
    *
    * @param keyBytes The key bytes
    * @param rows Iterator of rows for this key (MUST be sorted by offset DESC - highest offset first)
-   * @return Assembled row with DEFAULT_SCHEMA_WITH_SCHEMA_ID schema, or null if DELETE, incomplete chunks, or filtered by TTL
+   * @return Assembled row with DEFAULT_SCHEMA_WITH_SCHEMA_ID schema, or null if DELETE, orphan chunks
+   *         (chunks with no corresponding manifest), or filtered by TTL
+   * @throws RuntimeException (e.g. VeniceException, IllegalArgumentException, IllegalStateException) if the
+   *         assembled record is malformed - for example missing value/RMD chunks, a byte-count mismatch
+   *         against the manifest, an offset-ordering violation, or an unrecognized schema id/message type.
+   *         This intentionally mirrors {@code VeniceKafkaInputReducer#extractChunkedMessage}, which lets the
+   *         same exceptions from {@code ChunkAssembler#assembleAndGetValue} propagate and fail the MR task
+   *         rather than silently dropping the record.
    */
   public Row assembleChunks(byte[] keyBytes, Iterator<Row> rows) {
     // Handle empty iterator early
@@ -95,18 +102,14 @@ public class SparkChunkAssembler implements Serializable, AutoCloseable {
 
     Iterator<byte[]> valueIterator = new RowToSerializedValueIterator(rows);
 
-    ChunkAssembler.ValueBytesAndSchemaId assembled;
-    try {
-      assembled = getChunkAssembler().assembleAndGetValue(keyBytes, valueIterator);
-    } catch (IllegalStateException e) {
-      throw e;
-    } catch (Exception e) {
-      // If assembly fails (e.g., incomplete chunks, missing manifest, orphan chunks), return null
-      return null;
-    }
+    // Do not catch-and-swallow exceptions here: every exception ChunkAssembler#assembleAndGetValue throws
+    // (missing chunks, byte-count mismatch, ordering violation, unrecognized schema id) represents a genuinely
+    // corrupt/incomplete record, not a legitimate "no data" outcome. Legitimate null results (DELETE, orphan
+    // chunks with no manifest) are already returned as `null` by assembleAndGetValue below, without throwing.
+    ChunkAssembler.ValueBytesAndSchemaId assembled = getChunkAssembler().assembleAndGetValue(keyBytes, valueIterator);
 
     if (assembled == null) {
-      // Latest record is DELETE, or chunks are incomplete
+      // Latest record is DELETE with no RMD, or no manifest was ever found (orphan chunks)
       return null;
     }
 
