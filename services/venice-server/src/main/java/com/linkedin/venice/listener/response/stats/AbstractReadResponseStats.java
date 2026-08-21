@@ -16,15 +16,12 @@ import com.linkedin.venice.utils.LatencyUtils;
  * This abstract class is the container for response stats. The stats can be accumulated via the APIs provided by
  * {@link ReadResponseStats}, and then recorded using the API from {@link ReadResponseStatsRecorder}.
  *
- * The class hierarchy aims to minimize the amount of state required for any given response, based on its type and
- * relevant server configs:
+ * The class hierarchy aims to minimize the amount of state required for each response type:
  *
  * - {@link AbstractReadResponseStats}
  * +-- {@link SingleGetResponseStats}
  * +-- {@link MultiKeyResponseStats}
- *   +-- {@link MultiGetResponseStatsWithSizeProfiling}
  *   +-- {@link ComputeResponseStats}
- *     +-- {@link ComputeResponseStatsWithSizeProfiling}
  */
 public abstract class AbstractReadResponseStats implements ReadResponseStats, ReadResponseStatsRecorder {
   private static final int UNINITIALIZED = -1;
@@ -146,11 +143,6 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
 
   @Override
   public void addReadComputeSerializationLatency(double latency) {
-    throwUnsupportedMetric();
-  }
-
-  @Override
-  public void addReadComputeOutputSize(int size) {
     throwUnsupportedMetric();
   }
 

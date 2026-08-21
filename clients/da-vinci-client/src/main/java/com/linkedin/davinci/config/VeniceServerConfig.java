@@ -47,7 +47,6 @@ import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
@@ -197,7 +196,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_T
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS;
-import static com.linkedin.venice.ConfigKeys.SERVER_READ_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED;
@@ -519,8 +517,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int parallelBatchGetChunkSize;
 
-  private final boolean keyValueProfilingEnabled;
-
   private final boolean enableDatabaseMemoryStats;
 
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
@@ -608,7 +604,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
   private final boolean unregisterMetricForDeletedStoreEnabled;
   private final boolean ingestionOtelStatsEnabled;
-  private final boolean readOtelStatsEnabled;
   protected final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
   private final boolean resetErrorReplicaEnabled;
 
@@ -993,7 +988,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     enableParallelBatchGet = serverProperties.getBoolean(SERVER_ENABLE_PARALLEL_BATCH_GET, false);
     parallelBatchGetChunkSize = serverProperties.getInt(SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 5);
 
-    keyValueProfilingEnabled = serverProperties.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
     enableDatabaseMemoryStats = serverProperties.getBoolean(SERVER_DATABASE_MEMORY_STATS_ENABLED, true);
 
     Map<String, String> storeToEarlyTerminationThresholdMSMapProp =
@@ -1130,7 +1124,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     unregisterMetricForDeletedStoreEnabled =
         serverProperties.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     ingestionOtelStatsEnabled = serverProperties.getBoolean(SERVER_INGESTION_OTEL_STATS_ENABLED, true);
-    readOtelStatsEnabled = serverProperties.getBoolean(SERVER_READ_OTEL_STATS_ENABLED, true);
     fastAvroFieldLimitPerMethod = serverProperties.getInt(FAST_AVRO_FIELD_LIMIT_PER_METHOD, 100);
 
     forkedProcessJvmArgList =
@@ -1702,10 +1695,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return parallelBatchGetChunkSize;
   }
 
-  public boolean isKeyValueProfilingEnabled() {
-    return keyValueProfilingEnabled;
-  }
-
   public boolean isDatabaseMemoryStatsEnabled() {
     return enableDatabaseMemoryStats;
   }
@@ -1941,10 +1930,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionOtelStatsEnabled() {
     return ingestionOtelStatsEnabled;
-  }
-
-  public boolean isReadOtelStatsEnabled() {
-    return readOtelStatsEnabled;
   }
 
   public boolean isReadOnlyForBatchOnlyStoreEnabled() {

@@ -20,10 +20,7 @@ import org.testng.annotations.Test;
 public class AggServerHttpRequestStatsTest {
   private MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
-  private MetricsRepository metricsRepositoryForKVProfiling;
-  private MockTehutiReporter reporterForKVProfiling;
   private AggServerHttpRequestStats singleGetStats;
-  private AggServerHttpRequestStats singleGetStatsWithKVProfiling;
   private AggServerHttpRequestStats batchGetStats;
   private AggServerHttpRequestStats computeStats;
 
@@ -46,66 +43,41 @@ public class AggServerHttpRequestStatsTest {
     this.reporter = new MockTehutiReporter();
     this.metricsRepository.addReporter(reporter);
 
-    this.metricsRepositoryForKVProfiling = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    this.reporterForKVProfiling = new MockTehutiReporter();
-    this.metricsRepositoryForKVProfiling.addReporter(reporterForKVProfiling);
-
     Assert.assertEquals(metricsRepository.metrics().size(), 0);
-    Assert.assertEquals(metricsRepositoryForKVProfiling.metrics().size(), 0);
 
     this.singleGetStats = new AggServerHttpRequestStats(
         "test_cluster",
         metricsRepository,
         RequestType.SINGLE_GET,
-        false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
-        false,
-        true);
+        false);
     this.batchGetStats = new AggServerHttpRequestStats(
         "test_cluster",
         metricsRepository,
         RequestType.MULTI_GET,
-        false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
-        false,
-        true);
+        false);
     this.computeStats = new AggServerHttpRequestStats(
         "test_cluster",
         metricsRepository,
         RequestType.COMPUTE,
-        false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
-        false,
-        true);
-
-    this.singleGetStatsWithKVProfiling = new AggServerHttpRequestStats(
-        "test_cluster",
-        metricsRepositoryForKVProfiling,
-        RequestType.SINGLE_GET,
-        true,
-        Mockito.mock(ReadOnlyStoreRepository.class),
-        true,
-        false,
-        true);
+        false);
   }
 
   @AfterTest
   public void cleanUp() {
     metricsRepository.close();
-    metricsRepositoryForKVProfiling.close();
     reporter.close();
-    reporterForKVProfiling.close();
   }
 
   @Test
   public void testMetrics() {
     ServerHttpRequestStats singleGetServerStatsFoo = singleGetStats.getStoreStats(STORE_FOO);
     ServerHttpRequestStats singleGetServerStatsBar = singleGetStats.getStoreStats(STORE_BAR);
-    ServerHttpRequestStats singleGetServerStatsWithKvProfilingFoo =
-        singleGetStatsWithKVProfiling.getStoreStats(STORE_FOO);
 
     ServerHttpRequestStats computeServerStatsFoo = computeStats.getStoreStats(STORE_FOO);
 
@@ -116,9 +88,6 @@ public class AggServerHttpRequestStatsTest {
 
     singleGetServerStatsFoo.recordKeySizeInByte(100);
     singleGetServerStatsFoo.recordValueSizeInByte(OK_STATUS, OK_CATEGORY, OK_VENICE, 1000);
-
-    singleGetServerStatsWithKvProfilingFoo.recordKeySizeInByte(100);
-    singleGetServerStatsWithKvProfilingFoo.recordValueSizeInByte(OK_STATUS, OK_CATEGORY, OK_VENICE, 1000);
 
     computeServerStatsFoo.recordDotProductCount(10);
     computeServerStatsFoo.recordCosineSimilarityCount(10);
@@ -149,13 +118,6 @@ public class AggServerHttpRequestStatsTest {
         "Max value for request key size should always be recorded");
 
     Assert.assertTrue(
-        reporterForKVProfiling.query(".store_foo--request_key_size.Avg").value() > 0,
-        "Avg value for request key size should always be recorded");
-    Assert.assertTrue(
-        reporterForKVProfiling.query(".store_foo--request_key_size.Max").value() > 0,
-        "Max value for request key size should always be recorded");
-
-    Assert.assertTrue(
         reporter.query(".store_foo--compute_dot_product_count.Avg").value() > 0,
         "Avg value for compute dot product count should always be recorded");
     Assert.assertTrue(
@@ -167,22 +129,6 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertTrue(
         reporter.query(".store_foo--compute_count_operator_count.Avg").value() > 0,
         "Avg value for compute count operator count should always be recorded");
-
-    String[] fineGrainedPercentiles = new String[] { "0_01", "0_01", "0_1", "1", "2", "3", "4", "5", "10", "20", "30",
-        "40", "50", "60", "70", "80", "90", "95", "99", "99_9" };
-    for (String fineGrainedPercentile: fineGrainedPercentiles) {
-      Assert.assertNull(
-          metricsRepository.getMetric(".store_foo--request_key_size." + fineGrainedPercentile + "thPercentile"));
-      Assert.assertNull(
-          metricsRepository.getMetric(".store_foo--request_value_size." + fineGrainedPercentile + "thPercentile"));
-
-      Assert.assertTrue(
-          reporterForKVProfiling.query(".store_foo--request_key_size." + fineGrainedPercentile + "thPercentile")
-              .value() > 0);
-      Assert.assertTrue(
-          reporterForKVProfiling.query(".store_foo--request_value_size." + fineGrainedPercentile + "thPercentile")
-              .value() > 0);
-    }
 
     singleGetStats.handleStoreDeleted(STORE_FOO);
     Assert.assertNull(metricsRepository.getMetric("." + STORE_FOO + "--success_request.OccurrenceRate"));
