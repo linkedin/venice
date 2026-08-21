@@ -176,6 +176,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public Integer getMaxNearlineRecordSizeBytes() {
+    return this.storeVersion.maxNearlineRecordSizeBytes;
+  }
+
+  @Override
+  public void setMaxNearlineRecordSizeBytes(Integer maxNearlineRecordSizeBytes) {
+    this.storeVersion.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
+  }
+
+  @Override
   public final String getStoreName() {
     return this.storeVersion.storeName.toString();
   }
@@ -594,6 +604,7 @@ public class VersionImpl implements Version {
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
     clonedVersion.setRmdChunkingEnabled(isRmdChunkingEnabled());
+    clonedVersion.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());

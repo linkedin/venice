@@ -2910,6 +2910,45 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testGetMaxNearlineRecordSizeBytesFallback() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    doCallRealMethod().when(ctx.task).getMaxNearlineRecordSizeBytes();
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(100).when(serverConfig).getDefaultMaxRecordSizeBytes();
+    setField(ctx.task, "serverConfig", serverConfig);
+
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    setField(ctx.task, "storeRepository", storeRepository);
+    Store store = mock(Store.class);
+    doReturn(store).when(storeRepository).getStore("testStore");
+
+    Version version = mock(Version.class);
+    doReturn(version).when(ctx.task).getVersion();
+
+    // 1. Non-null per-version snapshot (1024): used directly, no fallback to the store.
+    doReturn(1024).when(version).getMaxNearlineRecordSizeBytes();
+    assertEquals(ctx.task.getMaxNearlineRecordSizeBytes(), 1024);
+    verify(store, never()).getMaxNearlineRecordSizeBytes();
+
+    // 2. Non-null snapshot of a store that was unset at creation (-1): used as-is, so it resolves to the fleet
+    // default and a LATER store-level change (10MB) is ignored -- no retroactive change for an existing version.
+    doReturn(-1).when(version).getMaxNearlineRecordSizeBytes();
+    doReturn(10_000_000).when(store).getMaxNearlineRecordSizeBytes();
+    assertEquals(ctx.task.getMaxNearlineRecordSizeBytes(), 100);
+    verify(store, never()).getMaxNearlineRecordSizeBytes();
+
+    // 3. Null snapshot (version created before v48): fall back to the live store-level value (2048).
+    doReturn(null).when(version).getMaxNearlineRecordSizeBytes();
+    doReturn(2048).when(store).getMaxNearlineRecordSizeBytes();
+    assertEquals(ctx.task.getMaxNearlineRecordSizeBytes(), 2048);
+
+    // 4. Null snapshot with an unset store: backfill the fleet-wide default.max.record.size.bytes server config (100).
+    doReturn(-1).when(store).getMaxNearlineRecordSizeBytes();
+    assertEquals(ctx.task.getMaxNearlineRecordSizeBytes(), 100);
+  }
+
+  @Test
   public void testRecordAssembledRmdSizeGating() throws Exception {
     MockTaskContext ctx = createMockTaskForGatingTests();
     setField(ctx.task, "isRmdChunked", false);
