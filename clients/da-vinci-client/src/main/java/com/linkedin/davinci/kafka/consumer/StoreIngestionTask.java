@@ -6124,7 +6124,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return PubSubUtil.deserializePositionWithOffsetFallback(
           leaderMetadataFooter.upstreamPubSubPosition,
           leaderMetadataFooter.upstreamOffset,
-          pubSubContext.getPubSubPositionDeserializer());
+          pubSubContext.getPubSubPositionDeserializer(),
+          getReplicaId(kafkaVersionTopic, consumerRecord.getPartition()));
     } else {
       // Directly use upstreamOffset without attempting position deserialization
       return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
