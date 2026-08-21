@@ -197,6 +197,7 @@ public class DaVinciTestContext<K, V> {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(D2_ZK_HOSTS_ADDRESS, zkAddress)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 4 * 1024 * 1024 * 1024L)
-        .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+        .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .put(ServiceFactory.getPubSubClientConfigs());
   }
 }

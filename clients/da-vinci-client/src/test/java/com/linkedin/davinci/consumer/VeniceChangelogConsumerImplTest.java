@@ -208,6 +208,7 @@ public class VeniceChangelogConsumerImplTest {
     assertTrue(config.getConsumerProperties().isEmpty());
     assertThrows(NullPointerException.class, () -> config.setConsumerProperties(null));
     Properties newProps = new Properties();
+    newProps.putAll(TestUtils.getPubSubClientConfigsWithFallbackEnabled());
     newProps.setProperty("foo", "bar");
     config.setConsumerProperties(newProps);
     assertNotNull(config.getConsumerProperties());
@@ -1467,7 +1468,7 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
-            .setConsumerProperties(new Properties())
+            .setConsumerProperties(TestUtils.getPubSubClientConfigsWithFallbackEnabled())
             .setViewName("");
     changelogClientConfig.getInnerClientConfig()
         .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));

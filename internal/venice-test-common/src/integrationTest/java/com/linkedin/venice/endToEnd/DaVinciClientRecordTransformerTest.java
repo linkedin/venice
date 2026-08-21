@@ -28,6 +28,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
@@ -146,7 +147,7 @@ public class DaVinciClientRecordTransformerTest {
           ClientConfig.defaultGenericClientConfig(recordTransformerStoreName)
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
-          VeniceProperties.empty(),
+          new VeniceProperties(ServiceFactory.getPubSubClientConfigs()),
           null)) {
         producer.asyncDelete(1).get();
 
@@ -378,7 +379,7 @@ public class DaVinciClientRecordTransformerTest {
           ClientConfig.defaultGenericClientConfig(recordTransformerStoreName)
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
-          VeniceProperties.empty(),
+          new VeniceProperties(ServiceFactory.getPubSubClientConfigs()),
           null)) {
         int key = numKeys + 1;
         String value = "a" + key;

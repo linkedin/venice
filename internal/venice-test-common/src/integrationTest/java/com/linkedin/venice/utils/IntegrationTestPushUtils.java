@@ -51,6 +51,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.integration.utils.KafkaTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -286,6 +287,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
+    addPubSubApacheKafkaAdapterFactoryConfigs(samzaConfig);
     samzaConfig.putAll(
         PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
     return samzaConfig;
@@ -306,6 +308,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
     samzaConfig.put(DEPLOYMENT_ID, "DC_" + index + "_" + storeName);
     samzaConfig.put(SSL_ENABLED, "false");
+    samzaConfig.putAll(clusterWrapper.getChildRegions().get(index).getPubSubClientProperties());
     return samzaConfig;
   }
 
@@ -324,7 +327,12 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
     samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
+    samzaConfig.putAll(clusterWrapper.getChildRegions().get(0).getPubSubClientProperties());
     return samzaConfig;
+  }
+
+  private static void addPubSubApacheKafkaAdapterFactoryConfigs(Map<String, String> config) {
+    ServiceFactory.getPubSubClientConfigs().forEach((key, value) -> config.put(key.toString(), value.toString()));
   }
 
   /**
@@ -602,6 +610,7 @@ public class IntegrationTestPushUtils {
       PubSubBrokerWrapper pubSubBrokerWrapper,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     veniceWriterProperties
         .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));

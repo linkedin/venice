@@ -47,6 +47,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -83,6 +84,7 @@ public class DaVinciBackendTest {
     serverProps.setProperty(INGESTION_USE_DA_VINCI_CLIENT, "true");
     serverProps.setProperty(DATA_BASE_PATH, "/tmp/test");
     serverProps.setProperty(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, "0");
+    serverProps.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(serverProps);
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties);
 

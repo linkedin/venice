@@ -220,6 +220,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.storeName =
           VeniceView.getViewStoreName(changelogClientConfig.getStoreName(), changelogClientConfig.getViewName());
       Properties rocksDBBufferProperties = new Properties();
+      // VeniceServerConfig below eagerly builds a PubSubClientsFactory, which fails fast when the pub-sub
+      // adapter factory classes are not configured. Seed the buffer config with the consumer properties (which
+      // carry those classes) so it resolves them; the RocksDB buffer itself does not use a pub-sub client.
+      rocksDBBufferProperties.putAll(changelogClientConfig.getConsumerProperties());
       String rocksDBBufferPath = changelogClientConfig.getBootstrapFileSystemPath();
       if (rocksDBBufferPath == null || rocksDBBufferPath.isEmpty()) {
         throw new VeniceException("bootstrapFileSystemPath must be configured for consuming view store: " + storeName);

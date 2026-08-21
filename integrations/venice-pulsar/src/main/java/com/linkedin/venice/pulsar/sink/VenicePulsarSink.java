@@ -9,6 +9,7 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_ROUTER_URL;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -242,6 +243,11 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     config.put(VENICE_ROUTER_URL, veniceCfg.getVeniceRouterUrl());
     config.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id-pulsar-sink"));
     config.put(SSL_ENABLED, "false");
+    // The sink's Venice producer writes to the (Kafka-backed) real-time topic; set the pub-sub producer
+    // adapter factory explicitly so it does not fail fast when the factory class is unconfigured.
+    config.put(
+        ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+        "com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory");
     if (veniceCfg.getKafkaSaslConfig() != null && !veniceCfg.getKafkaSaslConfig().isEmpty()) {
       config.put("kafka.sasl.jaas.config", veniceCfg.getKafkaSaslConfig());
     }
