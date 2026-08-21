@@ -4,7 +4,6 @@ import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.cons
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeDoubleIfAbove;
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeIntIfAbove;
 
-import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
@@ -15,16 +14,13 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
   private double readComputeLatency = 0;
   private double readComputeDeserializationLatency = 0;
   private double readComputeSerializationLatency = 0;
-  private int readComputeOutputSize = 0;
-  private int totalValueSize = 0;
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
   private int countOperatorCount = 0;
 
-  @Override
-  public void addValueSize(int size) {
-    this.totalValueSize += size;
+  public ComputeResponseStats(int maxKeyCount) {
+    super(maxKeyCount);
   }
 
   @Override
@@ -40,11 +36,6 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
   @Override
   public void addReadComputeSerializationLatency(double latency) {
     this.readComputeSerializationLatency += latency;
-  }
-
-  @Override
-  public void addReadComputeOutputSize(int size) {
-    this.readComputeOutputSize += size;
   }
 
   @Override
@@ -91,29 +82,19 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
         isAssembledMultiChunkLargeValue,
         0);
     consumeDoubleIfAbove(stats::recordReadComputeSerializationLatency, this.readComputeSerializationLatency, 0);
-    if (this.readComputeOutputSize > 0) {
-      stats.recordReadComputeEfficiency((double) this.totalValueSize / readComputeOutputSize);
-    }
-  }
-
-  @VisibleForTesting
-  public int getResponseValueSize() {
-    return this.totalValueSize;
   }
 
   @Override
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
-    // Merges only the fields this subclass introduces: compute latencies, totalValueSize,
-    // and per-operation counts. ParallelMultiKeyResponseWrapper creates all chunks with the
-    // same type, so 'other' will always be a ComputeResponseStats here.
+    // Merges only the fields this subclass introduces: compute latencies and per-operation counts.
+    // ParallelMultiKeyResponseWrapper creates all chunks with the same type, so 'other' will always be
+    // a ComputeResponseStats here.
     if (other instanceof ComputeResponseStats) {
       ComputeResponseStats otherStats = (ComputeResponseStats) other;
       this.readComputeLatency += otherStats.readComputeLatency;
       this.readComputeDeserializationLatency += otherStats.readComputeDeserializationLatency;
       this.readComputeSerializationLatency += otherStats.readComputeSerializationLatency;
-      this.readComputeOutputSize += otherStats.readComputeOutputSize;
-      this.totalValueSize += otherStats.totalValueSize;
       this.dotProductCount += otherStats.dotProductCount;
       this.cosineSimilarityCount += otherStats.cosineSimilarityCount;
       this.hadamardProductCount += otherStats.hadamardProductCount;

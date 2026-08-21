@@ -12,7 +12,7 @@ public class MultiGetResponseWrapper extends MultiKeyResponseWrapper<MultiGetRes
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
 
   public MultiGetResponseWrapper(int maxKeyCount) {
-    this(maxKeyCount, new MultiKeyResponseStats());
+    this(maxKeyCount, new MultiKeyResponseStats(maxKeyCount));
   }
 
   public MultiGetResponseWrapper(int maxKeyCount, MultiKeyResponseStats responseStats) {
