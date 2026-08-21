@@ -262,6 +262,10 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
+  public void recordPartialUpdateLargeRecordSkippedCount(int version, long value) {
+  }
+
+  @Override
   public void recordActiveKeyCountInvalidation(int version) {
   }
 }

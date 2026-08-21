@@ -4255,14 +4255,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           readerValueSchemaId = supersetSchemaEntry.getId();
           readerUpdateProtocolVersion = update.updateSchemaId;
         }
-        ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+        ChunkedValueManifestContainer valueManifestContainer =
+            new ChunkedValueManifestContainer(getMaxNearlineRecordSizeBytes());
         final GenericRecord currValue = readStoredValueRecord(
             partitionConsumptionState,
             keyBytes,
             readerValueSchemaId,
             consumerRecord.getTopicPartition(),
             valueManifestContainer);
-
+        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
+          // The record size is over the limit, so it was never assembled and the merge is skipped outright.
+          // Producing is skipped, leaving local storage and the transient cache untouched.
+          return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
+        }
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
         final int incomingUpdatePayloadSize = update.updateValue.remaining();
@@ -5007,6 +5012,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           .warn("Partial-update amplification report for {}\n{}", partitionConsumptionState.getReplicaId(), ampReport);
       versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
     }
+  }
+
+  /**
+   * Returns whether the stored chunk manifest exceeds the nearline size limit. Once exceeded, subsequent partial
+   * updates are skipped before fetching or assembling chunks, avoiding that cost on every update. The update that
+   * first crosses the limit is allowed through so the manifest can identify the record as oversized. A full PUT or
+   * DELETE resets the record.
+   */
+  protected boolean isRecordTooLargeForPartialUpdate(
+      PartitionConsumptionState pcs,
+      DefaultPubSubMessage consumerRecord,
+      ChunkedValueManifestContainer valueManifestContainer) {
+    if (!valueManifestContainer.isSizeLimitExceeded()) {
+      return false;
+    }
+
+    versionedIngestionStats.recordPartialUpdateLargeRecordSkippedCount(storeName, versionNumber, 1);
+
+    String keyHex = ByteUtils.toHexString(consumerRecord.getKey().getKey());
+    // An oversized key is skipped on every partial update, so this would otherwise log on each one.
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "partialUpdateLargeRecordSkipped-" + keyHex)) {
+      LOGGER.warn(
+          "Skipped a partial update in {} for key 0x{} at position {}: the stored record is {} bytes, over the {} byte "
+              + "limit. Dump the topic at this position to identify the update. A full PUT or DELETE resets the record.",
+          pcs.getReplicaId(),
+          keyHex,
+          consumerRecord.getPosition(),
+          valueManifestContainer.getManifest().getSize(),
+          getMaxNearlineRecordSizeBytes());
+    }
+
+    return true;
   }
 
   /**
