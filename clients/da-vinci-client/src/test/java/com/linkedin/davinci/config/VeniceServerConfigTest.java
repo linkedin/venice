@@ -6,7 +6,6 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
@@ -36,7 +35,6 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
-import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
@@ -88,9 +86,6 @@ public class VeniceServerConfigTest {
   @Test
   public void testFutureVersionStandbyLagCheckOverrides() {
     Properties props = populatedBasicProperties();
-    props.setProperty(
-        LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
-        LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY.name());
     props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED, "true");
     props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD, "2000");
     props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES, "60");
@@ -101,16 +96,6 @@ public class VeniceServerConfigTest {
     assertEquals(config.getFutureVersionStandbyLagThreshold(), 2000L);
     assertEquals(config.getFutureVersionStandbyLagCheckTimeoutMinutes(), 60);
     assertEquals(config.getFutureVersionStandbyLagCheckPollIntervalMinutes(), 5);
-  }
-
-  @Test
-  public void testFutureVersionStandbyLagCheckRequiresDualPoolStrategy() {
-    // Lag check enabled while the thread pool strategy defaults to SINGLE_POOL_STRATEGY must fail fast, since the
-    // wait synchronously occupies a shared state-transition worker thread.
-    Properties props = populatedBasicProperties();
-    props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED, "true");
-
-    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
   }
 
   @Test
