@@ -18,6 +18,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -232,7 +233,8 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
    * Combine the two persistence layers into a single in-memory version list. A version number must live in exactly one
    * layer: the legacy embedded list inside the store znode (frozen set, populated by stores that pre-date the split
    * layout) OR a per-version znode at {@code /Stores/<name>/versions/<n>}. Writes preserve this invariant: see
-   * {@link HelixReadWriteStoreRepository}. Overlap is treated as a corrupt-state bug and surfaces as an exception.
+   * {@link HelixReadWriteStoreRepository}. If the same version number appears in both layers with identical payloads,
+   * hydration de-duplicates silently; conflicting payloads still surface as a corrupt-state exception.
    */
   protected void hydrateVersionsFromZk(Store store) {
     if (store == null) {
@@ -251,16 +253,31 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     for (Version v: embedded) {
       embeddedNumbers.add(v.getNumber());
     }
+    Map<Integer, Version> embeddedByNumber = new HashMap<>(embedded.size());
     List<Version> merged = new ArrayList<>(embedded.size() + persisted.size());
     for (Version v: embedded) {
       // store.getVersions() returns ReadOnlyVersion; unwrap to VersionImpl so setVersions can call dataModel().
-      merged.add(v.cloneVersion());
+      Version unwrapped = v.cloneVersion();
+      embeddedByNumber.put(unwrapped.getNumber(), unwrapped);
+      merged.add(unwrapped);
     }
     for (Version v: persisted) {
       if (embeddedNumbers.contains(v.getNumber())) {
+        Version embeddedVersion = embeddedByNumber.get(v.getNumber());
+        // Treat exact duplicates across the two layers as benign during mixed-state transitions.
+        Version persistedVersion = v.cloneVersion();
+        if (embeddedVersion.equals(persistedVersion)) {
+          LOGGER.warn(
+              "Detected duplicate version collision for store {} version {} across embedded JSON and /versions znode; "
+                  + "payloads are identical, deduplicating during hydration",
+              store.getName(),
+              v.getNumber());
+          continue;
+        }
         throw new VeniceException(
             "Store " + store.getName() + " version " + v.getNumber()
-                + " exists in both the embedded list and as a per-version znode; the two layers must be disjoint");
+                + " exists in both the embedded list and as a per-version znode with conflicting payloads; "
+                + "collision must be resolved");
       }
       merged.add(v);
     }

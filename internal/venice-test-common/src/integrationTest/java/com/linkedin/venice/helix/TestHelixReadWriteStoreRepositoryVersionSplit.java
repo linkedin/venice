@@ -5,7 +5,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,6 +22,7 @@ import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
+import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -348,7 +348,30 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     seedAccessor.putVersion(storeName, new VersionImpl(storeName, 1, "znode-push-1"));
 
     HelixReadWriteStoreRepository freshRepo = newRepo();
-    assertThrows(VeniceException.class, freshRepo::refresh);
+    VeniceException exception = Assert.expectThrows(VeniceException.class, freshRepo::refresh);
+    assertTrue(exception.getMessage().contains("conflicting payloads"));
+    assertTrue(exception.getMessage().contains("collision"));
+  }
+
+  @Test
+  public void identicalOverlapBetweenEmbeddedAndZnodeIsDeduped() {
+    String storeName = Utils.getUniqueString("identical_overlap_store");
+
+    Store legacyStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    Version legacyVersion = new VersionImpl(storeName, 1, "legacy-push-1");
+    legacyStore.addVersion(legacyVersion);
+    seedLegacyStoreDirectly(storeName, legacyStore);
+
+    HelixVersionAccessor seedAccessor = new HelixVersionAccessor(zkClient, adapter, CLUSTER);
+    seedAccessor.putVersion(storeName, legacyVersion.cloneVersion());
+
+    HelixReadWriteStoreRepository freshRepo = newRepo();
+    freshRepo.refresh();
+
+    Store hydrated = freshRepo.getStore(storeName);
+    assertNotNull(hydrated);
+    assertEquals(hydrated.getVersions().size(), 1, "identical overlap should be deduped during hydration");
+    assertEquals(hydrated.getVersion(1).getPushJobId(), "legacy-push-1");
   }
 
   /**
