@@ -171,6 +171,26 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     assertTrue(raw.exists(STORES_PATH + "/" + storeName + "/versions/2", AccessOption.PERSISTENT));
   }
 
+  @Test
+  public void updateStoreSkipsNonNumericVersionChildWithoutFailing() {
+    String storeName = Utils.getUniqueString("non_numeric_child_store");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push-1"));
+    store.addVersion(new VersionImpl(storeName, 2, "push-2"));
+    writeRepo.addStore(store);
+
+    zkClient.create(STORES_PATH + "/" + storeName + "/versions/not-a-number", null, CreateMode.PERSISTENT);
+
+    Store fetched = writeRepo.getStore(storeName);
+    fetched.deleteVersion(1);
+    writeRepo.updateStore(fetched);
+
+    ZkBaseDataAccessor<Object> raw = new ZkBaseDataAccessor<>(zkClient);
+    assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions/1", AccessOption.PERSISTENT));
+    assertTrue(raw.exists(STORES_PATH + "/" + storeName + "/versions/2", AccessOption.PERSISTENT));
+    assertTrue(raw.exists(STORES_PATH + "/" + storeName + "/versions/not-a-number", AccessOption.PERSISTENT));
+  }
+
   /**
    * Deleting a legacy embedded version updates the embedded list in the store znode; no znode is created or removed.
    */

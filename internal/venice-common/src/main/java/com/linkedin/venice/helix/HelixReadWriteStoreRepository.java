@@ -17,6 +17,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.helix.AccessOption;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -46,6 +48,8 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * no migration step that moves a legacy embedded version into a per-version znode.
  */
 public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository implements ReadWriteStoreRepository {
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadWriteStoreRepository.class);
+
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final String clusterName;
   /**
@@ -180,10 +184,14 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
         frozenEmbeddedNumbers.add(v.getNumber());
       }
     }
-    Set<Integer> existingZnodeNumbers = versionAccessor.getVersionNumbersForStore(storeName)
-        .stream()
-        .map(Integer::parseInt)
-        .collect(Collectors.toCollection(HashSet::new));
+    Set<Integer> existingZnodeNumbers = new HashSet<>();
+    for (String versionNumberToken: versionAccessor.getVersionNumbersForStore(storeName)) {
+      try {
+        existingZnodeNumbers.add(Integer.parseInt(versionNumberToken));
+      } catch (NumberFormatException e) {
+        LOGGER.warn("Skipping non-numeric version znode child for store {}: {}", storeName, versionNumberToken, e);
+      }
+    }
 
     List<Version> embeddedKeep = new ArrayList<>();
     for (Version version: targetVersions) {
