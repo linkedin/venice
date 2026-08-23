@@ -359,8 +359,8 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
 
   /**
    * Flag-off behavior: a newly added version on updateStore lands in the embedded list, not a znode. Confirms that
-   * routing the flag through to {@link HelixReadWriteStoreRepository#writeStoreToZk} actually changes behavior end to
-   * end on the update path (not just on addStore).
+   * routing the flag through to the repository write path actually changes behavior end to end on the update path (not
+   * just on addStore).
    */
   @Test
   public void updateStoreWithFlagOffAppendsToEmbeddedListInsteadOfCreatingZnode() {
@@ -381,6 +381,39 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     Store onZk = (Store) raw.get(STORES_PATH + "/" + storeName, null, AccessOption.PERSISTENT);
     assertEquals(onZk.getVersions().size(), 2);
     assertTrue(onZk.containsVersion(2));
+  }
+
+  @Test
+  public void updateStoreWithFlagOffRemovesDeletedVersionFromEmbeddedJsonAndZnode() {
+    String storeName = Utils.getUniqueString("flag_off_delete_split_store");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "push-1"));
+    store.addVersion(new VersionImpl(storeName, 2, "push-2"));
+    writeRepo.addStore(store);
+
+    HelixReadWriteStoreRepository legacyRepo = newRepo(false);
+    legacyRepo.refresh();
+    Store fetched = legacyRepo.getStore(storeName);
+    fetched.deleteVersion(1);
+    legacyRepo.updateStore(fetched);
+
+    ZkBaseDataAccessor<Object> raw = new ZkBaseDataAccessor<>(zkClient);
+    Store onZk = (Store) raw.get(STORES_PATH + "/" + storeName, null, AccessOption.PERSISTENT);
+    assertNotNull(onZk);
+    assertEquals(onZk.getVersions().size(), 1);
+    assertFalse(onZk.containsVersion(1));
+    assertTrue(onZk.containsVersion(2));
+    assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions/1", AccessOption.PERSISTENT));
+    assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions/2", AccessOption.PERSISTENT));
+    assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions", AccessOption.PERSISTENT));
+
+    HelixReadWriteStoreRepository freshRepo = newRepo(true);
+    freshRepo.refresh();
+    Store rehydrated = freshRepo.getStore(storeName);
+    assertNotNull(rehydrated);
+    assertEquals(rehydrated.getVersions().size(), 1);
+    assertFalse(rehydrated.containsVersion(1));
+    assertTrue(rehydrated.containsVersion(2));
   }
 
   /**

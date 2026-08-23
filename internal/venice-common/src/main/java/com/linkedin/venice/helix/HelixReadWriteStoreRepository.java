@@ -50,10 +50,11 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
   private final String clusterName;
   /**
    * Gates the split write path. When false, the repo persists each store as a single znode with the entire versions
-   * list embedded in the JSON — the layout every Venice cluster used before the per-version-znode work. When true,
-   * writes go through {@link #writeStoreAndSplitVersions}, which routes new versions to {@code /versions/<n>}. The read
-   * path is unconditionally smart, so this flag only flips after every reader on the cluster runs a build that
-   * understands the split layout.
+   * list embedded in the JSON — the layout every Venice cluster used before the per-version-znode work — and removes
+   * any per-version znodes left by a previous flag-on writer. When true, writes go through
+   * {@link #writeStoreAndSplitVersions}, which routes new versions to {@code /versions/<n>}. The read path is
+   * unconditionally smart, so this flag only flips after every reader on the cluster runs a build that understands the
+   * split layout.
    */
   private final boolean perVersionZnodeWriteEnabled;
 
@@ -99,7 +100,7 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       writeStoreToZk(store);
       putStore(store);
       if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
-        /**
+        /*
          * Write the update to the meta system store RT topic.
          */
         metaStoreWriter.get().writeStoreProperties(clusterName, store);
@@ -127,6 +128,7 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       writeStoreAndSplitVersions(store);
     } else {
       HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
+      versionAccessor.removeAllVersionsForStore(store.getName());
     }
   }
 
