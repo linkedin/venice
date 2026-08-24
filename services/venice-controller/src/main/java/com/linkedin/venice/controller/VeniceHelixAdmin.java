@@ -372,12 +372,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private final HelixAdminClient helixAdminClient;
   private TopicManagerRepository topicManagerRepository;
-  private final ZkClient zkClient;
+  /**
+   * Owns the single ZK client used for Venice metadata (System #2): Stores, Schemas, StoreConfig,
+   * OfflinePushStatus, AdminTopicMetadata, StoreGraveyard, Personas, etc. See {@link VeniceMetadataZkClient}.
+   */
+  private final VeniceMetadataZkClient veniceMetadataZkClient;
   /**
    * A dedicated Zk client for reading Helix cluster metadata (System #1 — LIVEINSTANCES, EXTERNALVIEW) directly from
-   * ZK. This is intentionally kept separate from {@link #zkClient}, which owns Venice metadata (System #2). Helix reads
-   * must not ride on {@link #zkClient}: a later HA change repoints {@link #zkClient} at a separate/backup ensemble for
-   * Venice-metadata availability, and these Helix reads must stay on the Helix ZK rather than follow it.
+   * ZK. This is intentionally kept separate from {@link #veniceMetadataZkClient}, which owns Venice metadata (System
+   * #2). Helix reads must not ride on {@link #veniceMetadataZkClient}: a later HA change repoints it at a
+   * separate/backup ensemble for Venice-metadata availability, and these Helix reads must stay on the Helix ZK
+   * rather than follow it.
    */
   private final ZkClient helixZkClient;
   private final HelixAdapterSerializer adapterSerializer;
@@ -566,10 +571,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // holds a separate ZKHelixAdmin of its own.
     this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
     // There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
-    this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
-    this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
+    this.veniceMetadataZkClient =
+        new VeniceMetadataZkClient(multiClusterConfigs.getZkAddress(), metricsRepository, "controller-zk-client");
     // System #1 (Helix cluster metadata) reads get their own Zk client on the Helix ZK address, kept off the
-    // Venice-metadata zkClient above. See {@link #helixZkClient}.
+    // Venice-metadata veniceMetadataZkClient above. See {@link #helixZkClient}.
     this.helixZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     this.helixZkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-helix-zk-client"));
     this.adapterSerializer = new HelixAdapterSerializer();
@@ -592,11 +597,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, getKafkaBootstrapServers(isSslToKafka()));
 
-    this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
-    this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
-    this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer);
+    this.allowlistAccessor = new ZkAllowlistAccessor(veniceMetadataZkClient.getZkClient(), adapterSerializer);
+    this.executionIdAccessor = new ZkExecutionIdAccessor(veniceMetadataZkClient.getZkClient(), adapterSerializer);
+    this.storeConfigRepo =
+        new HelixReadOnlyStoreConfigRepository(veniceMetadataZkClient.getZkClient(), adapterSerializer);
     storeConfigRepo.refresh();
-    this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
+    this.storeGraveyard = new HelixStoreGraveyard(
+        veniceMetadataZkClient.getZkClient(),
+        adapterSerializer,
+        multiClusterConfigs.getClusters());
     this.veniceWriterFactory = new VeniceWriterFactory(
         commonConfig.getProps().toProperties(),
         pubSubClientsFactory.getProducerAdapterFactory(),
@@ -632,12 +641,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
 
     zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
-        zkClient,
+        veniceMetadataZkClient.getZkClient(),
         adapterSerializer,
         commonConfig.getSystemSchemaClusterName());
     zkSharedSchemaRepository = new SharedHelixReadOnlyZKSharedSchemaRepository(
         zkSharedSystemStoreRepository,
-        zkClient,
+        veniceMetadataZkClient.getZkClient(),
         adapterSerializer,
         commonConfig.getSystemSchemaClusterName(),
         commonConfig.getRefreshAttemptsForZkReconnect(),
@@ -778,7 +787,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
-        zkClient,
+        veniceMetadataZkClient.getZkClient(),
         adapterSerializer,
         this,
         multiClusterConfigs,
@@ -1046,7 +1055,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public ZkClient getZkClient() {
-    return zkClient;
+    return veniceMetadataZkClient.getZkClient();
   }
 
   public ExecutionIdAccessor getExecutionIdAccessor() {
@@ -6830,7 +6839,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       controllerStateModelFactory.close();
       helixManager.disconnect();
       topicManagerRepository.close();
-      zkClient.close();
+      veniceMetadataZkClient.close();
       helixZkClient.close();
       helixAdminClient.close();
     } catch (Exception e) {
@@ -8203,9 +8212,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Utils.closeQuietlyWithErrorLogged(this.zkSharedSystemStoreRepository);
       Utils.closeQuietlyWithErrorLogged(this.zkSharedSchemaRepository);
       try {
-        zkClient.close();
+        veniceMetadataZkClient.close();
       } catch (Exception e) {
-        LOGGER.error("Failed to close zkClient. Swallowing and moving on.", e);
+        LOGGER.error("Failed to close veniceMetadataZkClient. Swallowing and moving on.", e);
       }
       try {
         helixZkClient.close();
@@ -8268,8 +8277,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private HelixReadWriteLiveClusterConfigRepository getReadWriteLiveClusterConfigRepository(String cluster) {
     return clusterToLiveClusterConfigRepo.computeIfAbsent(cluster, clusterName -> {
-      HelixReadWriteLiveClusterConfigRepository clusterConfigRepository =
-          new HelixReadWriteLiveClusterConfigRepository(zkClient, adapterSerializer, clusterName);
+      HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = new HelixReadWriteLiveClusterConfigRepository(
+          veniceMetadataZkClient.getZkClient(),
+          adapterSerializer,
+          clusterName);
       clusterConfigRepository.refresh();
       return clusterConfigRepository;
     });
@@ -8277,8 +8288,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private HelixReadWriteDarkClusterConfigRepository getReadWriteDarkClusterConfigRepository(String cluster) {
     return clusterToDarkClusterConfigRepo.computeIfAbsent(cluster, clusterName -> {
-      HelixReadWriteDarkClusterConfigRepository clusterConfigRepository =
-          new HelixReadWriteDarkClusterConfigRepository(zkClient, adapterSerializer, clusterName);
+      HelixReadWriteDarkClusterConfigRepository clusterConfigRepository = new HelixReadWriteDarkClusterConfigRepository(
+          veniceMetadataZkClient.getZkClient(),
+          adapterSerializer,
+          clusterName);
       clusterConfigRepository.refresh();
       return clusterConfigRepository;
     });
@@ -8701,11 +8714,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (checkOfflinePush) {
       VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
           clusterName,
-          zkClient,
+          veniceMetadataZkClient.getZkClient(),
           adapterSerializer,
           multiClusterConfigs.getLogContext(),
           multiClusterConfigs.getCommonConfig().getRefreshAttemptsForZkReconnect());
-      List<String> offlinePushes = zkClient.getChildren(accessor.getOfflinePushStatuesParentPath());
+      List<String> offlinePushes =
+          veniceMetadataZkClient.getZkClient().getChildren(accessor.getOfflinePushStatuesParentPath());
       offlinePushes.forEach(resource -> {
         if (Version.isVersionTopic(resource)) {
           String storeNameForResource = Version.parseStoreFromVersionTopic(resource);
@@ -9233,7 +9247,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     List<String> deletedZNodes = new ArrayList<>();
     Set<String> irrelevantStoreVersions = new HashSet<>();
-    ZkBaseDataAccessor<ZNRecord> znRecordAccessor = new ZkBaseDataAccessor<>(zkClient);
+    ZkBaseDataAccessor<ZNRecord> znRecordAccessor = new ZkBaseDataAccessor<>(veniceMetadataZkClient.getZkClient());
     String instancesZkPath = HelixUtils.getHelixClusterZkPath(clusterName) + "/" + ZK_INSTANCES_SUB_PATH;
     List<String> instances = znRecordAccessor.getChildNames(instancesZkPath, AccessOption.PERSISTENT);
     for (String instance: instances) {
