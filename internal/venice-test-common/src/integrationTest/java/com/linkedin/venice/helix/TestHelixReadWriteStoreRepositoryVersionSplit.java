@@ -245,7 +245,7 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     fetched.updateVersionStatus(1, VersionStatus.ONLINE);
     writeRepo.updateStore(fetched);
 
-    HelixVersionAccessor accessor = new HelixVersionAccessor(zkClient, adapter, CLUSTER);
+    HelixStoreVersionAccessor accessor = new HelixStoreVersionAccessor(zkClient, adapter, CLUSTER);
     Version persisted = accessor.getVersion(storeName, 1);
     assertNotNull(persisted);
     assertEquals(persisted.getStatus(), VersionStatus.ONLINE, "status mutation must be flushed to /versions/1");
@@ -315,7 +315,7 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     legacyStore.addVersion(new VersionImpl(storeName, 3, "legacy-push-3"));
     seedLegacyStoreDirectly(storeName, legacyStore);
 
-    HelixVersionAccessor seedAccessor = new HelixVersionAccessor(zkClient, adapter, CLUSTER);
+    HelixStoreVersionAccessor seedAccessor = new HelixStoreVersionAccessor(zkClient, adapter, CLUSTER);
     seedAccessor.putVersion(storeName, new VersionImpl(storeName, 4, "push-4"));
     seedAccessor.putVersion(storeName, new VersionImpl(storeName, 5, "push-5"));
 
@@ -344,7 +344,7 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     legacyStore.addVersion(new VersionImpl(storeName, 1, "legacy-push-1"));
     seedLegacyStoreDirectly(storeName, legacyStore);
 
-    HelixVersionAccessor seedAccessor = new HelixVersionAccessor(zkClient, adapter, CLUSTER);
+    HelixStoreVersionAccessor seedAccessor = new HelixStoreVersionAccessor(zkClient, adapter, CLUSTER);
     seedAccessor.putVersion(storeName, new VersionImpl(storeName, 1, "znode-push-1"));
 
     HelixReadWriteStoreRepository freshRepo = newRepo();
@@ -362,7 +362,7 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     legacyStore.addVersion(legacyVersion);
     seedLegacyStoreDirectly(storeName, legacyStore);
 
-    HelixVersionAccessor seedAccessor = new HelixVersionAccessor(zkClient, adapter, CLUSTER);
+    HelixStoreVersionAccessor seedAccessor = new HelixStoreVersionAccessor(zkClient, adapter, CLUSTER);
     seedAccessor.putVersion(storeName, legacyVersion.cloneVersion());
 
     HelixReadWriteStoreRepository freshRepo = newRepo();

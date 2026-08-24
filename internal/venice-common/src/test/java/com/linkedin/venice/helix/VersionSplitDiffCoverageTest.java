@@ -54,7 +54,7 @@ public class VersionSplitDiffCoverageTest {
   @Test
   public void testVersionAccessorReturnsEmptyWhenVersionsContainerMissing() throws Exception {
     ZkBaseDataAccessor<Version> mockedAccessor = mockDataAccessor();
-    HelixVersionAccessor accessor = newAccessorWithInjectedDataAccessor(mockedAccessor);
+    HelixStoreVersionAccessor accessor = newAccessorWithInjectedDataAccessor(mockedAccessor);
 
     String containerPath = accessor.getVersionsContainerPath(STORE);
     when(mockedAccessor.exists(containerPath, AccessOption.PERSISTENT)).thenReturn(false);
@@ -69,7 +69,7 @@ public class VersionSplitDiffCoverageTest {
   @Test
   public void testVersionAccessorReadAndWriteBranches() throws Exception {
     ZkBaseDataAccessor<Version> mockedAccessor = mockDataAccessor();
-    HelixVersionAccessor accessor = newAccessorWithInjectedDataAccessor(mockedAccessor);
+    HelixStoreVersionAccessor accessor = newAccessorWithInjectedDataAccessor(mockedAccessor);
 
     String containerPath = accessor.getVersionsContainerPath(STORE);
     String versionOnePath = accessor.getVersionZkPath(STORE, 1);
@@ -104,7 +104,7 @@ public class VersionSplitDiffCoverageTest {
   @Test
   public void testVersionAccessorDeleteBranches() throws Exception {
     ZkBaseDataAccessor<Version> mockedAccessor = mockDataAccessor();
-    HelixVersionAccessor accessor = newAccessorWithInjectedDataAccessor(mockedAccessor);
+    HelixStoreVersionAccessor accessor = newAccessorWithInjectedDataAccessor(mockedAccessor);
 
     String versionOnePath = accessor.getVersionZkPath(STORE, 1);
     String versionTwoPath = accessor.getVersionZkPath(STORE, 2);
@@ -136,7 +136,7 @@ public class VersionSplitDiffCoverageTest {
   @Test
   public void testHydrateVersionsFromZkBranchCases() throws Exception {
     ExposedCachedReadOnlyStoreRepository repository = new ExposedCachedReadOnlyStoreRepository();
-    HelixVersionAccessor mockedVersionAccessor = Mockito.mock(HelixVersionAccessor.class);
+    HelixStoreVersionAccessor mockedVersionAccessor = Mockito.mock(HelixStoreVersionAccessor.class);
     injectField(CachedReadOnlyStoreRepository.class, repository, "versionAccessor", mockedVersionAccessor);
 
     repository.hydrateForTest(null);
@@ -207,7 +207,7 @@ public class VersionSplitDiffCoverageTest {
 
     @SuppressWarnings("unchecked")
     ZkBaseDataAccessor<Store> mockedStoreAccessor = Mockito.mock(ZkBaseDataAccessor.class);
-    HelixVersionAccessor mockedVersionAccessor = Mockito.mock(HelixVersionAccessor.class);
+    HelixStoreVersionAccessor mockedVersionAccessor = Mockito.mock(HelixStoreVersionAccessor.class);
     injectField(CachedReadOnlyStoreRepository.class, repository, "zkDataAccessor", mockedStoreAccessor);
     injectField(CachedReadOnlyStoreRepository.class, repository, "versionAccessor", mockedVersionAccessor);
 
@@ -236,7 +236,7 @@ public class VersionSplitDiffCoverageTest {
 
     @SuppressWarnings("unchecked")
     ZkBaseDataAccessor<Store> mockedStoreAccessor = Mockito.mock(ZkBaseDataAccessor.class);
-    HelixVersionAccessor mockedVersionAccessor = Mockito.mock(HelixVersionAccessor.class);
+    HelixStoreVersionAccessor mockedVersionAccessor = Mockito.mock(HelixStoreVersionAccessor.class);
     injectField(CachedReadOnlyStoreRepository.class, repository, "zkDataAccessor", mockedStoreAccessor);
     injectField(CachedReadOnlyStoreRepository.class, repository, "versionAccessor", mockedVersionAccessor);
 
@@ -265,7 +265,7 @@ public class VersionSplitDiffCoverageTest {
 
     @SuppressWarnings("unchecked")
     ZkBaseDataAccessor<Store> mockedStoreAccessor = Mockito.mock(ZkBaseDataAccessor.class);
-    HelixVersionAccessor mockedVersionAccessor = Mockito.mock(HelixVersionAccessor.class);
+    HelixStoreVersionAccessor mockedVersionAccessor = Mockito.mock(HelixStoreVersionAccessor.class);
     injectField(CachedReadOnlyStoreRepository.class, repository, "zkDataAccessor", mockedStoreAccessor);
     injectField(CachedReadOnlyStoreRepository.class, repository, "versionAccessor", mockedVersionAccessor);
 
@@ -306,7 +306,7 @@ public class VersionSplitDiffCoverageTest {
 
     @SuppressWarnings("unchecked")
     ZkBaseDataAccessor<Store> mockedStoreAccessor = Mockito.mock(ZkBaseDataAccessor.class);
-    HelixVersionAccessor mockedVersionAccessor = Mockito.mock(HelixVersionAccessor.class);
+    HelixStoreVersionAccessor mockedVersionAccessor = Mockito.mock(HelixStoreVersionAccessor.class);
     injectField(CachedReadOnlyStoreRepository.class, repository, "zkDataAccessor", mockedStoreAccessor);
     injectField(CachedReadOnlyStoreRepository.class, repository, "versionAccessor", mockedVersionAccessor);
 
@@ -333,11 +333,14 @@ public class VersionSplitDiffCoverageTest {
     return Mockito.mock(ZkBaseDataAccessor.class);
   }
 
-  private static HelixVersionAccessor newAccessorWithInjectedDataAccessor(ZkBaseDataAccessor<Version> mockedAccessor)
-      throws Exception {
-    HelixVersionAccessor accessor =
-        new HelixVersionAccessor(Mockito.mock(ZkClient.class), Mockito.mock(HelixAdapterSerializer.class), CLUSTER, 1);
-    injectField(HelixVersionAccessor.class, accessor, "versionAccessor", mockedAccessor);
+  private static HelixStoreVersionAccessor newAccessorWithInjectedDataAccessor(
+      ZkBaseDataAccessor<Version> mockedAccessor) throws Exception {
+    HelixStoreVersionAccessor accessor = new HelixStoreVersionAccessor(
+        Mockito.mock(ZkClient.class),
+        Mockito.mock(HelixAdapterSerializer.class),
+        CLUSTER,
+        1);
+    injectField(HelixStoreVersionAccessor.class, accessor, "versionAccessor", mockedAccessor);
     return accessor;
   }
 

@@ -44,7 +44,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   protected final ZkClient zkClient;
   protected final ZkBaseDataAccessor<Store> zkDataAccessor;
-  protected final HelixVersionAccessor versionAccessor;
+  protected final HelixStoreVersionAccessor versionAccessor;
 
   protected final ClusterLockManager clusterLockManager;
   protected final Map<String, Store> storeMap = new VeniceConcurrentHashMap<>();
@@ -64,8 +64,8 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     compositeSerializer.registerSerializer(clusterStoreRepositoryPath, new VeniceJsonSerializer<>(Integer.TYPE));
     compositeSerializer
         .registerSerializer(getStoreZkPath(PathResourceRegistry.WILDCARD_MATCH_ANY), new StoreJSONSerializer());
-    // HelixVersionAccessor registers its own VersionJSONSerializer at /Stores/*/versions/* on the shared adapter.
-    this.versionAccessor = new HelixVersionAccessor(zkClient, compositeSerializer, clusterName);
+    // HelixStoreVersionAccessor registers its own VersionJSONSerializer at /Stores/*/versions/* on the shared adapter.
+    this.versionAccessor = new HelixStoreVersionAccessor(zkClient, compositeSerializer, clusterName);
     zkClient.setZkSerializer(compositeSerializer);
     this.clusterLockManager = clusterLockManager;
   }

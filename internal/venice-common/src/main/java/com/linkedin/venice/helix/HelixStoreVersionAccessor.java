@@ -22,8 +22,8 @@ import org.apache.logging.log4j.Logger;
  * "embedded versions list inside the store JSON" representation is handled by the store repository; this accessor
  * deals only with the new layout.
  */
-public class HelixVersionAccessor {
-  private static final Logger LOGGER = LogManager.getLogger(HelixVersionAccessor.class);
+public class HelixStoreVersionAccessor {
+  private static final Logger LOGGER = LogManager.getLogger(HelixStoreVersionAccessor.class);
 
   static final String VERSIONS_SUB_PATH = "versions";
 
@@ -33,11 +33,11 @@ public class HelixVersionAccessor {
   private final ZkBaseDataAccessor<Version> versionAccessor;
   private final int refreshAttemptsForZkReconnect;
 
-  public HelixVersionAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer, String clusterName) {
+  public HelixStoreVersionAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer, String clusterName) {
     this(zkClient, adapterSerializer, clusterName, DEFAULT_ZK_REFRESH_ATTEMPTS);
   }
 
-  public HelixVersionAccessor(
+  public HelixStoreVersionAccessor(
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       String clusterName,

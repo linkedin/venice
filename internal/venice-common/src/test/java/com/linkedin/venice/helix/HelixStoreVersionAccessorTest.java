@@ -7,7 +7,7 @@ import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 
-public class HelixVersionAccessorTest {
+public class HelixStoreVersionAccessorTest {
   private static final String CLUSTER = "test-cluster";
   private static final String STORE = "test-store";
 
@@ -15,7 +15,7 @@ public class HelixVersionAccessorTest {
   public void testZkPaths() {
     ZkClient zkClient = Mockito.mock(ZkClient.class);
     HelixAdapterSerializer adapter = Mockito.mock(HelixAdapterSerializer.class);
-    HelixVersionAccessor accessor = new HelixVersionAccessor(zkClient, adapter, CLUSTER);
+    HelixStoreVersionAccessor accessor = new HelixStoreVersionAccessor(zkClient, adapter, CLUSTER);
 
     assertEquals(accessor.getVersionsContainerPath(STORE), "/" + CLUSTER + "/Stores/" + STORE + "/versions");
     assertEquals(accessor.getVersionZkPath(STORE, 7), "/" + CLUSTER + "/Stores/" + STORE + "/versions/7");
@@ -25,7 +25,7 @@ public class HelixVersionAccessorTest {
   public void testSerializerRegisteredOnAdapterAndZkClient() {
     ZkClient zkClient = Mockito.mock(ZkClient.class);
     HelixAdapterSerializer adapter = Mockito.mock(HelixAdapterSerializer.class);
-    new HelixVersionAccessor(zkClient, adapter, CLUSTER);
+    new HelixStoreVersionAccessor(zkClient, adapter, CLUSTER);
 
     Mockito.verify(adapter)
         .registerSerializer(
