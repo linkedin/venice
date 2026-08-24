@@ -143,6 +143,9 @@ public class VeniceWriterUnitTest {
 
     assertEquals(putPartitionArgumentCaptor.getValue(), deletePartitionArgumentCaptor.getValue());
     assertEquals(putPartitionArgumentCaptor.getValue(), updatePartitionArgumentCaptor.getValue());
+    assertEquals(
+        writer.getPartitionId(serializer.serialize(testTopic, key)),
+        putPartitionArgumentCaptor.getValue().intValue());
   }
 
   @Test

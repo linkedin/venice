@@ -1,5 +1,10 @@
 package com.linkedin.venice.samza;
 
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_CALLBACK_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -21,6 +26,11 @@ import org.apache.samza.config.Config;
  * - Discovery-URL-based: set {@code discoveryUrl}
  */
 public class VeniceSystemProducerConfig {
+  static final int DEFAULT_WORKER_COUNT = 4;
+  static final int DEFAULT_WORKER_QUEUE_CAPACITY = 100000;
+  static final int DEFAULT_CALLBACK_THREAD_COUNT = 0;
+  static final int DEFAULT_CALLBACK_QUEUE_CAPACITY = 100000;
+
   // Required (validated non-null in Builder.build())
   private final String storeName;
   private final Version.PushType pushType;
@@ -140,6 +150,26 @@ public class VeniceSystemProducerConfig {
 
   public String getRouterUrl() {
     return routerUrl;
+  }
+
+  public int getWorkerCount() {
+    return getInt(VENICE_SYSTEM_PRODUCER_WORKER_COUNT, DEFAULT_WORKER_COUNT);
+  }
+
+  public int getWorkerQueueCapacity() {
+    return getInt(VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY, DEFAULT_WORKER_QUEUE_CAPACITY);
+  }
+
+  public int getCallbackThreadCount() {
+    return getInt(VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT, DEFAULT_CALLBACK_THREAD_COUNT);
+  }
+
+  public int getCallbackQueueCapacity() {
+    return getInt(VENICE_SYSTEM_PRODUCER_CALLBACK_QUEUE_CAPACITY, DEFAULT_CALLBACK_QUEUE_CAPACITY);
+  }
+
+  private int getInt(String key, int defaultValue) {
+    return samzaConfig == null ? defaultValue : samzaConfig.getInt(key, defaultValue);
   }
 
   /**

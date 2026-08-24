@@ -19,12 +19,14 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -45,15 +47,28 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
 
   private final SchemaReader schemaReader;
   private final ICProvider icProvider;
+  private final VeniceWriterHook writerHook;
+  private final AtomicBoolean resourceCleanupInProgress = new AtomicBoolean(false);
+  private volatile boolean resourcesClosed;
 
   OnlineVeniceProducer(
       ClientConfig storeClientConfig,
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
       ICProvider icProvider) {
+    this(storeClientConfig, producerConfigs, metricsRepository, icProvider, null);
+  }
+
+  OnlineVeniceProducer(
+      ClientConfig storeClientConfig,
+      VeniceProperties producerConfigs,
+      MetricsRepository metricsRepository,
+      ICProvider icProvider,
+      VeniceWriterHook writerHook) {
     LOGGER.info("Creating venice online producer for: {}", storeClientConfig.getStoreName());
     this.storeName = storeClientConfig.getStoreName();
     this.icProvider = icProvider;
+    this.writerHook = writerHook;
 
     Duration schemaRefreshPeriod;
     if (producerConfigs.containsKey(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS)) {
@@ -114,6 +129,11 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
   }
 
   @Override
+  protected VeniceWriterHook getWriterHook() {
+    return writerHook;
+  }
+
+  @Override
   protected VersionCreationResponse requestTopic() {
     String requestTopicRequestPath = "request_topic/" + storeName;
     VersionCreationResponse versionCreationResponse;
@@ -162,10 +182,16 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
 
   @Override
   public void close() throws IOException {
-    if (!isClosed()) {
+    if (resourcesClosed || !resourceCleanupInProgress.compareAndSet(false, true)) {
+      return;
+    }
+    try {
       super.close();
       Utils.closeQuietlyWithErrorLogged(schemaReader);
       Utils.closeQuietlyWithErrorLogged(storeClient);
+      resourcesClosed = true;
+    } finally {
+      resourceCleanupInProgress.set(false);
     }
   }
 }

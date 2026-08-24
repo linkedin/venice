@@ -2,6 +2,8 @@ package com.linkedin.venice.producer.online;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_WORKER_COUNT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsStringQuietlyWithErrorLogged;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -50,6 +52,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.producer.DurableWrite;
+import com.linkedin.venice.producer.PartitionedProducerExecutor;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -62,6 +65,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import io.tehuti.metrics.MetricsRepository;
@@ -924,6 +928,22 @@ public class OnlineVeniceProducerTest {
     }
   }
 
+  @Test
+  public void testWriterHookIsForwardedToWriterOptions() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    VeniceWriterHook writerHook = Mockito.mock(VeniceWriterHook.class);
+
+    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
+        storeClientConfig,
+        VeniceProperties.empty(),
+        metricsRepository,
+        false,
+        writerHook)) {
+      Assert.assertSame(producer.getCapturedWriterOptions().getWriterHook(), writerHook);
+    }
+  }
+
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testProducerConfigsDefaultsWhenNotSet() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
@@ -944,6 +964,21 @@ public class OnlineVeniceProducerTest {
           writerOptions.getProducerQueueSize(),
           5 * 1024 * 1024,
           "Producer queue size should default to 5MB");
+    }
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testSystemProducerNamespaceDoesNotConfigureOnlineProducer() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    Properties backendConfigs = new Properties();
+    backendConfigs.put(VENICE_SYSTEM_PRODUCER_WORKER_COUNT, 0);
+    backendConfigs.put(VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT, 2);
+
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
+      Assert.assertEquals(producer.getCapturedDispatcher().getWorkerCount(), 4);
+      Assert.assertFalse(producer.getCapturedDispatcher().isCallbackExecutorEnabled());
     }
   }
 
@@ -1215,6 +1250,7 @@ public class OnlineVeniceProducerTest {
     private VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter;
     private boolean failPubSubWrites;
     private VeniceWriterOptions capturedWriterOptions;
+    private PartitionedProducerExecutor capturedDispatcher;
 
     public TestOnlineVeniceProducer(
         ClientConfig storeClientConfig,
@@ -1228,7 +1264,16 @@ public class OnlineVeniceProducerTest {
         VeniceProperties backendConfigs,
         MetricsRepository metricsRepository,
         boolean failPubSubWrites) {
-      super(storeClientConfig, backendConfigs, metricsRepository, null);
+      this(storeClientConfig, backendConfigs, metricsRepository, failPubSubWrites, null);
+    }
+
+    public TestOnlineVeniceProducer(
+        ClientConfig storeClientConfig,
+        VeniceProperties backendConfigs,
+        MetricsRepository metricsRepository,
+        boolean failPubSubWrites,
+        VeniceWriterHook writerHook) {
+      super(storeClientConfig, backendConfigs, metricsRepository, null, writerHook);
       this.failPubSubWrites = failPubSubWrites;
 
       configureVeniceWriteMock();
@@ -1245,8 +1290,21 @@ public class OnlineVeniceProducerTest {
       return mockVeniceWriter;
     }
 
+    @Override
+    protected PartitionedProducerExecutor createDispatcher(
+        String storeName,
+        VeniceProperties configs,
+        MetricsRepository metricsRepository) {
+      capturedDispatcher = super.createDispatcher(storeName, configs, metricsRepository);
+      return capturedDispatcher;
+    }
+
     public VeniceWriterOptions getCapturedWriterOptions() {
       return capturedWriterOptions;
+    }
+
+    public PartitionedProducerExecutor getCapturedDispatcher() {
+      return capturedDispatcher;
     }
 
     private void configureVeniceWriteMock() {

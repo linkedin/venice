@@ -17,6 +17,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -227,10 +228,10 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
     producerSpy.send("myKey", "myValue");
-    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
+    verify(mockHook, timeout(5000)).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
 
     producerSpy.send((Object) "myKey", null);
-    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
+    verify(mockHook, timeout(5000)).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
 
     producerSpy.stop();
   }
@@ -251,7 +252,7 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
     producerSpy.send("myKey", "myValue");
-    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
+    verify(mockHook, timeout(5000)).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
 
     producerSpy.stop();
   }
@@ -559,7 +560,7 @@ public class VeniceSystemProducerTest {
 
     producerSpy.send("myKey", "myValue");
 
-    verify(mockWriter).put(any(), any(), eq(1), anyLong(), any());
+    verify(mockWriter, timeout(5000)).put(any(), any(), eq(1), anyLong(), any());
     producerSpy.stop();
   }
 
@@ -571,7 +572,7 @@ public class VeniceSystemProducerTest {
 
     producerSpy.send((Object) "myKey", null);
 
-    verify(mockWriter).delete(any(), anyLong(), any());
+    verify(mockWriter, timeout(5000)).delete(any(), anyLong(), any());
     producerSpy.stop();
   }
 
@@ -583,7 +584,7 @@ public class VeniceSystemProducerTest {
 
     producerSpy.send("myKey", "myValue");
 
-    verify(mockWriter).update(any(), any(), eq(1), eq(1), anyLong(), any());
+    verify(mockWriter, timeout(5000)).update(any(), any(), eq(1), eq(1), anyLong(), any());
     producerSpy.stop();
   }
 

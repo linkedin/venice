@@ -1,5 +1,13 @@
 package com.linkedin.venice.samza;
 
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_CALLBACK_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_CALLBACK_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotSame;
@@ -10,11 +18,50 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterHook;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.samza.config.MapConfig;
 import org.testng.annotations.Test;
 
 
 public class VeniceSystemProducerConfigTest {
+  @Test
+  public void testStreamDispatcherDefaultsAndNamespaceIsolation() {
+    Map<String, String> values = new HashMap<>();
+    values.put(CLIENT_PRODUCER_WORKER_COUNT, "99");
+    values.put(CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY, "98");
+    values.put(CLIENT_PRODUCER_CALLBACK_THREAD_COUNT, "97");
+    values.put(CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY, "96");
+    VeniceSystemProducerConfig defaults = baseConfig(new MapConfig(values));
+
+    assertEquals(defaults.getWorkerCount(), 4);
+    assertEquals(defaults.getWorkerQueueCapacity(), 100000);
+    assertEquals(defaults.getCallbackThreadCount(), 0);
+    assertEquals(defaults.getCallbackQueueCapacity(), 100000);
+
+    values.put(VENICE_SYSTEM_PRODUCER_WORKER_COUNT, "3");
+    values.put(VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY, "30");
+    values.put(VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT, "2");
+    values.put(VENICE_SYSTEM_PRODUCER_CALLBACK_QUEUE_CAPACITY, "20");
+    VeniceSystemProducerConfig configured = baseConfig(new MapConfig(values));
+
+    assertEquals(configured.getWorkerCount(), 3);
+    assertEquals(configured.getWorkerQueueCapacity(), 30);
+    assertEquals(configured.getCallbackThreadCount(), 2);
+    assertEquals(configured.getCallbackQueueCapacity(), 20);
+  }
+
+  private VeniceSystemProducerConfig baseConfig(MapConfig samzaConfig) {
+    return new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
+        .setDiscoveryUrl("http://discovery")
+        .setSamzaConfig(samzaConfig)
+        .build();
+  }
+
   @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "storeName cannot be null")
   public void testBuilderRejectsNullStoreName() {
     new VeniceSystemProducerConfig.Builder().setPushType(Version.PushType.STREAM)

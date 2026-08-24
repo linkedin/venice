@@ -221,6 +221,11 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   }
 
   @Override
+  public int getPartitionId(byte[] serializedKey) {
+    return getVeniceWriter().getPartitionId(serializedKey);
+  }
+
+  @Override
   public void close(boolean gracefulClose) {
     isRunning.set(false);
     if (gracefulClose) {

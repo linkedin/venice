@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -432,11 +433,39 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     }
   }
 
+  @Test(timeOut = 30000)
+  public void testCloseKeepsCallbackExecutorAliveThroughWriterClose() throws Exception {
+    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
+    CountDownLatch writeSubmitted = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      callback.set(invocation.getArgument(4));
+      writeSubmitted.countDown();
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    doAnswer(invocation -> {
+      callback.get().onCompletion(null, null);
+      return null;
+    }).when(mockVeniceWriter).close();
+    TestableVeniceProducer producer = createProducer(1, 10, 1);
+
+    CompletableFuture<DurableWrite> durableWrite = producer.asyncPut(0, "value");
+    assertTrue(writeSubmitted.await(5, TimeUnit.SECONDS));
+
+    producer.close();
+
+    durableWrite.get(5, TimeUnit.SECONDS);
+    assertTrue(durableWrite.isDone());
+  }
+
   private TestableVeniceProducer createProducer(int workerCount, int queueCapacity) {
+    return createProducer(workerCount, queueCapacity, 0);
+  }
+
+  private TestableVeniceProducer createProducer(int workerCount, int queueCapacity, int callbackThreadCount) {
     Properties props = new Properties();
     props.setProperty("client.producer.worker.count", String.valueOf(workerCount));
     props.setProperty("client.producer.worker.queue.capacity", String.valueOf(queueCapacity));
-    props.setProperty("client.producer.callback.thread.count", "0");
+    props.setProperty("client.producer.callback.thread.count", String.valueOf(callbackThreadCount));
 
     TestableVeniceProducer producer = new TestableVeniceProducer(mockVeniceWriter);
     producer.configure(TEST_STORE, new VeniceProperties(props), null, mockSchemaReader, null);

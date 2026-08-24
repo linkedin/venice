@@ -59,6 +59,18 @@ public class BatchingVeniceWriterTest {
   private static final WriteComputeHandler updateHandler = new WriteComputeHandlerV1();
 
   @Test
+  public void testPartitionRoutingDelegatesToInternalWriter() {
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer = mock(BatchingVeniceWriter.class);
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    byte[] serializedKey = new byte[] { 1, 2, 3 };
+    doReturn(internalWriter).when(writer).getVeniceWriter();
+    doCallRealMethod().when(writer).getPartitionId(any());
+    doReturn(7).when(internalWriter).getPartitionId(serializedKey);
+
+    Assert.assertEquals(writer.getPartitionId(serializedKey), 7);
+  }
+
+  @Test
   public void testSendRecord() {
     BatchingVeniceWriter<byte[], byte[], byte[]> writer = mock(BatchingVeniceWriter.class);
     VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
