@@ -131,13 +131,13 @@ public class TestHelixReadWriteStoreRepositoryVersionSplitFlagToggle {
     storeAccessor.create(STORES_PATH + "/" + storeName, store, AccessOption.PERSISTENT);
   }
 
-  private HelixReadWriteStoreRepository newRepo(boolean perVersionZnodeWriteEnabled) {
+  private HelixReadWriteStoreRepository newRepo(boolean perVersionZnodeEnabled) {
     return new HelixReadWriteStoreRepository(
         zkClient,
         adapter,
         CLUSTER,
         Optional.empty(),
         new ClusterLockManager(CLUSTER),
-        perVersionZnodeWriteEnabled);
+        perVersionZnodeEnabled);
   }
 }

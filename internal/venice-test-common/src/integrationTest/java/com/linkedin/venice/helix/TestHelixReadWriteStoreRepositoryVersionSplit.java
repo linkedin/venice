@@ -33,8 +33,9 @@ import org.testng.annotations.Test;
  * <ul>
  *   <li>Stores created via {@link HelixReadWriteStoreRepository#addStore} land every version in {@code /versions/<n>};
  *       the embedded list is empty.</li>
- *   <li>Stores created before this code (with an embedded versions list) keep their embedded entries intact forever;
- *       newly added versions go to {@code /versions/<n>} and never join the embedded list.</li>
+ *   <li>Stores created before this code (with an embedded versions list) keep their embedded entries until normal
+ *       version lifecycle removal; newly added versions go to {@code /versions/<n>} and never join the embedded
+ *       list.</li>
  *   <li>Mutations to an existing znode-version (e.g. status change) propagate on the next {@code updateStore}.</li>
  *   <li>A version number that appears in BOTH layers is treated as a corrupt-state bug and surfaces as an exception
  *       at read time.</li>
@@ -213,6 +214,41 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     assertTrue(onZk.containsVersion(2));
     assertFalse(onZk.containsVersion(1));
     assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions/1", AccessOption.PERSISTENT));
+  }
+
+  @Test
+  public void legacyEmbeddedVersionsClearAfterLifecycleRemoval() {
+    String storeName = Utils.getUniqueString("clear_legacy_store");
+    Store legacyStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    legacyStore.addVersion(new VersionImpl(storeName, 1, "legacy-push-1"));
+    legacyStore.addVersion(new VersionImpl(storeName, 2, "legacy-push-2"));
+    seedLegacyStoreDirectly(storeName, legacyStore);
+    writeRepo.refresh();
+
+    Store fetched = writeRepo.getStore(storeName);
+    fetched.addVersion(new VersionImpl(storeName, 3, "push-3"));
+    fetched.deleteVersion(1);
+    writeRepo.updateStore(fetched);
+
+    ZkBaseDataAccessor<Object> raw = new ZkBaseDataAccessor<>(zkClient);
+    Store mixedLayoutStore = (Store) raw.get(STORES_PATH + "/" + storeName, null, AccessOption.PERSISTENT);
+    assertEquals(mixedLayoutStore.getVersions().size(), 1);
+    assertFalse(mixedLayoutStore.containsVersion(1));
+    assertTrue(mixedLayoutStore.containsVersion(2));
+    assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions/1", AccessOption.PERSISTENT));
+    assertTrue(raw.exists(STORES_PATH + "/" + storeName + "/versions/3", AccessOption.PERSISTENT));
+
+    Store updated = writeRepo.getStore(storeName);
+    updated.addVersion(new VersionImpl(storeName, 4, "push-4"));
+    updated.deleteVersion(2);
+    writeRepo.updateStore(updated);
+
+    Store clearedLegacyStore = (Store) raw.get(STORES_PATH + "/" + storeName, null, AccessOption.PERSISTENT);
+    assertTrue(clearedLegacyStore.getVersions().isEmpty(), "legacy embedded versions should clear after removal");
+    assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions/1", AccessOption.PERSISTENT));
+    assertFalse(raw.exists(STORES_PATH + "/" + storeName + "/versions/2", AccessOption.PERSISTENT));
+    assertTrue(raw.exists(STORES_PATH + "/" + storeName + "/versions/3", AccessOption.PERSISTENT));
+    assertTrue(raw.exists(STORES_PATH + "/" + storeName + "/versions/4", AccessOption.PERSISTENT));
   }
 
   @Test
@@ -496,13 +532,13 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     return newRepo(true);
   }
 
-  private HelixReadWriteStoreRepository newRepo(boolean perVersionZnodeWriteEnabled) {
+  private HelixReadWriteStoreRepository newRepo(boolean perVersionZnodeEnabled) {
     return new HelixReadWriteStoreRepository(
         zkClient,
         adapter,
         CLUSTER,
         Optional.empty(),
         new ClusterLockManager(CLUSTER),
-        perVersionZnodeWriteEnabled);
+        perVersionZnodeEnabled);
   }
 }

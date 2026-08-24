@@ -145,7 +145,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
         clusterName,
         metaStoreWriter,
         clusterLockManager,
-        config.isPerVersionZnodeWriteEnabled());
+        config.isPerVersionZnodeEnabled());
     this.storeMetadataRepository = new HelixReadWriteStoreRepositoryAdapter(
         admin.getReadOnlyZKSharedSystemStoreRepository(),
         readWriteStoreRepository,

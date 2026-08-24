@@ -27,9 +27,9 @@ import org.apache.logging.log4j.Logger;
  * This repository does NOT listen the change of store from ZK. Because in Venice, this is the only once place to modify
  * stores.
  *
- * <p>Persistence layout (only when {@code perVersionZnodeWriteEnabled} is true):
+ * <p>Persistence layout (only when {@code perVersionZnodeEnabled} is true):
  * <ul>
- *   <li>{@code /<cluster>/Stores/<name>} holds the {@link Store} JSON. Its embedded versions list is a FROZEN set
+ *   <li>{@code /<cluster>/Stores/<name>} holds the {@link Store} JSON. Its embedded versions list is the legacy set
  *       inherited from stores that pre-date the per-version-znode layout. The list is never appended to; it can only
  *       shrink (when the caller removes a legacy version) or have its entries mutated in place (e.g. via
  *       {@code updateVersionStatus}, which mutates the shared Avro record).</li>
@@ -53,14 +53,14 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final String clusterName;
   /**
-   * Gates the split write path. When false, the repo persists each store as a single znode with the entire versions
-   * list embedded in the JSON — the layout every Venice cluster used before the per-version-znode work — and removes
-   * any per-version znodes left by a previous flag-on writer. When true, writes go through
-   * {@link #writeStoreAndSplitVersions}, which routes new versions to {@code /versions/<n>}. The read path is
-   * unconditionally smart, so this flag only flips after every reader on the cluster runs a build that understands the
-   * split layout.
+   * Enables the per-version-znode persistence layout. When true, newly added versions are persisted under
+   * {@code /<cluster>/Stores/<store>/versions/<n>}; versions already embedded in the prior store znode remain embedded
+   * there for backward compatibility, but that embedded set is never appended to. As new versions are created, the
+   * active version set shifts into per-version znodes and the embedded list eventually clears through normal version
+   * lifecycle removals. When false, updates use the legacy single-znode layout: the store znode contains the full
+   * versions list, and any per-version znodes under {@code /versions/<n>} are removed as cleanup.
    */
-  private final boolean perVersionZnodeWriteEnabled;
+  private final boolean perVersionZnodeEnabled;
 
   public HelixReadWriteStoreRepository(
       ZkClient zkClient,
@@ -77,11 +77,11 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       String clusterName,
       Optional<MetaStoreWriter> metaStoreWriter,
       ClusterLockManager storeLock,
-      boolean perVersionZnodeWriteEnabled) {
+      boolean perVersionZnodeEnabled) {
     super(zkClient, clusterName, compositeSerializer, storeLock);
     this.clusterName = clusterName;
     this.metaStoreWriter = metaStoreWriter;
-    this.perVersionZnodeWriteEnabled = perVersionZnodeWriteEnabled;
+    this.perVersionZnodeEnabled = perVersionZnodeEnabled;
   }
 
   @Override
@@ -126,7 +126,7 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
   }
 
   private void writeStoreToZk(Store store) {
-    if (perVersionZnodeWriteEnabled) {
+    if (perVersionZnodeEnabled) {
       writeStoreAndSplitVersions(store);
     } else {
       HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
