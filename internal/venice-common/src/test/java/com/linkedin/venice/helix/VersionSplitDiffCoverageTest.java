@@ -225,6 +225,35 @@ public class VersionSplitDiffCoverageTest {
   }
 
   @Test
+  public void testDeleteStoreRemovesStoreSubtree() throws Exception {
+    HelixReadWriteStoreRepository repository = new HelixReadWriteStoreRepository(
+        Mockito.mock(ZkClient.class),
+        Mockito.mock(HelixAdapterSerializer.class),
+        CLUSTER,
+        java.util.Optional.empty(),
+        new ClusterLockManager(CLUSTER),
+        true);
+
+    @SuppressWarnings("unchecked")
+    ZkBaseDataAccessor<Store> mockedStoreAccessor = Mockito.mock(ZkBaseDataAccessor.class);
+    HelixVersionAccessor mockedVersionAccessor = Mockito.mock(HelixVersionAccessor.class);
+    injectField(CachedReadOnlyStoreRepository.class, repository, "zkDataAccessor", mockedStoreAccessor);
+    injectField(CachedReadOnlyStoreRepository.class, repository, "versionAccessor", mockedVersionAccessor);
+
+    Store store = newStore(STORE, newVersion(STORE, 1, "push-1"));
+    repository.storeMap.put(STORE, store);
+
+    String storePath = repository.getStoreZkPath(STORE);
+    when(mockedStoreAccessor.remove(storePath, AccessOption.PERSISTENT)).thenReturn(true);
+
+    repository.deleteStore(STORE);
+
+    verify(mockedStoreAccessor).remove(storePath, AccessOption.PERSISTENT);
+    verify(mockedVersionAccessor, never()).removeAllVersionsForStore(STORE);
+    Assert.assertFalse(repository.storeMap.containsKey(STORE));
+  }
+
+  @Test
   public void testReadWriteStoreRepositorySplitWriteBranches() throws Exception {
     HelixReadWriteStoreRepository repository = new HelixReadWriteStoreRepository(
         Mockito.mock(ZkClient.class),

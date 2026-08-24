@@ -118,10 +118,8 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       if (!hasStore(storeName)) {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
-      // Always tear down per-version znodes even when the flag is off — a prior run with the flag on may have left
-      // them behind, and {@link HelixVersionAccessor#removeAllVersionsForStore} is a no-op when the container is
-      // absent.
-      versionAccessor.removeAllVersionsForStore(storeName);
+      // Per-version znodes live under the store znode at /Stores/<store>/versions/*, so rely on the existing Helix
+      // store-subtree delete instead of issuing separate non-atomic deletes for the store and version znodes.
       HelixUtils.remove(zkDataAccessor, getStoreZkPath(storeName));
       removeStore(storeName);
     }
@@ -194,6 +192,9 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
     }
 
     List<Version> embeddedKeep = new ArrayList<>();
+    // The per-version znode upserts/removals below are intentionally written before the store znode update, which is
+    // the effective commit point. A crash in this window can temporarily leave new/stale version znodes visible before
+    // the store znode reflects them; the next successful updateStore reconciles the layout, so this is expected/benign.
     for (Version version: targetVersions) {
       // ZKStore.getVersions() returns ReadOnlyVersion wrappers; both setVersions on the store znode payload and
       // VersionJSONSerializer require VersionImpl, so unwrap unconditionally.
