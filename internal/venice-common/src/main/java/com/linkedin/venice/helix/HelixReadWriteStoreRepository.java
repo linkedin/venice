@@ -44,8 +44,8 @@ import org.apache.logging.log4j.Logger;
  *
  * <p>Invariant (split layout only): a given version number lives in exactly one of the two layers. The write path
  * enforces this by upserting target versions to {@code /versions/<n>} iff their number is NOT in the prior embedded
- * list; the read path ({@link CachedReadOnlyStoreRepository#hydrateVersionsFromZk(Store)}) throws on overlap. There is
- * no migration step that moves a legacy embedded version into a per-version znode.
+ * list, and by deleting any stale per-version znode whose number remains embedded. There is no migration step that
+ * moves a legacy embedded version into a per-version znode.
  */
 public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository implements ReadWriteStoreRepository {
   private static final Logger LOGGER = LogManager.getLogger(HelixReadWriteStoreRepository.class);
@@ -166,8 +166,8 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
    * carries (empty for stores created by this code path; non-empty for legacy stores). Target versions whose number is
    * NOT in that frozen set are upserted as per-version znodes — this covers both newly added versions and existing
    * znode-versions that the caller may have mutated in place (e.g. status transitions). Per-version znodes for numbers
-   * absent from the target are removed. The store znode is rewritten with the legacy-embedded subset of the target,
-   * which also drops any legacy versions the caller deleted.
+   * absent from the target, or for numbers that still belong to the legacy embedded layer, are removed. The store znode
+   * is rewritten with the legacy-embedded subset of the target, which also drops any legacy versions the caller deleted.
    */
   private void writeStoreAndSplitVersions(Store store) {
     String storeName = store.getName();
@@ -206,7 +206,7 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       }
     }
     for (Integer existing: existingZnodeNumbers) {
-      if (!targetVersionNumbers.contains(existing)) {
+      if (!targetVersionNumbers.contains(existing) || frozenEmbeddedNumbers.contains(existing)) {
         versionAccessor.removeVersion(storeName, existing);
       }
     }

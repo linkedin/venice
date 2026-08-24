@@ -37,8 +37,9 @@ import org.testng.annotations.Test;
  *       version lifecycle removal; newly added versions go to {@code /versions/<n>} and never join the embedded
  *       list.</li>
  *   <li>Mutations to an existing znode-version (e.g. status change) propagate on the next {@code updateStore}.</li>
- *   <li>A version number that appears in BOTH layers is treated as a corrupt-state bug and surfaces as an exception
- *       at read time.</li>
+ *   <li>A version number that appears in BOTH layers with conflicting payloads is treated as a corrupt-state bug and
+ *       surfaces as an exception at read time. Identical duplicates are tolerated during hydration and repaired by the
+ *       next split write.</li>
  * </ul>
  */
 public class TestHelixReadWriteStoreRepositoryVersionSplit {
@@ -390,7 +391,7 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
   }
 
   @Test
-  public void identicalOverlapBetweenEmbeddedAndZnodeIsDeduped() {
+  public void identicalOverlapBetweenEmbeddedAndZnodeIsDedupedAndRepairedOnWrite() {
     String storeName = Utils.getUniqueString("identical_overlap_store");
 
     Store legacyStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
@@ -408,6 +409,17 @@ public class TestHelixReadWriteStoreRepositoryVersionSplit {
     assertNotNull(hydrated);
     assertEquals(hydrated.getVersions().size(), 1, "identical overlap should be deduped during hydration");
     assertEquals(hydrated.getVersion(1).getPushJobId(), "legacy-push-1");
+
+    freshRepo.updateStore(hydrated);
+
+    ZkBaseDataAccessor<Object> raw = new ZkBaseDataAccessor<>(zkClient);
+    assertFalse(
+        raw.exists(STORES_PATH + "/" + storeName + "/versions/1", AccessOption.PERSISTENT),
+        "split write should remove duplicate znode for a version that remains embedded");
+    Store onZk = (Store) raw.get(STORES_PATH + "/" + storeName, null, AccessOption.PERSISTENT);
+    assertNotNull(onZk);
+    assertEquals(onZk.getVersions().size(), 1);
+    assertTrue(onZk.containsVersion(1));
   }
 
   /**

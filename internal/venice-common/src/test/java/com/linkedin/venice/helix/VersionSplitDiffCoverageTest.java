@@ -279,13 +279,14 @@ public class VersionSplitDiffCoverageTest {
 
     String storePath = repository.getStoreZkPath(STORE);
     when(mockedStoreAccessor.get(eq(storePath), any(), eq(AccessOption.PERSISTENT))).thenReturn(priorStore);
-    when(mockedVersionAccessor.getVersionNumbersForStore(STORE)).thenReturn(Arrays.asList("2", "3", "bad-token"));
+    when(mockedVersionAccessor.getVersionNumbersForStore(STORE)).thenReturn(Arrays.asList("1", "2", "3", "bad-token"));
     when(mockedStoreAccessor.set(anyString(), any(Store.class), eq(AccessOption.PERSISTENT))).thenReturn(true);
 
     repository.updateStore(targetStore);
 
     verify(mockedVersionAccessor).putVersion(eq(STORE), Mockito.argThat(v -> v.getNumber() == 2));
     verify(mockedVersionAccessor, never()).putVersion(eq(STORE), Mockito.argThat(v -> v.getNumber() == 1));
+    verify(mockedVersionAccessor).removeVersion(STORE, 1);
     verify(mockedVersionAccessor).removeVersion(STORE, 3);
     verify(mockedVersionAccessor, never()).removeVersion(STORE, 2);
     verify(mockedStoreAccessor).set(
