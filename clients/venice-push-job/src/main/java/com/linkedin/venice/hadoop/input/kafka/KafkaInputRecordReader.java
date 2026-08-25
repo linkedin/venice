@@ -85,6 +85,15 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       JobConf job,
       DataWriterTaskTracker taskTracker,
       PubSubConsumerAdapter consumer) {
+    this(split, job, taskTracker, consumer, false);
+  }
+
+  KafkaInputRecordReader(
+      InputSplit split,
+      JobConf job,
+      DataWriterTaskTracker taskTracker,
+      PubSubConsumerAdapter consumer,
+      boolean useNonEmptyAssignmentHandoff) {
 
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
@@ -108,7 +117,8 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX);
 
     // Build iterator directly from the split
-    this.pubSubSplitIterator = new PubSubSplitIterator(consumer, pubSubSplit, useLogicalIndexOffset);
+    this.pubSubSplitIterator =
+        new PubSubSplitIterator(consumer, pubSubSplit, useLogicalIndexOffset, useNonEmptyAssignmentHandoff);
 
     LOGGER.info(
         "KafkaInputRecordReader started for split index: {} topicPartition: {} start: {} end(exclusive): {} "
