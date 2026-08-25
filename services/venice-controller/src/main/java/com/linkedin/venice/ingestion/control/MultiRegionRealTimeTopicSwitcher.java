@@ -164,7 +164,7 @@ public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
     }
   }
 
-  private long getRemainingTimeInMs(long deadlineNs) throws TimeoutException {
+  long getRemainingTimeInMs(long deadlineNs) throws TimeoutException {
     long remainingTimeInMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - System.nanoTime());
     if (remainingTimeInMs <= 0) {
       throw new TimeoutException("Version Swap broadcast exceeded its deadline");

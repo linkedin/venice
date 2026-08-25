@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -32,6 +34,7 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -201,6 +204,140 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     verify(remoteWriterB, never()).close(false);
   }
 
+  @Test(timeOut = 5000)
+  public void testFailedPartitionBroadcastReportsAllRegionsAndCleansUpWriters() {
+    String localDc = "dc_local";
+    String remoteDcA = "dc_a";
+    String remoteDcB = "dc_b";
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    VeniceWriter remoteWriterA = mock(VeniceWriter.class);
+    VeniceWriter remoteWriterB = mock(VeniceWriter.class);
+    CountDownLatch allRegionsStartedBroadcasting = new CountDownLatch(2);
+    when(writerFactory.createVeniceWriter(any(VeniceWriterOptions.class))).thenAnswer(invocation -> {
+      String broker = ((VeniceWriterOptions) invocation.getArgument(0)).getBrokerAddress();
+      return "broker-a".equals(broker) ? remoteWriterA : remoteWriterB;
+    });
+    when(remoteWriterA.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
+        .thenAnswer(invocation -> awaitAllRegionsAndReturnFailedFuture(allRegionsStartedBroadcasting));
+    when(remoteWriterB.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
+        .thenAnswer(invocation -> awaitAllRegionsAndReturnFailedFuture(allRegionsStartedBroadcasting));
+    when(remoteWriterA.closeAsync(false))
+        .thenReturn(CompletableFuture.completedFuture(VeniceResourceCloseResult.SUCCESS));
+    when(remoteWriterB.closeAsync(false))
+        .thenReturn(CompletableFuture.completedFuture(VeniceResourceCloseResult.SUCCESS));
+
+    Map<String, String> brokerMap = new HashMap<>();
+    brokerMap.put(remoteDcA, "broker-a");
+    brokerMap.put(remoteDcB, "broker-b");
+    MultiRegionRealTimeTopicSwitcher switcher =
+        newSwitcher(mock(TopicManager.class), writerFactory, brokerMap, localDc);
+    Version previousVersion = version("TestStore", 1, 8);
+    Version nextVersion = version("TestStore", 2, 12);
+
+    VeniceException exception = Assert.expectThrows(
+        VeniceException.class,
+        () -> switcher.broadcastVersionSwap(previousVersion, nextVersion, "TestStore_rt"));
+
+    Assert.assertTrue(exception.getMessage().contains(remoteDcA));
+    Assert.assertTrue(exception.getMessage().contains(remoteDcB));
+    verify(remoteWriterA).closeAsync(false);
+    verify(remoteWriterB).closeAsync(false);
+    verify(remoteWriterA, never()).closeAsync(true);
+    verify(remoteWriterB, never()).closeAsync(true);
+  }
+
+  @Test
+  public void testGracefulCloseFailureTriggersUngracefulCleanup() {
+    String localDc = "dc_local";
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    VeniceWriter writer = mock(VeniceWriter.class);
+    when(writerFactory.createVeniceWriter(any(VeniceWriterOptions.class))).thenReturn(writer);
+    when(writer.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
+        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
+    CompletableFuture<VeniceResourceCloseResult> failedClose = new CompletableFuture<>();
+    failedClose.completeExceptionally(new VeniceException("close failed"));
+    when(writer.closeAsync(true)).thenReturn(failedClose);
+    when(writer.closeAsync(false)).thenReturn(CompletableFuture.completedFuture(VeniceResourceCloseResult.SUCCESS));
+
+    MultiRegionRealTimeTopicSwitcher switcher = newSwitcher(
+        mock(TopicManager.class),
+        writerFactory,
+        Collections.singletonMap(localDc, "broker-local"),
+        localDc);
+
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> switcher.broadcastVersionSwap(version("TestStore", 1, 8), version("TestStore", 2, 12), "TestStore_rt"));
+
+    verify(writer).closeAsync(true);
+    verify(writer).closeAsync(false);
+  }
+
+  @Test
+  public void testWriterCreationFailureDoesNotAttemptCleanup() {
+    String localDc = "dc_local";
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    doThrow(new VeniceException("writer creation failed")).when(writerFactory)
+        .createVeniceWriter(any(VeniceWriterOptions.class));
+    MultiRegionRealTimeTopicSwitcher switcher = newSwitcher(
+        mock(TopicManager.class),
+        writerFactory,
+        Collections.singletonMap(localDc, "broker-local"),
+        localDc);
+
+    VeniceException exception = Assert.expectThrows(
+        VeniceException.class,
+        () -> switcher.broadcastVersionSwap(version("TestStore", 1, 8), version("TestStore", 2, 12), "TestStore_rt"));
+
+    Assert.assertTrue(exception.getMessage().contains(localDc));
+  }
+
+  @Test
+  public void testEmptyDataCenterMapAndPreviousVersionPartitionCount() {
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    Version previousVersion = version("TestStore", 1, 8);
+    MultiRegionRealTimeTopicSwitcher switcher =
+        newSwitcher(mock(TopicManager.class), writerFactory, Collections.emptyMap(), "dc_local");
+
+    switcher.broadcastVersionSwap(previousVersion, version("TestStore", 2, 12), previousVersion.kafkaTopicName());
+
+    verify(writerFactory, never()).createVeniceWriter(any(VeniceWriterOptions.class));
+  }
+
+  @Test
+  public void testRemainingBroadcastDeadline() throws Exception {
+    MultiRegionRealTimeTopicSwitcher switcher =
+        newSwitcher(mock(TopicManager.class), mock(VeniceWriterFactory.class), Collections.emptyMap(), "dc_local");
+
+    Assert.assertTrue(switcher.getRemainingTimeInMs(System.nanoTime() + TimeUnit.SECONDS.toNanos(1)) > 0);
+    Assert.expectThrows(TimeoutException.class, () -> switcher.getRemainingTimeInMs(System.nanoTime() - 1));
+  }
+
+  private MultiRegionRealTimeTopicSwitcher newSwitcher(
+      TopicManager topicManager,
+      VeniceWriterFactory writerFactory,
+      Map<String, String> brokerMap,
+      String localDc) {
+    Properties props = new Properties();
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
+    return new MultiRegionRealTimeTopicSwitcher(
+        topicManager,
+        writerFactory,
+        new VeniceProperties(props),
+        pubSubTopicRepository,
+        brokerMap,
+        localDc);
+  }
+
+  private static Version version(String storeName, int number, int partitionCount) {
+    Version version = mock(Version.class);
+    when(version.getStoreName()).thenReturn(storeName);
+    when(version.getNumber()).thenReturn(number);
+    when(version.getPartitionCount()).thenReturn(partitionCount);
+    when(version.kafkaTopicName()).thenReturn(Version.composeKafkaTopic(storeName, number));
+    return version;
+  }
+
   private static void completeCloseFuturesAfterAllWritersStartClosing(
       AtomicInteger initiatedCloseCount,
       CompletableFuture<VeniceResourceCloseResult>... closeFutures) {
@@ -216,5 +353,16 @@ public class MultiRegionRealTimeTopicSwitcherTest {
         allRegionsStartedBroadcasting.await(2, TimeUnit.SECONDS),
         "All regional broadcasts should start concurrently");
     return Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
+  }
+
+  private static java.util.List<CompletableFuture<PubSubProduceResult>> awaitAllRegionsAndReturnFailedFuture(
+      CountDownLatch allRegionsStartedBroadcasting) throws InterruptedException {
+    allRegionsStartedBroadcasting.countDown();
+    Assert.assertTrue(
+        allRegionsStartedBroadcasting.await(2, TimeUnit.SECONDS),
+        "All regional broadcasts should start concurrently");
+    CompletableFuture<PubSubProduceResult> failedFuture = new CompletableFuture<>();
+    failedFuture.completeExceptionally(new VeniceException("partition write failed"));
+    return Collections.singletonList(failedFuture);
   }
 }
