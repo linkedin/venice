@@ -185,6 +185,16 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
 
+  /**
+   * The version-level nearline max record size, snapshotted from the store-level config at version-creation time.
+   * Returns {@code null} for versions created before this field existed (their metadata has no snapshot); callers
+   * should fall back to the live store-level value in that case. A non-null value (including -1) is an immutable
+   * per-version snapshot.
+   */
+  Integer getMaxNearlineRecordSizeBytes();
+
+  void setMaxNearlineRecordSizeBytes(Integer maxNearlineRecordSizeBytes);
+
   String getStoreName();
 
   String getPushJobId();

@@ -147,6 +147,8 @@ public abstract class AbstractStore implements Store {
       version.setChunkingEnabled(isChunkingEnabled());
       version.setRmdChunkingEnabled(isRmdChunkingEnabled());
 
+      version.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
+
       PartitionerConfig partitionerConfig = getPartitionerConfig();
       if (partitionerConfig != null) {
         version.setPartitionerConfig(partitionerConfig.clone());
