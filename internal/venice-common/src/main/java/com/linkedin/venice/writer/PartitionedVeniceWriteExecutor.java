@@ -122,6 +122,19 @@ public class PartitionedVeniceWriteExecutor {
     return callbackExecutor != null;
   }
 
+  /** Returns whether the current thread is executing a configured worker task. */
+  public boolean isCurrentThreadExecutingWorker() {
+    if (workers == null) {
+      return false;
+    }
+    for (BlockingBoundedExecutor worker: workers) {
+      if (worker.isCurrentThreadExecutingTask()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Returns whether the current thread is executing a configured callback task. */
   public boolean isCurrentThreadExecutingCallback() {
     return callbackExecutor != null && callbackExecutor.isCurrentThreadExecutingTask();

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -461,6 +462,52 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     assertTrue(durableWrite.isDone());
   }
 
+  @Test(timeOut = 10000)
+  public void testWorkerWriterFailureContinuationCanCloseProducer() throws Exception {
+    CountDownLatch writerEntered = new CountDownLatch(1);
+    CountDownLatch failWriter = new CountDownLatch(1);
+    AtomicReference<Thread> writerThread = new AtomicReference<>();
+    doAnswer(invocation -> {
+      writerThread.set(Thread.currentThread());
+      writerEntered.countDown();
+      if (!failWriter.await(5, TimeUnit.SECONDS)) {
+        throw new AssertionError("Timed out waiting to fail the writer");
+      }
+      throw new RuntimeException("synchronous writer failure");
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    TestableVeniceProducer producer = createProducer(1, 10, 0);
+    AtomicBoolean closeStarted = new AtomicBoolean();
+
+    try {
+      CompletableFuture<DurableWrite> durableWrite = producer.asyncPut(0, "value");
+      assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
+      AtomicReference<Thread> continuationThread = new AtomicReference<>();
+      AtomicReference<Throwable> continuationFailure = new AtomicReference<>();
+      CompletableFuture<Void> closeReturned = durableWrite.handle((ignored, failure) -> {
+        continuationThread.set(Thread.currentThread());
+        continuationFailure.set(failure);
+        closeStarted.set(true);
+        closeUnchecked(producer);
+        return null;
+      });
+
+      failWriter.countDown();
+      closeReturned.get(5, TimeUnit.SECONDS);
+
+      assertTrue(durableWrite.isCompletedExceptionally());
+      assertTrue(continuationFailure.get() != null);
+      assertFalse(
+          continuationThread.get() == writerThread.get(),
+          "A worker failure must not run user continuations on the worker");
+      verify(mockVeniceWriter).close();
+    } finally {
+      failWriter.countDown();
+      if (!closeStarted.get()) {
+        producer.close();
+      }
+    }
+  }
+
   @Test(timeOut = 30000)
   public void testCallbackShutdownRejectionDefersUserContinuation() throws Exception {
     AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
@@ -491,6 +538,44 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
       assertFalse(threadName.equals(pubSubThread.getName()), "PubSub rejection must not run user continuations inline");
     } finally {
       producer.close();
+    }
+  }
+
+  @Test(timeOut = 10000)
+  public void testDeferredRejectionContinuationCanCloseProducer() throws Exception {
+    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
+    CountDownLatch writeSubmitted = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      callback.set(invocation.getArgument(4));
+      writeSubmitted.countDown();
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    TestableVeniceProducer producer = createProducer(1, 10, 1);
+    AtomicBoolean closeStarted = new AtomicBoolean();
+
+    try {
+      CompletableFuture<DurableWrite> durableWrite = producer.asyncPut(0, "value");
+      assertTrue(writeSubmitted.await(5, TimeUnit.SECONDS));
+      producer.getDispatcher().shutdownCallbacks();
+      assertTrue(producer.getDispatcher().awaitCallbackTermination(5, TimeUnit.SECONDS));
+      AtomicReference<Throwable> continuationFailure = new AtomicReference<>();
+      CompletableFuture<Void> closeReturned = durableWrite.handle((ignored, failure) -> {
+        continuationFailure.set(failure);
+        closeStarted.set(true);
+        closeUnchecked(producer);
+        return null;
+      });
+
+      callback.get().onCompletion(null, null);
+      closeReturned.get(5, TimeUnit.SECONDS);
+
+      assertTrue(durableWrite.isCompletedExceptionally());
+      assertTrue(continuationFailure.get() != null);
+      verify(mockVeniceWriter).close();
+    } finally {
+      if (!closeStarted.get()) {
+        producer.close();
+      }
     }
   }
 
@@ -588,7 +673,7 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     TestableVeniceProducer producer = createProducer(1, 10, 0);
     try {
       AtomicReference<Thread> completionThread = new AtomicReference<>();
-      producer.scheduleDeferredRejectionCompletion(() -> completionThread.set(Thread.currentThread()), task -> {
+      producer.scheduleDeferredCompletion(() -> completionThread.set(Thread.currentThread()), task -> {
         throw new RejectedExecutionException("deferred executor unavailable");
       });
 
@@ -611,6 +696,14 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     TestableVeniceProducer producer = new TestableVeniceProducer(mockVeniceWriter);
     producer.configure(TEST_STORE, new VeniceProperties(props), null, mockSchemaReader, null);
     return producer;
+  }
+
+  private static void closeUnchecked(VeniceProducer<?, ?> producer) {
+    try {
+      producer.close();
+    } catch (IOException exception) {
+      throw new RuntimeException(exception);
+    }
   }
 
   /**
