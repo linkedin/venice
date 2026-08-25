@@ -199,9 +199,9 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     verify(localWriter).closeAsync(true);
     verify(remoteWriterA).closeAsync(true);
     verify(remoteWriterB).closeAsync(true);
-    verify(localWriter, never()).close(false);
-    verify(remoteWriterA, never()).close(false);
-    verify(remoteWriterB, never()).close(false);
+    verify(localWriter, never()).closeAsync(false);
+    verify(remoteWriterA, never()).closeAsync(false);
+    verify(remoteWriterB, never()).closeAsync(false);
   }
 
   @Test(timeOut = 5000)
@@ -247,7 +247,7 @@ public class MultiRegionRealTimeTopicSwitcherTest {
   }
 
   @Test
-  public void testGracefulCloseFailureTriggersUngracefulCleanup() {
+  public void testGracefulCloseFailureDoesNotFailCompletedBroadcast() {
     String localDc = "dc_local";
     VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
     VeniceWriter writer = mock(VeniceWriter.class);
@@ -265,10 +265,35 @@ public class MultiRegionRealTimeTopicSwitcherTest {
         Collections.singletonMap(localDc, "broker-local"),
         localDc);
 
-    Assert.expectThrows(
-        VeniceException.class,
-        () -> switcher.broadcastVersionSwap(version("TestStore", 1, 8), version("TestStore", 2, 12), "TestStore_rt"));
+    switcher.broadcastVersionSwap(version("TestStore", 1, 8), version("TestStore", 2, 12), "TestStore_rt");
 
+    verify(writer).closeAsync(true);
+    verify(writer).closeAsync(false);
+  }
+
+  @Test(timeOut = 5000)
+  public void testGracefulCloseTimeoutDoesNotFailCompletedBroadcast() throws Exception {
+    String localDc = "dc_local";
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    VeniceWriter writer = mock(VeniceWriter.class);
+    when(writerFactory.createVeniceWriter(any(VeniceWriterOptions.class))).thenReturn(writer);
+    when(writer.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
+        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
+    CompletableFuture<VeniceResourceCloseResult> neverCompletingClose = new CompletableFuture<>();
+    when(writer.closeAsync(true)).thenReturn(neverCompletingClose);
+    when(writer.closeAsync(false)).thenReturn(CompletableFuture.completedFuture(VeniceResourceCloseResult.SUCCESS));
+
+    MultiRegionRealTimeTopicSwitcher switcher = spy(
+        newSwitcher(
+            mock(TopicManager.class),
+            writerFactory,
+            Collections.singletonMap(localDc, "broker-local"),
+            localDc));
+    doReturn(100L).when(switcher).getRemainingTimeInMs(anyLong());
+
+    switcher.broadcastVersionSwap(version("TestStore", 1, 8), version("TestStore", 2, 12), "TestStore_rt");
+
+    Assert.assertFalse(neverCompletingClose.isDone());
     verify(writer).closeAsync(true);
     verify(writer).closeAsync(false);
   }
