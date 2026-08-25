@@ -268,6 +268,15 @@ final class VeniceSystemProducerWriteDispatcher {
         handoffCompletion(() -> command.completeDurable(failure));
       }
     };
+    /*
+     * Direct completion normally preserves callbackThreadCount=0 semantics, but a writer may deliver a callback from
+     * flush/close while the lifecycle fence is held. Hand off in that case so user continuations cannot reenter a fenced
+     * flush or stop on the callback thread.
+     */
+    if (!executor.isCallbackExecutorEnabled() && lifecycle.isFenceHeld()) {
+      fallbackHandoff.run();
+      return;
+    }
     if (!executor.tryExecuteCallback(directCompletion, ignored -> fallbackHandoff.run())) {
       fallbackHandoff.run();
     }

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -292,6 +293,44 @@ public class VeniceSystemProducerDispatchTest {
     InOrder shutdownOrder = inOrder(writer);
     shutdownOrder.verify(writer).flush();
     shutdownOrder.verify(writer).close();
+  }
+
+  @Test(timeOut = 10000)
+  public void testDirectCallbackContinuationDoesNotReenterPublicStopWriterLifecycle() throws Exception {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
+    AtomicInteger flushCalls = new AtomicInteger();
+    AtomicInteger flushDepth = new AtomicInteger();
+    AtomicBoolean recursiveFlush = new AtomicBoolean();
+    when(writer.put(any(), any(), eq(1), anyLong(), any())).thenAnswer(invocation -> {
+      callback.set(invocation.getArgument(4));
+      return new CompletableFuture<>();
+    });
+    doAnswer(invocation -> {
+      if (flushDepth.incrementAndGet() > 1) {
+        recursiveFlush.set(true);
+      }
+      try {
+        if (flushCalls.getAndIncrement() == 0) {
+          callback.get().onCompletion(null, null);
+        }
+        return null;
+      } finally {
+        flushDepth.decrementAndGet();
+      }
+    }).when(writer).flush();
+    VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
+    CompletableFuture<Void> durableFuture = producer.put("key", "value");
+    CompletableFuture<Void> reentrantStop = durableFuture.thenRun(producer::stop);
+
+    producer.stop();
+    reentrantStop.get(5, TimeUnit.SECONDS);
+
+    assertFalse(recursiveFlush.get());
+    assertEquals(flushCalls.get(), 1);
+    assertTrue(producer.isStopped());
+    verify(writer).flush();
+    verify(writer).close();
   }
 
   @Test

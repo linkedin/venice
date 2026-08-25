@@ -16,7 +16,7 @@ final class VeniceSystemProducerWriteLifecycle {
   }
 
   private final ReentrantReadWriteLock admissionLock = new ReentrantReadWriteLock(true);
-  private final Lock fenceLock = new ReentrantLock(true);
+  private final ReentrantLock fenceLock = new ReentrantLock(true);
   private final Object admissions = new Object();
   private final AtomicReference<Throwable> firstFailure = new AtomicReference<>();
   private volatile boolean accepting = true;
@@ -135,6 +135,10 @@ final class VeniceSystemProducerWriteLifecycle {
 
   boolean isStopped() {
     return stopped;
+  }
+
+  boolean isFenceHeld() {
+    return fenceLock.isLocked();
   }
 
   int getPendingAdmissions() {

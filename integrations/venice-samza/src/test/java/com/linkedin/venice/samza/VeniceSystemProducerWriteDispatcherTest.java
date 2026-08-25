@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
@@ -206,6 +207,61 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
     assertEquals(completionThread.get(5, TimeUnit.SECONDS), "test-pubsub-callback");
     dispatcher.stop();
+  }
+
+  @Test(timeOut = 10000)
+  public void testFencedCallbackFailureUsesRejectedHandoffFallbackWithoutReentry() throws Exception {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
+    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
+    AtomicInteger flushCalls = new AtomicInteger();
+    AtomicInteger flushDepth = new AtomicInteger();
+    AtomicBoolean recursiveFlush = new AtomicBoolean();
+    VeniceException callbackFailure = new VeniceException("broker failure during stop");
+    when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
+      callback.set(invocation.getArgument(4));
+      return new CompletableFuture<>();
+    });
+    doAnswer(invocation -> {
+      if (flushDepth.incrementAndGet() > 1) {
+        recursiveFlush.set(true);
+      }
+      try {
+        if (flushCalls.getAndIncrement() == 0) {
+          callback.get().onCompletion(null, callbackFailure);
+        }
+        return null;
+      } finally {
+        flushDepth.decrementAndGet();
+      }
+    }).when(writer).flush();
+    Executor rejectingHandoff = task -> {
+      throw new RejectedExecutionException("reject primary handoff");
+    };
+    PartitionedVeniceWriteExecutor executor =
+        new PartitionedVeniceWriteExecutor(1, 10, 0, 10, "fenced-callback-failure", null);
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        new VeniceSystemProducerWriteDispatcher(writer, executor, 5, TimeUnit.SECONDS, rejectingHandoff);
+    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
+    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
+    Thread stopThread = Thread.currentThread();
+    AtomicReference<Thread> continuationThread = new AtomicReference<>();
+    CompletableFuture<Void> reentrantStop = durable.handle((ignored, failure) -> {
+      continuationThread.set(Thread.currentThread());
+      assertSame(failure, callbackFailure);
+      assertThrows(VeniceException.class, dispatcher::stop);
+      return null;
+    });
+
+    VeniceException stopFailure = expectThrows(VeniceException.class, dispatcher::stop);
+    assertSame(stopFailure.getCause(), callbackFailure);
+    reentrantStop.get(5, TimeUnit.SECONDS);
+
+    assertFalse(recursiveFlush.get());
+    assertNotSame(continuationThread.get(), stopThread);
+    assertEquals(flushCalls.get(), 2);
+    assertTrue(dispatcher.isStopped());
+    verify(writer, times(2)).flush();
+    verify(writer).close();
   }
 
   @Test
