@@ -17,8 +17,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -121,6 +123,19 @@ public class VeniceSystemProducerDispatchTest {
         new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key", "value");
 
     assertThrows(VeniceException.class, () -> producer.send("source", envelope));
+    assertThrows(VeniceException.class, producer::stop);
+  }
+
+  @Test
+  public void testSamzaSendPreservesSynchronousWorkerError() {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    AssertionError writerFailure = new AssertionError("synchronous writer error");
+    when(writer.put(any(), any(), eq(1), anyLong(), any())).thenThrow(writerFailure);
+    VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
+    OutgoingMessageEnvelope envelope =
+        new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key", "value");
+
+    assertSame(expectThrows(AssertionError.class, () -> producer.send("source", envelope)), writerFailure);
     assertThrows(VeniceException.class, producer::stop);
   }
 

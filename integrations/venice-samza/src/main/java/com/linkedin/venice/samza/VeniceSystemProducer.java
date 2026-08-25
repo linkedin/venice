@@ -841,6 +841,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       if (cause instanceof RuntimeException) {
         throw (RuntimeException) cause;
       }
+      if (cause instanceof Error) {
+        throw (Error) cause;
+      }
       throw new SamzaException("Venice write submission failed", cause);
     }
   }

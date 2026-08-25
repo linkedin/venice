@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -585,10 +586,14 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   }
 
   private void scheduleDeferredRejectionCompletion(Runnable completion) {
+    scheduleDeferredRejectionCompletion(completion, ForkJoinPool.commonPool());
+  }
+
+  void scheduleDeferredRejectionCompletion(Runnable completion, Executor completionExecutor) {
     synchronized (deferredCompletionMonitor) {
       pendingDeferredCompletions++;
     }
-    ForkJoinPool.commonPool().execute(() -> {
+    Runnable trackedCompletion = () -> {
       Throwable failure = null;
       try {
         completion.run();
@@ -603,7 +608,12 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
           deferredCompletionMonitor.notifyAll();
         }
       }
-    });
+    };
+    try {
+      completionExecutor.execute(trackedCompletion);
+    } catch (RejectedExecutionException ignored) {
+      trackedCompletion.run();
+    }
   }
 
   /**

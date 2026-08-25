@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -30,6 +31,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -579,6 +581,21 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
       releaseContinuation.countDown();
     }
     close.get(5, TimeUnit.SECONDS);
+  }
+
+  @Test(timeOut = 5000)
+  public void testRejectedDeferredCompletionExecutorFallsBackInline() throws Exception {
+    TestableVeniceProducer producer = createProducer(1, 10, 0);
+    try {
+      AtomicReference<Thread> completionThread = new AtomicReference<>();
+      producer.scheduleDeferredRejectionCompletion(() -> completionThread.set(Thread.currentThread()), task -> {
+        throw new RejectedExecutionException("deferred executor unavailable");
+      });
+
+      assertSame(completionThread.get(), Thread.currentThread());
+    } finally {
+      producer.close();
+    }
   }
 
   private TestableVeniceProducer createProducer(int workerCount, int queueCapacity) {
