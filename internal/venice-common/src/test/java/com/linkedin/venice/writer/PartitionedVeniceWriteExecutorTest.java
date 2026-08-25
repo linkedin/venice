@@ -84,6 +84,7 @@ public class PartitionedVeniceWriteExecutorTest {
     CountDownLatch workerStarted = new CountDownLatch(1);
     CountDownLatch releaseWorker = new CountDownLatch(1);
     CountDownLatch queuedTaskCompleted = new CountDownLatch(1);
+    CountDownLatch thirdTaskCompleted = new CountDownLatch(1);
     AtomicBoolean thirdSubmitReturned = new AtomicBoolean(false);
     Thread submitter = null;
     try {
@@ -99,7 +100,7 @@ public class PartitionedVeniceWriteExecutorTest {
       executor.submit(0, queuedTaskCompleted::countDown);
 
       submitter = new Thread(() -> {
-        executor.submit(0, () -> {});
+        executor.submit(0, thirdTaskCompleted::countDown);
         thirdSubmitReturned.set(true);
       });
       submitter.start();
@@ -110,6 +111,7 @@ public class PartitionedVeniceWriteExecutorTest {
       assertTrue(queuedTaskCompleted.await(5, TimeUnit.SECONDS));
       submitter.join(TimeUnit.SECONDS.toMillis(5));
       assertTrue(thirdSubmitReturned.get());
+      assertTrue(thirdTaskCompleted.await(5, TimeUnit.SECONDS), "The blocked task must execute without being dropped");
     } finally {
       releaseWorker.countDown();
       if (submitter != null) {

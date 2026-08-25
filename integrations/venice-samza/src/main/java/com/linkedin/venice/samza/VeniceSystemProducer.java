@@ -760,13 +760,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      return new VeniceSystemProducerWriteCommand(
-          VeniceSystemProducerWriteCommand.Operation.DELETE,
-          serializedKey,
-          null,
-          -1,
-          -1,
-          logicalTimestamp);
+      return VeniceSystemProducerWriteCommand.delete(serializedKey, logicalTimestamp);
     }
 
     Schema valueObjectSchema = getSchemaFromObject(valueObject);
@@ -793,50 +787,20 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     int derivedSchemaId = valueSchemaIdPair.getSecond();
 
     if (derivedSchemaId == -1) {
-      return new VeniceSystemProducerWriteCommand(
-          VeniceSystemProducerWriteCommand.Operation.PUT,
-          serializedKey,
-          serializedValue,
-          valueSchemaId,
-          -1,
-          logicalTimestamp);
+      return VeniceSystemProducerWriteCommand.put(serializedKey, serializedValue, valueSchemaId, logicalTimestamp);
     }
     if (!isWriteComputeEnabled) {
       throw new SamzaException(
           "Cannot write partial update record to Venice store " + storeName + " "
               + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
     }
-    return new VeniceSystemProducerWriteCommand(
-        VeniceSystemProducerWriteCommand.Operation.UPDATE,
-        serializedKey,
-        serializedValue,
-        valueSchemaId,
-        derivedSchemaId,
-        logicalTimestamp);
+    return VeniceSystemProducerWriteCommand
+        .update(serializedKey, serializedValue, valueSchemaId, derivedSchemaId, logicalTimestamp);
   }
 
   private CompletableFuture<Void> sendInline(VeniceSystemProducerWriteCommand command) {
     CompletableFuture<Void> durableFuture = new CompletableFuture<>();
-    CompletableFutureCallback callback = new CompletableFutureCallback(durableFuture);
-    switch (command.operation) {
-      case PUT:
-        getInternalWriter().put(command.key, command.value, command.valueSchemaId, command.logicalTimestamp, callback);
-        break;
-      case UPDATE:
-        getInternalWriter().update(
-            command.key,
-            command.value,
-            command.valueSchemaId,
-            command.derivedSchemaId,
-            command.logicalTimestamp,
-            callback);
-        break;
-      case DELETE:
-        getInternalWriter().delete(command.key, command.logicalTimestamp, callback);
-        break;
-      default:
-        throw new VeniceException("Unsupported Venice write operation: " + command.operation);
-    }
+    command.submit(getInternalWriter(), new CompletableFutureCallback(durableFuture));
     return durableFuture;
   }
 

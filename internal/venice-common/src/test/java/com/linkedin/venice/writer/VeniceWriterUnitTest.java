@@ -136,16 +136,20 @@ public class VeniceWriterUnitTest {
     verify(mockedProducer, atLeast(2))
         .sendMessage(anyString(), deletePartitionArgumentCaptor.capture(), any(), any(), any(), any());
 
-    ArgumentCaptor<Integer> updatePartitionArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
-    writer.delete(key, null);
-    verify(mockedProducer, atLeast(2))
-        .sendMessage(anyString(), updatePartitionArgumentCaptor.capture(), any(), any(), any(), any());
-
     assertEquals(putPartitionArgumentCaptor.getValue(), deletePartitionArgumentCaptor.getValue());
-    assertEquals(putPartitionArgumentCaptor.getValue(), updatePartitionArgumentCaptor.getValue());
-    assertEquals(
-        writer.getPartitionId(serializer.serialize(testTopic, key)),
-        putPartitionArgumentCaptor.getValue().intValue());
+    int expectedPartition = writer.getPartitionId(serializer.serialize(testTopic, key));
+    assertEquals(putPartitionArgumentCaptor.getValue().intValue(), expectedPartition);
+    assertEquals(deletePartitionArgumentCaptor.getValue().intValue(), expectedPartition);
+
+    if (!isChunkingEnabled) {
+      ArgumentCaptor<Integer> updatePartitionArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
+      writer.update(key, valueString, 1, 1, null);
+      verify(mockedProducer, atLeast(3))
+          .sendMessage(anyString(), updatePartitionArgumentCaptor.capture(), any(), any(), any(), any());
+      assertEquals(updatePartitionArgumentCaptor.getValue(), putPartitionArgumentCaptor.getValue());
+      assertEquals(updatePartitionArgumentCaptor.getValue(), deletePartitionArgumentCaptor.getValue());
+      assertEquals(updatePartitionArgumentCaptor.getValue().intValue(), expectedPartition);
+    }
   }
 
   @Test

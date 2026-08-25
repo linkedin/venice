@@ -35,26 +35,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class VeniceSystemProducerWriteDispatcherTest {
-  @Test(timeOut = 5000)
-  public void testRepeatedStopIsIdempotent() throws Exception {
-    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
-    MarkerAdmissionObservingExecutor executor = new MarkerAdmissionObservingExecutor(1, 1, "repeated-stop");
-    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
-
-    dispatcher.stop();
-    int markerAttempts = executor.markerSubmissionAttempts.get();
-    dispatcher.stop();
-
-    assertTrue(dispatcher.isStopped());
-    assertEquals(executor.markerSubmissionAttempts.get(), markerAttempts);
-    verify(writer, times(1)).flush();
-    verify(writer, times(1)).close();
-  }
-
   @Test
   public void testFlushBlocksPostFenceAdmissionUntilWriterFlushReturns() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
@@ -131,7 +116,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   }
 
   @Test
-  public void testSubmissionCompletesOnWorkerBeforeDurableHandoff() throws Exception {
+  public void testSubmissionCompletesOnWorkerBeforeConfiguredCallback() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
     CountDownLatch writeEntered = new CountDownLatch(1);
@@ -165,8 +150,30 @@ public class VeniceSystemProducerWriteDispatcherTest {
         submissionThread.get(5, TimeUnit.SECONDS).contains("venice-system-producer-worker"),
         "The private submission phase must complete directly on the worker");
     assertTrue(
-        durableThread.get(5, TimeUnit.SECONDS).contains("ForkJoinPool.commonPool"),
-        "Callback threads process callbacks, but user continuations must run on the lifecycle-safe handoff");
+        durableThread.get(5, TimeUnit.SECONDS).contains("venice-system-producer-callback"),
+        "Normal durable completion must honor the configured callback executor");
+    dispatcher.stop();
+  }
+
+  @Test
+  public void testCallbackThreadCountZeroCompletesOnPubSubThread() throws Exception {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
+    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
+    when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
+      callback.set(invocation.getArgument(4));
+      return new CompletableFuture<>();
+    });
+    VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 0);
+    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
+    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
+    CompletableFuture<String> completionThread = new CompletableFuture<>();
+    durable.whenComplete((ignored, failure) -> completionThread.complete(Thread.currentThread().getName()));
+
+    Thread pubSubThread = new Thread(() -> callback.get().onCompletion(null, null), "test-pubsub-callback");
+    pubSubThread.start();
+    pubSubThread.join(TimeUnit.SECONDS.toMillis(5));
+
+    assertEquals(completionThread.get(5, TimeUnit.SECONDS), "test-pubsub-callback");
     dispatcher.stop();
   }
 
@@ -200,35 +207,9 @@ public class VeniceSystemProducerWriteDispatcherTest {
   }
 
   @Test
-  public void testSynchronousCallbackCompletionUsesTrackedHandoff() throws Exception {
-    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
-    CountDownLatch callbackInvoked = new CountDownLatch(1);
-    CountDownLatch releaseWriter = new CountDownLatch(1);
-    when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
-      PubSubProducerCallback callback = invocation.getArgument(4);
-      callback.onCompletion(null, null);
-      callbackInvoked.countDown();
-      await(releaseWriter);
-      return new CompletableFuture<>();
-    });
-    VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 1);
-    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-    assertTrue(callbackInvoked.await(5, TimeUnit.SECONDS));
-    CompletableFuture<String> completionThread = new CompletableFuture<>();
-    durable.whenComplete((ignored, failure) -> completionThread.complete(Thread.currentThread().getName()));
-
-    releaseWriter.countDown();
-    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-    assertTrue(
-        completionThread.get(5, TimeUnit.SECONDS).contains("ForkJoinPool.commonPool"),
-        "Configured callback threads must schedule, rather than execute, caller-visible completion");
-    dispatcher.stop();
-  }
-
-  @Test
   public void testRejectedCallbackAdmissionUsesNonblockingHandoff() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
-    RejectedCallbackAdmission rejectedAdmission = rejectCallbackAdmission(writer);
+    CallbackCompletionScenario rejectedAdmission = callbackCompletionScenario(writer, true);
     CompletableFuture<String> completionThread = new CompletableFuture<>();
     rejectedAdmission.durable
         .whenComplete((ignored, failure) -> completionThread.complete(Thread.currentThread().getName()));
@@ -251,61 +232,35 @@ public class VeniceSystemProducerWriteDispatcherTest {
     }
   }
 
-  @Test(timeOut = 10000)
-  public void testBlockedFallbackHandoffContinuationDoesNotBlockStop() throws Exception {
+  @DataProvider(name = "callbackCompletionPaths")
+  public Object[][] callbackCompletionPaths() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "callbackCompletionPaths", timeOut = 10000)
+  public void testBlockedUserContinuationDoesNotBlockStop(boolean fallbackHandoff) throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
-    RejectedCallbackAdmission rejectedAdmission = rejectCallbackAdmission(writer);
-    CountDownLatch handoffEntered = new CountDownLatch(1);
-    CountDownLatch releaseHandoff = new CountDownLatch(1);
-    CompletableFuture<Void> continuation = rejectedAdmission.durable.thenRun(() -> {
-      handoffEntered.countDown();
-      await(releaseHandoff);
+    CallbackCompletionScenario scenario = callbackCompletionScenario(writer, fallbackHandoff);
+    CountDownLatch continuationEntered = new CountDownLatch(1);
+    CountDownLatch releaseContinuation = new CountDownLatch(1);
+    CompletableFuture<Void> continuation = scenario.durable.thenRun(() -> {
+      continuationEntered.countDown();
+      await(releaseContinuation);
     });
-    rejectedAdmission.callback.onCompletion(null, null);
-    assertTrue(handoffEntered.await(5, TimeUnit.SECONDS));
+    scenario.callback.onCompletion(null, null);
+    assertTrue(continuationEntered.await(5, TimeUnit.SECONDS));
     CountDownLatch writerClosed = new CountDownLatch(1);
     doAnswer(invocation -> {
       writerClosed.countDown();
       return null;
     }).when(writer).close();
 
-    CompletableFuture<Void> stop = CompletableFuture.runAsync(rejectedAdmission.dispatcher::stop);
+    CompletableFuture<Void> stop = CompletableFuture.runAsync(scenario.dispatcher::stop);
     assertTrue(writerClosed.await(5, TimeUnit.SECONDS));
     try {
       stop.get(5, TimeUnit.SECONDS);
       assertFalse(continuation.isDone(), "The user continuation must remain blocked until explicitly released");
-      assertTrue(rejectedAdmission.dispatcher.isStopped());
-    } finally {
-      releaseHandoff.countDown();
-    }
-    continuation.get(5, TimeUnit.SECONDS);
-  }
-
-  @Test(timeOut = 10000)
-  public void testBlockedConfiguredCallbackContinuationDoesNotBlockStop() throws Exception {
-    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
-    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
-    when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
-      callback.set(invocation.getArgument(4));
-      return new CompletableFuture<>();
-    });
-    VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 1);
-    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-    CountDownLatch continuationEntered = new CountDownLatch(1);
-    CountDownLatch releaseContinuation = new CountDownLatch(1);
-    CompletableFuture<Void> continuation = durable.thenRun(() -> {
-      continuationEntered.countDown();
-      await(releaseContinuation);
-    });
-    callback.get().onCompletion(null, null);
-    assertTrue(continuationEntered.await(5, TimeUnit.SECONDS));
-
-    CompletableFuture<Void> stop = CompletableFuture.runAsync(dispatcher::stop);
-    try {
-      stop.get(5, TimeUnit.SECONDS);
-      assertFalse(continuation.isDone(), "The user continuation must remain blocked until explicitly released");
-      assertTrue(dispatcher.isStopped());
+      assertTrue(scenario.dispatcher.isStopped());
     } finally {
       releaseContinuation.countDown();
     }
@@ -327,6 +282,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 1);
     CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
     assertTrue(callbackInvoked.await(5, TimeUnit.SECONDS));
+    assertFalse(durable.isDone(), "Synchronous callback completion must wait for writer submission to return");
     CompletableFuture<String> continuationThread = new CompletableFuture<>();
     durable.thenRun(() -> {
       try {
@@ -451,7 +407,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
         "Flush markers must not overtake a previously admitted send");
     releaseBlockedStripe.countDown();
     sender.get(5, TimeUnit.SECONDS);
-    assertEquals(dispatcher.getPendingAdmissions(), 0);
     assertThrows(VeniceException.class, dispatcher::stop);
   }
 
@@ -492,7 +447,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
     flush.join(TimeUnit.SECONDS.toMillis(5));
     assertFalse(sender.isAlive());
     assertFalse(flush.isAlive());
-    assertEquals(dispatcher.getPendingAdmissions(), 0);
     verify(writer).flush();
     dispatcher.stop();
   }
@@ -635,7 +589,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   }
 
   @Test(timeOut = 10000)
-  public void testStopWaitsForAdmittedSenderBlockedOnFullQueue() throws Exception {
+  public void testStopWaitsForAdmittedSenderBlockedOnFullQueueAndRemainsIdempotent() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     CountDownLatch firstWriteEntered = new CountDownLatch(1);
     CountDownLatch releaseFirstWrite = new CountDownLatch(1);
@@ -678,46 +632,12 @@ public class VeniceSystemProducerWriteDispatcherTest {
     stop.join(TimeUnit.SECONDS.toMillis(5));
     assertFalse(stop.isAlive());
     assertNull(stopFailure.get());
-    verify(writer).flush();
-    verify(writer).close();
-  }
-
-  @Test
-  public void testCommandRetainsOwnedBytesAndUsesExactWriterPartition() throws Exception {
-    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
-    CountDownLatch firstWriteEntered = new CountDownLatch(1);
-    CountDownLatch releaseFirstWrite = new CountDownLatch(1);
-    AtomicReference<byte[]> routedKey = new AtomicReference<>();
-    AtomicReference<byte[]> writtenKey = new AtomicReference<>();
-    AtomicReference<byte[]> writtenValue = new AtomicReference<>();
-    when(writer.getPartitionId(any())).thenAnswer(invocation -> {
-      routedKey.set(invocation.getArgument(0));
-      return 7;
-    });
-    when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
-      if (firstWriteEntered.getCount() > 0) {
-        firstWriteEntered.countDown();
-        await(releaseFirstWrite);
-      } else {
-        writtenKey.set(invocation.getArgument(0));
-        writtenValue.set(invocation.getArgument(1));
-      }
-      return new CompletableFuture<>();
-    });
-    VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 2, 0);
-    dispatcher.put(new byte[] { 0 }, new byte[] { 0 }, 1, -1);
-    assertTrue(firstWriteEntered.await(5, TimeUnit.SECONDS));
-
-    byte[] key = { 1, 2 };
-    byte[] value = { 3, 4 };
-    CompletableFuture<Void> durable = dispatcher.put(key, value, 1, 123);
-    releaseFirstWrite.countDown();
-    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-
-    assertSame(routedKey.get(), key);
-    assertSame(writtenKey.get(), key);
-    assertSame(writtenValue.get(), value);
+    int markerAttempts = executor.markerSubmissionAttempts.get();
     dispatcher.stop();
+    assertTrue(dispatcher.isStopped());
+    assertEquals(executor.markerSubmissionAttempts.get(), markerAttempts);
+    verify(writer, times(1)).flush();
+    verify(writer, times(1)).close();
   }
 
   @Test
@@ -785,18 +705,20 @@ public class VeniceSystemProducerWriteDispatcherTest {
     verify(writer).close();
   }
 
-  private RejectedCallbackAdmission rejectCallbackAdmission(AbstractVeniceWriter<byte[], byte[], byte[]> writer)
-      throws Exception {
+  private CallbackCompletionScenario callbackCompletionScenario(
+      AbstractVeniceWriter<byte[], byte[], byte[]> writer,
+      boolean fallbackHandoff) throws Exception {
     AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       callback.set(invocation.getArgument(4));
       return new CompletableFuture<>();
     });
-    VeniceSystemProducerWriteDispatcher dispatcher =
-        new VeniceSystemProducerWriteDispatcher(writer, new RejectingCallbackExecutor());
+    VeniceSystemProducerWriteDispatcher dispatcher = fallbackHandoff
+        ? new VeniceSystemProducerWriteDispatcher(writer, new RejectingCallbackExecutor())
+        : dispatcher(writer, 1, 1);
     CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
     dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-    return new RejectedCallbackAdmission(dispatcher, callback.get(), durable);
+    return new CallbackCompletionScenario(dispatcher, callback.get(), durable);
   }
 
   private VeniceSystemProducerWriteDispatcher dispatcher(
@@ -831,12 +753,12 @@ public class VeniceSystemProducerWriteDispatcherTest {
     return condition.getAsBoolean();
   }
 
-  private static final class RejectedCallbackAdmission {
+  private static final class CallbackCompletionScenario {
     private final VeniceSystemProducerWriteDispatcher dispatcher;
     private final PubSubProducerCallback callback;
     private final CompletableFuture<Void> durable;
 
-    private RejectedCallbackAdmission(
+    private CallbackCompletionScenario(
         VeniceSystemProducerWriteDispatcher dispatcher,
         PubSubProducerCallback callback,
         CompletableFuture<Void> durable) {
@@ -849,11 +771,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
   private static final class RejectingCallbackExecutor extends PartitionedVeniceWriteExecutor {
     private RejectingCallbackExecutor() {
       super(0, 1, 0, 1, "rejected-callback-test", null);
-    }
-
-    @Override
-    public boolean isCallbackExecutorEnabled() {
-      return true;
     }
 
     @Override

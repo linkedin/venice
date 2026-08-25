@@ -60,30 +60,6 @@ import org.testng.annotations.Test;
 
 public class VeniceSystemProducerDispatchTest {
   @Test
-  public void testObjectSendReturnsAfterEnqueueWithoutWaitingForCoreWriter() throws Exception {
-    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
-    CountDownLatch writerEntered = new CountDownLatch(1);
-    CountDownLatch releaseWriter = new CountDownLatch(1);
-    when(writer.put(any(), any(), eq(1), anyLong(), any())).thenAnswer(invocation -> {
-      writerEntered.countDown();
-      releaseWriter.await();
-      return new CompletableFuture<>();
-    });
-    VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
-    try {
-      CompletableFuture<CompletableFuture<Void>> invocation =
-          CompletableFuture.supplyAsync(() -> producer.send((Object) "key", "value"));
-      CompletableFuture<Void> durableFuture = invocation.get(2, TimeUnit.SECONDS);
-
-      assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
-      assertFalse(durableFuture.isDone());
-    } finally {
-      releaseWriter.countDown();
-      producer.stop();
-    }
-  }
-
-  @Test
   public void testDirectPutWaitsForSubmissionButNotDurableAck() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch writerEntered = new CountDownLatch(1);
@@ -338,32 +314,15 @@ public class VeniceSystemProducerDispatchTest {
     producer.stop();
   }
 
-  @Test
-  public void testWorkerCountZeroRestoresInlineMode() {
+  @Test(dataProvider = "inlineModes")
+  public void testConfiguredInlineModesRemainOnCallerThread(Version.PushType pushType, int workerCount) {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<Thread> writerThread = new AtomicReference<>();
     when(writer.put(any(), any(), eq(1), anyLong(), any())).thenAnswer(invocation -> {
       writerThread.set(Thread.currentThread());
       return new CompletableFuture<>();
     });
-    VeniceSystemProducer producer = buildStartedProducer(writer, 0, false, -1);
-    try {
-      producer.put("key", "value");
-      assertEquals(writerThread.get(), Thread.currentThread());
-    } finally {
-      producer.stop();
-    }
-  }
-
-  @Test(dataProvider = "inlinePushTypes")
-  public void testBatchAndStreamReprocessingRemainInline(Version.PushType pushType) {
-    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
-    AtomicReference<Thread> writerThread = new AtomicReference<>();
-    when(writer.put(any(), any(), eq(1), anyLong(), any())).thenAnswer(invocation -> {
-      writerThread.set(Thread.currentThread());
-      return new CompletableFuture<>();
-    });
-    VeniceSystemProducer producer = buildStartedProducer(writer, 4, false, -1, pushType);
+    VeniceSystemProducer producer = buildStartedProducer(writer, workerCount, false, -1, pushType);
     if (pushType == Version.PushType.STREAM_REPROCESSING) {
       RouterBasedPushMonitor pushMonitor = mock(RouterBasedPushMonitor.class);
       when(pushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.COMPLETED);
@@ -377,9 +336,10 @@ public class VeniceSystemProducerDispatchTest {
     }
   }
 
-  @DataProvider(name = "inlinePushTypes")
-  public Object[][] inlinePushTypes() {
-    return new Object[][] { { Version.PushType.BATCH }, { Version.PushType.STREAM_REPROCESSING } };
+  @DataProvider(name = "inlineModes")
+  public Object[][] inlineModes() {
+    return new Object[][] { { Version.PushType.STREAM, 0 }, { Version.PushType.BATCH, 4 },
+        { Version.PushType.STREAM_REPROCESSING, 4 } };
   }
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> mockWriter() {

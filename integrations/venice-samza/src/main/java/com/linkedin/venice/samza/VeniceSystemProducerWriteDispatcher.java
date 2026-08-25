@@ -2,9 +2,6 @@ package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.samza.VeniceSystemProducerWriteCommand.CALLBACK_IGNORED;
 import static com.linkedin.venice.samza.VeniceSystemProducerWriteCommand.CALLBACK_READY;
-import static com.linkedin.venice.samza.VeniceSystemProducerWriteCommand.Operation.DELETE;
-import static com.linkedin.venice.samza.VeniceSystemProducerWriteCommand.Operation.PUT;
-import static com.linkedin.venice.samza.VeniceSystemProducerWriteCommand.Operation.UPDATE;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -27,9 +24,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-/**
- * STREAM-only write coordination for {@link VeniceSystemProducer}.
- */
+/** STREAM-only routing, execution, callback, flush, and stop coordination for {@link VeniceSystemProducer}. */
 final class VeniceSystemProducerWriteDispatcher {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducerWriteDispatcher.class);
   private static final long SHUTDOWN_TIMEOUT_SECONDS = 60;
@@ -38,7 +33,8 @@ final class VeniceSystemProducerWriteDispatcher {
   private final AbstractVeniceWriter<byte[], byte[], byte[]> writer;
   private final PartitionedVeniceWriteExecutor executor;
   private final long shutdownTimeoutNanos;
-  private final VeniceSystemProducerWriteLifecycle lifecycle;
+  private final Executor completionHandoffExecutor;
+  private final VeniceSystemProducerWriteLifecycle lifecycle = new VeniceSystemProducerWriteLifecycle();
   private final AtomicBoolean legacyRoutingWarningLogged = new AtomicBoolean();
   private volatile boolean writerClosed;
 
@@ -79,11 +75,11 @@ final class VeniceSystemProducerWriteDispatcher {
     this.writer = writer;
     this.executor = executor;
     this.shutdownTimeoutNanos = shutdownTimeoutUnit.toNanos(shutdownTimeout);
-    this.lifecycle = new VeniceSystemProducerWriteLifecycle(completionHandoffExecutor);
+    this.completionHandoffExecutor = completionHandoffExecutor;
   }
 
   CompletableFuture<Void> put(byte[] key, byte[] value, int valueSchemaId, long logicalTimestamp) {
-    return dispatch(new VeniceSystemProducerWriteCommand(PUT, key, value, valueSchemaId, -1, logicalTimestamp));
+    return dispatch(VeniceSystemProducerWriteCommand.put(key, value, valueSchemaId, logicalTimestamp));
   }
 
   CompletableFuture<Void> update(
@@ -93,11 +89,11 @@ final class VeniceSystemProducerWriteDispatcher {
       int derivedSchemaId,
       long logicalTimestamp) {
     return dispatch(
-        new VeniceSystemProducerWriteCommand(UPDATE, key, value, valueSchemaId, derivedSchemaId, logicalTimestamp));
+        VeniceSystemProducerWriteCommand.update(key, value, valueSchemaId, derivedSchemaId, logicalTimestamp));
   }
 
   CompletableFuture<Void> delete(byte[] key, long logicalTimestamp) {
-    return dispatch(new VeniceSystemProducerWriteCommand(DELETE, key, null, -1, -1, logicalTimestamp));
+    return dispatch(VeniceSystemProducerWriteCommand.delete(key, logicalTimestamp));
   }
 
   Future<Void> getSubmissionFuture(CompletableFuture<Void> durableFuture) {
@@ -167,18 +163,12 @@ final class VeniceSystemProducerWriteDispatcher {
         }
 
         if (workersTerminated && writerClosed) {
-          boolean callbacksTerminated =
-              executor.shutdownCallbacksAndAwait(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS);
-          captureInterrupt(restoreInterrupt);
-          if (!callbacksTerminated) {
-            recordFailure(new VeniceException("Timed out while draining Venice SystemProducer callbacks"));
-          } else if (!lifecycle.awaitHandoffCompletions(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS)) {
-            captureInterrupt(restoreInterrupt);
-            recordFailure(new VeniceException("Timed out while draining Venice SystemProducer completion handoffs"));
-          } else {
-            captureInterrupt(restoreInterrupt);
-            lifecycle.markStopped();
-          }
+          /*
+           * Callback admission transfers completion ownership. Accepted callback tasks and exceptional handoffs may
+           * finish after stop because CompletableFuture completion can run arbitrary user continuations inline.
+           */
+          executor.shutdownCallbacks();
+          lifecycle.markStopped();
         }
       } finally {
         lifecycle.finishStop();
@@ -199,7 +189,7 @@ final class VeniceSystemProducerWriteDispatcher {
   CompletableFuture<Void> dispatch(VeniceSystemProducerWriteCommand command) {
     lifecycle.beginAdmission();
     try {
-      int partition = executor.isWorkersEnabled() ? getPartition(command.key) : 0;
+      int partition = executor.isWorkersEnabled() ? getPartition(command.getKey()) : 0;
       executor.submit(partition, () -> execute(command), rejection -> reject(command, rejection));
     } catch (RejectedExecutionException exception) {
       throw new VeniceException("Venice write command was not accepted", exception);
@@ -230,25 +220,7 @@ final class VeniceSystemProducerWriteDispatcher {
     PubSubProducerCallback callback =
         (PubSubProduceResult produceResult, Exception exception) -> onCompletion(command, exception);
     try {
-      switch (command.operation) {
-        case PUT:
-          writer.put(command.key, command.value, command.valueSchemaId, command.logicalTimestamp, callback);
-          break;
-        case UPDATE:
-          writer.update(
-              command.key,
-              command.value,
-              command.valueSchemaId,
-              command.derivedSchemaId,
-              command.logicalTimestamp,
-              callback);
-          break;
-        case DELETE:
-          writer.delete(command.key, command.logicalTimestamp, callback);
-          break;
-        default:
-          throw new VeniceException("Unsupported Venice write operation: " + command.operation);
-      }
+      command.submit(writer, callback);
     } catch (Throwable throwable) {
       submissionFailure = throwable;
       recordFailure(throwable);
@@ -267,7 +239,7 @@ final class VeniceSystemProducerWriteDispatcher {
   private void finishSubmission(VeniceSystemProducerWriteCommand command, Throwable failure) {
     Runnable completion = command.finishSubmission(failure);
     if (completion != null) {
-      lifecycle.scheduleCompletionHandoff(executor, completion);
+      handoffCompletion(completion);
     }
   }
 
@@ -280,7 +252,50 @@ final class VeniceSystemProducerWriteDispatcher {
       recordFailure(failure);
     }
     if (callbackState == CALLBACK_READY) {
-      lifecycle.scheduleCompletionHandoff(executor, () -> command.completeDurable(failure));
+      executeCallbackCompletion(command, failure);
+    }
+  }
+
+  private void executeCallbackCompletion(VeniceSystemProducerWriteCommand command, Throwable failure) {
+    AtomicBoolean completionClaimed = new AtomicBoolean();
+    Runnable directCompletion = () -> {
+      if (completionClaimed.compareAndSet(false, true)) {
+        command.completeDurable(failure);
+      }
+    };
+    Runnable fallbackHandoff = () -> {
+      if (completionClaimed.compareAndSet(false, true)) {
+        handoffCompletion(() -> command.completeDurable(failure));
+      }
+    };
+    if (!executor.tryExecuteCallback(directCompletion, ignored -> fallbackHandoff.run())) {
+      fallbackHandoff.run();
+    }
+  }
+
+  /**
+   * Transfers exceptional completion ownership without making user continuations part of producer shutdown.
+   */
+  private void handoffCompletion(Runnable completion) {
+    Runnable guardedCompletion = () -> {
+      try {
+        completion.run();
+      } catch (Throwable throwable) {
+        recordFailure(throwable);
+      }
+    };
+    try {
+      completionHandoffExecutor.execute(guardedCompletion);
+    } catch (RejectedExecutionException rejection) {
+      if (completionHandoffExecutor == ForkJoinPool.commonPool()) {
+        guardedCompletion.run();
+        return;
+      }
+      try {
+        ForkJoinPool.commonPool().execute(guardedCompletion);
+      } catch (RejectedExecutionException fallbackRejection) {
+        guardedCompletion.run();
+      }
     }
   }
 
