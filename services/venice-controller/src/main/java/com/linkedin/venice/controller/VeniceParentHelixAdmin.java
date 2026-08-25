@@ -240,6 +240,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int ROLLBACK_STATUS_POLL_MAX_ATTEMPTS = 15;
+  private static final Duration ROLLBACK_STATUS_POLL_MAX_DURATION = Duration.ofMinutes(2);
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -2787,7 +2789,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // a positive signal — treat those regions as not-confirmed so we don't inflate the count.
     Set<String> assumeRolledBackIfUnreachable = filterProvided ? targetedRegions : Collections.emptySet();
 
-    // Poll child regions with exponential backoff to allow for ZK propagation lag after admin message consumption.
+    // Poll beyond the multi-region Version Swap broadcast deadline so child metadata has time to become visible.
     int rolledBackRegionCount = 0;
     try {
       rolledBackRegionCount = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
@@ -2808,10 +2810,10 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         return count;
       },
-          5,
+          ROLLBACK_STATUS_POLL_MAX_ATTEMPTS,
           Duration.ofSeconds(1),
           Duration.ofSeconds(10),
-          Duration.ofSeconds(30),
+          ROLLBACK_STATUS_POLL_MAX_DURATION,
           Collections.singletonList(VeniceException.class));
     } catch (Exception e) {
       // Retries exhausted — do a final poll to get the latest count

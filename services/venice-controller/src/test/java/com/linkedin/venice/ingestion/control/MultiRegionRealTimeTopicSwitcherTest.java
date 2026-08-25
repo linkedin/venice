@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -19,14 +20,19 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -35,7 +41,7 @@ import org.testng.annotations.Test;
 public class MultiRegionRealTimeTopicSwitcherTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  @Test
+  @Test(timeOut = 5000)
   public void testBroadcastVersionSwapWithRegionInfoToAllDataCenters() {
     // Arrange inputs
     String storeName = "TestStore";
@@ -50,6 +56,7 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     VeniceWriter localWriter = mock(VeniceWriter.class);
     VeniceWriter remoteWriterA = mock(VeniceWriter.class);
     VeniceWriter remoteWriterB = mock(VeniceWriter.class);
+    CountDownLatch allRegionsStartedBroadcasting = new CountDownLatch(3);
     when(writerFactory.createVeniceWriter(any(VeniceWriterOptions.class))).thenAnswer(invocation -> {
       VeniceWriterOptions opts = invocation.getArgument(0);
       String broker = opts.getBrokerAddress();
@@ -67,11 +74,39 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     });
     // Ensure nonBlockingBroadcast returns completed futures so switcher does not block
     when(localWriter.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
-        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
+        .thenAnswer(invocation -> awaitAllRegionsAndReturnCompletedFuture(allRegionsStartedBroadcasting));
     when(remoteWriterA.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
-        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
+        .thenAnswer(invocation -> awaitAllRegionsAndReturnCompletedFuture(allRegionsStartedBroadcasting));
     when(remoteWriterB.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
-        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
+        .thenAnswer(invocation -> awaitAllRegionsAndReturnCompletedFuture(allRegionsStartedBroadcasting));
+    CompletableFuture<VeniceResourceCloseResult> localCloseFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResourceCloseResult> remoteCloseFutureA = new CompletableFuture<>();
+    CompletableFuture<VeniceResourceCloseResult> remoteCloseFutureB = new CompletableFuture<>();
+    AtomicInteger initiatedCloseCount = new AtomicInteger();
+    when(localWriter.closeAsync(true)).thenAnswer(invocation -> {
+      completeCloseFuturesAfterAllWritersStartClosing(
+          initiatedCloseCount,
+          localCloseFuture,
+          remoteCloseFutureA,
+          remoteCloseFutureB);
+      return localCloseFuture;
+    });
+    when(remoteWriterA.closeAsync(true)).thenAnswer(invocation -> {
+      completeCloseFuturesAfterAllWritersStartClosing(
+          initiatedCloseCount,
+          localCloseFuture,
+          remoteCloseFutureA,
+          remoteCloseFutureB);
+      return remoteCloseFutureA;
+    });
+    when(remoteWriterB.closeAsync(true)).thenAnswer(invocation -> {
+      completeCloseFuturesAfterAllWritersStartClosing(
+          initiatedCloseCount,
+          localCloseFuture,
+          remoteCloseFutureA,
+          remoteCloseFutureB);
+      return remoteCloseFutureB;
+    });
 
     Properties props = new Properties();
     props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
@@ -157,5 +192,29 @@ public class MultiRegionRealTimeTopicSwitcherTest {
         remoteDcB,
         deterministicGenerationId,
         Collections.EMPTY_MAP);
+
+    verify(localWriter).closeAsync(true);
+    verify(remoteWriterA).closeAsync(true);
+    verify(remoteWriterB).closeAsync(true);
+    verify(localWriter, never()).close(false);
+    verify(remoteWriterA, never()).close(false);
+    verify(remoteWriterB, never()).close(false);
+  }
+
+  private static void completeCloseFuturesAfterAllWritersStartClosing(
+      AtomicInteger initiatedCloseCount,
+      CompletableFuture<VeniceResourceCloseResult>... closeFutures) {
+    if (initiatedCloseCount.incrementAndGet() == closeFutures.length) {
+      Arrays.stream(closeFutures).forEach(future -> future.complete(VeniceResourceCloseResult.SUCCESS));
+    }
+  }
+
+  private static java.util.List<CompletableFuture<PubSubProduceResult>> awaitAllRegionsAndReturnCompletedFuture(
+      CountDownLatch allRegionsStartedBroadcasting) throws InterruptedException {
+    allRegionsStartedBroadcasting.countDown();
+    Assert.assertTrue(
+        allRegionsStartedBroadcasting.await(2, TimeUnit.SECONDS),
+        "All regional broadcasts should start concurrently");
+    return Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
   }
 }
