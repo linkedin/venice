@@ -92,7 +92,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return null;
     }).when(writer).close();
     PartitionedVeniceWriteExecutor executor =
-        new PartitionedVeniceWriteExecutor(1, 10, 0, 10, "blocked-flush-store", null);
+        new PartitionedVeniceWriteExecutor(1, 10, 1, 10, "blocked-flush-store", null);
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(
         writer,
         executor,
@@ -113,6 +113,37 @@ public class VeniceSystemProducerWriteDispatcherTest {
       releaseFlush.countDown();
       assertThrows(ExecutionException.class, () -> flush.get(2, TimeUnit.SECONDS));
     }
+
+    assertThrows(VeniceException.class, dispatcher::stop);
+    assertTrue(dispatcher.isStopped());
+    verify(writer).close();
+    assertFalse(executor.tryExecuteCallback(() -> {}, null));
+  }
+
+  @Test
+  public void testStopRetriesWriterCloseFailureAndPreservesStickyFailure() throws Exception {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
+    VeniceException closeFailure = new VeniceException("writer close failed");
+    AtomicInteger closeAttempts = new AtomicInteger();
+    doAnswer(invocation -> {
+      if (closeAttempts.getAndIncrement() == 0) {
+        throw closeFailure;
+      }
+      return null;
+    }).when(writer).close();
+    PartitionedVeniceWriteExecutor executor =
+        new PartitionedVeniceWriteExecutor(1, 10, 1, 10, "close-retry-store", null);
+    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
+
+    VeniceException initialStopFailure = expectThrows(VeniceException.class, dispatcher::stop);
+    assertSame(initialStopFailure.getCause(), closeFailure);
+    assertFalse(dispatcher.isStopped());
+
+    VeniceException retryStopFailure = expectThrows(VeniceException.class, dispatcher::stop);
+    assertSame(retryStopFailure.getCause(), closeFailure);
+    assertTrue(dispatcher.isStopped());
+    verify(writer, times(2)).close();
+    assertFalse(executor.tryExecuteCallback(() -> {}, null));
   }
 
   @Test

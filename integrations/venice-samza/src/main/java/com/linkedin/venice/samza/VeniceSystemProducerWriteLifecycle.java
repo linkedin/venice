@@ -54,10 +54,8 @@ final class VeniceSystemProducerWriteLifecycle {
       return StopStatus.ALREADY_STOPPED;
     }
     if (!accepting) {
-      stopFenceHeld = false;
-      fenceLock.unlock();
-      checkForFailure();
-      throw new VeniceException("Venice SystemProducer stop did not complete");
+      // A prior stop closed admission but did not complete physical cleanup.
+      return StopStatus.FAILED;
     }
     if (!tryLockUntil(admissionLock.writeLock(), deadlineNanos, restoreInterrupt)) {
       accepting = false;
