@@ -27,7 +27,10 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
@@ -39,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +54,7 @@ import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemStream;
 import org.mockito.InOrder;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -157,6 +162,7 @@ public class VeniceSystemProducerDispatchTest {
     verify(writer, timeout(5000)).put(any(), any(), eq(1), anyLong(), any());
     RuntimeException asyncFailure = new RuntimeException("async broker failure");
     callback.get().onCompletion(null, asyncFailure);
+    assertThrows(ExecutionException.class, () -> durableFuture.get(5, TimeUnit.SECONDS));
     assertTrue(durableFuture.isCompletedExceptionally());
 
     assertThrows(VeniceException.class, () -> producer.put("later", "value"));
@@ -349,6 +355,33 @@ public class VeniceSystemProducerDispatchTest {
     }
   }
 
+  @Test(dataProvider = "inlinePushTypes")
+  public void testBatchAndStreamReprocessingRemainInline(Version.PushType pushType) {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    AtomicReference<Thread> writerThread = new AtomicReference<>();
+    when(writer.put(any(), any(), eq(1), anyLong(), any())).thenAnswer(invocation -> {
+      writerThread.set(Thread.currentThread());
+      return new CompletableFuture<>();
+    });
+    VeniceSystemProducer producer = buildStartedProducer(writer, 4, false, -1, pushType);
+    if (pushType == Version.PushType.STREAM_REPROCESSING) {
+      RouterBasedPushMonitor pushMonitor = mock(RouterBasedPushMonitor.class);
+      when(pushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.COMPLETED);
+      producer.setPushMonitor(pushMonitor);
+    }
+    try {
+      producer.put("key", "value");
+      assertEquals(writerThread.get(), Thread.currentThread());
+    } finally {
+      producer.stop();
+    }
+  }
+
+  @DataProvider(name = "inlinePushTypes")
+  public Object[][] inlinePushTypes() {
+    return new Object[][] { { Version.PushType.BATCH }, { Version.PushType.STREAM_REPROCESSING } };
+  }
+
   private AbstractVeniceWriter<byte[], byte[], byte[]> mockWriter() {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mock(AbstractVeniceWriter.class);
     when(writer.getPartitionId(any())).thenReturn(0);
@@ -360,11 +393,20 @@ public class VeniceSystemProducerDispatchTest {
       int workerCount,
       boolean writeComputationEnabled,
       int derivedSchemaId) {
+    return buildStartedProducer(writer, workerCount, writeComputationEnabled, derivedSchemaId, Version.PushType.STREAM);
+  }
+
+  private VeniceSystemProducer buildStartedProducer(
+      AbstractVeniceWriter<byte[], byte[], byte[]> writer,
+      int workerCount,
+      boolean writeComputationEnabled,
+      int derivedSchemaId,
+      Version.PushType pushType) {
     Map<String, String> configs = new HashMap<>();
     configs.put(VENICE_SYSTEM_PRODUCER_WORKER_COUNT, Integer.toString(workerCount));
     VeniceSystemProducer producer = new VeniceSystemProducer(
         new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
-            .setPushType(Version.PushType.STREAM)
+            .setPushType(pushType)
             .setSamzaJobId("job-id")
             .setRunningFabric("dc-0")
             .setFactory(mock(VeniceSystemFactory.class))
@@ -374,21 +416,28 @@ public class VeniceSystemProducerDispatchTest {
     VeniceSystemProducer producerSpy = spy(producer);
     doNothing().when(producerSpy).setupClientsAndReInitProvider();
     doNothing().when(producerSpy).refreshSchemaCache();
-    producerSpy.setControllerClient(buildController(writeComputationEnabled, derivedSchemaId));
+    producerSpy.setControllerClient(buildController(writeComputationEnabled, derivedSchemaId, pushType));
     doReturn(writer).when(producerSpy).getVeniceWriter(any());
     producerSpy.start();
     return producerSpy;
   }
 
-  private ControllerClient buildController(boolean writeComputationEnabled, int derivedSchemaId) {
+  private ControllerClient buildController(
+      boolean writeComputationEnabled,
+      int derivedSchemaId,
+      Version.PushType pushType) {
     ControllerClient controller = mock(ControllerClient.class);
     SchemaResponse keySchema = new SchemaResponse();
     keySchema.setSchemaStr("\"string\"");
     when(controller.getKeySchema(anyString())).thenReturn(keySchema);
 
     VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
-    versionCreationResponse.setKafkaTopic("test_store_rt");
+    versionCreationResponse.setKafkaTopic(
+        pushType == Version.PushType.BATCH
+            ? "test_store_v1"
+            : pushType == Version.PushType.STREAM_REPROCESSING ? "test_store_v1_sr" : "test_store_rt");
     versionCreationResponse.setKafkaBootstrapServers("kafka:9092");
+    versionCreationResponse.setVersion(1);
     when(
         controller.requestTopicForWrites(
             anyString(),
@@ -405,7 +454,11 @@ public class VeniceSystemProducerDispatchTest {
             anyLong())).thenReturn(versionCreationResponse);
 
     StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setVersions(new ArrayList<>());
+    List<Version> versions = new ArrayList<>();
+    if (pushType.isBatchOrStreamReprocessing()) {
+      versions.add(new VersionImpl("test_store", 1, "test_store_v1"));
+    }
+    storeInfo.setVersions(versions);
     storeInfo.setWriteComputationEnabled(writeComputationEnabled);
     StoreResponse storeResponse = new StoreResponse();
     storeResponse.setStore(storeInfo);

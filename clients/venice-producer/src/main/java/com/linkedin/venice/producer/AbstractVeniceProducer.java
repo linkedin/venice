@@ -37,10 +37,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -80,8 +78,6 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private VeniceProperties producerConfigs;
   private boolean configured = false;
   private volatile boolean closed = false;
-  private volatile boolean cleanupCompleted = false;
-  private final AtomicBoolean cleanupInProgress = new AtomicBoolean(false);
   private VeniceProducerMetrics producerMetrics;
 
   private SchemaReader schemaReader;
@@ -89,7 +85,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
   private VenicePartitioner partitioner;
   private int partitionCount;
-  private final Set<CompletableFuture<Void>> deferredCompletions = ConcurrentHashMap.newKeySet();
+  private final Object deferredCompletionMonitor = new Object();
+  private int pendingDeferredCompletions;
+  private Throwable deferredCompletionFailure;
 
   private RecordSerializer<Object> keySerializer;
   protected boolean needsPartitionRouting;
@@ -348,7 +346,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         } catch (Exception e) {
           completeDurableWriteFutureExceptionally(durableWriteFuture, e);
         }
-      }, rejection -> completeDurableWriteFutureExceptionally(durableWriteFuture, rejection));
+      }, rejection -> completeRejectedWriteFutureExceptionally(durableWriteFuture, rejection));
     } catch (RejectedExecutionException ignored) {
       // The executor invokes the rejection callback for immediate and queued shutdown rejection.
     }
@@ -406,7 +404,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         } catch (Exception e) {
           completeDurableWriteFutureExceptionally(durableWriteFuture, e);
         }
-      }, rejection -> completeDurableWriteFutureExceptionally(durableWriteFuture, rejection));
+      }, rejection -> completeRejectedWriteFutureExceptionally(durableWriteFuture, rejection));
     } catch (RejectedExecutionException ignored) {
       // The executor invokes the rejection callback for immediate and queued shutdown rejection.
     }
@@ -493,7 +491,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         } catch (Exception e) {
           completeDurableWriteFutureExceptionally(durableWriteFuture, e);
         }
-      }, rejection -> completeDurableWriteFutureExceptionally(durableWriteFuture, rejection));
+      }, rejection -> completeRejectedWriteFutureExceptionally(durableWriteFuture, rejection));
     } catch (RejectedExecutionException ignored) {
       // The executor invokes the rejection callback for immediate and queued shutdown rejection.
     }
@@ -539,11 +537,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
             durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception));
           }
         },
-            rejection -> scheduleDeferredCompletion(
+            rejection -> scheduleDeferredRejectionCompletion(
                 () -> durableWriteFuture.completeExceptionally(
                     new VeniceException("Callback executor rejected during shutdown", rejection))));
       } catch (RejectedExecutionException ignored) {
-        // The rejection callback moves user future completion off the PubSub I/O thread.
+        // Rejection completion is deferred so PubSub and shutdown threads never run user continuations.
       }
     };
   }
@@ -564,15 +562,48 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         if (durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception))) {
           producerMetrics.recordFailedRequest();
         }
-      }, rejection -> scheduleDeferredCompletion(() -> {
+      }, rejection -> scheduleDeferredRejectionCompletion(() -> {
         String errorMessage = "Write operation failed (callback rejected): " + exception.getMessage();
         if (durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception))) {
           producerMetrics.recordFailedRequest();
         }
       }));
     } catch (RejectedExecutionException ignored) {
-      // The rejection callback completes the future without running user code on the rejecting thread.
+      // Rejection completion is deferred so worker and shutdown threads never run user continuations.
     }
+  }
+
+  private void completeRejectedWriteFutureExceptionally(
+      CompletableFuture<DurableWrite> durableWriteFuture,
+      Throwable rejection) {
+    scheduleDeferredRejectionCompletion(() -> {
+      String errorMessage = "Write operation failed: " + rejection.getMessage();
+      if (durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, rejection))) {
+        producerMetrics.recordFailedRequest();
+      }
+    });
+  }
+
+  private void scheduleDeferredRejectionCompletion(Runnable completion) {
+    synchronized (deferredCompletionMonitor) {
+      pendingDeferredCompletions++;
+    }
+    ForkJoinPool.commonPool().execute(() -> {
+      Throwable failure = null;
+      try {
+        completion.run();
+      } catch (Throwable throwable) {
+        failure = throwable;
+      } finally {
+        synchronized (deferredCompletionMonitor) {
+          if (failure != null && deferredCompletionFailure == null) {
+            deferredCompletionFailure = failure;
+          }
+          pendingDeferredCompletions--;
+          deferredCompletionMonitor.notifyAll();
+        }
+      }
+    });
   }
 
   /**
@@ -601,59 +632,59 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   @Override
   public void close() throws IOException {
-    if (cleanupCompleted) {
-      return;
-    }
-    if (!cleanupInProgress.compareAndSet(false, true)) {
-      return;
-    }
     closed = true;
+    boolean restoreInterrupt = Thread.interrupted();
     try {
-      boolean restoreInterrupt = false;
       boolean workersTerminated = true;
       if (asyncDispatcher != null) {
         // Stop worker admission first, but keep callback delivery alive while the writer flushes and closes.
         asyncDispatcher.shutdownWorkers();
-        WorkerTerminationResult gracefulTermination = awaitWorkerTerminationUninterruptibly(60, TimeUnit.SECONDS);
-        restoreInterrupt = gracefulTermination.interrupted;
+        TerminationResult gracefulTermination = awaitTerminationUninterruptibly(true, 60, TimeUnit.SECONDS);
+        restoreInterrupt |= gracefulTermination.interrupted;
         workersTerminated = gracefulTermination.terminated;
         if (!workersTerminated) {
           LOGGER.warn("Async dispatcher did not terminate gracefully, forcing shutdown");
           asyncDispatcher.shutdownWorkersNow();
-          WorkerTerminationResult forcedTermination = awaitWorkerTerminationUninterruptibly(60, TimeUnit.SECONDS);
+          TerminationResult forcedTermination = awaitTerminationUninterruptibly(true, 60, TimeUnit.SECONDS);
           restoreInterrupt |= forcedTermination.interrupted;
           workersTerminated = forcedTermination.terminated;
         }
       }
 
       if (!workersTerminated) {
-        if (restoreInterrupt) {
-          Thread.currentThread().interrupt();
-        }
         throw new IOException("Venice producer workers did not terminate; refusing to close the active writer");
       }
 
       Utils.closeQuietlyWithErrorLogged(veniceWriter);
+      restoreInterrupt |= Thread.interrupted();
+
       if (asyncDispatcher != null) {
         asyncDispatcher.shutdownCallbacks();
-        try {
-          if (!asyncDispatcher.awaitCallbackTermination(60, TimeUnit.SECONDS)) {
+        if (!asyncDispatcher.isCurrentThreadExecutingCallback()) {
+          TerminationResult gracefulTermination = awaitTerminationUninterruptibly(false, 60, TimeUnit.SECONDS);
+          restoreInterrupt |= gracefulTermination.interrupted;
+          boolean callbacksTerminated = gracefulTermination.terminated;
+          if (!callbacksTerminated) {
             LOGGER.warn("Async callback dispatcher did not terminate gracefully, forcing shutdown");
             asyncDispatcher.shutdownCallbacksNow();
+            TerminationResult forcedTermination = awaitTerminationUninterruptibly(false, 60, TimeUnit.SECONDS);
+            restoreInterrupt |= forcedTermination.interrupted;
+            callbacksTerminated = forcedTermination.terminated;
           }
-        } catch (InterruptedException e) {
-          LOGGER.warn("Interrupted while closing async callback dispatcher, forcing shutdown", e);
-          asyncDispatcher.shutdownCallbacksNow();
-          restoreInterrupt = true;
+          if (!callbacksTerminated) {
+            throw new IOException("Venice producer callbacks did not terminate after forced shutdown");
+          }
         }
       }
-      awaitDeferredCompletions();
+
+      if (!awaitDeferredRejectionCompletionsUninterruptibly(60, TimeUnit.SECONDS)) {
+        throw new IOException("Venice producer deferred rejection completions did not terminate");
+      }
+    } finally {
+      restoreInterrupt |= Thread.interrupted();
       if (restoreInterrupt) {
         Thread.currentThread().interrupt();
       }
-      cleanupCompleted = true;
-    } finally {
-      cleanupInProgress.set(false);
     }
   }
 
@@ -661,52 +692,19 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     return closed;
   }
 
-  private void scheduleDeferredCompletion(Runnable completion) {
-    CompletableFuture<Void> handoff = new CompletableFuture<>();
-    deferredCompletions.add(handoff);
-    Runnable trackedCompletion = () -> {
-      try {
-        completion.run();
-        handoff.complete(null);
-      } catch (Throwable throwable) {
-        handoff.completeExceptionally(throwable);
-      } finally {
-        deferredCompletions.remove(handoff);
-      }
-    };
-    try {
-      CompletableFuture.runAsync(trackedCompletion);
-    } catch (RejectedExecutionException exception) {
-      trackedCompletion.run();
-    }
-  }
-
-  private void awaitDeferredCompletions() throws IOException {
-    CompletableFuture<?>[] completions = deferredCompletions.toArray(new CompletableFuture<?>[0]);
-    if (completions.length == 0) {
-      return;
-    }
-    try {
-      CompletableFuture.allOf(completions).get(60, TimeUnit.SECONDS);
-    } catch (InterruptedException exception) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Interrupted while draining Venice producer completions", exception);
-    } catch (ExecutionException | java.util.concurrent.TimeoutException exception) {
-      throw new IOException("Failed while draining Venice producer completions", exception);
-    }
-  }
-
-  private WorkerTerminationResult awaitWorkerTerminationUninterruptibly(long timeout, TimeUnit unit) {
+  private TerminationResult awaitTerminationUninterruptibly(boolean workers, long timeout, TimeUnit unit) {
     long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
     boolean interrupted = false;
     while (true) {
       long remainingNanos = deadlineNanos - System.nanoTime();
       if (remainingNanos <= 0) {
-        return new WorkerTerminationResult(false, interrupted);
+        return new TerminationResult(false, interrupted);
       }
       try {
-        return new WorkerTerminationResult(
-            asyncDispatcher.awaitWorkerTermination(remainingNanos, TimeUnit.NANOSECONDS),
+        return new TerminationResult(
+            workers
+                ? asyncDispatcher.awaitWorkerTermination(remainingNanos, TimeUnit.NANOSECONDS)
+                : asyncDispatcher.awaitCallbackTermination(remainingNanos, TimeUnit.NANOSECONDS),
             interrupted);
       } catch (InterruptedException exception) {
         interrupted = true;
@@ -714,11 +712,41 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
   }
 
-  private static final class WorkerTerminationResult {
+  private boolean awaitDeferredRejectionCompletionsUninterruptibly(long timeout, TimeUnit unit) throws IOException {
+    long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+    boolean interrupted = false;
+    try {
+      synchronized (deferredCompletionMonitor) {
+        while (pendingDeferredCompletions > 0) {
+          long remainingNanos = deadlineNanos - System.nanoTime();
+          if (remainingNanos <= 0) {
+            return false;
+          }
+          try {
+            TimeUnit.NANOSECONDS.timedWait(deferredCompletionMonitor, remainingNanos);
+          } catch (InterruptedException exception) {
+            interrupted = true;
+          }
+        }
+        if (deferredCompletionFailure != null) {
+          throw new IOException(
+              "Failed while draining Venice producer deferred rejection completions",
+              deferredCompletionFailure);
+        }
+        return true;
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  private static final class TerminationResult {
     private final boolean terminated;
     private final boolean interrupted;
 
-    private WorkerTerminationResult(boolean terminated, boolean interrupted) {
+    private TerminationResult(boolean terminated, boolean interrupted) {
       this.terminated = terminated;
       this.interrupted = interrupted;
     }

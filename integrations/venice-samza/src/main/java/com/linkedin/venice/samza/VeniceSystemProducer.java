@@ -53,7 +53,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.CompletableFutureCallback;
-import com.linkedin.venice.writer.PartitionedVeniceWriteDispatcher;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterHook;
@@ -69,6 +68,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -174,9 +174,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Optional<String> routerUrl = Optional.empty();
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
-  private PartitionedVeniceWriteDispatcher streamWriteDispatcher;
-  private boolean streamWorkersStopped;
-  private boolean streamCallbacksStopped;
+  private VeniceSystemProducerWriteDispatcher streamWriteDispatcher;
   private volatile boolean cleanupComplete;
   private final VeniceWriterHook writerHook;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
@@ -527,15 +525,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
       this.veniceWriter = getVeniceWriter(versionCreationResponse);
       if (Version.PushType.STREAM.equals(pushType)) {
-        this.streamWriteDispatcher = new PartitionedVeniceWriteDispatcher(
+        this.streamWriteDispatcher = new VeniceSystemProducerWriteDispatcher(
             veniceWriter,
             workerCount,
             workerQueueCapacity,
             callbackThreadCount,
             callbackQueueCapacity,
             storeName);
-        this.streamWorkersStopped = false;
-        this.streamCallbacksStopped = false;
       }
 
       if (pushMonitor.isPresent()) {
@@ -584,57 +580,15 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     lifecycleLock.lock();
     try {
       this.isStarted = false;
-      RuntimeException streamWriteFailure = null;
-      boolean streamWorkersDrained = streamWriteDispatcher == null || streamWorkersStopped;
-      if (streamWriteDispatcher != null && !streamWorkersStopped) {
-        try {
-          streamWriteDispatcher.stopAndDrain();
-          streamWorkersDrained = true;
-          streamWorkersStopped = true;
-        } catch (RuntimeException exception) {
-          streamWriteFailure = exception;
-        }
-      }
-
-      // Never flush or close the writer while a throttled or otherwise blocked worker can still enter it.
-      if (streamWriteDispatcher != null && streamWorkersDrained) {
-        try {
-          veniceWriter.flush();
-          streamWriteDispatcher.checkForFailure();
-        } catch (RuntimeException exception) {
-          if (streamWriteFailure == null) {
-            streamWriteFailure = exception;
-          }
-        }
-      }
-
-      if (streamWriteDispatcher == null || streamWorkersDrained) {
-        // Non-STREAM behavior remains inline.
+      Throwable streamWriteFailure = null;
+      if (streamWriteDispatcher == null) {
+        // BATCH and STREAM_REPROCESSING retain their original inline writer lifecycle.
         Utils.closeQuietlyWithErrorLogged(veniceWriter);
       } else {
-        LOGGER.error(
-            "Venice STREAM workers did not drain for store {}; leaving the writer open to avoid racing active writes",
-            storeName);
-      }
-      if (streamWriteDispatcher != null && streamWorkersDrained && !streamCallbacksStopped) {
         try {
-          streamWriteDispatcher.shutdownCallbacks();
-        } catch (RuntimeException exception) {
-          if (streamWriteFailure == null) {
-            streamWriteFailure = exception;
-          }
-        } finally {
-          streamCallbacksStopped = true;
-        }
-      } else if (streamWriteDispatcher != null) {
-        try {
-          streamWriteDispatcher.checkForFailure();
-        } catch (RuntimeException exception) {
-          if (streamWriteFailure == null) {
-            streamWriteFailure = exception;
-          } else {
-            streamWriteFailure.addSuppressed(exception);
-          }
+          streamWriteDispatcher.stop();
+        } catch (Throwable throwable) {
+          streamWriteFailure = throwable;
         }
       }
 
@@ -665,10 +619,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Utils.closeQuietlyWithErrorLogged(this.controllerClient);
       hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
       d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
-      cleanupComplete = streamWriteDispatcher == null || (streamWorkersStopped && streamCallbacksStopped);
+      cleanupComplete = streamWriteDispatcher == null || streamWriteDispatcher.isStopped();
 
       if (streamWriteFailure != null) {
-        throw streamWriteFailure;
+        if (streamWriteFailure instanceof Error) {
+          throw (Error) streamWriteFailure;
+        }
+        if (streamWriteFailure instanceof RuntimeException) {
+          throw (RuntimeException) streamWriteFailure;
+        }
+        throw new VeniceException("Failed to stop Venice SystemProducer", streamWriteFailure);
       }
     } finally {
       lifecycleLock.unlock();
@@ -767,38 +727,14 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     if (streamWriteDispatcher != null) {
       streamWriteDispatcher.checkForFailure();
     }
-    PreparedWrite preparedWrite = prepareWrite(keyObject, valueObject);
+    VeniceSystemProducerWriteCommand command = prepareWrite(keyObject, valueObject);
     if (streamWriteDispatcher == null) {
-      return sendInline(preparedWrite);
+      return sendInline(command);
     }
-
-    PartitionedVeniceWriteDispatcher.WriteHandle writeHandle;
-    switch (preparedWrite.operation) {
-      case PUT:
-        writeHandle = streamWriteDispatcher.put(
-            preparedWrite.serializedKey,
-            preparedWrite.serializedValue,
-            preparedWrite.valueSchemaId,
-            preparedWrite.logicalTimestamp);
-        break;
-      case UPDATE:
-        writeHandle = streamWriteDispatcher.update(
-            preparedWrite.serializedKey,
-            preparedWrite.serializedValue,
-            preparedWrite.valueSchemaId,
-            preparedWrite.derivedSchemaId,
-            preparedWrite.logicalTimestamp);
-        break;
-      case DELETE:
-        writeHandle = streamWriteDispatcher.delete(preparedWrite.serializedKey, preparedWrite.logicalTimestamp);
-        break;
-      default:
-        throw new VeniceException("Unsupported Venice write operation: " + preparedWrite.operation);
-    }
-    return writeHandle.getDurableFuture();
+    return streamWriteDispatcher.dispatch(command);
   }
 
-  private PreparedWrite prepareWrite(Object keyObject, Object valueObject) {
+  private VeniceSystemProducerWriteCommand prepareWrite(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
     String canonicalSchemaStr = canonicalSchemaStrCache.get(keyObjectSchema);
 
@@ -824,7 +760,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      return new PreparedWrite(WriteOperation.DELETE, serializedKey, null, -1, -1, logicalTimestamp);
+      return new VeniceSystemProducerWriteCommand(
+          VeniceSystemProducerWriteCommand.Operation.DELETE,
+          serializedKey,
+          null,
+          -1,
+          -1,
+          logicalTimestamp);
     }
 
     Schema valueObjectSchema = getSchemaFromObject(valueObject);
@@ -851,15 +793,21 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     int derivedSchemaId = valueSchemaIdPair.getSecond();
 
     if (derivedSchemaId == -1) {
-      return new PreparedWrite(WriteOperation.PUT, serializedKey, serializedValue, valueSchemaId, -1, logicalTimestamp);
+      return new VeniceSystemProducerWriteCommand(
+          VeniceSystemProducerWriteCommand.Operation.PUT,
+          serializedKey,
+          serializedValue,
+          valueSchemaId,
+          -1,
+          logicalTimestamp);
     }
     if (!isWriteComputeEnabled) {
       throw new SamzaException(
           "Cannot write partial update record to Venice store " + storeName + " "
               + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
     }
-    return new PreparedWrite(
-        WriteOperation.UPDATE,
+    return new VeniceSystemProducerWriteCommand(
+        VeniceSystemProducerWriteCommand.Operation.UPDATE,
         serializedKey,
         serializedValue,
         valueSchemaId,
@@ -867,32 +815,27 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         logicalTimestamp);
   }
 
-  private CompletableFuture<Void> sendInline(PreparedWrite preparedWrite) {
+  private CompletableFuture<Void> sendInline(VeniceSystemProducerWriteCommand command) {
     CompletableFuture<Void> durableFuture = new CompletableFuture<>();
     CompletableFutureCallback callback = new CompletableFutureCallback(durableFuture);
-    switch (preparedWrite.operation) {
+    switch (command.operation) {
       case PUT:
-        getInternalWriter().put(
-            preparedWrite.serializedKey,
-            preparedWrite.serializedValue,
-            preparedWrite.valueSchemaId,
-            preparedWrite.logicalTimestamp,
-            callback);
+        getInternalWriter().put(command.key, command.value, command.valueSchemaId, command.logicalTimestamp, callback);
         break;
       case UPDATE:
         getInternalWriter().update(
-            preparedWrite.serializedKey,
-            preparedWrite.serializedValue,
-            preparedWrite.valueSchemaId,
-            preparedWrite.derivedSchemaId,
-            preparedWrite.logicalTimestamp,
+            command.key,
+            command.value,
+            command.valueSchemaId,
+            command.derivedSchemaId,
+            command.logicalTimestamp,
             callback);
         break;
       case DELETE:
-        getInternalWriter().delete(preparedWrite.serializedKey, preparedWrite.logicalTimestamp, callback);
+        getInternalWriter().delete(command.key, command.logicalTimestamp, callback);
         break;
       default:
-        throw new VeniceException("Unsupported Venice write operation: " + preparedWrite.operation);
+        throw new VeniceException("Unsupported Venice write operation: " + command.operation);
     }
     return durableFuture;
   }
@@ -923,7 +866,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     streamWriteDispatcher.flush();
   }
 
-  private void waitForSubmission(CompletableFuture<Void> submissionFuture) {
+  private void waitForSubmission(Future<Void> submissionFuture) {
     try {
       submissionFuture.get();
     } catch (InterruptedException exception) {
@@ -944,34 +887,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
     waitForSubmission(streamWriteDispatcher.getSubmissionFuture(durableFuture));
     streamWriteDispatcher.checkForFailure();
-  }
-
-  private enum WriteOperation {
-    PUT, UPDATE, DELETE
-  }
-
-  private static final class PreparedWrite {
-    private final WriteOperation operation;
-    private final byte[] serializedKey;
-    private final byte[] serializedValue;
-    private final int valueSchemaId;
-    private final int derivedSchemaId;
-    private final long logicalTimestamp;
-
-    private PreparedWrite(
-        WriteOperation operation,
-        byte[] serializedKey,
-        byte[] serializedValue,
-        int valueSchemaId,
-        int derivedSchemaId,
-        long logicalTimestamp) {
-      this.operation = operation;
-      this.serializedKey = serializedKey;
-      this.serializedValue = serializedValue;
-      this.valueSchemaId = valueSchemaId;
-      this.derivedSchemaId = derivedSchemaId;
-      this.logicalTimestamp = logicalTimestamp;
-    }
   }
 
   private static Schema getSchemaFromObject(Object object) {

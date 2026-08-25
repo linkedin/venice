@@ -18,6 +18,8 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -457,6 +459,128 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     assertTrue(durableWrite.isDone());
   }
 
+  @Test(timeOut = 30000)
+  public void testCallbackShutdownRejectionDefersUserContinuation() throws Exception {
+    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
+    CountDownLatch writeSubmitted = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      callback.set(invocation.getArgument(4));
+      writeSubmitted.countDown();
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    TestableVeniceProducer producer = createProducer(1, 10, 1);
+
+    try {
+      CompletableFuture<DurableWrite> durableWrite = producer.asyncPut(0, "value");
+      assertTrue(writeSubmitted.await(5, TimeUnit.SECONDS));
+      producer.getDispatcher().shutdownCallbacks();
+      assertTrue(producer.getDispatcher().awaitCallbackTermination(5, TimeUnit.SECONDS));
+      CompletableFuture<String> continuationThread = new CompletableFuture<>();
+      durableWrite.whenComplete((ignored, failure) -> continuationThread.complete(Thread.currentThread().getName()));
+
+      Thread pubSubThread = new Thread(() -> callback.get().onCompletion(null, null), "test-online-pubsub-callback");
+      pubSubThread.start();
+      pubSubThread.join(TimeUnit.SECONDS.toMillis(5));
+
+      assertFalse(pubSubThread.isAlive());
+      String threadName = continuationThread.get(5, TimeUnit.SECONDS);
+      assertTrue(durableWrite.isCompletedExceptionally());
+      assertTrue(threadName.contains("ForkJoinPool.commonPool"));
+      assertFalse(threadName.equals(pubSubThread.getName()), "PubSub rejection must not run user continuations inline");
+    } finally {
+      producer.close();
+    }
+  }
+
+  @Test(timeOut = 30000)
+  public void testWorkerShutdownRejectionDefersUserContinuation() throws Exception {
+    CountDownLatch workerEntered = new CountDownLatch(1);
+    CountDownLatch releaseWorker = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      workerEntered.countDown();
+      releaseWorker.await();
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    TestableVeniceProducer producer = createProducer(1, 10, 0);
+
+    try {
+      producer.asyncPut(0, "active");
+      assertTrue(workerEntered.await(5, TimeUnit.SECONDS));
+      CompletableFuture<DurableWrite> rejectedWrite = producer.asyncPut(0, "queued");
+      CompletableFuture<String> continuationThread = new CompletableFuture<>();
+      rejectedWrite.whenComplete((ignored, failure) -> continuationThread.complete(Thread.currentThread().getName()));
+
+      Thread shutdownThread =
+          new Thread(() -> producer.getDispatcher().shutdownWorkersNow(), "test-online-worker-shutdown");
+      shutdownThread.start();
+      shutdownThread.join(TimeUnit.SECONDS.toMillis(5));
+
+      assertFalse(shutdownThread.isAlive());
+      String threadName = continuationThread.get(5, TimeUnit.SECONDS);
+      assertTrue(rejectedWrite.isCompletedExceptionally());
+      assertTrue(threadName.contains("ForkJoinPool.commonPool"));
+      assertFalse(
+          threadName.equals(shutdownThread.getName()),
+          "Worker shutdown rejection must not run user continuations inline");
+    } finally {
+      releaseWorker.countDown();
+      producer.close();
+    }
+  }
+
+  @Test(timeOut = 30000)
+  public void testCloseDrainsDeferredRejectionCompletion() throws Exception {
+    AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
+    CountDownLatch writeSubmitted = new CountDownLatch(1);
+    CountDownLatch writerClosed = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      callback.set(invocation.getArgument(4));
+      writeSubmitted.countDown();
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    doAnswer(invocation -> {
+      writerClosed.countDown();
+      return null;
+    }).when(mockVeniceWriter).close();
+    TestableVeniceProducer producer = createProducer(1, 10, 1);
+    CompletableFuture<DurableWrite> durableWrite = producer.asyncPut(0, "value");
+    assertTrue(writeSubmitted.await(5, TimeUnit.SECONDS));
+    producer.getDispatcher().shutdownCallbacks();
+    assertTrue(producer.getDispatcher().awaitCallbackTermination(5, TimeUnit.SECONDS));
+    CountDownLatch continuationEntered = new CountDownLatch(1);
+    CountDownLatch releaseContinuation = new CountDownLatch(1);
+    durableWrite.whenComplete((ignored, failure) -> {
+      continuationEntered.countDown();
+      try {
+        releaseContinuation.await();
+      } catch (InterruptedException exception) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    callback.get().onCompletion(null, null);
+    assertTrue(continuationEntered.await(5, TimeUnit.SECONDS));
+    CountDownLatch closeReturned = new CountDownLatch(1);
+    CompletableFuture<Void> close = CompletableFuture.runAsync(() -> {
+      try {
+        producer.close();
+      } catch (IOException exception) {
+        throw new RuntimeException(exception);
+      } finally {
+        closeReturned.countDown();
+      }
+    });
+
+    try {
+      assertTrue(writerClosed.await(5, TimeUnit.SECONDS));
+      assertFalse(
+          closeReturned.await(200, TimeUnit.MILLISECONDS),
+          "Close must wait for the active deferred rejection completion");
+    } finally {
+      releaseContinuation.countDown();
+    }
+    close.get(5, TimeUnit.SECONDS);
+  }
+
   private TestableVeniceProducer createProducer(int workerCount, int queueCapacity) {
     return createProducer(workerCount, queueCapacity, 0);
   }
@@ -477,6 +601,7 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
    */
   private static class TestableVeniceProducer extends AbstractVeniceProducer<Integer, String> {
     private final VeniceWriter<byte[], byte[], byte[]> mockWriter;
+    private PartitionedProducerExecutor dispatcher;
 
     TestableVeniceProducer(VeniceWriter<byte[], byte[], byte[]> mockWriter) {
       this.mockWriter = mockWriter;
@@ -498,6 +623,19 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
         Properties properties,
         VeniceWriterOptions writerOptions) {
       return mockWriter;
+    }
+
+    @Override
+    protected PartitionedProducerExecutor createDispatcher(
+        String storeName,
+        VeniceProperties configs,
+        MetricsRepository metricsRepository) {
+      dispatcher = super.createDispatcher(storeName, configs, metricsRepository);
+      return dispatcher;
+    }
+
+    private PartitionedProducerExecutor getDispatcher() {
+      return dispatcher;
     }
   }
 }

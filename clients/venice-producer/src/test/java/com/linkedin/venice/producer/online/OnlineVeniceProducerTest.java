@@ -1,5 +1,6 @@
 package com.linkedin.venice.producer.online;
 
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_CALLBACK_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_COUNT;
 import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT;
@@ -13,6 +14,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,8 +82,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -702,6 +707,75 @@ public class OnlineVeniceProducerTest {
     assertThrowsExceptionFromFuture(
         VeniceException.class,
         () -> producer.asyncUpdate(1000, "KEY1", updateBuilderObj -> {}).get());
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testConcurrentCloseKeepsClientsOpenUntilProducerCleanupCompletes() throws Exception {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
+    TransportClient mockTransportClient = ClientFactory.getTransportClient(storeClientConfig);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, VeniceProperties.empty(), metricsRepository);
+    CountDownLatch writerCloseEntered = new CountDownLatch(1);
+    CountDownLatch releaseWriterClose = new CountDownLatch(1);
+    AtomicBoolean firstWriterClose = new AtomicBoolean(true);
+    doAnswer(invocation -> {
+      if (firstWriterClose.compareAndSet(true, false)) {
+        writerCloseEntered.countDown();
+        releaseWriterClose.await();
+      }
+      return null;
+    }).when(producer.mockVeniceWriter).close();
+
+    CompletableFuture<Void> firstClose = CompletableFuture.runAsync(() -> closeUnchecked(producer));
+    assertTrue(writerCloseEntered.await(5, TimeUnit.SECONDS));
+    CompletableFuture<Void> concurrentClose = CompletableFuture.runAsync(() -> closeUnchecked(producer));
+
+    try {
+      concurrentClose.get(5, TimeUnit.SECONDS);
+      verify(mockTransportClient, never()).close();
+    } finally {
+      releaseWriterClose.countDown();
+    }
+    firstClose.get(5, TimeUnit.SECONDS);
+
+    verify(producer.mockVeniceWriter, times(1)).close();
+    verify(mockTransportClient, atLeastOnce()).close();
+  }
+
+  @Test(timeOut = 10000)
+  public void testCallbackContinuationCloseReturnsBeforeExecutorTerminates() throws Exception {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
+    TransportClient mockTransportClient = ClientFactory.getTransportClient(storeClientConfig);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    Properties backendConfigs = new Properties();
+    backendConfigs.setProperty(CLIENT_PRODUCER_WORKER_COUNT, "1");
+    backendConfigs.setProperty(CLIENT_PRODUCER_CALLBACK_THREAD_COUNT, "1");
+    TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository);
+    CompletableFuture<PubSubProducerCallback> pubSubCallback = new CompletableFuture<>();
+    doAnswer(invocation -> {
+      pubSubCallback.complete(invocation.getArgument(4));
+      return null;
+    }).when(producer.mockVeniceWriter).put(any(), any(), anyInt(), anyLong(), any());
+
+    CompletableFuture<DurableWrite> durableWrite = producer.asyncPut("KEY1", mockValue1);
+    PubSubProducerCallback callback = pubSubCallback.get(5, TimeUnit.SECONDS);
+    CompletableFuture<Void> closeReturned = durableWrite.thenRun(() -> closeUnchecked(producer));
+    callback.onCompletion(null, null);
+
+    closeReturned.get(5, TimeUnit.SECONDS);
+    assertTrue(producer.getCapturedDispatcher().awaitCallbackTermination(5, TimeUnit.SECONDS));
+    verify(producer.mockVeniceWriter, times(1)).close();
+    verify(mockTransportClient, atLeastOnce()).close();
+  }
+
+  private static void closeUnchecked(VeniceProducer<?, ?> producer) {
+    try {
+      producer.close();
+    } catch (IOException exception) {
+      throw new RuntimeException(exception);
+    }
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

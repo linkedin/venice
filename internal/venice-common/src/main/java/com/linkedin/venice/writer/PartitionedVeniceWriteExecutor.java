@@ -1,17 +1,8 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.stats.ThreadPoolStats;
-import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
@@ -21,32 +12,19 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-/**
- * Partition-striped executor shared by Venice producers.
- *
- * <p>Each enabled worker is single-threaded. A partition is always assigned to
- * {@code (partition & Integer.MAX_VALUE) % workerCount}, which preserves FIFO ordering within a stripe while allowing
- * different stripes to make progress independently. Queue saturation applies blocking backpressure to the submitting
- * thread; rejected work is never run inline.</p>
- *
- * <p>Both the worker pool and callback pool are optional. A count of zero keeps the corresponding execution inline.
- * The rejection callback overloads let adapters complete futures for work removed by {@link #shutdownNow()}.</p>
- */
+/** Partition-striped executor shared by Venice producers, with zero workers preserving inline execution. */
 public class PartitionedVeniceWriteExecutor {
   private static final Logger LOGGER = LogManager.getLogger(PartitionedVeniceWriteExecutor.class);
-  private static final long ADMISSION_POLL_INTERVAL_MS = 100;
 
-  private final BoundedExecutor[] workers;
-  private final BoundedExecutor callbackExecutor;
+  private final BlockingBoundedExecutor[] workers;
+  private final BlockingBoundedExecutor callbackExecutor;
   private final int workerCount;
   private final AtomicBoolean inlineWorkerAdmissionOpen = new AtomicBoolean(true);
   private final ReentrantLock inlineWorkerLock = new ReentrantLock();
   private final Condition inlineWorkersDrained = inlineWorkerLock.newCondition();
   private int activeInlineWorkers;
 
-  /**
-   * Creates an executor with the historical Online Venice Producer thread and metric names.
-   */
+  /** Creates an executor with the historical Online Venice Producer thread and metric names. */
   public PartitionedVeniceWriteExecutor(
       int workerCount,
       int workerQueueCapacity,
@@ -64,7 +42,8 @@ public class PartitionedVeniceWriteExecutor {
         "venice-producer");
   }
 
-  PartitionedVeniceWriteExecutor(
+  /** Creates an executor with a caller-provided thread name prefix. */
+  public PartitionedVeniceWriteExecutor(
       int workerCount,
       int workerQueueCapacity,
       int callbackThreadCount,
@@ -72,127 +51,67 @@ public class PartitionedVeniceWriteExecutor {
       String storeName,
       MetricsRepository metricsRepository,
       String threadNamePrefix) {
-    this.workerCount = workerCount > 0 ? workerCount : 0;
+    this.workerCount = Math.max(workerCount, 0);
     if (this.workerCount > 0 && workerQueueCapacity <= 0) {
       throw new IllegalArgumentException("Worker queue capacity must be greater than zero");
     }
     if (callbackThreadCount > 0 && callbackQueueCapacity <= 0) {
       throw new IllegalArgumentException("Callback queue capacity must be greater than zero");
     }
-    if (this.workerCount > 0) {
-      workers = new BoundedExecutor[this.workerCount];
-      for (int workerIndex = 0; workerIndex < this.workerCount; workerIndex++) {
-        String workerName = threadNamePrefix + "-worker-" + storeName + "-" + workerIndex;
-        workers[workerIndex] = new BoundedExecutor(1, workerQueueCapacity, workerName);
-        if (metricsRepository != null) {
-          new ThreadPoolStats(
-              metricsRepository,
-              workers[workerIndex].getThreadPoolExecutor(),
-              storeName + "_producer_worker_" + workerIndex);
-        }
-      }
-      LOGGER.info(
-          "Created {} partition workers for store {} with queue capacity {}",
-          this.workerCount,
-          storeName,
-          workerQueueCapacity);
-    } else {
-      workers = null;
-      LOGGER.info("Workers disabled for store {}, tasks will execute inline on caller thread", storeName);
-    }
 
-    if (callbackThreadCount > 0) {
-      String callbackPoolName = threadNamePrefix + "-callback-" + storeName;
-      callbackExecutor = new BoundedExecutor(callbackThreadCount, callbackQueueCapacity, callbackPoolName);
-      if (metricsRepository != null) {
-        new ThreadPoolStats(
-            metricsRepository,
-            callbackExecutor.getThreadPoolExecutor(),
-            storeName + "_producer_callback_pool");
-      }
-      LOGGER.info(
-          "Created callback executor for store {} with {} threads and queue capacity {}",
-          storeName,
-          callbackThreadCount,
-          callbackQueueCapacity);
-    } else {
-      callbackExecutor = null;
-      LOGGER.info("Callback executor disabled for store {}, callbacks will run on caller thread", storeName);
-    }
+    this.workers = createWorkers(this.workerCount, workerQueueCapacity, storeName, metricsRepository, threadNamePrefix);
+    this.callbackExecutor = createCallbackExecutor(
+        callbackThreadCount,
+        callbackQueueCapacity,
+        storeName,
+        metricsRepository,
+        threadNamePrefix);
   }
 
-  /**
-   * Submit work for a partition.
-   *
-   * @throws RejectedExecutionException if worker admission has stopped or the caller is interrupted while blocked on a
-   *                                     full queue
-   */
+  /** Submits work for a partition, blocking for queue capacity when needed. */
   public void submit(int partition, Runnable task) {
     submit(partition, task, null);
   }
 
-  /**
-   * Submit work for a partition and notify {@code rejectionCallback} if it cannot run, including when queued work is
-   * removed by {@link #shutdownNow()}.
-   */
+  /** Submits work and reports immediate or forced-shutdown rejection through {@code rejectionCallback}. */
   public void submit(int partition, Runnable task, Consumer<Throwable> rejectionCallback) {
     if (workers == null) {
-      inlineWorkerLock.lock();
-      try {
-        if (!inlineWorkerAdmissionOpen.get()) {
-          RejectedExecutionException exception = new RejectedExecutionException("Worker executor has been shut down");
-          notifyRejection(rejectionCallback, exception);
-          throw exception;
-        }
-        activeInlineWorkers++;
-      } finally {
-        inlineWorkerLock.unlock();
-      }
-      try {
-        task.run();
-      } finally {
-        inlineWorkerLock.lock();
-        try {
-          activeInlineWorkers--;
-          if (activeInlineWorkers == 0) {
-            inlineWorkersDrained.signalAll();
-          }
-        } finally {
-          inlineWorkerLock.unlock();
-        }
-      }
+      runInline(task, rejectionCallback);
       return;
     }
-
-    int workerIndex = (partition & Integer.MAX_VALUE) % workerCount;
-    workers[workerIndex].execute(task, rejectionCallback);
+    workers[stripe(partition)].execute(task, rejectionCallback);
   }
 
-  void submitControl(int workerIndex, Runnable task, Consumer<Throwable> rejectionCallback) {
+  /** Attempts partitioned admission without waiting for worker queue capacity. */
+  public boolean trySubmit(int partition, Runnable task, Consumer<Throwable> rejectionCallback) {
     if (workers == null) {
-      submit(workerIndex, task, rejectionCallback);
-      return;
+      runInline(task, rejectionCallback);
+      return true;
     }
-    workers[(workerIndex & Integer.MAX_VALUE) % workerCount].executeControl(task, rejectionCallback);
+    return workers[stripe(partition)].tryExecute(task, rejectionCallback);
   }
 
-  /**
-   * Execute a completion callback on the configured callback executor, or inline when callback threads are disabled.
-   */
+  /** Executes a callback on its configured executor, or inline when disabled. */
   public void executeCallback(Runnable callback) {
     executeCallback(callback, null);
   }
 
-  /**
-   * Execute a completion callback and notify {@code rejectionCallback} if it cannot run. Adapters should keep rejection
-   * callbacks non-blocking because immediate rejection can be observed on a PubSub completion thread.
-   */
+  /** Executes a callback and reports immediate or forced-shutdown rejection. */
   public void executeCallback(Runnable callback, Consumer<Throwable> rejectionCallback) {
     if (callbackExecutor == null) {
       callback.run();
       return;
     }
     callbackExecutor.execute(callback, rejectionCallback);
+  }
+
+  /** Attempts callback admission without blocking, leaving ownership with the caller when rejected. */
+  public boolean tryExecuteCallback(Runnable callback, Consumer<Throwable> rejectionCallback) {
+    if (callbackExecutor == null) {
+      callback.run();
+      return true;
+    }
+    return callbackExecutor.tryExecute(callback, rejectionCallback);
   }
 
   public boolean isWorkersEnabled() {
@@ -203,11 +122,13 @@ public class PartitionedVeniceWriteExecutor {
     return callbackExecutor != null;
   }
 
+  /** Returns whether the current thread is executing a configured callback task. */
+  public boolean isCurrentThreadExecutingCallback() {
+    return callbackExecutor != null && callbackExecutor.isCurrentThreadExecutingTask();
+  }
+
   public int getWorkerQueueSize(int workerIndex) {
-    if (workers == null) {
-      return 0;
-    }
-    return workers[(workerIndex & Integer.MAX_VALUE) % workerCount].getQueueSize();
+    return workers == null ? 0 : workers[stripe(workerIndex)].getQueueSize();
   }
 
   public int getTotalWorkerQueueSize() {
@@ -215,7 +136,7 @@ public class PartitionedVeniceWriteExecutor {
       return 0;
     }
     int total = 0;
-    for (BoundedExecutor worker: workers) {
+    for (BlockingBoundedExecutor worker: workers) {
       total += worker.getQueueSize();
     }
     return total;
@@ -229,27 +150,21 @@ public class PartitionedVeniceWriteExecutor {
     return workerCount;
   }
 
-  /**
-   * Stop worker admission and drain accepted worker tasks.
-   */
   public void shutdownWorkers() {
-    if (workers != null) {
-      for (BoundedExecutor worker: workers) {
-        worker.shutdown();
-      }
-    } else {
+    if (workers == null) {
       inlineWorkerLock.lock();
       try {
         inlineWorkerAdmissionOpen.set(false);
       } finally {
         inlineWorkerLock.unlock();
       }
+      return;
+    }
+    for (BlockingBoundedExecutor worker: workers) {
+      worker.shutdown();
     }
   }
 
-  /**
-   * Stop callback admission and drain accepted callbacks.
-   */
   public void shutdownCallbacks() {
     if (callbackExecutor != null) {
       callbackExecutor.shutdown();
@@ -261,27 +176,16 @@ public class PartitionedVeniceWriteExecutor {
     shutdownCallbacks();
   }
 
-  /**
-   * Interrupt active worker tasks, reject queued worker tasks, and notify their rejection callbacks.
-   */
   public void shutdownWorkersNow() {
-    if (workers != null) {
-      for (BoundedExecutor worker: workers) {
-        worker.shutdownNow();
-      }
-    } else {
-      inlineWorkerLock.lock();
-      try {
-        inlineWorkerAdmissionOpen.set(false);
-      } finally {
-        inlineWorkerLock.unlock();
-      }
+    if (workers == null) {
+      shutdownWorkers();
+      return;
+    }
+    for (BlockingBoundedExecutor worker: workers) {
+      worker.shutdownNow();
     }
   }
 
-  /**
-   * Interrupt active callbacks, reject queued callbacks, and notify their rejection callbacks.
-   */
   public void shutdownCallbacksNow() {
     if (callbackExecutor != null) {
       callbackExecutor.shutdownNow();
@@ -301,31 +205,110 @@ public class PartitionedVeniceWriteExecutor {
   }
 
   public boolean awaitCallbackTermination(long timeout, TimeUnit unit) throws InterruptedException {
-    if (callbackExecutor == null) {
-      return true;
-    }
-    return callbackExecutor.awaitTermination(timeout, unit);
+    return callbackExecutor == null || callbackExecutor.awaitTermination(timeout, unit);
   }
 
   public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
     long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
-    if (workers == null) {
-      if (!awaitInlineWorkerTermination(timeout, unit)) {
-        return false;
+    if (!awaitWorkerTermination(timeout, unit)) {
+      return false;
+    }
+    long remainingNanos = deadlineNanos - System.nanoTime();
+    return remainingNanos > 0 && awaitCallbackTermination(remainingNanos, TimeUnit.NANOSECONDS);
+  }
+
+  /** Drains accepted worker tasks, forcing interruption after timeout or caller interruption. */
+  public boolean shutdownWorkersAndAwait(long timeout, TimeUnit unit) {
+    shutdownWorkers();
+    return shutdownAndAwait(true, timeout, unit);
+  }
+
+  /** Drains accepted callbacks, forcing interruption after timeout or caller interruption. */
+  public boolean shutdownCallbacksAndAwait(long timeout, TimeUnit unit) {
+    shutdownCallbacks();
+    return shutdownAndAwait(false, timeout, unit);
+  }
+
+  private BlockingBoundedExecutor[] createWorkers(
+      int count,
+      int queueCapacity,
+      String storeName,
+      MetricsRepository metricsRepository,
+      String threadNamePrefix) {
+    if (count == 0) {
+      LOGGER.info("Workers disabled for store {}, tasks will execute inline on caller thread", storeName);
+      return null;
+    }
+    BlockingBoundedExecutor[] createdWorkers = new BlockingBoundedExecutor[count];
+    for (int workerIndex = 0; workerIndex < count; workerIndex++) {
+      String workerName = threadNamePrefix + "-worker-" + storeName + "-" + workerIndex;
+      createdWorkers[workerIndex] = new BlockingBoundedExecutor(1, queueCapacity, workerName);
+      if (metricsRepository != null) {
+        new ThreadPoolStats(
+            metricsRepository,
+            createdWorkers[workerIndex].getThreadPoolExecutor(),
+            storeName + "_producer_worker_" + workerIndex);
       }
-    } else {
-      for (BoundedExecutor worker: workers) {
-        long remainingNanos = deadlineNanos - System.nanoTime();
-        if (remainingNanos <= 0 || !worker.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS)) {
-          return false;
+    }
+    LOGGER.info("Created {} partition workers for store {} with queue capacity {}", count, storeName, queueCapacity);
+    return createdWorkers;
+  }
+
+  private BlockingBoundedExecutor createCallbackExecutor(
+      int threadCount,
+      int queueCapacity,
+      String storeName,
+      MetricsRepository metricsRepository,
+      String threadNamePrefix) {
+    if (threadCount <= 0) {
+      LOGGER.info("Callback executor disabled for store {}, callbacks will run on caller thread", storeName);
+      return null;
+    }
+    String callbackPoolName = threadNamePrefix + "-callback-" + storeName;
+    BlockingBoundedExecutor createdExecutor = new BlockingBoundedExecutor(threadCount, queueCapacity, callbackPoolName);
+    if (metricsRepository != null) {
+      new ThreadPoolStats(
+          metricsRepository,
+          createdExecutor.getThreadPoolExecutor(),
+          storeName + "_producer_callback_pool");
+    }
+    LOGGER.info(
+        "Created callback executor for store {} with {} threads and queue capacity {}",
+        storeName,
+        threadCount,
+        queueCapacity);
+    return createdExecutor;
+  }
+
+  private void runInline(Runnable task, Consumer<Throwable> rejectionCallback) {
+    inlineWorkerLock.lock();
+    try {
+      if (!inlineWorkerAdmissionOpen.get()) {
+        RejectedExecutionException exception = new RejectedExecutionException("Worker executor has been shut down");
+        BlockingBoundedExecutor.notifyRejection(rejectionCallback, exception);
+        throw exception;
+      }
+      activeInlineWorkers++;
+    } finally {
+      inlineWorkerLock.unlock();
+    }
+    try {
+      task.run();
+    } finally {
+      inlineWorkerLock.lock();
+      try {
+        activeInlineWorkers--;
+        if (activeInlineWorkers == 0) {
+          inlineWorkersDrained.signalAll();
         }
+      } finally {
+        inlineWorkerLock.unlock();
       }
     }
-    if (callbackExecutor != null) {
-      long remainingNanos = deadlineNanos - System.nanoTime();
-      return remainingNanos > 0 && callbackExecutor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
-    }
-    return true;
+  }
+
+  private int stripe(int partition) {
+    return (partition & Integer.MAX_VALUE) % workerCount;
   }
 
   private boolean awaitInlineWorkerTermination(long timeout, TimeUnit unit) throws InterruptedException {
@@ -344,13 +327,10 @@ public class PartitionedVeniceWriteExecutor {
     }
   }
 
-  private static boolean awaitTermination(BoundedExecutor[] executors, long timeout, TimeUnit unit)
+  private static boolean awaitTermination(BlockingBoundedExecutor[] executors, long timeout, TimeUnit unit)
       throws InterruptedException {
-    if (executors == null) {
-      return true;
-    }
     long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
-    for (BoundedExecutor executor: executors) {
+    for (BlockingBoundedExecutor executor: executors) {
       long remainingNanos = deadlineNanos - System.nanoTime();
       if (remainingNanos <= 0 || !executor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS)) {
         return false;
@@ -359,202 +339,36 @@ public class PartitionedVeniceWriteExecutor {
     return true;
   }
 
-  private static void notifyRejection(Consumer<Throwable> rejectionCallback, Throwable throwable) {
-    if (rejectionCallback == null) {
-      return;
-    }
+  private boolean shutdownAndAwait(boolean workerExecutors, long timeout, TimeUnit unit) {
+    boolean interrupted = false;
+    boolean terminated = false;
     try {
-      rejectionCallback.accept(throwable);
-    } catch (Throwable callbackFailure) {
-      LOGGER.warn("Work rejection callback failed", callbackFailure);
+      terminated = workerExecutors ? awaitWorkerTermination(timeout, unit) : awaitCallbackTermination(timeout, unit);
+    } catch (InterruptedException exception) {
+      interrupted = true;
     }
-  }
-
-  /**
-   * A bounded executor whose queue capacity is reserved before calling {@link ThreadPoolExecutor#execute(Runnable)}.
-   * Reserving queue slots explicitly allows admission to block without a caller-runs fallback and lets shutdown wake
-   * blocked submitters without racing a direct insertion into a shut-down executor queue.
-   */
-  private static final class BoundedExecutor {
-    private final ThreadPoolExecutor executor;
-    private final Semaphore queueSlots;
-    private final AtomicBoolean accepting = new AtomicBoolean(true);
-    private final AtomicBoolean forceShutdown = new AtomicBoolean(false);
-    private final Set<FailureAwareTask> activeTasks =
-        Collections.newSetFromMap(new ConcurrentHashMap<FailureAwareTask, Boolean>());
-    private final Object lifecycleLock = new Object();
-    private final String executorName;
-
-    private BoundedExecutor(int threadCount, int queueCapacity, String executorName) {
-      this.executorName = executorName;
-      this.queueSlots = new Semaphore(queueCapacity);
-      int executorQueueCapacity = queueCapacity == Integer.MAX_VALUE ? queueCapacity : queueCapacity + 1;
-      this.executor = new ThreadPoolExecutor(
-          threadCount,
-          threadCount,
-          0L,
-          TimeUnit.MILLISECONDS,
-          new LinkedBlockingQueue<Runnable>(executorQueueCapacity),
-          new DaemonThreadFactory(executorName),
-          new ThreadPoolExecutor.AbortPolicy());
-    }
-
-    private void execute(Runnable task, Consumer<Throwable> rejectionCallback) {
-      acquireQueueSlot(rejectionCallback);
-      FailureAwareTask failureAwareTask =
-          new FailureAwareTask(task, rejectionCallback, queueSlots, activeTasks, forceShutdown, executorName);
-      synchronized (lifecycleLock) {
-        if (!accepting.get()) {
-          RejectedExecutionException exception =
-              new RejectedExecutionException("Executor " + executorName + " has been shut down");
-          failureAwareTask.reject(exception);
-          throw exception;
-        }
+    if (!terminated) {
+      if (workerExecutors) {
+        shutdownWorkersNow();
+      } else {
+        shutdownCallbacksNow();
+      }
+      // Forced interruption gets its own bounded termination window.
+      long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+      while (!terminated && System.nanoTime() < deadlineNanos) {
         try {
-          executor.execute(failureAwareTask);
-        } catch (RejectedExecutionException exception) {
-          failureAwareTask.reject(exception);
-          throw exception;
+          long remainingNanos = deadlineNanos - System.nanoTime();
+          terminated = workerExecutors
+              ? awaitWorkerTermination(remainingNanos, TimeUnit.NANOSECONDS)
+              : awaitCallbackTermination(remainingNanos, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException exception) {
+          interrupted = true;
         }
       }
     }
-
-    private void executeControl(Runnable task, Consumer<Throwable> rejectionCallback) {
-      FailureAwareTask failureAwareTask =
-          new FailureAwareTask(task, rejectionCallback, null, activeTasks, forceShutdown, executorName);
-      synchronized (lifecycleLock) {
-        if (!accepting.get()) {
-          RejectedExecutionException exception =
-              new RejectedExecutionException("Executor " + executorName + " has been shut down");
-          failureAwareTask.reject(exception);
-          throw exception;
-        }
-        try {
-          executor.execute(failureAwareTask);
-        } catch (RejectedExecutionException exception) {
-          failureAwareTask.reject(exception);
-          throw exception;
-        }
-      }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
     }
-
-    private void acquireQueueSlot(Consumer<Throwable> rejectionCallback) {
-      try {
-        while (accepting.get()) {
-          if (queueSlots.tryAcquire(ADMISSION_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS)) {
-            if (accepting.get()) {
-              return;
-            }
-            queueSlots.release();
-            break;
-          }
-        }
-        RejectedExecutionException exception =
-            new RejectedExecutionException("Executor " + executorName + " has been shut down");
-        notifyRejection(rejectionCallback, exception);
-        throw exception;
-      } catch (InterruptedException exception) {
-        Thread.currentThread().interrupt();
-        RejectedExecutionException rejection =
-            new RejectedExecutionException("Interrupted while waiting for queue space in " + executorName, exception);
-        notifyRejection(rejectionCallback, rejection);
-        throw rejection;
-      }
-    }
-
-    private void shutdown() {
-      synchronized (lifecycleLock) {
-        accepting.set(false);
-        executor.shutdown();
-      }
-    }
-
-    private void shutdownNow() {
-      List<Runnable> queuedTasks;
-      List<FailureAwareTask> activeTaskSnapshot;
-      synchronized (lifecycleLock) {
-        accepting.set(false);
-        forceShutdown.set(true);
-        activeTaskSnapshot = new ArrayList<>(activeTasks);
-        queuedTasks = executor.shutdownNow();
-      }
-      RejectedExecutionException exception =
-          new RejectedExecutionException("Executor " + executorName + " was shut down immediately");
-      for (Runnable queuedTask: queuedTasks) {
-        ((FailureAwareTask) queuedTask).reject(exception);
-      }
-      for (FailureAwareTask activeTask: activeTaskSnapshot) {
-        activeTask.reject(exception);
-      }
-      for (FailureAwareTask activeTask: activeTasks) {
-        activeTask.reject(exception);
-      }
-    }
-
-    private int getQueueSize() {
-      return executor.getQueue().size();
-    }
-
-    private ThreadPoolExecutor getThreadPoolExecutor() {
-      return executor;
-    }
-
-    private boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-      return executor.awaitTermination(timeout, unit);
-    }
-  }
-
-  private static final class FailureAwareTask implements Runnable {
-    private final Runnable task;
-    private final Consumer<Throwable> rejectionCallback;
-    private final Semaphore queueSlots;
-    private final Set<FailureAwareTask> activeTasks;
-    private final AtomicBoolean forceShutdown;
-    private final String executorName;
-    private final AtomicBoolean queueSlotReleased = new AtomicBoolean(false);
-    private final AtomicBoolean rejectionNotified = new AtomicBoolean(false);
-
-    private FailureAwareTask(
-        Runnable task,
-        Consumer<Throwable> rejectionCallback,
-        Semaphore queueSlots,
-        Set<FailureAwareTask> activeTasks,
-        AtomicBoolean forceShutdown,
-        String executorName) {
-      this.task = task;
-      this.rejectionCallback = rejectionCallback;
-      this.queueSlots = queueSlots;
-      this.activeTasks = activeTasks;
-      this.forceShutdown = forceShutdown;
-      this.executorName = executorName;
-    }
-
-    @Override
-    public void run() {
-      activeTasks.add(this);
-      releaseQueueSlot();
-      try {
-        if (forceShutdown.get()) {
-          reject(new RejectedExecutionException("Executor " + executorName + " was shut down immediately"));
-          return;
-        }
-        task.run();
-      } finally {
-        activeTasks.remove(this);
-      }
-    }
-
-    private void reject(Throwable throwable) {
-      releaseQueueSlot();
-      if (rejectionNotified.compareAndSet(false, true)) {
-        notifyRejection(rejectionCallback, throwable);
-      }
-    }
-
-    private void releaseQueueSlot() {
-      if (queueSlots != null && queueSlotReleased.compareAndSet(false, true)) {
-        queueSlots.release();
-      }
-    }
+    return terminated;
   }
 }
