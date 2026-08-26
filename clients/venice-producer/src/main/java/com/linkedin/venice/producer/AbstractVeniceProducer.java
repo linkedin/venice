@@ -703,9 +703,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         }
       }
 
-      // A deferred completion can run arbitrary user continuations inline, including close().
-      if (!isCurrentThreadExecutingDeferredCompletion()
-          && !awaitDeferredCompletionsUninterruptibly(60, TimeUnit.SECONDS)) {
+      // Pending completions include the tracked wrappers executing on this thread. Those wrappers cannot finish until
+      // close() returns, so exempt only their current nesting depth while draining every other completion.
+      Integer depth = deferredCompletionDepth.get();
+      int currentThreadCompletionDepth = depth == null ? 0 : depth;
+      if (!awaitDeferredCompletionsUninterruptibly(currentThreadCompletionDepth, 60, TimeUnit.SECONDS)) {
         throw new IOException("Venice producer deferred completions did not terminate");
       }
     } finally {
@@ -714,11 +716,6 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         Thread.currentThread().interrupt();
       }
     }
-  }
-
-  private boolean isCurrentThreadExecutingDeferredCompletion() {
-    Integer depth = deferredCompletionDepth.get();
-    return depth != null && depth > 0;
   }
 
   protected boolean isClosed() {
@@ -745,33 +742,67 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
   }
 
-  private boolean awaitDeferredCompletionsUninterruptibly(long timeout, TimeUnit unit) throws IOException {
+  private boolean awaitDeferredCompletionsUninterruptibly(int currentThreadCompletionDepth, long timeout, TimeUnit unit)
+      throws IOException {
     long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
     boolean interrupted = false;
     try {
-      synchronized (deferredCompletionMonitor) {
-        while (pendingDeferredCompletions > 0) {
-          long remainingNanos = deadlineNanos - System.nanoTime();
-          if (remainingNanos <= 0) {
+      while (true) {
+        synchronized (deferredCompletionMonitor) {
+          if (pendingDeferredCompletions <= currentThreadCompletionDepth) {
+            if (deferredCompletionFailure != null) {
+              throw new IOException(
+                  "Failed while draining Venice producer deferred completions",
+                  deferredCompletionFailure);
+            }
+            return true;
+          }
+          if (deadlineNanos - System.nanoTime() <= 0) {
             return false;
           }
-          try {
-            TimeUnit.NANOSECONDS.timedWait(deferredCompletionMonitor, remainingNanos);
-          } catch (InterruptedException exception) {
-            interrupted = true;
-          }
         }
-        if (deferredCompletionFailure != null) {
-          throw new IOException(
-              "Failed while draining Venice producer deferred completions",
-              deferredCompletionFailure);
+        try {
+          ForkJoinPool.managedBlock(new DeferredCompletionBlocker(currentThreadCompletionDepth, deadlineNanos));
+        } catch (InterruptedException exception) {
+          interrupted = true;
         }
-        return true;
       }
     } finally {
       if (interrupted) {
         Thread.currentThread().interrupt();
       }
+    }
+  }
+
+  private final class DeferredCompletionBlocker implements ForkJoinPool.ManagedBlocker {
+    private final int currentThreadCompletionDepth;
+    private final long deadlineNanos;
+
+    private DeferredCompletionBlocker(int currentThreadCompletionDepth, long deadlineNanos) {
+      this.currentThreadCompletionDepth = currentThreadCompletionDepth;
+      this.deadlineNanos = deadlineNanos;
+    }
+
+    @Override
+    public boolean block() throws InterruptedException {
+      synchronized (deferredCompletionMonitor) {
+        long remainingNanos = deadlineNanos - System.nanoTime();
+        if (pendingDeferredCompletions > currentThreadCompletionDepth && remainingNanos > 0) {
+          TimeUnit.NANOSECONDS.timedWait(deferredCompletionMonitor, remainingNanos);
+        }
+        return isReleasableLocked();
+      }
+    }
+
+    @Override
+    public boolean isReleasable() {
+      synchronized (deferredCompletionMonitor) {
+        return isReleasableLocked();
+      }
+    }
+
+    private boolean isReleasableLocked() {
+      return pendingDeferredCompletions <= currentThreadCompletionDepth || deadlineNanos - System.nanoTime() <= 0;
     }
   }
 

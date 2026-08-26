@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
@@ -34,6 +35,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,6 +45,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -672,6 +675,74 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
       awaitQuietly(close);
       producer.close();
     }
+  }
+
+  @DataProvider(name = "deferredCompletionFailures")
+  public Object[][] deferredCompletionFailures() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "deferredCompletionFailures", timeOut = 10000)
+  public void testDeferredCompletionCloseDrainsOtherCompletion(boolean failCompletion) throws Exception {
+    TestableVeniceProducer producer = createProducer(1, 10, 0);
+    ForkJoinPool completionPool = new ForkJoinPool(1);
+    CompletableFuture<Void> closingCompletionStarted = new CompletableFuture<>();
+    CompletableFuture<Void> invokeClose = new CompletableFuture<>();
+    CompletableFuture<Throwable> closeResult = new CompletableFuture<>();
+    RuntimeException completionFailure = failCompletion ? new RuntimeException("deferred completion failed") : null;
+    List<String> events = Collections.synchronizedList(new ArrayList<>());
+    try {
+      producer.scheduleDeferredCompletion(() -> {
+        closingCompletionStarted.complete(null);
+        invokeClose.join();
+        Throwable closeFailure = null;
+        try {
+          producer.close();
+        } catch (Throwable throwable) {
+          closeFailure = throwable;
+        }
+        events.add("close-returned");
+        closeResult.complete(closeFailure);
+      }, completionPool);
+      closingCompletionStarted.get(5, TimeUnit.SECONDS);
+
+      producer.scheduleDeferredCompletion(() -> {
+        events.add("other-completion-returned");
+        if (completionFailure != null) {
+          throw completionFailure;
+        }
+      }, completionPool);
+      invokeClose.complete(null);
+
+      Throwable closeFailure = closeResult.get(5, TimeUnit.SECONDS);
+      assertEquals(events, Arrays.asList("other-completion-returned", "close-returned"));
+      if (completionFailure == null) {
+        assertNull(closeFailure);
+      } else {
+        assertTrue(closeFailure instanceof IOException);
+        assertSame(closeFailure.getCause(), completionFailure);
+      }
+      completionPool.shutdown();
+      assertTrue(completionPool.awaitTermination(5, TimeUnit.SECONDS));
+    } finally {
+      invokeClose.complete(null);
+      completionPool.shutdownNow();
+    }
+  }
+
+  @Test(timeOut = 10000)
+  public void testDeferredCompletionCloseExemptsNestedRejectedCompletionDepth() {
+    TestableVeniceProducer producer = createProducer(1, 10, 0);
+    AtomicBoolean closeReturned = new AtomicBoolean();
+    Executor rejectingExecutor = task -> {
+      throw new RejectedExecutionException("deferred executor unavailable");
+    };
+    producer.scheduleDeferredCompletion(() -> producer.scheduleDeferredCompletion(() -> {
+      closeUnchecked(producer);
+      closeReturned.set(true);
+    }, rejectingExecutor), Runnable::run);
+
+    assertTrue(closeReturned.get());
   }
 
   @Test(timeOut = 5000)
