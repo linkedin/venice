@@ -640,6 +640,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
 
       case UPDATE:
+        oldValueProvider.get(); // forced here to populate the manifest
+        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
+          // the stored value is already over the limit, so it is neither assembled nor merged
+          // merging anyway would mutate the RMD timestamp in-place, and a transient cache hit shares that record by
+          // reference, so a later PUT or DELETE would lose conflict resolution against a value that was never written
+          return buildIgnoredMergeConflictResult(
+              oldValueProvider,
+              oldValueByteBufferProvider,
+              rmdWithValueSchemaID,
+              valueManifestContainer);
+        }
         mergeConflictResult = mergeConflictResolver.update(
             oldValueByteBufferProvider,
             rmdWithValueSchemaID,
@@ -649,15 +660,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             writeTimestamp,
             kafkaClusterId,
             valueManifestContainer);
-        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
-          // The stored record is already over the limit, so its manifest skipped the read and the merge above
-          // ran against a null old value, so that result must be discarded rather than produced
-          return buildIgnoredMergeConflictResult(
-              oldValueProvider,
-              oldValueByteBufferProvider,
-              rmdWithValueSchemaID,
-              valueManifestContainer);
-        }
         double updateMergeLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs);
         getHostLevelIngestionStats().recordIngestionActiveActiveUpdateLatency(updateMergeLatency);
         versionedIngestionStats

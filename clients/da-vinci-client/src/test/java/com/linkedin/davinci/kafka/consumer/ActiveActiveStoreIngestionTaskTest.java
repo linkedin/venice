@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.setField;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -10,6 +11,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,6 +24,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -42,6 +45,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -838,4 +842,52 @@ public class ActiveActiveStoreIngestionTaskTest {
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
   }
 
+  @Test
+  public void testOversizedPartialUpdateIsSkippedBeforeTheMergeCanMutateTheRmd() throws Exception {
+    MergeConflictResolver resolver = mock(MergeConflictResolver.class);
+    ActiveActiveStoreIngestionTask ingestionTask = newTaskGuardingPartialUpdateSize(resolver);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isEndOfPushReceived()).thenReturn(true);
+    when(pcs.getTransientRecord(any())).thenReturn(mock(PartitionConsumptionState.TransientRecord.class));
+
+    doReturn(true).when(ingestionTask).isRecordTooLargeForPartialUpdate(any(), any(), any());
+    ingestionTask.processMessageAndMaybeProduceToKafka(
+        new PubSubMessageProcessedResultWrapper(mockUpdateMessage()),
+        pcs,
+        0,
+        "dummyUrl",
+        0,
+        0L,
+        0L);
+    verify(ingestionTask).isRecordTooLargeForPartialUpdate(any(), any(), any());
+    verify(resolver, never()).update(any(), any(), any(), anyInt(), anyInt(), anyLong(), anyInt(), any());
+  }
+
+  private ActiveActiveStoreIngestionTask newTaskGuardingPartialUpdateSize(MergeConflictResolver resolver)
+      throws Exception {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    AggVersionedIngestionStats versionedStats = mock(AggVersionedIngestionStats.class);
+    doCallRealMethod().when(ingestionTask)
+        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+    doReturn(mock(HostLevelIngestionStats.class)).when(ingestionTask).getHostLevelIngestionStats();
+    setField(ingestionTask, "mergeConflictResolver", resolver);
+    setField(ingestionTask, "aggVersionedIngestionStats", versionedStats);
+    setField(ingestionTask, "versionedIngestionStats", versionedStats);
+    return ingestionTask;
+  }
+
+  private static DefaultPubSubMessage mockUpdateMessage() {
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    when(message.getKey()).thenReturn(new KafkaKey(MessageType.UPDATE, new byte[] { 1 }));
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.messageType = MessageType.UPDATE.getValue();
+    kafkaValue.producerMetadata = new ProducerMetadata(new GUID(), 0, 0, 0L, 100L);
+    Update update = new Update();
+    update.schemaId = 1;
+    update.updateSchemaId = 1;
+    update.updateValue = ByteBuffer.wrap(new byte[] { 1 });
+    kafkaValue.payloadUnion = update;
+    when(message.getValue()).thenReturn(kafkaValue);
+    return message;
+  }
 }
