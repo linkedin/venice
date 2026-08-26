@@ -659,21 +659,17 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   @Override
   public void close() throws IOException {
     closed = true;
-    boolean restoreInterrupt = Thread.interrupted();
+    AtomicBoolean restoreInterrupt = new AtomicBoolean(Thread.interrupted());
     try {
       boolean workersTerminated = true;
       if (asyncDispatcher != null) {
         // Stop worker admission first, but keep callback delivery alive while the writer flushes and closes.
         asyncDispatcher.shutdownWorkers();
-        TerminationResult gracefulTermination = awaitTerminationUninterruptibly(true, 60, TimeUnit.SECONDS);
-        restoreInterrupt |= gracefulTermination.interrupted;
-        workersTerminated = gracefulTermination.terminated;
+        workersTerminated = awaitTerminationUninterruptibly(true, restoreInterrupt);
         if (!workersTerminated) {
           LOGGER.warn("Async dispatcher did not terminate gracefully, forcing shutdown");
           asyncDispatcher.shutdownWorkersNow();
-          TerminationResult forcedTermination = awaitTerminationUninterruptibly(true, 60, TimeUnit.SECONDS);
-          restoreInterrupt |= forcedTermination.interrupted;
-          workersTerminated = forcedTermination.terminated;
+          workersTerminated = awaitTerminationUninterruptibly(true, restoreInterrupt);
         }
       }
 
@@ -682,20 +678,16 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       }
 
       Utils.closeQuietlyWithErrorLogged(veniceWriter);
-      restoreInterrupt |= Thread.interrupted();
+      restoreInterrupt.set(Thread.interrupted() || restoreInterrupt.get());
 
       if (asyncDispatcher != null) {
         asyncDispatcher.shutdownCallbacks();
         if (!asyncDispatcher.isCurrentThreadExecutingCallback()) {
-          TerminationResult gracefulTermination = awaitTerminationUninterruptibly(false, 60, TimeUnit.SECONDS);
-          restoreInterrupt |= gracefulTermination.interrupted;
-          boolean callbacksTerminated = gracefulTermination.terminated;
+          boolean callbacksTerminated = awaitTerminationUninterruptibly(false, restoreInterrupt);
           if (!callbacksTerminated) {
             LOGGER.warn("Async callback dispatcher did not terminate gracefully, forcing shutdown");
             asyncDispatcher.shutdownCallbacksNow();
-            TerminationResult forcedTermination = awaitTerminationUninterruptibly(false, 60, TimeUnit.SECONDS);
-            restoreInterrupt |= forcedTermination.interrupted;
-            callbacksTerminated = forcedTermination.terminated;
+            callbacksTerminated = awaitTerminationUninterruptibly(false, restoreInterrupt);
           }
           if (!callbacksTerminated) {
             throw new IOException("Venice producer callbacks did not terminate after forced shutdown");
@@ -705,14 +697,13 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
       // Pending completions include the tracked wrappers executing on this thread. Those wrappers cannot finish until
       // close() returns, so exempt only their current nesting depth while draining every other completion.
-      Integer depth = deferredCompletionDepth.get();
-      int currentThreadCompletionDepth = depth == null ? 0 : depth;
-      if (!awaitDeferredCompletionsUninterruptibly(currentThreadCompletionDepth, 60, TimeUnit.SECONDS)) {
+      int currentThreadCompletionDepth = deferredCompletionDepth.get() == null ? 0 : deferredCompletionDepth.get();
+      if (!awaitDeferredCompletionsUninterruptibly(currentThreadCompletionDepth)) {
         throw new IOException("Venice producer deferred completions did not terminate");
       }
     } finally {
-      restoreInterrupt |= Thread.interrupted();
-      if (restoreInterrupt) {
+      restoreInterrupt.set(Thread.interrupted() || restoreInterrupt.get());
+      if (restoreInterrupt.get()) {
         Thread.currentThread().interrupt();
       }
     }
@@ -722,50 +713,67 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     return closed;
   }
 
-  private TerminationResult awaitTerminationUninterruptibly(boolean workers, long timeout, TimeUnit unit) {
-    long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
-    boolean interrupted = false;
+  private boolean awaitTerminationUninterruptibly(boolean workers, AtomicBoolean restoreInterrupt) {
+    long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
     while (true) {
       long remainingNanos = deadlineNanos - System.nanoTime();
       if (remainingNanos <= 0) {
-        return new TerminationResult(false, interrupted);
+        return false;
       }
       try {
-        return new TerminationResult(
-            workers
-                ? asyncDispatcher.awaitWorkerTermination(remainingNanos, TimeUnit.NANOSECONDS)
-                : asyncDispatcher.awaitCallbackTermination(remainingNanos, TimeUnit.NANOSECONDS),
-            interrupted);
+        return workers
+            ? asyncDispatcher.awaitWorkerTermination(remainingNanos, TimeUnit.NANOSECONDS)
+            : asyncDispatcher.awaitCallbackTermination(remainingNanos, TimeUnit.NANOSECONDS);
       } catch (InterruptedException exception) {
-        interrupted = true;
+        restoreInterrupt.set(true);
       }
     }
   }
 
-  private boolean awaitDeferredCompletionsUninterruptibly(int currentThreadCompletionDepth, long timeout, TimeUnit unit)
-      throws IOException {
-    long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+  private boolean awaitDeferredCompletionsUninterruptibly(int currentThreadCompletionDepth) throws IOException {
+    long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+    ForkJoinPool.ManagedBlocker blocker = new ForkJoinPool.ManagedBlocker() {
+      @Override
+      public boolean block() throws InterruptedException {
+        synchronized (deferredCompletionMonitor) {
+          long remainingNanos = deadlineNanos - System.nanoTime();
+          if (pendingDeferredCompletions > currentThreadCompletionDepth && remainingNanos > 0) {
+            TimeUnit.NANOSECONDS.timedWait(deferredCompletionMonitor, remainingNanos);
+          }
+          return isReady();
+        }
+      }
+
+      @Override
+      public boolean isReleasable() {
+        synchronized (deferredCompletionMonitor) {
+          return isReady();
+        }
+      }
+
+      private boolean isReady() {
+        return pendingDeferredCompletions <= currentThreadCompletionDepth || deadlineNanos - System.nanoTime() <= 0;
+      }
+    };
     boolean interrupted = false;
     try {
-      while (true) {
-        synchronized (deferredCompletionMonitor) {
-          if (pendingDeferredCompletions <= currentThreadCompletionDepth) {
-            if (deferredCompletionFailure != null) {
-              throw new IOException(
-                  "Failed while draining Venice producer deferred completions",
-                  deferredCompletionFailure);
-            }
-            return true;
-          }
-          if (deadlineNanos - System.nanoTime() <= 0) {
-            return false;
-          }
-        }
+      while (!blocker.isReleasable()) {
         try {
-          ForkJoinPool.managedBlock(new DeferredCompletionBlocker(currentThreadCompletionDepth, deadlineNanos));
+          ForkJoinPool.managedBlock(blocker);
         } catch (InterruptedException exception) {
           interrupted = true;
         }
+      }
+      synchronized (deferredCompletionMonitor) {
+        if (pendingDeferredCompletions > currentThreadCompletionDepth) {
+          return false;
+        }
+        if (deferredCompletionFailure != null) {
+          throw new IOException(
+              "Failed while draining Venice producer deferred completions",
+              deferredCompletionFailure);
+        }
+        return true;
       }
     } finally {
       if (interrupted) {
@@ -774,45 +782,4 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
   }
 
-  private final class DeferredCompletionBlocker implements ForkJoinPool.ManagedBlocker {
-    private final int currentThreadCompletionDepth;
-    private final long deadlineNanos;
-
-    private DeferredCompletionBlocker(int currentThreadCompletionDepth, long deadlineNanos) {
-      this.currentThreadCompletionDepth = currentThreadCompletionDepth;
-      this.deadlineNanos = deadlineNanos;
-    }
-
-    @Override
-    public boolean block() throws InterruptedException {
-      synchronized (deferredCompletionMonitor) {
-        long remainingNanos = deadlineNanos - System.nanoTime();
-        if (pendingDeferredCompletions > currentThreadCompletionDepth && remainingNanos > 0) {
-          TimeUnit.NANOSECONDS.timedWait(deferredCompletionMonitor, remainingNanos);
-        }
-        return isReleasableLocked();
-      }
-    }
-
-    @Override
-    public boolean isReleasable() {
-      synchronized (deferredCompletionMonitor) {
-        return isReleasableLocked();
-      }
-    }
-
-    private boolean isReleasableLocked() {
-      return pendingDeferredCompletions <= currentThreadCompletionDepth || deadlineNanos - System.nanoTime() <= 0;
-    }
-  }
-
-  private static final class TerminationResult {
-    private final boolean terminated;
-    private final boolean interrupted;
-
-    private TerminationResult(boolean terminated, boolean interrupted) {
-      this.terminated = terminated;
-      this.interrupted = interrupted;
-    }
-  }
 }
