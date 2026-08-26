@@ -2630,6 +2630,23 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    rollbackToBackupVersion(clusterName, storeName, regionFilter, true);
+  }
+
+  /**
+   * Deferred swaps leave the parent's current version on the backup while rolling back promoted child regions.
+   * {@link DeferredVersionSwapService} finalizes the target version status, so parent rollback aggregation is both
+   * redundant and harmful here because its two-minute poll would block the service's single worker.
+   */
+  void rollbackToBackupVersionForDeferredVersionSwap(String clusterName, String storeName, String regionFilter) {
+    rollbackToBackupVersion(clusterName, storeName, regionFilter, false);
+  }
+
+  private void rollbackToBackupVersion(
+      String clusterName,
+      String storeName,
+      String regionFilter,
+      boolean updateParentStatus) {
     int rolledBackVersionNum;
     acquireAdminMessageLock(clusterName, storeName);
     try {
@@ -2654,7 +2671,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     // Update parent version status outside of admin message lock to avoid blocking concurrent
     // admin operations during the exponential-backoff polling of child regions.
-    if (rolledBackVersionNum != NON_EXISTING_VERSION) {
+    if (updateParentStatus && rolledBackVersionNum != NON_EXISTING_VERSION) {
       updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
     }
   }

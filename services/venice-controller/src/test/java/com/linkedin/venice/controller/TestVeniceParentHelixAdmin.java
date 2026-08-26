@@ -3314,6 +3314,26 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testDeferredRollbackSkipsParentStatusPolling() {
+    String rollbackStoreName = "test-deferred-rollback-status";
+    doReturn(2).when(store).getCurrentVersion();
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doReturn(store).when(adminSpy).getStore(clusterName, rollbackStoreName);
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(rollbackStoreName), any(AdminOperation.class));
+
+    ControllerClient childControllerClient = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap(regionName, childControllerClient)).when(internalAdmin)
+        .getControllerClientMap(clusterName);
+
+    adminSpy.rollbackToBackupVersionForDeferredVersionSwap(clusterName, rollbackStoreName, regionName);
+
+    verify(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(rollbackStoreName), any(AdminOperation.class));
+    verify(childControllerClient, never()).getStore(eq(rollbackStoreName), anyInt());
+  }
+
+  @Test
   public void checkNewPushCapacityFromChildrenBlocksWhenChildRolledBackWithinRetention() {
     String store = "npc_from_children_rollback_block";
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
