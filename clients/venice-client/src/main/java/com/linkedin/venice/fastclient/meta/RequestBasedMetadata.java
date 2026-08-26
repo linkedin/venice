@@ -58,7 +58,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -87,6 +89,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final long connWarmupTimeoutInSeconds;
   /** scheduler to run {@link #refresh()} to periodically update metadata */
   private ScheduledExecutorService scheduler;
+  /** The pending scheduled refresh task; stored so it can be cancelled during {@link #close()} */
+  private volatile ScheduledFuture<?> scheduledRefreshFuture;
   /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
    * Using a new ExecutorService rather than CompletableFuture's default one to not affect
    * the read requests happening in parallel.
@@ -722,6 +726,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           LOGGER.error("Listener callback threw for store {}; continuing with remaining callbacks", storeName, t);
         }
       }
+    } catch (InterruptedException e) {
+      // Interrupted during shutdown — restore the flag so the executor can terminate cleanly.
+      Thread.currentThread().interrupt();
     } catch (VeniceClientException clientException) {
       if (clientException.getCause() instanceof VeniceClientHttpException) {
         VeniceClientHttpException clientHttpException = (VeniceClientHttpException) clientException.getCause();
@@ -734,10 +741,17 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       logRefreshException(e);
     } finally {
-      scheduler.schedule(
-          this::refresh,
-          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
-          TimeUnit.SECONDS);
+      try {
+        if (!scheduler.isShutdown()) {
+          scheduledRefreshFuture = scheduler.schedule(
+              this::refresh,
+              isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
+              TimeUnit.SECONDS);
+        }
+      } catch (RejectedExecutionException e) {
+        // Scheduler was shut down between the isShutdown() check and the schedule() call;
+        // this is expected during close() and can be safely ignored.
+      }
     }
   }
 
@@ -751,19 +765,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public void close() throws IOException {
-    scheduler.shutdown();
-    try {
-      if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
-        scheduler.shutdownNow();
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+    // Cancel the pending metadata refresh task — interrupt even if mid-execution since the client
+    // is shutting down and the refresh result would be discarded anyway.
+    ScheduledFuture<?> pendingRefresh = scheduledRefreshFuture;
+    if (pendingRefresh != null) {
+      pendingRefresh.cancel(true);
     }
-    h2ConnWarmupExecutorService.shutdown();
+    scheduler.shutdownNow();
+    h2ConnWarmupExecutorService.shutdownNow();
     try {
-      if (!h2ConnWarmupExecutorService.awaitTermination(60, TimeUnit.SECONDS)) {
-        h2ConnWarmupExecutorService.shutdownNow();
-      }
+      // Brief wait for interrupted threads to complete their catch/finally blocks.
+      scheduler.awaitTermination(1, TimeUnit.SECONDS);
+      h2ConnWarmupExecutorService.awaitTermination(1, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
