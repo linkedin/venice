@@ -153,6 +153,93 @@ public class VeniceSystemProducerWriteDispatcherTest {
     assertFalse(executor.tryExecuteCallback(() -> {}, null));
   }
 
+  @Test(timeOut = 30000, dataProvider = "pendingAdmissionFailureModes")
+  public void testStopRetryDoesNotCleanUpWriterWhileRoutingAdmissionIsPending(boolean stickyRoutingFailure)
+      throws Exception {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
+    CountDownLatch routingEntered = new CountDownLatch(1);
+    CountDownLatch releaseRouting = new CountDownLatch(1);
+    VeniceException routingFailure = new VeniceException("routing failed while another admission is pending");
+    when(writer.getPartitionId(any())).thenAnswer(invocation -> {
+      byte[] key = invocation.getArgument(0);
+      if (key[0] != 1) {
+        throw routingFailure;
+      }
+      routingEntered.countDown();
+      await(releaseRouting);
+      return 0;
+    });
+    AtomicReference<VeniceSystemProducerWriteDispatcher> dispatcherReference = new AtomicReference<>();
+    AtomicInteger flushPendingAdmissions = new AtomicInteger(-1);
+    AtomicInteger closePendingAdmissions = new AtomicInteger(-1);
+    doAnswer(invocation -> {
+      flushPendingAdmissions.set(dispatcherReference.get().getPendingAdmissions());
+      return null;
+    }).when(writer).flush();
+    doAnswer(invocation -> {
+      closePendingAdmissions.set(dispatcherReference.get().getPendingAdmissions());
+      return null;
+    }).when(writer).close();
+    PartitionedVeniceWriteExecutor executor =
+        new PartitionedVeniceWriteExecutor(1, 10, 0, 10, "routing-admission-stop-retry", null);
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        new VeniceSystemProducerWriteDispatcher(writer, executor, 100, TimeUnit.MILLISECONDS, Runnable::run);
+    dispatcherReference.set(dispatcher);
+    CompletableFuture<Void> sender = null;
+    try {
+      sender = runOnDedicatedThread(
+          "test-routing-admission",
+          () -> dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1));
+      assertTrue(routingEntered.await(5, TimeUnit.SECONDS));
+      assertEquals(dispatcher.getPendingAdmissions(), 1);
+      if (stickyRoutingFailure) {
+        assertSame(
+            expectThrows(VeniceException.class, () -> dispatcher.put(new byte[] { 2 }, new byte[] { 2 }, 1, -1)),
+            routingFailure);
+        assertEquals(dispatcher.getPendingAdmissions(), 1);
+      }
+
+      VeniceException initialStopFailure = expectThrows(VeniceException.class, dispatcher::stop);
+      Throwable stickyFailure = initialStopFailure.getCause();
+      if (stickyRoutingFailure) {
+        assertSame(stickyFailure, routingFailure);
+      }
+      assertEquals(dispatcher.getPendingAdmissions(), 1);
+      verify(writer, never()).flush();
+      verify(writer, never()).close();
+
+      VeniceException retryStopFailure = expectThrows(VeniceException.class, dispatcher::stop);
+      assertSame(retryStopFailure.getCause(), stickyFailure);
+      assertEquals(dispatcher.getPendingAdmissions(), 1);
+      verify(writer, never()).flush();
+      verify(writer, never()).close();
+
+      releaseRouting.countDown();
+      CompletableFuture<Void> admittedSender = sender;
+      assertThrows(ExecutionException.class, () -> admittedSender.get(5, TimeUnit.SECONDS));
+      assertEquals(dispatcher.getPendingAdmissions(), 0);
+
+      VeniceException cleanupStopFailure = expectThrows(VeniceException.class, dispatcher::stop);
+      assertSame(cleanupStopFailure.getCause(), stickyFailure);
+      assertTrue(dispatcher.isStopped());
+      assertEquals(flushPendingAdmissions.get(), 0);
+      assertEquals(closePendingAdmissions.get(), 0);
+      verify(writer).flush();
+      verify(writer).close();
+    } finally {
+      releaseRouting.countDown();
+      awaitQuietly(sender);
+      if (!dispatcher.isStopped()) {
+        stopQuietly(dispatcher);
+      }
+    }
+  }
+
+  @DataProvider(name = "pendingAdmissionFailureModes")
+  public Object[][] pendingAdmissionFailureModes() {
+    return new Object[][] { { false }, { true } };
+  }
+
   @Test
   public void testSubmissionCompletesOnWorkerBeforeConfiguredCallback() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();

@@ -135,6 +135,7 @@ final class VeniceSystemProducerWriteDispatcher {
       boolean workersTerminated;
       boolean fenceCompleted = false;
       boolean forceWorkerShutdown = false;
+      boolean stopAdmissionDrained;
       VeniceSystemProducerWriteLifecycle.StopStatus stopStatus = lifecycle.beginStop(deadlineNanos, restoreInterrupt);
       try {
         if (stopStatus == VeniceSystemProducerWriteLifecycle.StopStatus.ALREADY_STOPPED) {
@@ -156,6 +157,7 @@ final class VeniceSystemProducerWriteDispatcher {
             forceWorkerShutdown = true;
           }
         }
+        stopAdmissionDrained = lifecycle.isStopAdmissionDrained();
         lifecycle.releaseStopAdmission();
 
         if (forceWorkerShutdown) {
@@ -167,7 +169,7 @@ final class VeniceSystemProducerWriteDispatcher {
         captureInterrupt(restoreInterrupt);
         if (!workersTerminated) {
           recordFailure(new VeniceException("Timed out while draining Venice SystemProducer workers"));
-        } else if (!writerClosed) {
+        } else if (stopAdmissionDrained && !writerClosed) {
           if (fenceCompleted) {
             closeWriter();
           } else {

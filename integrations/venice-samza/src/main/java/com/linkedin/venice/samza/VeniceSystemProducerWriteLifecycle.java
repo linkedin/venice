@@ -53,10 +53,7 @@ final class VeniceSystemProducerWriteLifecycle {
       fenceLock.unlock();
       return StopStatus.ALREADY_STOPPED;
     }
-    if (!accepting) {
-      // A prior stop closed admission but did not complete physical cleanup.
-      return StopStatus.FAILED;
-    }
+    boolean cleanupRetry = !accepting;
     if (!tryLockUntil(admissionLock.writeLock(), deadlineNanos, restoreInterrupt)) {
       accepting = false;
       stopFenceHeld = false;
@@ -76,7 +73,7 @@ final class VeniceSystemProducerWriteLifecycle {
       recordFailure(throwable);
       return StopStatus.FAILED;
     }
-    return StopStatus.STARTED;
+    return cleanupRetry ? StopStatus.FAILED : StopStatus.STARTED;
   }
 
   void releaseStopAdmission() {
@@ -147,6 +144,12 @@ final class VeniceSystemProducerWriteLifecycle {
     }
   }
 
+  boolean isStopAdmissionDrained() {
+    synchronized (admissions) {
+      return stopAdmissionHeld && pendingAdmissions == 0;
+    }
+  }
+
   private void awaitPendingAdmissions() {
     try {
       synchronized (admissions) {
@@ -164,8 +167,8 @@ final class VeniceSystemProducerWriteLifecycle {
 
   private boolean awaitPendingAdmissionsUntil(long deadlineNanos, AtomicBoolean restoreInterrupt) {
     synchronized (admissions) {
+      // A sticky failure changes shutdown mode, but cannot make writer cleanup safe while an admitted caller remains.
       while (pendingAdmissions > 0) {
-        checkForFailure();
         long remaining = remainingNanos(deadlineNanos);
         if (remaining == 0) {
           return false;
