@@ -1175,4 +1175,34 @@ public class RequestBasedMetadataTest {
     }
   }
 
+  /**
+   * Verifies that close() completes quickly when a refresh task is pending.
+   * Before the fix, close() would block for up to refreshIntervalInSeconds (60s)
+   * because scheduler.shutdown() does not cancel already-queued delayed tasks.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCloseDoesNotBlockOnPendingRefresh() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false, scheduler);
+    RequestBasedMetadata requestBasedMetadata = null;
+
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false, true, false);
+      requestBasedMetadata.setRefreshIntervalInSeconds(60);
+      requestBasedMetadata.start();
+
+      // At this point, a refresh task is scheduled 60s in the future.
+      // close() must complete quickly (well under 10s) by cancelling the pending task.
+      long startTime = System.currentTimeMillis();
+      requestBasedMetadata.close();
+      long elapsed = System.currentTimeMillis() - startTime;
+
+      // close() should complete almost instantly (cancel + shutdownNow).
+      // Without the fix, it would block for up to 60 seconds.
+      assertTrue(elapsed < 6000, "close() took " + elapsed + "ms — expected <6000ms");
+    } finally {
+      scheduler.shutdownNow();
+    }
+  }
 }
