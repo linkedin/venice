@@ -604,6 +604,50 @@ public class VeniceSystemProducerWriteDispatcherTest {
     }
   }
 
+  @Test
+  public void testMarkerAdmissionWaitsBetweenRejectedAttempts() {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
+    RejectFirstMarkerExecutor executor = new RejectFirstMarkerExecutor("marker-admission-wait");
+    AtomicInteger markerAdmissionWaits = new AtomicInteger();
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        new VeniceSystemProducerWriteDispatcher(writer, executor, 5, TimeUnit.SECONDS, Runnable::run, waitNanos -> {
+          assertEquals(executor.markerSubmissionAttempts.get(), 1);
+          assertEquals(waitNanos, TimeUnit.MILLISECONDS.toNanos(100));
+          markerAdmissionWaits.incrementAndGet();
+        });
+    try {
+      dispatcher.flush();
+      assertEquals(executor.markerSubmissionAttempts.get(), 2);
+      assertEquals(markerAdmissionWaits.get(), 1);
+      verify(writer).flush();
+    } finally {
+      stopQuietly(dispatcher);
+    }
+  }
+
+  @Test
+  public void testMarkerAdmissionWaitRechecksInterruptAndPreservesStatus() {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
+    RejectFirstMarkerExecutor executor = new RejectFirstMarkerExecutor("marker-admission-interrupt");
+    AtomicInteger markerAdmissionWaits = new AtomicInteger();
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        new VeniceSystemProducerWriteDispatcher(writer, executor, 5, TimeUnit.SECONDS, Runnable::run, ignored -> {
+          markerAdmissionWaits.incrementAndGet();
+          Thread.currentThread().interrupt();
+        });
+    try {
+      VeniceException interruption = expectThrows(VeniceException.class, dispatcher::flush);
+      assertTrue(interruption.getMessage().contains("Interrupted while enqueuing"));
+      assertTrue(Thread.currentThread().isInterrupted());
+      assertEquals(executor.markerSubmissionAttempts.get(), 1);
+      assertEquals(markerAdmissionWaits.get(), 1);
+      verify(writer, never()).flush();
+    } finally {
+      Thread.interrupted();
+      stopQuietly(dispatcher);
+    }
+  }
+
   @Test(timeOut = 30000)
   public void testMarkerAdmissionOnFullStripeObservesOtherStripeFailure() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
@@ -1148,6 +1192,22 @@ public class VeniceSystemProducerWriteDispatcherTest {
         blockedMarkerAdmission.countDown();
       }
       return accepted;
+    }
+  }
+
+  private static final class RejectFirstMarkerExecutor extends PartitionedVeniceWriteExecutor {
+    private final AtomicInteger markerSubmissionAttempts = new AtomicInteger();
+
+    private RejectFirstMarkerExecutor(String storeName) {
+      super(1, 1, 0, 1, storeName, null);
+    }
+
+    @Override
+    public boolean trySubmit(int partition, Runnable task, Consumer<Throwable> rejectionCallback) {
+      if (markerSubmissionAttempts.incrementAndGet() == 1) {
+        return false;
+      }
+      return super.trySubmit(partition, task, rejectionCallback);
     }
   }
 

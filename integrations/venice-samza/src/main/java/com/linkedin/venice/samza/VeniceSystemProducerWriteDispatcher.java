@@ -20,6 +20,8 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.LongConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -34,6 +36,7 @@ final class VeniceSystemProducerWriteDispatcher {
   private final PartitionedVeniceWriteExecutor executor;
   private final long shutdownTimeoutNanos;
   private final Executor completionHandoffExecutor;
+  private final LongConsumer markerAdmissionWait;
   private final VeniceSystemProducerWriteLifecycle lifecycle = new VeniceSystemProducerWriteLifecycle();
   private final AtomicBoolean legacyRoutingWarningLogged = new AtomicBoolean();
   private volatile boolean writerClosed;
@@ -69,6 +72,16 @@ final class VeniceSystemProducerWriteDispatcher {
       long shutdownTimeout,
       TimeUnit shutdownTimeoutUnit,
       Executor completionHandoffExecutor) {
+    this(writer, executor, shutdownTimeout, shutdownTimeoutUnit, completionHandoffExecutor, LockSupport::parkNanos);
+  }
+
+  VeniceSystemProducerWriteDispatcher(
+      AbstractVeniceWriter<byte[], byte[], byte[]> writer,
+      PartitionedVeniceWriteExecutor executor,
+      long shutdownTimeout,
+      TimeUnit shutdownTimeoutUnit,
+      Executor completionHandoffExecutor,
+      LongConsumer markerAdmissionWait) {
     if (shutdownTimeout <= 0) {
       throw new IllegalArgumentException("Shutdown timeout must be greater than zero");
     }
@@ -76,6 +89,7 @@ final class VeniceSystemProducerWriteDispatcher {
     this.executor = executor;
     this.shutdownTimeoutNanos = shutdownTimeoutUnit.toNanos(shutdownTimeout);
     this.completionHandoffExecutor = completionHandoffExecutor;
+    this.markerAdmissionWait = markerAdmissionWait;
   }
 
   CompletableFuture<Void> put(byte[] key, byte[] value, int valueSchemaId, long logicalTimestamp) {
@@ -324,7 +338,8 @@ final class VeniceSystemProducerWriteDispatcher {
           markers.add(marker);
           break;
         }
-        Thread.yield();
+        long waitNanos = TimeUnit.MILLISECONDS.toNanos(MARKER_FAILURE_POLL_MILLISECONDS);
+        markerAdmissionWait.accept(deadlineNanos > 0 ? Math.min(waitNanos, remainingNanos(deadlineNanos)) : waitNanos);
       }
     }
     return markers;
