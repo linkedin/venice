@@ -10,9 +10,11 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -51,8 +53,11 @@ public class PubSubSplitIterator implements AutoCloseable {
   private final long targetCount;
   private final long splitStartIndex;
   private final OffsetMode mode;
+  private final boolean useNonEmptyAssignmentHandoff;
   private Iterator<DefaultPubSubMessage> consumedRecordsIterator;
   private PubSubPosition currentPosition;
+  private Set<PubSubTopicPartition> previousAssignments = Collections.emptySet();
+  private boolean handoffPending;
   private boolean closed;
 
   // Total messages consumed from the broker, including control messages.
@@ -76,6 +81,18 @@ public class PubSubSplitIterator implements AutoCloseable {
       long pollTimeoutMs,
       int emptyRetryTimes,
       long emptySleepMs) {
+    this(pubSubConsumer, split, useLogicalIndexOffset, false, pollTimeoutMs, emptyRetryTimes, emptySleepMs);
+  }
+
+  @VisibleForTesting
+  PubSubSplitIterator(
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubPartitionSplit split,
+      boolean useLogicalIndexOffset,
+      boolean useNonEmptyAssignmentHandoff,
+      long pollTimeoutMs,
+      int emptyRetryTimes,
+      long emptySleepMs) {
     this.pubSubConsumer = pubSubConsumer;
     this.topicPartition = split.getPubSubTopicPartition();
     this.startPosition = split.getStartPubSubPosition();
@@ -83,6 +100,7 @@ public class PubSubSplitIterator implements AutoCloseable {
     this.targetCount = split.getNumberOfRecords();
     this.splitStartIndex = split.getStartIndex();
     this.mode = useLogicalIndexOffset ? OffsetMode.LOGICAL_INDEX : OffsetMode.NUMERIC;
+    this.useNonEmptyAssignmentHandoff = useNonEmptyAssignmentHandoff;
     this.pollTimeoutMs = pollTimeoutMs;
     this.emptyRetryTimes = emptyRetryTimes;
     this.emptySleepMs = emptySleepMs;
@@ -102,11 +120,47 @@ public class PubSubSplitIterator implements AutoCloseable {
         DEFAULT_EMPTY_SLEEP_MS);
   }
 
+  public PubSubSplitIterator(
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubPartitionSplit split,
+      boolean useLogicalIndexOffset,
+      boolean useNonEmptyAssignmentHandoff) {
+    this(
+        pubSubConsumer,
+        split,
+        useLogicalIndexOffset,
+        useNonEmptyAssignmentHandoff,
+        DEFAULT_POLL_TIMEOUT_MS,
+        DEFAULT_EMPTY_RESULT_RETRIES,
+        DEFAULT_EMPTY_SLEEP_MS);
+  }
+
   @VisibleForTesting
   final void start() {
+    if (useNonEmptyAssignmentHandoff) {
+      // Keep the previous assignment until polling proves that the target subscription and seek are active.
+      previousAssignments = new HashSet<>(pubSubConsumer.getAssignment());
+      if (previousAssignments.contains(topicPartition)) {
+        throw new VeniceException("Target topic-partition is already assigned: " + topicPartition);
+      }
+      pubSubConsumer.subscribe(topicPartition, startPosition, true);
+      handoffPending = !previousAssignments.isEmpty();
+      pausePreviousAssignments();
+      return;
+    }
+
     // defensive if caller reuses consumer
     pubSubConsumer.batchUnsubscribe(pubSubConsumer.getAssignment());
     pubSubConsumer.subscribe(topicPartition, startPosition, true);
+  }
+
+  private void pausePreviousAssignments() {
+    if (!handoffPending) {
+      return;
+    }
+    for (PubSubTopicPartition previousAssignment: previousAssignments) {
+      pubSubConsumer.pause(previousAssignment);
+    }
   }
 
   public boolean hasNext() {
@@ -126,19 +180,43 @@ public class PubSubSplitIterator implements AutoCloseable {
       return;
     }
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polled = Collections.emptyMap();
+    List<DefaultPubSubMessage> targetPartitionRecords = Collections.emptyList();
     for (int i = 0; i < emptyRetryTimes; i++) {
+      if (useNonEmptyAssignmentHandoff && handoffPending && i > 0) {
+        // Re-apply the pause in case a deferred subscription reset the consumer's paused state.
+        pausePreviousAssignments();
+      }
       polled = pubSubConsumer.poll(pollTimeoutMs);
-      if (!polled.isEmpty()) {
+      if (useNonEmptyAssignmentHandoff) {
+        List<DefaultPubSubMessage> records = polled.get(topicPartition);
+        if (records != null && !records.isEmpty()) {
+          targetPartitionRecords = records;
+          break;
+        }
+      } else if (!polled.isEmpty()) {
         break;
       }
-      Thread.sleep(emptySleepMs);
+      if (polled.isEmpty()) {
+        Thread.sleep(emptySleepMs);
+      }
     }
-    if (polled.isEmpty()) {
+    if ((useNonEmptyAssignmentHandoff && targetPartitionRecords.isEmpty())
+        || (!useNonEmptyAssignmentHandoff && polled.isEmpty())) {
       throw new VeniceException(
           "Empty poll after " + emptyRetryTimes + " retries, tp=" + topicPartition + " pos=" + currentPosition + " end="
               + endPositionExclusive + ". This may indicate no data available in the topic or partition.");
     }
-    consumedRecordsIterator = Utils.iterateOnMapOfLists(polled);
+    if (useNonEmptyAssignmentHandoff) {
+      if (handoffPending) {
+        // A target record proves that removing the previous assignments cannot leave the consumer unassigned.
+        pubSubConsumer.batchUnsubscribe(previousAssignments);
+        previousAssignments = Collections.emptySet();
+        handoffPending = false;
+      }
+      consumedRecordsIterator = targetPartitionRecords.iterator();
+    } else {
+      consumedRecordsIterator = Utils.iterateOnMapOfLists(polled);
+    }
   }
 
   public PubSubInputRecord next() throws IOException {

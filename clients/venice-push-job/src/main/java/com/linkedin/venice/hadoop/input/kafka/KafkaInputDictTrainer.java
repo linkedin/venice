@@ -242,8 +242,6 @@ public class KafkaInputDictTrainer {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;
         long sampledRecordCnt = 0;
-        // Reset Kafka consumer before using it
-        reusedConsumer.batchUnsubscribe(reusedConsumer.getAssignment());
         RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> recordReader =
             kafkaInputFormat.getRecordReader(split, jobConf, Reporter.NULL, reusedConsumer);
         try {
