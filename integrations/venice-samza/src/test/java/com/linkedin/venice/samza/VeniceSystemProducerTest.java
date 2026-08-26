@@ -17,7 +17,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -51,6 +50,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.SamzaException;
@@ -217,8 +217,8 @@ public class VeniceSystemProducerTest {
     VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
 
     PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
-    java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
-    when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
+    when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
     VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
         new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).setWriterHook(mockHook).build(),
         VeniceProperties.empty(),
@@ -228,12 +228,11 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
     producerSpy.send("myKey", "myValue");
-    verify(mockHook, timeout(5000)).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
-
     producerSpy.send((Object) "myKey", null);
-    verify(mockHook, timeout(5000)).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
-
     producerSpy.stop();
+
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
   }
 
   @Test
@@ -241,8 +240,8 @@ public class VeniceSystemProducerTest {
     VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
 
     PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
-    java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
-    when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
+    when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
     VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
         new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).setWriterHook(mockHook).build(),
         VeniceProperties.empty(),
@@ -252,9 +251,9 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
     producerSpy.send("myKey", "myValue");
-    verify(mockHook, timeout(5000)).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
-
     producerSpy.stop();
+
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
   }
 
   @Test(dataProvider = "BatchOrStreamReprocessing")
@@ -559,9 +558,9 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
 
     producerSpy.send("myKey", "myValue");
-
-    verify(mockWriter, timeout(5000)).put(any(), any(), eq(1), anyLong(), any());
     producerSpy.stop();
+
+    verify(mockWriter).put(any(), any(), eq(1), anyLong(), any());
   }
 
   @Test
@@ -571,9 +570,9 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
 
     producerSpy.send((Object) "myKey", null);
-
-    verify(mockWriter, timeout(5000)).delete(any(), anyLong(), any());
     producerSpy.stop();
+
+    verify(mockWriter).delete(any(), anyLong(), any());
   }
 
   @Test
@@ -583,9 +582,9 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
 
     producerSpy.send("myKey", "myValue");
-
-    verify(mockWriter, timeout(5000)).update(any(), any(), eq(1), eq(1), anyLong(), any());
     producerSpy.stop();
+
+    verify(mockWriter).update(any(), any(), eq(1), eq(1), anyLong(), any());
   }
 
   @Test

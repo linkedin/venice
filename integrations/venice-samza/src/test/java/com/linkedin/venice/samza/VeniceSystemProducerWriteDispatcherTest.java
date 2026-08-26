@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotSame;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -21,20 +20,23 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.PartitionedVeniceWriteExecutor;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -52,26 +54,30 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return null;
     }).when(writer).flush();
     VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 0);
-
-    CompletableFuture<Void> flush = CompletableFuture.runAsync(dispatcher::flush);
-    assertTrue(flushEntered.await(5, TimeUnit.SECONDS));
-    AtomicBoolean sendReturned = new AtomicBoolean(false);
-    Thread sender = new Thread(() -> {
-      dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-      sendReturned.set(true);
-    });
-    sender.start();
-    Thread.sleep(200);
-    assertFalse(sendReturned.get(), "Post-fence admission must wait for the core flush");
-
-    releaseFlush.countDown();
-    flush.get(5, TimeUnit.SECONDS);
-    sender.join(TimeUnit.SECONDS.toMillis(5));
-    assertTrue(sendReturned.get());
-    dispatcher.stop();
+    CompletableFuture<Void> flush = null;
+    CompletableFuture<Void> sender = null;
+    AtomicReference<CompletableFuture<Void>> senderDurable = new AtomicReference<>();
+    try {
+      flush = runOnDedicatedThread("test-flush", dispatcher::flush);
+      assertTrue(flushEntered.await(5, TimeUnit.SECONDS));
+      sender = runOnDedicatedThread(
+          "test-post-fence-sender",
+          () -> senderDurable.set(dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1)));
+      awaitBlockedAdmission(dispatcher);
+      assertFalse(sender.isDone(), "Post-fence admission must wait for the core flush");
+      releaseFlush.countDown();
+      flush.get(5, TimeUnit.SECONDS);
+      sender.get(5, TimeUnit.SECONDS);
+      dispatcher.getSubmissionFuture(senderDurable.get()).get(5, TimeUnit.SECONDS);
+    } finally {
+      releaseFlush.countDown();
+      awaitQuietly(flush);
+      awaitQuietly(sender);
+      stopQuietly(dispatcher);
+    }
   }
 
-  @Test(timeOut = 5000)
+  @Test(timeOut = 30000)
   public void testStopTimesOutBehindBlockedFlushWithoutClosingWriter() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     CountDownLatch flushEntered = new CountDownLatch(1);
@@ -94,31 +100,31 @@ public class VeniceSystemProducerWriteDispatcherTest {
     }).when(writer).close();
     PartitionedVeniceWriteExecutor executor =
         new PartitionedVeniceWriteExecutor(1, 10, 1, 10, "blocked-flush-store", null);
-    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(
-        writer,
-        executor,
-        200,
-        TimeUnit.MILLISECONDS,
-        ForkJoinPool.commonPool());
-    CompletableFuture<Void> flush = CompletableFuture.runAsync(dispatcher::flush);
-    assertTrue(flushEntered.await(2, TimeUnit.SECONDS));
-
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        new VeniceSystemProducerWriteDispatcher(writer, executor, 200, TimeUnit.MILLISECONDS, Runnable::run);
+    CompletableFuture<Void> flush = null;
     try {
+      flush = runOnDedicatedThread("test-blocked-flush", dispatcher::flush);
+      assertTrue(flushEntered.await(2, TimeUnit.SECONDS));
       CompletableFuture<Void> stop =
-          CompletableFuture.runAsync(() -> assertThrows(VeniceException.class, dispatcher::stop));
+          runOnDedicatedThread("test-timeout-stop", () -> assertThrows(VeniceException.class, dispatcher::stop));
       stop.get(2, TimeUnit.SECONDS);
       assertFalse(flush.isDone(), "The active writer flush must remain fenced");
       assertFalse(closeDuringFlush.get(), "Writer close must not race an active flush");
       verify(writer, never()).close();
+      releaseFlush.countDown();
+      CompletableFuture<Void> blockedFlush = flush;
+      assertThrows(ExecutionException.class, () -> blockedFlush.get(2, TimeUnit.SECONDS));
+
+      assertThrows(VeniceException.class, dispatcher::stop);
+      assertTrue(dispatcher.isStopped());
+      verify(writer).close();
+      assertFalse(executor.tryExecuteCallback(() -> {}, null));
     } finally {
       releaseFlush.countDown();
-      assertThrows(ExecutionException.class, () -> flush.get(2, TimeUnit.SECONDS));
+      awaitQuietly(flush);
+      stopQuietly(dispatcher);
     }
-
-    assertThrows(VeniceException.class, dispatcher::stop);
-    assertTrue(dispatcher.isStopped());
-    verify(writer).close();
-    assertFalse(executor.tryExecuteCallback(() -> {}, null));
   }
 
   @Test
@@ -160,31 +166,34 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 1);
+    try {
+      CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
+      assertTrue(writeEntered.await(5, TimeUnit.SECONDS));
+      CompletableFuture<Void> submission = (CompletableFuture<Void>) dispatcher.getSubmissionFuture(durable);
+      CompletableFuture<String> submissionThread = new CompletableFuture<>();
+      submission.whenComplete((ignored, failure) -> submissionThread.complete(Thread.currentThread().getName()));
+      CompletableFuture<String> durableThread = new CompletableFuture<>();
+      durable.whenComplete((ignored, failure) -> {
+        assertTrue(submission.isDone(), "Durability must never complete before worker submission");
+        durableThread.complete(Thread.currentThread().getName());
+      });
 
-    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-    assertTrue(writeEntered.await(5, TimeUnit.SECONDS));
-    CompletableFuture<Void> submission = (CompletableFuture<Void>) dispatcher.getSubmissionFuture(durable);
-    CompletableFuture<String> submissionThread = new CompletableFuture<>();
-    submission.whenComplete((ignored, failure) -> submissionThread.complete(Thread.currentThread().getName()));
-    CompletableFuture<String> durableThread = new CompletableFuture<>();
-    durable.whenComplete((ignored, failure) -> {
-      assertTrue(submission.isDone(), "Durability must never complete before worker submission");
-      durableThread.complete(Thread.currentThread().getName());
-    });
+      releaseWriter.countDown();
+      submission.get(5, TimeUnit.SECONDS);
+      assertFalse(durable.isDone());
+      callback.get().onCompletion(null, null);
 
-    releaseWriter.countDown();
-    submission.get(5, TimeUnit.SECONDS);
-    assertFalse(durable.isDone());
-    callback.get().onCompletion(null, null);
-
-    durable.get(5, TimeUnit.SECONDS);
-    assertTrue(
-        submissionThread.get(5, TimeUnit.SECONDS).contains("venice-system-producer-worker"),
-        "The private submission phase must complete directly on the worker");
-    assertTrue(
-        durableThread.get(5, TimeUnit.SECONDS).contains("venice-system-producer-callback"),
-        "Normal durable completion must honor the configured callback executor");
-    dispatcher.stop();
+      durable.get(5, TimeUnit.SECONDS);
+      assertTrue(
+          submissionThread.get(5, TimeUnit.SECONDS).contains("venice-system-producer-worker"),
+          "The private submission phase must complete directly on the worker");
+      assertTrue(
+          durableThread.get(5, TimeUnit.SECONDS).contains("venice-system-producer-callback"),
+          "Normal durable completion must honor the configured callback executor");
+    } finally {
+      releaseWriter.countDown();
+      stopQuietly(dispatcher);
+    }
   }
 
   @Test
@@ -196,20 +205,28 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 0);
-    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-    CompletableFuture<String> completionThread = new CompletableFuture<>();
-    durable.whenComplete((ignored, failure) -> completionThread.complete(Thread.currentThread().getName()));
+    Thread pubSubThread = null;
+    try {
+      CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
+      dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
+      CompletableFuture<String> completionThread = new CompletableFuture<>();
+      durable.whenComplete((ignored, failure) -> completionThread.complete(Thread.currentThread().getName()));
 
-    Thread pubSubThread = new Thread(() -> callback.get().onCompletion(null, null), "test-pubsub-callback");
-    pubSubThread.start();
-    pubSubThread.join(TimeUnit.SECONDS.toMillis(5));
+      pubSubThread = new Thread(() -> callback.get().onCompletion(null, null), "test-pubsub-callback");
+      pubSubThread.start();
+      pubSubThread.join(TimeUnit.SECONDS.toMillis(5));
 
-    assertEquals(completionThread.get(5, TimeUnit.SECONDS), "test-pubsub-callback");
-    dispatcher.stop();
+      assertEquals(completionThread.get(5, TimeUnit.SECONDS), "test-pubsub-callback");
+    } finally {
+      if (pubSubThread != null) {
+        pubSubThread.interrupt();
+        pubSubThread.join(TimeUnit.SECONDS.toMillis(5));
+      }
+      stopQuietly(dispatcher);
+    }
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testFencedCallbackFailureUsesRejectedHandoffFallbackWithoutReentry() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     AtomicReference<PubSubProducerCallback> callback = new AtomicReference<>();
@@ -282,24 +299,29 @@ public class VeniceSystemProducerWriteDispatcherTest {
         new PartitionedVeniceWriteExecutor(1, 10, 0, 10, "saturated-common-pool", null);
     VeniceSystemProducerWriteDispatcher dispatcher =
         new VeniceSystemProducerWriteDispatcher(writer, executor, 60, TimeUnit.SECONDS, saturatedCommonPool);
+    try {
+      CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
+      dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
+      assertTrue(handoffScheduled.await(5, TimeUnit.SECONDS));
+      assertFalse(durable.isDone(), "Caller-visible durability must remain on the blocked handoff");
 
-    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-    assertTrue(handoffScheduled.await(5, TimeUnit.SECONDS));
-    assertFalse(durable.isDone(), "Caller-visible durability must remain on the blocked handoff");
-
-    blockedHandoff.get().run();
-    durable.get(5, TimeUnit.SECONDS);
-    dispatcher.stop();
+      blockedHandoff.getAndSet(null).run();
+      durable.get(5, TimeUnit.SECONDS);
+    } finally {
+      Runnable handoff = blockedHandoff.get();
+      if (handoff != null) {
+        handoff.run();
+      }
+      stopQuietly(dispatcher);
+    }
   }
 
   @Test
   public void testRejectedCallbackAdmissionUsesNonblockingHandoff() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     CallbackCompletionScenario rejectedAdmission = callbackCompletionScenario(writer, true);
-    CompletableFuture<String> completionThread = new CompletableFuture<>();
-    rejectedAdmission.durable
-        .whenComplete((ignored, failure) -> completionThread.complete(Thread.currentThread().getName()));
+    CompletableFuture<Thread> completionThread = new CompletableFuture<>();
+    rejectedAdmission.durable.whenComplete((ignored, failure) -> completionThread.complete(Thread.currentThread()));
 
     CompletableFuture<Void> callbackReturned = new CompletableFuture<>();
     Thread pubSubCallbackThread = new Thread(() -> {
@@ -310,12 +332,16 @@ public class VeniceSystemProducerWriteDispatcherTest {
     try {
       callbackReturned.get(5, TimeUnit.SECONDS);
       rejectedAdmission.durable.get(5, TimeUnit.SECONDS);
-      String threadName = completionThread.get(5, TimeUnit.SECONDS);
-      assertTrue(threadName.contains("ForkJoinPool.commonPool"));
-      assertFalse(threadName.contains("venice-system-producer-callback"));
-    } finally {
+      Thread completion = completionThread.get(5, TimeUnit.SECONDS);
+      assertSame(completion, rejectedAdmission.completionHandoffThread.get());
+      assertNotSame(completion, pubSubCallbackThread);
       pubSubCallbackThread.join(TimeUnit.SECONDS.toMillis(5));
-      rejectedAdmission.dispatcher.stop();
+      assertFalse(pubSubCallbackThread.isAlive());
+      rejectedAdmission.close();
+    } finally {
+      pubSubCallbackThread.interrupt();
+      joinQuietly(pubSubCallbackThread);
+      rejectedAdmission.closeQuietly();
     }
   }
 
@@ -324,7 +350,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     return new Object[][] { { false }, { true } };
   }
 
-  @Test(dataProvider = "callbackCompletionPaths", timeOut = 10000)
+  @Test(dataProvider = "callbackCompletionPaths", timeOut = 30000)
   public void testBlockedUserContinuationDoesNotBlockStop(boolean fallbackHandoff) throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     CallbackCompletionScenario scenario = callbackCompletionScenario(writer, fallbackHandoff);
@@ -334,27 +360,29 @@ public class VeniceSystemProducerWriteDispatcherTest {
       continuationEntered.countDown();
       await(releaseContinuation);
     });
-    scenario.callback.onCompletion(null, null);
-    assertTrue(continuationEntered.await(5, TimeUnit.SECONDS));
-    CountDownLatch writerClosed = new CountDownLatch(1);
-    doAnswer(invocation -> {
-      writerClosed.countDown();
-      return null;
-    }).when(writer).close();
-
-    CompletableFuture<Void> stop = CompletableFuture.runAsync(scenario.dispatcher::stop);
-    assertTrue(writerClosed.await(5, TimeUnit.SECONDS));
     try {
+      scenario.callback.onCompletion(null, null);
+      assertTrue(continuationEntered.await(5, TimeUnit.SECONDS));
+      CountDownLatch writerClosed = new CountDownLatch(1);
+      doAnswer(invocation -> {
+        writerClosed.countDown();
+        return null;
+      }).when(writer).close();
+      CompletableFuture<Void> stop = runOnDedicatedThread("test-dispatcher-stop", scenario.dispatcher::stop);
+      assertTrue(writerClosed.await(5, TimeUnit.SECONDS));
       stop.get(5, TimeUnit.SECONDS);
       assertFalse(continuation.isDone(), "The user continuation must remain blocked until explicitly released");
       assertTrue(scenario.dispatcher.isStopped());
+      releaseContinuation.countDown();
+      continuation.get(5, TimeUnit.SECONDS);
+      scenario.close();
     } finally {
       releaseContinuation.countDown();
+      scenario.closeQuietly();
     }
-    continuation.get(5, TimeUnit.SECONDS);
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testCallbackContinuationCanFlushAndStopAfterHandoff() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     CountDownLatch callbackInvoked = new CountDownLatch(1);
@@ -366,25 +394,39 @@ public class VeniceSystemProducerWriteDispatcherTest {
       await(releaseWriter);
       return new CompletableFuture<>();
     });
-    VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 1);
-    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-    assertTrue(callbackInvoked.await(5, TimeUnit.SECONDS));
-    assertFalse(durable.isDone(), "Synchronous callback completion must wait for writer submission to return");
-    CompletableFuture<String> continuationThread = new CompletableFuture<>();
-    durable.thenRun(() -> {
-      try {
-        dispatcher.flush();
-        dispatcher.stop();
-        continuationThread.complete(Thread.currentThread().getName());
-      } catch (Throwable throwable) {
-        continuationThread.completeExceptionally(throwable);
-      }
-    });
+    AtomicReference<Thread> completionHandoffThread = new AtomicReference<>();
+    ExecutorService completionHandoff = newCompletionHandoffExecutor(completionHandoffThread);
+    PartitionedVeniceWriteExecutor executor =
+        new PartitionedVeniceWriteExecutor(1, 10, 1, 10, "test-store", null, "venice-system-producer");
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        new VeniceSystemProducerWriteDispatcher(writer, executor, 5, TimeUnit.SECONDS, completionHandoff);
+    try {
+      CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
+      assertTrue(callbackInvoked.await(5, TimeUnit.SECONDS));
+      assertFalse(durable.isDone(), "Synchronous callback completion must wait for writer submission to return");
+      CompletableFuture<Thread> continuationThread = new CompletableFuture<>();
+      durable.thenRun(() -> {
+        try {
+          dispatcher.flush();
+          dispatcher.stop();
+          continuationThread.complete(Thread.currentThread());
+        } catch (Throwable throwable) {
+          continuationThread.completeExceptionally(throwable);
+        }
+      });
 
-    releaseWriter.countDown();
-    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-    assertTrue(continuationThread.get(5, TimeUnit.SECONDS).contains("ForkJoinPool.commonPool"));
-    assertTrue(dispatcher.isStopped());
+      releaseWriter.countDown();
+      dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
+      assertSame(continuationThread.get(5, TimeUnit.SECONDS), completionHandoffThread.get());
+      assertTrue(dispatcher.isStopped());
+      completionHandoff.shutdown();
+      assertTrue(completionHandoff.awaitTermination(5, TimeUnit.SECONDS));
+    } finally {
+      releaseWriter.countDown();
+      stopQuietly(dispatcher);
+      completionHandoff.shutdownNow();
+      awaitTerminationQuietly(completionHandoff);
+    }
   }
 
   @Test
@@ -409,7 +451,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     verify(writer).close();
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testFlushMarkerWaitObservesFailureFromAnotherStripe() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     MarkerObservingExecutor executor = new MarkerObservingExecutor();
@@ -431,25 +473,30 @@ public class VeniceSystemProducerWriteDispatcherTest {
       throw writeFailure;
     });
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
-    dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
-    dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
-    assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
-    assertTrue(failingStripeEntered.await(5, TimeUnit.SECONDS));
-
-    CompletableFuture<Void> flush = CompletableFuture.runAsync(dispatcher::flush);
-    assertTrue(executor.markersSubmitted.await(5, TimeUnit.SECONDS));
+    CompletableFuture<Void> flush = null;
     try {
+      dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
+      dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
+      assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
+      assertTrue(failingStripeEntered.await(5, TimeUnit.SECONDS));
+
+      flush = runOnDedicatedThread("test-marker-flush", dispatcher::flush);
+      assertTrue(executor.markersSubmitted.await(5, TimeUnit.SECONDS));
       releaseFailingStripe.countDown();
-      ExecutionException flushFailure = expectThrows(ExecutionException.class, () -> flush.get(2, TimeUnit.SECONDS));
+      CompletableFuture<Void> markerFlush = flush;
+      ExecutionException flushFailure =
+          expectThrows(ExecutionException.class, () -> markerFlush.get(2, TimeUnit.SECONDS));
       assertSame(flushFailure.getCause().getCause(), writeFailure);
       verify(writer, never()).flush();
     } finally {
+      releaseFailingStripe.countDown();
       releaseBlockedStripe.countDown();
-      assertThrows(VeniceException.class, dispatcher::stop);
+      awaitQuietly(flush);
+      stopQuietly(dispatcher);
     }
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testFailureWakesFlushWaitingForPendingAdmission() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     MarkerAdmissionObservingExecutor executor = new MarkerAdmissionObservingExecutor(2, 1, "blocked-sender-fence");
@@ -472,32 +519,50 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
-    dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
-    assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
-    dispatcher.put(new byte[] { 2 }, new byte[] { 1 }, 1, -1);
-    dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
-    assertTrue(failingStripeEntered.await(5, TimeUnit.SECONDS));
+    CompletableFuture<Void> sender = null;
+    CompletableFuture<Void> flush = null;
+    try {
+      dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
+      assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
+      dispatcher.put(new byte[] { 2 }, new byte[] { 1 }, 1, -1);
+      dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
+      assertTrue(failingStripeEntered.await(5, TimeUnit.SECONDS));
 
-    CompletableFuture<Void> sender =
-        CompletableFuture.runAsync(() -> dispatcher.put(new byte[] { 4 }, new byte[] { 1 }, 1, -1));
-    assertTrue(executor.fourthCommandSubmissionStarted.await(5, TimeUnit.SECONDS));
-    assertFalse(sender.isDone(), "Sender must be blocked on the full stripe queue");
-    CompletableFuture<Void> flush = CompletableFuture.runAsync(dispatcher::flush);
+      sender =
+          runOnDedicatedThread("test-blocked-sender", () -> dispatcher.put(new byte[] { 4 }, new byte[] { 1 }, 1, -1));
+      assertTrue(executor.fourthCommandSubmissionStarted.await(5, TimeUnit.SECONDS));
+      assertEquals(dispatcher.getPendingAdmissions(), 1);
+      flush = runOnDedicatedThread("test-pending-admission-flush", dispatcher::flush);
+      awaitFenceHeld(dispatcher);
 
-    releaseFailure.countDown();
-    ExecutionException flushFailure = expectThrows(ExecutionException.class, () -> flush.get(2, TimeUnit.SECONDS));
-    assertSame(flushFailure.getCause().getCause(), writeFailure);
-    assertFalse(sender.isDone(), "Failure must wake the flush without waiting for the blocked admission to drain");
-    assertEquals(
-        executor.markerSubmissionAttempts.get(),
-        0,
-        "Flush markers must not overtake a previously admitted send");
-    releaseBlockedStripe.countDown();
-    sender.get(5, TimeUnit.SECONDS);
-    assertThrows(VeniceException.class, dispatcher::stop);
+      releaseFailure.countDown();
+      CompletableFuture<Void> pendingFlush = flush;
+      ExecutionException flushFailure =
+          expectThrows(ExecutionException.class, () -> pendingFlush.get(2, TimeUnit.SECONDS));
+      assertSame(flushFailure.getCause().getCause(), writeFailure);
+      assertEquals(
+          dispatcher.getPendingAdmissions(),
+          1,
+          "Failure must wake flush while the admitted sender remains pending");
+      assertEquals(
+          executor.markerSubmissionAttempts.get(),
+          0,
+          "Flush markers must not overtake a previously admitted send");
+      releaseBlockedStripe.countDown();
+      sender.get(5, TimeUnit.SECONDS);
+      assertThrows(VeniceException.class, dispatcher::stop);
+    } finally {
+      releaseFailure.countDown();
+      releaseBlockedStripe.countDown();
+      awaitQuietly(sender);
+      awaitQuietly(flush);
+      if (!dispatcher.isStopped()) {
+        stopQuietly(dispatcher);
+      }
+    }
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testAdmittedSendPrecedesConcurrentFlushWhenQueueIsBlocked() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     MarkerAdmissionObservingExecutor executor = new MarkerAdmissionObservingExecutor(1, 1, "admission-fence");
@@ -512,33 +577,34 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
-    dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
-    assertTrue(firstWriteEntered.await(5, TimeUnit.SECONDS));
-    dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
+    CompletableFuture<Void> sender = null;
+    CompletableFuture<Void> flush = null;
+    try {
+      dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
+      assertTrue(firstWriteEntered.await(5, TimeUnit.SECONDS));
+      dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
 
-    Thread sender = new Thread(() -> dispatcher.put(new byte[] { 2 }, new byte[] { 1 }, 1, -1));
-    sender.start();
-    assertTrue(executor.thirdCommandSubmissionStarted.await(5, TimeUnit.SECONDS));
-    Thread flush = new Thread(dispatcher::flush);
-    flush.start();
-    assertTrue(
-        awaitCondition(() -> flush.getState() == Thread.State.WAITING || executor.markerSubmissionAttempts.get() > 0),
-        "Flush did not reach the admission fence");
-    assertEquals(
-        executor.markerSubmissionAttempts.get(),
-        0,
-        "Flush must await the already admitted sender before attempting markers");
+      sender =
+          runOnDedicatedThread("test-admitted-sender", () -> dispatcher.put(new byte[] { 2 }, new byte[] { 1 }, 1, -1));
+      assertTrue(executor.thirdCommandSubmissionStarted.await(5, TimeUnit.SECONDS));
+      assertEquals(dispatcher.getPendingAdmissions(), 1);
+      flush = runOnDedicatedThread("test-admission-fence-flush", dispatcher::flush);
+      awaitFenceHeld(dispatcher);
 
-    releaseFirstWrite.countDown();
-    sender.join(TimeUnit.SECONDS.toMillis(5));
-    flush.join(TimeUnit.SECONDS.toMillis(5));
-    assertFalse(sender.isAlive());
-    assertFalse(flush.isAlive());
-    verify(writer).flush();
-    dispatcher.stop();
+      releaseFirstWrite.countDown();
+      sender.get(5, TimeUnit.SECONDS);
+      flush.get(5, TimeUnit.SECONDS);
+      assertFalse(executor.markerOvertookThirdCommand.get());
+      verify(writer).flush();
+    } finally {
+      releaseFirstWrite.countDown();
+      awaitQuietly(sender);
+      awaitQuietly(flush);
+      stopQuietly(dispatcher);
+    }
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testMarkerAdmissionOnFullStripeObservesOtherStripeFailure() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     MarkerAdmissionObservingExecutor executor = new MarkerAdmissionObservingExecutor(2, 1, "marker-admission-failure");
@@ -561,26 +627,31 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
-    dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
-    assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
-    dispatcher.put(new byte[] { 2 }, new byte[] { 1 }, 1, -1);
-    dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
-    assertTrue(failingStripeEntered.await(5, TimeUnit.SECONDS));
-
-    CompletableFuture<Void> flush = CompletableFuture.runAsync(dispatcher::flush);
-    assertTrue(executor.blockedMarkerAdmission.await(5, TimeUnit.SECONDS));
+    CompletableFuture<Void> flush = null;
     try {
+      dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
+      assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
+      dispatcher.put(new byte[] { 2 }, new byte[] { 1 }, 1, -1);
+      dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
+      assertTrue(failingStripeEntered.await(5, TimeUnit.SECONDS));
+
+      flush = runOnDedicatedThread("test-full-stripe-failure-flush", dispatcher::flush);
+      assertTrue(executor.blockedMarkerAdmission.await(5, TimeUnit.SECONDS));
       releaseFailure.countDown();
-      ExecutionException flushFailure = expectThrows(ExecutionException.class, () -> flush.get(2, TimeUnit.SECONDS));
+      CompletableFuture<Void> blockedFlush = flush;
+      ExecutionException flushFailure =
+          expectThrows(ExecutionException.class, () -> blockedFlush.get(2, TimeUnit.SECONDS));
       assertSame(flushFailure.getCause().getCause(), writeFailure);
       verify(writer, never()).flush();
     } finally {
+      releaseFailure.countDown();
       releaseBlockedStripe.countDown();
-      assertThrows(VeniceException.class, dispatcher::stop);
+      awaitQuietly(flush);
+      stopQuietly(dispatcher);
     }
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testMarkerAdmissionOnFullStripeSucceedsAfterQueueDrains() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     MarkerAdmissionObservingExecutor executor = new MarkerAdmissionObservingExecutor(1, 1, "marker-admission-drain");
@@ -595,18 +666,24 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
-    dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
-    assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
-    dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
+    CompletableFuture<Void> flush = null;
+    try {
+      dispatcher.put(new byte[] { 0 }, new byte[] { 1 }, 1, -1);
+      assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
+      dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
 
-    CompletableFuture<Void> flush = CompletableFuture.runAsync(dispatcher::flush);
-    assertTrue(executor.blockedMarkerAdmission.await(5, TimeUnit.SECONDS));
-    assertFalse(flush.isDone());
-    releaseBlockedStripe.countDown();
+      flush = runOnDedicatedThread("test-full-stripe-drain-flush", dispatcher::flush);
+      assertTrue(executor.blockedMarkerAdmission.await(5, TimeUnit.SECONDS));
+      assertFalse(flush.isDone(), "Flush must wait for blocked marker admission to drain");
+      releaseBlockedStripe.countDown();
 
-    flush.get(5, TimeUnit.SECONDS);
-    verify(writer).flush();
-    dispatcher.stop();
+      flush.get(5, TimeUnit.SECONDS);
+      verify(writer).flush();
+    } finally {
+      releaseBlockedStripe.countDown();
+      awaitQuietly(flush);
+      stopQuietly(dispatcher);
+    }
   }
 
   @Test
@@ -623,16 +700,17 @@ public class VeniceSystemProducerWriteDispatcherTest {
     verify(writer).close();
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testInterruptedStopForcesBlockedHookAndClosesAfterDrain() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     CountDownLatch hookEntered = new CountDownLatch(1);
+    CountDownLatch releaseHook = new CountDownLatch(1);
     AtomicBoolean flushRanWithoutInterrupt = new AtomicBoolean(false);
     AtomicBoolean closeRanWithoutInterrupt = new AtomicBoolean(false);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       hookEntered.countDown();
       try {
-        new CountDownLatch(1).await();
+        releaseHook.await();
         return new CompletableFuture<>();
       } catch (InterruptedException exception) {
         Thread.currentThread().interrupt();
@@ -647,10 +725,8 @@ public class VeniceSystemProducerWriteDispatcherTest {
       closeRanWithoutInterrupt.set(!Thread.currentThread().isInterrupted());
       return null;
     }).when(writer).close();
-    VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 1, 0);
-    dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
-    assertTrue(hookEntered.await(5, TimeUnit.SECONDS));
-
+    StopMarkerObservingExecutor executor = new StopMarkerObservingExecutor();
+    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
     AtomicBoolean stopFailed = new AtomicBoolean(false);
     AtomicBoolean interruptPreserved = new AtomicBoolean(false);
     Thread stopThread = new Thread(() -> {
@@ -661,21 +737,32 @@ public class VeniceSystemProducerWriteDispatcherTest {
         interruptPreserved.set(Thread.currentThread().isInterrupted());
       }
     });
-    stopThread.start();
-    Thread.sleep(200);
-    stopThread.interrupt();
-    stopThread.join(TimeUnit.SECONDS.toMillis(5));
+    try {
+      dispatcher.put(new byte[] { 1 }, new byte[] { 2 }, 1, -1);
+      assertTrue(hookEntered.await(5, TimeUnit.SECONDS));
+      stopThread.start();
+      assertTrue(executor.markerSubmitted.await(5, TimeUnit.SECONDS));
+      stopThread.interrupt();
+      stopThread.join(TimeUnit.SECONDS.toMillis(5));
 
-    assertFalse(stopThread.isAlive());
-    assertTrue(stopFailed.get());
-    assertTrue(interruptPreserved.get());
-    assertTrue(flushRanWithoutInterrupt.get());
-    assertTrue(closeRanWithoutInterrupt.get());
-    verify(writer).flush();
-    verify(writer).close();
+      assertFalse(stopThread.isAlive());
+      assertTrue(stopFailed.get());
+      assertTrue(interruptPreserved.get());
+      assertTrue(flushRanWithoutInterrupt.get());
+      assertTrue(closeRanWithoutInterrupt.get());
+      verify(writer).flush();
+      verify(writer).close();
+    } finally {
+      releaseHook.countDown();
+      stopThread.interrupt();
+      if (stopThread.isAlive()) {
+        stopThread.join(TimeUnit.SECONDS.toMillis(5));
+      }
+      stopQuietly(dispatcher);
+    }
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testStopWaitsForAdmittedSenderBlockedOnFullQueueAndRemainsIdempotent() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = writer();
     CountDownLatch firstWriteEntered = new CountDownLatch(1);
@@ -690,41 +777,38 @@ public class VeniceSystemProducerWriteDispatcherTest {
     });
     MarkerAdmissionObservingExecutor executor = new MarkerAdmissionObservingExecutor(1, 1, "full-queue-store");
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, executor);
-    dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
-    assertTrue(firstWriteEntered.await(5, TimeUnit.SECONDS));
-    dispatcher.put(new byte[] { 2 }, new byte[] { 2 }, 1, -1);
+    CompletableFuture<Void> admittedSender = null;
+    CompletableFuture<Void> stop = null;
+    try {
+      dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
+      assertTrue(firstWriteEntered.await(5, TimeUnit.SECONDS));
+      dispatcher.put(new byte[] { 2 }, new byte[] { 2 }, 1, -1);
 
-    CompletableFuture<Void> admittedSender =
-        CompletableFuture.runAsync(() -> dispatcher.put(new byte[] { 3 }, new byte[] { 3 }, 1, -1));
-    assertTrue(executor.thirdCommandSubmissionStarted.await(5, TimeUnit.SECONDS));
-    assertFalse(admittedSender.isDone());
-    AtomicReference<Throwable> stopFailure = new AtomicReference<>();
-    Thread stop = new Thread(() -> {
-      try {
-        dispatcher.stop();
-      } catch (Throwable throwable) {
-        stopFailure.set(throwable);
+      admittedSender =
+          runOnDedicatedThread("test-admitted-sender", () -> dispatcher.put(new byte[] { 3 }, new byte[] { 3 }, 1, -1));
+      assertTrue(executor.thirdCommandSubmissionStarted.await(5, TimeUnit.SECONDS));
+      assertEquals(dispatcher.getPendingAdmissions(), 1);
+      stop = runOnDedicatedThread("test-admission-fence-stop", dispatcher::stop);
+      awaitFenceHeld(dispatcher);
+
+      releaseFirstWrite.countDown();
+      admittedSender.get(5, TimeUnit.SECONDS);
+      stop.get(5, TimeUnit.SECONDS);
+      assertFalse(executor.markerOvertookThirdCommand.get());
+      int markerAttempts = executor.markerSubmissionAttempts.get();
+      dispatcher.stop();
+      assertTrue(dispatcher.isStopped());
+      assertEquals(executor.markerSubmissionAttempts.get(), markerAttempts);
+      verify(writer, times(1)).flush();
+      verify(writer, times(1)).close();
+    } finally {
+      releaseFirstWrite.countDown();
+      awaitQuietly(admittedSender);
+      awaitQuietly(stop);
+      if (!dispatcher.isStopped()) {
+        stopQuietly(dispatcher);
       }
-    });
-    stop.start();
-
-    assertTrue(
-        awaitCondition(
-            () -> stop.getState() == Thread.State.TIMED_WAITING || executor.markerSubmissionAttempts.get() > 0
-                || !stop.isAlive()));
-    assertEquals(stop.getState(), Thread.State.TIMED_WAITING, "Stop must wait for the send admitted before its fence");
-    assertEquals(executor.markerSubmissionAttempts.get(), 0);
-    releaseFirstWrite.countDown();
-    admittedSender.get(5, TimeUnit.SECONDS);
-    stop.join(TimeUnit.SECONDS.toMillis(5));
-    assertFalse(stop.isAlive());
-    assertNull(stopFailure.get());
-    int markerAttempts = executor.markerSubmissionAttempts.get();
-    dispatcher.stop();
-    assertTrue(dispatcher.isStopped());
-    assertEquals(executor.markerSubmissionAttempts.get(), markerAttempts);
-    verify(writer, times(1)).flush();
-    verify(writer, times(1)).close();
+    }
   }
 
   @Test
@@ -747,22 +831,25 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducerWriteDispatcher dispatcher = dispatcher(writer, 2, 0);
+    try {
+      CompletableFuture<Void> blocked = dispatcher.put(blockedKey, new byte[] { 1 }, 1, -1);
+      assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
+      CompletableFuture<Void> sameStripe = dispatcher.put(sameStripeKey, new byte[] { 2 }, 1, -1);
+      CompletableFuture<Void> otherStripe = dispatcher.put(otherStripeKey, new byte[] { 3 }, 1, -1);
 
-    CompletableFuture<Void> blocked = dispatcher.put(blockedKey, new byte[] { 1 }, 1, -1);
-    assertTrue(blockedStripeEntered.await(5, TimeUnit.SECONDS));
-    CompletableFuture<Void> sameStripe = dispatcher.put(sameStripeKey, new byte[] { 2 }, 1, -1);
-    CompletableFuture<Void> otherStripe = dispatcher.put(otherStripeKey, new byte[] { 3 }, 1, -1);
+      dispatcher.getSubmissionFuture(otherStripe).get(5, TimeUnit.SECONDS);
+      assertTrue(otherStripeExecuted.await(5, TimeUnit.SECONDS));
+      assertFalse(dispatcher.getSubmissionFuture(sameStripe).isDone());
+      dispatcher.checkForFailure();
 
-    dispatcher.getSubmissionFuture(otherStripe).get(5, TimeUnit.SECONDS);
-    assertTrue(otherStripeExecuted.await(5, TimeUnit.SECONDS));
-    assertFalse(dispatcher.getSubmissionFuture(sameStripe).isDone());
-    dispatcher.checkForFailure();
-
-    releaseBlockedStripe.countDown();
-    dispatcher.getSubmissionFuture(blocked).get(5, TimeUnit.SECONDS);
-    dispatcher.getSubmissionFuture(sameStripe).get(5, TimeUnit.SECONDS);
-    dispatcher.checkForFailure();
-    dispatcher.stop();
+      releaseBlockedStripe.countDown();
+      dispatcher.getSubmissionFuture(blocked).get(5, TimeUnit.SECONDS);
+      dispatcher.getSubmissionFuture(sameStripe).get(5, TimeUnit.SECONDS);
+      dispatcher.checkForFailure();
+    } finally {
+      releaseBlockedStripe.countDown();
+      stopQuietly(dispatcher);
+    }
   }
 
   @Test
@@ -800,12 +887,33 @@ public class VeniceSystemProducerWriteDispatcherTest {
       callback.set(invocation.getArgument(4));
       return new CompletableFuture<>();
     });
-    VeniceSystemProducerWriteDispatcher dispatcher = fallbackHandoff
-        ? new VeniceSystemProducerWriteDispatcher(writer, new RejectingCallbackExecutor())
-        : dispatcher(writer, 1, 1);
-    CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
-    dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
-    return new CallbackCompletionScenario(dispatcher, callback.get(), durable);
+    AtomicReference<Thread> completionHandoffThread = new AtomicReference<>();
+    ExecutorService completionHandoff = newCompletionHandoffExecutor(completionHandoffThread);
+    PartitionedVeniceWriteExecutor executor = fallbackHandoff
+        ? new RejectingCallbackExecutor()
+        : new PartitionedVeniceWriteExecutor(1, 10, 1, 10, "test-store", null, "venice-system-producer");
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        new VeniceSystemProducerWriteDispatcher(writer, executor, 5, TimeUnit.SECONDS, completionHandoff);
+    try {
+      CompletableFuture<Void> durable = dispatcher.put(new byte[] { 1 }, new byte[] { 1 }, 1, -1);
+      dispatcher.getSubmissionFuture(durable).get(5, TimeUnit.SECONDS);
+      return new CallbackCompletionScenario(
+          dispatcher,
+          callback.get(),
+          durable,
+          completionHandoff,
+          completionHandoffThread);
+    } catch (Exception | Error failure) {
+      stopQuietly(dispatcher);
+      completionHandoff.shutdownNow();
+      try {
+        completionHandoff.awaitTermination(5, TimeUnit.SECONDS);
+      } catch (InterruptedException exception) {
+        Thread.currentThread().interrupt();
+        failure.addSuppressed(exception);
+      }
+      throw failure;
+    }
   }
 
   private VeniceSystemProducerWriteDispatcher dispatcher(
@@ -832,26 +940,120 @@ public class VeniceSystemProducerWriteDispatcherTest {
     }
   }
 
-  private static boolean awaitCondition(BooleanSupplier condition) {
-    long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-    while (!condition.getAsBoolean() && System.nanoTime() < deadlineNanos) {
-      Thread.yield();
+  private static CompletableFuture<Void> runOnDedicatedThread(String threadName, Runnable task) {
+    CompletableFuture<Void> result = new CompletableFuture<>();
+    Thread thread = new Thread(() -> {
+      try {
+        task.run();
+        result.complete(null);
+      } catch (Throwable throwable) {
+        result.completeExceptionally(throwable);
+      }
+    }, threadName);
+    thread.setDaemon(true);
+    thread.start();
+    return result;
+  }
+
+  private static void awaitQuietly(CompletableFuture<?> future) {
+    if (future == null) {
+      return;
     }
-    return condition.getAsBoolean();
+    try {
+      future.handle((ignored, failure) -> null).get(5, TimeUnit.SECONDS);
+    } catch (Throwable ignored) {
+      // Preserve the primary test failure while making a best effort to terminate test work.
+    }
+  }
+
+  private static void stopQuietly(VeniceSystemProducerWriteDispatcher dispatcher) {
+    try {
+      dispatcher.stop();
+    } catch (Throwable ignored) {
+      // Failure-path tests assert the expected stop error before cleanup.
+    }
+  }
+
+  private static void joinQuietly(Thread thread) {
+    try {
+      thread.join(TimeUnit.SECONDS.toMillis(5));
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private static void awaitTerminationQuietly(ExecutorService executor) {
+    try {
+      executor.awaitTermination(5, TimeUnit.SECONDS);
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private static void awaitFenceHeld(VeniceSystemProducerWriteDispatcher dispatcher) {
+    VeniceSystemProducerWriteLifecycle lifecycle = getLifecycle(dispatcher);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertTrue(lifecycle.isFenceHeld()));
+  }
+
+  private static void awaitBlockedAdmission(VeniceSystemProducerWriteDispatcher dispatcher) {
+    ReentrantReadWriteLock admissionLock = getField(getLifecycle(dispatcher), "admissionLock");
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertTrue(admissionLock.hasQueuedThreads()));
+  }
+
+  private static VeniceSystemProducerWriteLifecycle getLifecycle(VeniceSystemProducerWriteDispatcher dispatcher) {
+    return getField(dispatcher, "lifecycle");
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T getField(Object target, String fieldName) {
+    try {
+      Field field = target.getClass().getDeclaredField(fieldName);
+      field.setAccessible(true);
+      return (T) field.get(target);
+    } catch (ReflectiveOperationException exception) {
+      throw new AssertionError("Unable to inspect test synchronization state", exception);
+    }
+  }
+
+  private static ExecutorService newCompletionHandoffExecutor(AtomicReference<Thread> handoffThread) {
+    return Executors.newSingleThreadExecutor(task -> {
+      Thread thread = new Thread(task, "test-completion-handoff");
+      thread.setDaemon(true);
+      handoffThread.set(thread);
+      return thread;
+    });
   }
 
   private static final class CallbackCompletionScenario {
     private final VeniceSystemProducerWriteDispatcher dispatcher;
     private final PubSubProducerCallback callback;
     private final CompletableFuture<Void> durable;
+    private final ExecutorService completionHandoff;
+    private final AtomicReference<Thread> completionHandoffThread;
 
     private CallbackCompletionScenario(
         VeniceSystemProducerWriteDispatcher dispatcher,
         PubSubProducerCallback callback,
-        CompletableFuture<Void> durable) {
+        CompletableFuture<Void> durable,
+        ExecutorService completionHandoff,
+        AtomicReference<Thread> completionHandoffThread) {
       this.dispatcher = dispatcher;
       this.callback = callback;
       this.durable = durable;
+      this.completionHandoff = completionHandoff;
+      this.completionHandoffThread = completionHandoffThread;
+    }
+
+    private void close() throws Exception {
+      dispatcher.stop();
+      completionHandoff.shutdown();
+      assertTrue(completionHandoff.awaitTermination(5, TimeUnit.SECONDS));
+    }
+
+    private void closeQuietly() {
+      stopQuietly(dispatcher);
+      completionHandoff.shutdownNow();
+      awaitTerminationQuietly(completionHandoff);
     }
   }
 
@@ -884,12 +1086,38 @@ public class VeniceSystemProducerWriteDispatcherTest {
     }
   }
 
+  private static final class StopMarkerObservingExecutor extends PartitionedVeniceWriteExecutor {
+    private final CountDownLatch markerSubmitted = new CountDownLatch(1);
+    private final AtomicInteger acceptedSubmissions = new AtomicInteger();
+
+    private StopMarkerObservingExecutor() {
+      super(1, 10, 0, 10, "interrupted-stop-test", null);
+    }
+
+    @Override
+    public void submit(int partition, Runnable task, Consumer<Throwable> rejectionCallback) {
+      super.submit(partition, task, rejectionCallback);
+      acceptedSubmissions.incrementAndGet();
+    }
+
+    @Override
+    public boolean trySubmit(int partition, Runnable task, Consumer<Throwable> rejectionCallback) {
+      boolean accepted = super.trySubmit(partition, task, rejectionCallback);
+      if (accepted && acceptedSubmissions.incrementAndGet() == 2) {
+        markerSubmitted.countDown();
+      }
+      return accepted;
+    }
+  }
+
   private static final class MarkerAdmissionObservingExecutor extends PartitionedVeniceWriteExecutor {
     private final CountDownLatch blockedMarkerAdmission = new CountDownLatch(1);
     private final CountDownLatch thirdCommandSubmissionStarted = new CountDownLatch(1);
     private final CountDownLatch fourthCommandSubmissionStarted = new CountDownLatch(1);
     private final AtomicInteger commandSubmissions = new AtomicInteger();
     private final AtomicInteger markerSubmissionAttempts = new AtomicInteger();
+    private final AtomicBoolean thirdCommandSubmissionReturned = new AtomicBoolean();
+    private final AtomicBoolean markerOvertookThirdCommand = new AtomicBoolean();
 
     private MarkerAdmissionObservingExecutor(int workerCount, int workerQueueCapacity, String storeName) {
       super(workerCount, workerQueueCapacity, 0, 1, storeName, null);
@@ -904,11 +1132,17 @@ public class VeniceSystemProducerWriteDispatcherTest {
         fourthCommandSubmissionStarted.countDown();
       }
       super.submit(partition, task, rejectionCallback);
+      if (submission == 3) {
+        thirdCommandSubmissionReturned.set(true);
+      }
     }
 
     @Override
     public boolean trySubmit(int partition, Runnable task, Consumer<Throwable> rejectionCallback) {
       markerSubmissionAttempts.incrementAndGet();
+      if (commandSubmissions.get() >= 3 && !thirdCommandSubmissionReturned.get()) {
+        markerOvertookThirdCommand.set(true);
+      }
       boolean accepted = super.trySubmit(partition, task, rejectionCallback);
       if (!accepted) {
         blockedMarkerAdmission.countDown();

@@ -11,9 +11,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -36,7 +34,9 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -75,7 +76,7 @@ public class VeniceSystemProducerDispatchTest {
     VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
     try {
       CompletableFuture<CompletableFuture<Void>> put =
-          CompletableFuture.supplyAsync(() -> producer.put("key", "value"));
+          CompletableFuture.supplyAsync(() -> producer.put("key", "value"), dedicatedThreadExecutor("test-direct-put"));
       assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
       assertFalse(put.isDone());
 
@@ -102,7 +103,8 @@ public class VeniceSystemProducerDispatchTest {
     OutgoingMessageEnvelope envelope =
         new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key", "value");
     try {
-      CompletableFuture<Void> send = CompletableFuture.runAsync(() -> producer.send("source", envelope));
+      CompletableFuture<Void> send = CompletableFuture
+          .runAsync(() -> producer.send("source", envelope), dedicatedThreadExecutor("test-samza-send"));
       assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
       assertFalse(send.isDone());
 
@@ -149,9 +151,8 @@ public class VeniceSystemProducerDispatchTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
-
     CompletableFuture<Void> durableFuture = producer.put("key", "value");
-    verify(writer, timeout(5000)).put(any(), any(), eq(1), anyLong(), any());
+    verify(writer).put(any(), any(), eq(1), anyLong(), any());
     RuntimeException asyncFailure = new RuntimeException("async broker failure");
     callback.get().onCompletion(null, asyncFailure);
     assertThrows(ExecutionException.class, () -> durableFuture.get(5, TimeUnit.SECONDS));
@@ -253,20 +254,21 @@ public class VeniceSystemProducerDispatchTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
+    CompletableFuture<Void> flush = null;
     try {
       producer.send((Object) "key", "value");
       assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
 
-      CompletableFuture<Void> flush = CompletableFuture.runAsync(() -> producer.flush("source"));
-      Thread.sleep(200);
-      verify(writer, never()).flush();
-
+      flush =
+          CompletableFuture.runAsync(() -> producer.flush("source"), dedicatedThreadExecutor("test-producer-flush"));
+      awaitFenceHeld(producer);
       releaseWriter.countDown();
       flush.get(5, TimeUnit.SECONDS);
       verify(writer).flush();
     } finally {
       releaseWriter.countDown();
-      producer.stop();
+      awaitQuietly(flush);
+      stopQuietly(producer);
     }
   }
 
@@ -281,18 +283,24 @@ public class VeniceSystemProducerDispatchTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
-    producer.send((Object) "key", "value");
-    assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
-
-    CompletableFuture<Void> stop = CompletableFuture.runAsync(producer::stop);
-    Thread.sleep(200);
-    verify(writer, never()).close();
-
-    releaseWriter.countDown();
-    stop.get(5, TimeUnit.SECONDS);
-    InOrder shutdownOrder = inOrder(writer);
-    shutdownOrder.verify(writer).flush();
-    shutdownOrder.verify(writer).close();
+    CompletableFuture<Void> stop = null;
+    try {
+      producer.send((Object) "key", "value");
+      assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
+      stop = CompletableFuture.runAsync(producer::stop, dedicatedThreadExecutor("test-producer-stop"));
+      awaitFenceHeld(producer);
+      releaseWriter.countDown();
+      stop.get(5, TimeUnit.SECONDS);
+      InOrder shutdownOrder = inOrder(writer);
+      shutdownOrder.verify(writer).flush();
+      shutdownOrder.verify(writer).close();
+    } finally {
+      releaseWriter.countDown();
+      awaitQuietly(stop);
+      if (!producer.isStopped()) {
+        stopQuietly(producer);
+      }
+    }
   }
 
   @Test(timeOut = 10000)
@@ -344,9 +352,6 @@ public class VeniceSystemProducerDispatchTest {
       return new CompletableFuture<>();
     });
     VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
-    producer.send((Object) "key", "value");
-    assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
-
     AtomicBoolean flushFailed = new AtomicBoolean(false);
     AtomicBoolean interruptPreserved = new AtomicBoolean(false);
     Thread flushThread = new Thread(() -> {
@@ -357,15 +362,23 @@ public class VeniceSystemProducerDispatchTest {
         interruptPreserved.set(Thread.currentThread().isInterrupted());
       }
     });
-    flushThread.start();
-    Thread.sleep(200);
-    flushThread.interrupt();
-    flushThread.join(TimeUnit.SECONDS.toMillis(5));
+    try {
+      producer.send((Object) "key", "value");
+      assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
+      flushThread.start();
+      awaitFenceHeld(producer);
+      flushThread.interrupt();
+      flushThread.join(TimeUnit.SECONDS.toMillis(5));
 
-    assertTrue(flushFailed.get());
-    assertTrue(interruptPreserved.get());
-    releaseWriter.countDown();
-    producer.stop();
+      assertFalse(flushThread.isAlive());
+      assertTrue(flushFailed.get());
+      assertTrue(interruptPreserved.get());
+    } finally {
+      flushThread.interrupt();
+      releaseWriter.countDown();
+      flushThread.join(TimeUnit.SECONDS.toMillis(5));
+      producer.stop();
+    }
   }
 
   @Test(dataProvider = "inlineModes")
@@ -483,5 +496,55 @@ public class VeniceSystemProducerDispatchTest {
     valueSchema.setDerivedSchemaId(derivedSchemaId);
     when(controller.getValueOrDerivedSchemaId(anyString(), anyString())).thenReturn(valueSchema);
     return controller;
+  }
+
+  private static Executor dedicatedThreadExecutor(String threadName) {
+    return task -> {
+      Thread thread = new Thread(task, threadName);
+      thread.setDaemon(true);
+      thread.start();
+    };
+  }
+
+  private static void stopQuietly(VeniceSystemProducer producer) {
+    try {
+      producer.stop();
+    } catch (Throwable ignored) {
+      // Failure-path tests assert the expected stop error before cleanup.
+    }
+  }
+
+  private static void awaitQuietly(CompletableFuture<?> future) {
+    if (future == null) {
+      return;
+    }
+    try {
+      future.handle((ignored, failure) -> null).get(5, TimeUnit.SECONDS);
+    } catch (Throwable ignored) {
+      // Preserve the primary test failure while making a best effort to terminate test work.
+    }
+  }
+
+  private static void awaitFenceHeld(VeniceSystemProducer producer) {
+    VeniceSystemProducerWriteDispatcher dispatcher = getField(producer, "streamWriteDispatcher");
+    VeniceSystemProducerWriteLifecycle lifecycle = getField(dispatcher, "lifecycle");
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertTrue(lifecycle.isFenceHeld()));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T getField(Object target, String fieldName) {
+    Class<?> type = target.getClass();
+    while (type != null) {
+      try {
+        Field field = type.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return (T) field.get(target);
+      } catch (NoSuchFieldException exception) {
+        type = type.getSuperclass();
+      } catch (ReflectiveOperationException exception) {
+        throw new AssertionError("Unable to inspect test synchronization state", exception);
+      }
+    }
+    throw new AssertionError("Unable to find field " + fieldName);
   }
 }

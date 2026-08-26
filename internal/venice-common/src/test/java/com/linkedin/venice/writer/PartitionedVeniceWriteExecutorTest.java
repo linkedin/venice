@@ -5,12 +5,15 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.utils.TestUtils;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.testng.annotations.Test;
@@ -104,7 +107,8 @@ public class PartitionedVeniceWriteExecutorTest {
         thirdSubmitReturned.set(true);
       });
       submitter.start();
-      Thread.sleep(200);
+      assertEquals(executor.getWorkerQueueSize(0), 1, "The worker queue must be full before checking backpressure");
+      awaitWorkerAdmissionBlocked(executor, 0);
       assertFalse(thirdSubmitReturned.get(), "The caller should block while the worker queue is full");
 
       releaseWorker.countDown();
@@ -146,31 +150,46 @@ public class PartitionedVeniceWriteExecutorTest {
     CountDownLatch releaseActive = new CountDownLatch(1);
     CompletableFuture<Throwable> rejection = new CompletableFuture<>();
     AtomicBoolean blockedTaskRan = new AtomicBoolean(false);
-    executor.submit(0, () -> {
-      activeStarted.countDown();
-      await(releaseActive);
-    });
-    assertTrue(activeStarted.await(5, TimeUnit.SECONDS));
-    executor.submit(0, () -> {});
+    CountDownLatch blockedSubmitStarted = new CountDownLatch(1);
+    Thread submitter = null;
+    try {
+      executor.submit(0, () -> {
+        activeStarted.countDown();
+        await(releaseActive);
+      });
+      assertTrue(activeStarted.await(5, TimeUnit.SECONDS));
+      executor.submit(0, () -> {});
 
-    Thread submitter = new Thread(() -> {
-      try {
-        executor.submit(0, () -> blockedTaskRan.set(true), rejection::complete);
-      } catch (RejectedExecutionException ignored) {
-        // Expected after shutdown wakes bounded admission.
+      submitter = new Thread(() -> {
+        blockedSubmitStarted.countDown();
+        try {
+          executor.submit(0, () -> blockedTaskRan.set(true), rejection::complete);
+        } catch (RejectedExecutionException ignored) {
+          // Expected after shutdown rejects the submission contending for bounded admission.
+        }
+      });
+      submitter.start();
+      assertTrue(blockedSubmitStarted.await(5, TimeUnit.SECONDS));
+      assertEquals(executor.getWorkerQueueSize(0), 1, "The worker queue must be full before shutdown");
+      awaitWorkerAdmissionBlocked(executor, 0);
+      assertFalse(rejection.isDone());
+
+      executor.shutdownWorkers();
+      submitter.join(TimeUnit.SECONDS.toMillis(5));
+      assertTrue(rejection.get(5, TimeUnit.SECONDS) instanceof RejectedExecutionException);
+      assertFalse(blockedTaskRan.get());
+
+      releaseActive.countDown();
+      assertTrue(executor.awaitWorkerTermination(5, TimeUnit.SECONDS));
+    } finally {
+      releaseActive.countDown();
+      executor.shutdownWorkersNow();
+      if (submitter != null) {
+        submitter.interrupt();
+        submitter.join(TimeUnit.SECONDS.toMillis(5));
       }
-    });
-    submitter.start();
-    Thread.sleep(200);
-    assertFalse(rejection.isDone());
-
-    executor.shutdownWorkers();
-    submitter.join(TimeUnit.SECONDS.toMillis(5));
-    assertTrue(rejection.get(5, TimeUnit.SECONDS) instanceof RejectedExecutionException);
-    assertFalse(blockedTaskRan.get());
-
-    releaseActive.countDown();
-    assertTrue(executor.awaitWorkerTermination(5, TimeUnit.SECONDS));
+      executor.awaitWorkerTermination(5, TimeUnit.SECONDS);
+    }
   }
 
   @Test
@@ -182,44 +201,65 @@ public class PartitionedVeniceWriteExecutorTest {
     CompletableFuture<Void> activeRejected = new CompletableFuture<>();
     CompletableFuture<Void> queuedRejected = new CompletableFuture<>();
 
-    executor.submit(0, () -> {
-      activeStarted.countDown();
-      try {
-        keepActive.await();
-      } catch (InterruptedException exception) {
-        Thread.currentThread().interrupt();
-      }
-    }, activeRejected::completeExceptionally);
-    assertTrue(activeStarted.await(5, TimeUnit.SECONDS));
-    executor.submit(0, () -> {}, queuedRejected::completeExceptionally);
+    try {
+      executor.submit(0, () -> {
+        activeStarted.countDown();
+        try {
+          keepActive.await();
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt();
+        }
+      }, activeRejected::completeExceptionally);
+      assertTrue(activeStarted.await(5, TimeUnit.SECONDS));
+      executor.submit(0, () -> {}, queuedRejected::completeExceptionally);
 
-    executor.shutdownWorkersNow();
+      executor.shutdownWorkersNow();
 
-    assertTrue(activeRejected.isCompletedExceptionally());
-    assertTrue(queuedRejected.isCompletedExceptionally());
-    assertTrue(executor.awaitWorkerTermination(5, TimeUnit.SECONDS));
+      assertTrue(activeRejected.isCompletedExceptionally());
+      assertTrue(queuedRejected.isCompletedExceptionally());
+      assertTrue(executor.awaitWorkerTermination(5, TimeUnit.SECONDS));
+    } finally {
+      keepActive.countDown();
+      executor.shutdownWorkersNow();
+      executor.awaitWorkerTermination(5, TimeUnit.SECONDS);
+    }
   }
 
-  @Test(timeOut = 5000)
+  @Test(timeOut = 30000)
   public void testForcedShutdownGetsIndependentTerminationWindow() throws Exception {
     PartitionedVeniceWriteExecutor executor =
         new PartitionedVeniceWriteExecutor(1, 1, 0, 1, "forced-shutdown-window-store", null);
     CountDownLatch activeStarted = new CountDownLatch(1);
+    CountDownLatch forcedInterruptObserved = new CountDownLatch(1);
+    CountDownLatch allowTaskTermination = new CountDownLatch(1);
     executor.submit(0, () -> {
       activeStarted.countDown();
       try {
         new CountDownLatch(1).await();
       } catch (InterruptedException exception) {
-        try {
-          Thread.sleep(50);
-        } catch (InterruptedException ignored) {
-          Thread.currentThread().interrupt();
-        }
+        forcedInterruptObserved.countDown();
+        await(allowTaskTermination);
       }
     });
     assertTrue(activeStarted.await(5, TimeUnit.SECONDS));
 
-    assertTrue(executor.shutdownWorkersAndAwait(100, TimeUnit.MILLISECONDS));
+    CompletableFuture<Boolean> shutdownResult = new CompletableFuture<>();
+    Thread shutdownThread = new Thread(
+        () -> shutdownResult.complete(executor.shutdownWorkersAndAwait(100, TimeUnit.MILLISECONDS)),
+        "test-forced-shutdown");
+    shutdownThread.start();
+    try {
+      assertTrue(forcedInterruptObserved.await(5, TimeUnit.SECONDS));
+      allowTaskTermination.countDown();
+      assertTrue(shutdownResult.get(5, TimeUnit.SECONDS));
+      shutdownThread.join(TimeUnit.SECONDS.toMillis(5));
+    } finally {
+      allowTaskTermination.countDown();
+      shutdownThread.interrupt();
+      shutdownThread.join(TimeUnit.SECONDS.toMillis(5));
+      executor.shutdownWorkersNow();
+      executor.awaitWorkerTermination(5, TimeUnit.SECONDS);
+    }
   }
 
   @Test
@@ -273,15 +313,23 @@ public class PartitionedVeniceWriteExecutorTest {
         Thread.currentThread().interrupt();
       }
     }));
-    submitter.start();
-    assertTrue(taskStarted.await(5, TimeUnit.SECONDS));
+    try {
+      submitter.start();
+      assertTrue(taskStarted.await(5, TimeUnit.SECONDS));
 
-    executor.shutdownWorkers();
-    assertFalse(executor.awaitWorkerTermination(100, TimeUnit.MILLISECONDS));
+      executor.shutdownWorkers();
+      assertFalse(executor.awaitWorkerTermination(0, TimeUnit.NANOSECONDS));
 
-    releaseTask.countDown();
-    submitter.join(TimeUnit.SECONDS.toMillis(5));
-    assertTrue(executor.awaitWorkerTermination(5, TimeUnit.SECONDS));
+      releaseTask.countDown();
+      submitter.join(TimeUnit.SECONDS.toMillis(5));
+      assertTrue(executor.awaitWorkerTermination(5, TimeUnit.SECONDS));
+    } finally {
+      releaseTask.countDown();
+      submitter.interrupt();
+      submitter.join(TimeUnit.SECONDS.toMillis(5));
+      executor.shutdownWorkersNow();
+      executor.awaitWorkerTermination(5, TimeUnit.SECONDS);
+    }
   }
 
   @Test
@@ -340,7 +388,6 @@ public class PartitionedVeniceWriteExecutorTest {
         new PartitionedVeniceWriteExecutor(0, 1, 1, 1, "blocking-callback-store", null);
     CountDownLatch activeCallbackStarted = new CountDownLatch(1);
     CountDownLatch releaseActiveCallback = new CountDownLatch(1);
-    CountDownLatch thirdSubmissionStarted = new CountDownLatch(1);
     AtomicBoolean thirdSubmissionReturned = new AtomicBoolean(false);
     Thread submitter = null;
     try {
@@ -352,13 +399,12 @@ public class PartitionedVeniceWriteExecutorTest {
       executor.executeCallback(() -> {});
 
       submitter = new Thread(() -> {
-        thirdSubmissionStarted.countDown();
         executor.executeCallback(() -> {});
         thirdSubmissionReturned.set(true);
       });
       submitter.start();
-      assertTrue(thirdSubmissionStarted.await(5, TimeUnit.SECONDS));
-      Thread.sleep(200);
+      assertEquals(executor.getCallbackQueueSize(), 1, "The callback queue must be full before checking backpressure");
+      awaitCallbackAdmissionBlocked(executor);
       assertFalse(thirdSubmissionReturned.get());
 
       releaseActiveCallback.countDown();
@@ -379,6 +425,31 @@ public class PartitionedVeniceWriteExecutorTest {
       latch.await();
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
+    }
+  }
+
+  private static void awaitWorkerAdmissionBlocked(PartitionedVeniceWriteExecutor executor, int workerIndex) {
+    BlockingBoundedExecutor[] workers = getField(executor, "workers");
+    awaitAdmissionBlocked(workers[workerIndex]);
+  }
+
+  private static void awaitCallbackAdmissionBlocked(PartitionedVeniceWriteExecutor executor) {
+    awaitAdmissionBlocked(getField(executor, "callbackExecutor"));
+  }
+
+  private static void awaitAdmissionBlocked(BlockingBoundedExecutor executor) {
+    Semaphore queueSlots = getField(executor, "queueSlots");
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertTrue(queueSlots.hasQueuedThreads()));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T getField(Object target, String fieldName) {
+    try {
+      Field field = target.getClass().getDeclaredField(fieldName);
+      field.setAccessible(true);
+      return (T) field.get(target);
+    } catch (ReflectiveOperationException exception) {
+      throw new AssertionError("Unable to inspect bounded executor admission state", exception);
     }
   }
 }

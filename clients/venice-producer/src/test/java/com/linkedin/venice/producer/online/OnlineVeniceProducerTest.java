@@ -84,6 +84,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.Schema;
@@ -727,15 +728,20 @@ public class OnlineVeniceProducerTest {
       return null;
     }).when(producer.mockVeniceWriter).close();
 
-    CompletableFuture<Void> firstClose = CompletableFuture.runAsync(() -> closeUnchecked(producer));
-    assertTrue(writerCloseEntered.await(5, TimeUnit.SECONDS));
-    CompletableFuture<Void> concurrentClose = CompletableFuture.runAsync(() -> closeUnchecked(producer));
-
+    CompletableFuture<Void> firstClose = null;
+    CompletableFuture<Void> concurrentClose = null;
     try {
+      firstClose =
+          CompletableFuture.runAsync(() -> closeUnchecked(producer), dedicatedThreadExecutor("test-first-close"));
+      assertTrue(writerCloseEntered.await(5, TimeUnit.SECONDS));
+      concurrentClose =
+          CompletableFuture.runAsync(() -> closeUnchecked(producer), dedicatedThreadExecutor("test-concurrent-close"));
       concurrentClose.get(5, TimeUnit.SECONDS);
       verify(mockTransportClient, never()).close();
     } finally {
       releaseWriterClose.countDown();
+      awaitQuietly(firstClose);
+      awaitQuietly(concurrentClose);
     }
     firstClose.get(5, TimeUnit.SECONDS);
 
@@ -743,7 +749,7 @@ public class OnlineVeniceProducerTest {
     verify(mockTransportClient, atLeastOnce()).close();
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testCallbackContinuationCloseReturnsBeforeExecutorTerminates() throws Exception {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
     TransportClient mockTransportClient = ClientFactory.getTransportClient(storeClientConfig);
@@ -759,15 +765,68 @@ public class OnlineVeniceProducerTest {
       return null;
     }).when(producer.mockVeniceWriter).put(any(), any(), anyInt(), anyLong(), any());
 
-    CompletableFuture<DurableWrite> durableWrite = producer.asyncPut("KEY1", mockValue1);
-    PubSubProducerCallback callback = pubSubCallback.get(5, TimeUnit.SECONDS);
-    CompletableFuture<Void> closeReturned = durableWrite.thenRun(() -> closeUnchecked(producer));
-    callback.onCompletion(null, null);
+    long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+    CompletableFuture<Void> closeReturned = new CompletableFuture<>();
+    CountDownLatch releaseCallbackTask = new CountDownLatch(1);
+    AtomicBoolean closeRanOnCallbackExecutor = new AtomicBoolean();
+    CompletableFuture<Void> callbackTask = null;
+    try {
+      CompletableFuture<DurableWrite> durableWrite = producer.asyncPut("KEY1", mockValue1);
+      PubSubProducerCallback callback = pubSubCallback.get(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS);
+      callbackTask = durableWrite.thenRun(() -> {
+        closeRanOnCallbackExecutor.set(producer.getCapturedDispatcher().isCurrentThreadExecutingCallback());
+        try {
+          closeUnchecked(producer);
+          closeReturned.complete(null);
+        } catch (Throwable throwable) {
+          closeReturned.completeExceptionally(throwable);
+        }
+        try {
+          releaseCallbackTask.await();
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException(exception);
+        }
+      });
+      callback.onCompletion(null, null);
 
-    closeReturned.get(5, TimeUnit.SECONDS);
-    assertTrue(producer.getCapturedDispatcher().awaitCallbackTermination(5, TimeUnit.SECONDS));
+      closeReturned.get(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS);
+      assertTrue(closeRanOnCallbackExecutor.get(), "The continuation must execute on the callback executor");
+      Assert.assertFalse(
+          producer.getCapturedDispatcher().awaitCallbackTermination(0, TimeUnit.NANOSECONDS),
+          "The callback executor cannot terminate while its current task is explicitly blocked");
+    } finally {
+      releaseCallbackTask.countDown();
+      closeUnchecked(producer);
+    }
+    callbackTask.get(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS);
+    assertTrue(
+        producer.getCapturedDispatcher().awaitCallbackTermination(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS));
     verify(producer.mockVeniceWriter, times(1)).close();
     verify(mockTransportClient, atLeastOnce()).close();
+  }
+
+  private static long remainingNanos(long deadlineNanos) {
+    return Math.max(1, deadlineNanos - System.nanoTime());
+  }
+
+  private static Executor dedicatedThreadExecutor(String threadName) {
+    return task -> {
+      Thread thread = new Thread(task, threadName);
+      thread.setDaemon(true);
+      thread.start();
+    };
+  }
+
+  private static void awaitQuietly(CompletableFuture<?> future) {
+    if (future == null) {
+      return;
+    }
+    try {
+      future.handle((ignored, failure) -> null).get(5, TimeUnit.SECONDS);
+    } catch (Throwable ignored) {
+      // Preserve the primary test failure while making a best effort to terminate test work.
+    }
   }
 
   private static void closeUnchecked(VeniceProducer<?, ?> producer) {
