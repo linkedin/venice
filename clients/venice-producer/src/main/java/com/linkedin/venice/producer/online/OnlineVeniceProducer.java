@@ -48,8 +48,9 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
   private final SchemaReader schemaReader;
   private final ICProvider icProvider;
   private final VeniceWriterHook writerHook;
-  private final AtomicBoolean resourceCleanupInProgress = new AtomicBoolean(false);
+  private final AtomicBoolean resourceCleanupInProgress = new AtomicBoolean();
   private volatile boolean resourcesClosed;
+  private volatile IOException resourceCleanupFailure;
 
   OnlineVeniceProducer(
       ClientConfig storeClientConfig,
@@ -182,16 +183,69 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
 
   @Override
   public void close() throws IOException {
-    if (resourcesClosed || !resourceCleanupInProgress.compareAndSet(false, true)) {
-      return;
-    }
+    IOException closeFailure = null;
     try {
+      // AbstractVeniceProducer.close() is intentionally idempotent and must run on every invocation so a failure
+      // recorded after a depth-exempted reentrant close remains observable.
       super.close();
-      Utils.closeQuietlyWithErrorLogged(schemaReader);
-      Utils.closeQuietlyWithErrorLogged(storeClient);
-      resourcesClosed = true;
-    } finally {
-      resourceCleanupInProgress.set(false);
+    } catch (IOException exception) {
+      closeFailure = exception;
     }
+
+    if (isCoreResourceCleanupComplete() && !resourcesClosed && resourceCleanupInProgress.compareAndSet(false, true)) {
+      try {
+        if (!resourcesClosed) {
+          closeClientResources(closeFailure);
+          resourcesClosed = true;
+        }
+      } finally {
+        resourceCleanupInProgress.set(false);
+      }
+    }
+    if (resourcesClosed) {
+      synchronized (this) {
+        if (resourceCleanupFailure == null) {
+          resourceCleanupFailure = closeFailure;
+        } else {
+          if (closeFailure != null && !containsFailure(resourceCleanupFailure, closeFailure)) {
+            resourceCleanupFailure.addSuppressed(closeFailure);
+          }
+          closeFailure = resourceCleanupFailure;
+        }
+      }
+    }
+    if (closeFailure != null) {
+      throw closeFailure;
+    }
+  }
+
+  private void closeClientResources(IOException primaryFailure) {
+    Utils.closeQuietly(schemaReader, exception -> recordClientCloseFailure(primaryFailure, exception));
+    Utils.closeQuietly(storeClient, exception -> recordClientCloseFailure(primaryFailure, exception));
+  }
+
+  private void recordClientCloseFailure(IOException primaryFailure, Exception clientCloseFailure) {
+    if (primaryFailure == null) {
+      LOGGER.error("Failed to close Venice online producer client resource", clientCloseFailure);
+    } else if (clientCloseFailure != primaryFailure) {
+      primaryFailure.addSuppressed(clientCloseFailure);
+    }
+  }
+
+  private static boolean containsFailure(Throwable recordedFailure, Throwable candidateFailure) {
+    if (recordedFailure == candidateFailure) {
+      return true;
+    }
+    Throwable candidateCause = candidateFailure.getCause();
+    if (candidateCause != null && recordedFailure.getCause() == candidateCause) {
+      return true;
+    }
+    for (Throwable suppressed: recordedFailure.getSuppressed()) {
+      if (containsFailure(suppressed, candidateFailure)
+          || (candidateCause != null && containsFailure(suppressed, candidateCause))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

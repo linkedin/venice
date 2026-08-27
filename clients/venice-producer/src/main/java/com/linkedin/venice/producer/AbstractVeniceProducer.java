@@ -26,6 +26,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceCompletionExecutor;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -88,8 +89,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private int partitionCount;
   private final Object deferredCompletionMonitor = new Object();
   private final ThreadLocal<Integer> deferredCompletionDepth = new ThreadLocal<>();
+  private final ThreadLocal<Boolean> callbackCloseInProgress = new ThreadLocal<>();
   private int pendingDeferredCompletions;
   private Throwable deferredCompletionFailure;
+  private final AtomicBoolean coreResourceCleanupInProgress = new AtomicBoolean();
+  private volatile boolean coreResourceCleanupComplete;
 
   private RecordSerializer<Object> keySerializer;
   protected boolean needsPartitionRouting;
@@ -576,7 +580,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   }
 
   private void executeCallbackOrDeferFromWorker(Runnable completion, Consumer<Throwable> rejectionCallback) {
-    if (!asyncDispatcher.isCallbackExecutorEnabled() && asyncDispatcher.isCurrentThreadExecutingWorker()) {
+    if (Boolean.TRUE.equals(callbackCloseInProgress.get())
+        || (!asyncDispatcher.isCallbackExecutorEnabled() && asyncDispatcher.isCurrentThreadExecutingWorker())) {
       scheduleDeferredCompletion(completion);
       return;
     }
@@ -595,7 +600,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   }
 
   private void scheduleDeferredCompletion(Runnable completion) {
-    scheduleDeferredCompletion(completion, ForkJoinPool.commonPool());
+    scheduleDeferredCompletion(completion, VeniceCompletionExecutor::execute);
   }
 
   void scheduleDeferredCompletion(Runnable completion, Executor completionExecutor) {
@@ -628,7 +633,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     try {
       completionExecutor.execute(trackedCompletion);
     } catch (RejectedExecutionException ignored) {
-      trackedCompletion.run();
+      VeniceCompletionExecutor.execute(trackedCompletion);
     }
   }
 
@@ -659,40 +664,60 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   @Override
   public void close() throws IOException {
     closed = true;
+    boolean ownsCoreResourceCleanup = false;
+    if (!coreResourceCleanupComplete) {
+      ownsCoreResourceCleanup = coreResourceCleanupInProgress.compareAndSet(false, true);
+      if (!ownsCoreResourceCleanup && !coreResourceCleanupComplete) {
+        /*
+         * An overlapping close must not wait for the owner: the owner may be draining a callback whose continuation is
+         * making this call. The owner will finish the shared cleanup, and every later close will re-check deferred
+         * failures once cleanup is complete.
+         */
+        return;
+      }
+    }
     AtomicBoolean restoreInterrupt = new AtomicBoolean(Thread.interrupted());
+    boolean closingFromCallback = asyncDispatcher != null && asyncDispatcher.isCurrentThreadExecutingCallback();
+    Boolean previousCallbackCloseState = callbackCloseInProgress.get();
+    if (closingFromCallback) {
+      callbackCloseInProgress.set(true);
+    }
     try {
-      boolean workersTerminated = true;
-      if (asyncDispatcher != null) {
-        // Stop worker admission first, but keep callback delivery alive while the writer flushes and closes.
-        asyncDispatcher.shutdownWorkers();
-        workersTerminated = awaitTerminationUninterruptibly(true, restoreInterrupt);
-        if (!workersTerminated) {
-          LOGGER.warn("Async dispatcher did not terminate gracefully, forcing shutdown");
-          asyncDispatcher.shutdownWorkersNow();
+      if (!coreResourceCleanupComplete) {
+        boolean workersTerminated = true;
+        if (asyncDispatcher != null) {
+          // Stop worker admission first, but keep callback delivery alive while the writer flushes and closes.
+          asyncDispatcher.shutdownWorkers();
           workersTerminated = awaitTerminationUninterruptibly(true, restoreInterrupt);
-        }
-      }
-
-      if (!workersTerminated) {
-        throw new IOException("Venice producer workers did not terminate; refusing to close the active writer");
-      }
-
-      Utils.closeQuietlyWithErrorLogged(veniceWriter);
-      restoreInterrupt.set(Thread.interrupted() || restoreInterrupt.get());
-
-      if (asyncDispatcher != null) {
-        asyncDispatcher.shutdownCallbacks();
-        if (!asyncDispatcher.isCurrentThreadExecutingCallback()) {
-          boolean callbacksTerminated = awaitTerminationUninterruptibly(false, restoreInterrupt);
-          if (!callbacksTerminated) {
-            LOGGER.warn("Async callback dispatcher did not terminate gracefully, forcing shutdown");
-            asyncDispatcher.shutdownCallbacksNow();
-            callbacksTerminated = awaitTerminationUninterruptibly(false, restoreInterrupt);
-          }
-          if (!callbacksTerminated) {
-            throw new IOException("Venice producer callbacks did not terminate after forced shutdown");
+          if (!workersTerminated) {
+            LOGGER.warn("Async dispatcher did not terminate gracefully, forcing shutdown");
+            asyncDispatcher.shutdownWorkersNow();
+            workersTerminated = awaitTerminationUninterruptibly(true, restoreInterrupt);
           }
         }
+
+        if (!workersTerminated) {
+          throw new IOException("Venice producer workers did not terminate; refusing to close the active writer");
+        }
+
+        Utils.closeQuietlyWithErrorLogged(veniceWriter);
+        restoreInterrupt.set(Thread.interrupted() || restoreInterrupt.get());
+
+        if (asyncDispatcher != null) {
+          asyncDispatcher.shutdownCallbacks();
+          if (!asyncDispatcher.isCurrentThreadExecutingCallback()) {
+            boolean callbacksTerminated = awaitTerminationUninterruptibly(false, restoreInterrupt);
+            if (!callbacksTerminated) {
+              LOGGER.warn("Async callback dispatcher did not terminate gracefully, forcing shutdown");
+              asyncDispatcher.shutdownCallbacksNow();
+              callbacksTerminated = awaitTerminationUninterruptibly(false, restoreInterrupt);
+            }
+            if (!callbacksTerminated) {
+              throw new IOException("Venice producer callbacks did not terminate after forced shutdown");
+            }
+          }
+        }
+        coreResourceCleanupComplete = true;
       }
 
       // Pending completions include the tracked wrappers executing on this thread. Those wrappers cannot finish until
@@ -703,14 +728,28 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       }
     } finally {
       restoreInterrupt.set(Thread.interrupted() || restoreInterrupt.get());
+      if (closingFromCallback) {
+        if (previousCallbackCloseState == null) {
+          callbackCloseInProgress.remove();
+        } else {
+          callbackCloseInProgress.set(previousCallbackCloseState);
+        }
+      }
       if (restoreInterrupt.get()) {
         Thread.currentThread().interrupt();
+      }
+      if (ownsCoreResourceCleanup) {
+        coreResourceCleanupInProgress.set(false);
       }
     }
   }
 
   protected boolean isClosed() {
     return closed;
+  }
+
+  protected final boolean isCoreResourceCleanupComplete() {
+    return coreResourceCleanupComplete;
   }
 
   private boolean awaitTerminationUninterruptibly(boolean workers, AtomicBoolean restoreInterrupt) {

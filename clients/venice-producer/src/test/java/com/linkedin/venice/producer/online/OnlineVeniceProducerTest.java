@@ -3,6 +3,7 @@ package com.linkedin.venice.producer.online;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_CALLBACK_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.VENICE_SYSTEM_PRODUCER_WORKER_COUNT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE;
@@ -32,6 +33,7 @@ import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ClientFactoryTestUtils;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -54,10 +56,15 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.producer.AbstractVeniceProducer;
 import com.linkedin.venice.producer.DurableWrite;
 import com.linkedin.venice.producer.PartitionedProducerExecutor;
 import com.linkedin.venice.producer.VeniceProducer;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -73,6 +80,8 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
@@ -87,6 +96,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -711,7 +721,7 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testConcurrentCloseKeepsClientsOpenUntilProducerCleanupCompletes() throws Exception {
+  public void testConcurrentCloseReturnsWithoutRacingOneShotClientCleanup() throws Exception {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
     TransportClient mockTransportClient = ClientFactory.getTransportClient(storeClientConfig);
     MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
@@ -730,12 +740,16 @@ public class OnlineVeniceProducerTest {
 
     CompletableFuture<Void> firstClose = null;
     CompletableFuture<Void> concurrentClose = null;
+    CountDownLatch concurrentCloseInvoked = new CountDownLatch(1);
     try {
       firstClose =
           CompletableFuture.runAsync(() -> closeUnchecked(producer), dedicatedThreadExecutor("test-first-close"));
       assertTrue(writerCloseEntered.await(5, TimeUnit.SECONDS));
-      concurrentClose =
-          CompletableFuture.runAsync(() -> closeUnchecked(producer), dedicatedThreadExecutor("test-concurrent-close"));
+      concurrentClose = CompletableFuture.runAsync(() -> {
+        concurrentCloseInvoked.countDown();
+        closeUnchecked(producer);
+      }, dedicatedThreadExecutor("test-concurrent-close"));
+      assertTrue(concurrentCloseInvoked.await(5, TimeUnit.SECONDS));
       concurrentClose.get(5, TimeUnit.SECONDS);
       verify(mockTransportClient, never()).close();
     } finally {
@@ -804,6 +818,113 @@ public class OnlineVeniceProducerTest {
         producer.getCapturedDispatcher().awaitCallbackTermination(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS));
     verify(producer.mockVeniceWriter, times(1)).close();
     verify(mockTransportClient, atLeastOnce()).close();
+  }
+
+  @Test(timeOut = 10000)
+  public void testDeferredCompletionFailureClosesClientsOnceAndRemainsSticky() throws Exception {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName + "-deferred-failure");
+    TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
+        storeClientConfig,
+        VeniceProperties.empty(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    ClientResourceMocks clientResources = replaceClientResourcesWithMocks(producer);
+    RuntimeException deferredFailure = new RuntimeException("deferred completion failed");
+    IOException schemaCloseFailure = new IOException("schema reader close failed");
+    RuntimeException storeClientCloseFailure = new RuntimeException("store client close failed");
+    Mockito.doThrow(schemaCloseFailure).when(clientResources.schemaReader).close();
+    Mockito.doThrow(storeClientCloseFailure).when(clientResources.storeClient).close();
+    CountDownLatch deferredCompletionRan = new CountDownLatch(1);
+    try {
+      producer.scheduleDeferredFailure(deferredFailure, deferredCompletionRan);
+      assertTrue(deferredCompletionRan.await(5, TimeUnit.SECONDS));
+
+      IOException firstCloseFailure = Assert.expectThrows(IOException.class, producer::close);
+      IOException secondCloseFailure = Assert.expectThrows(IOException.class, producer::close);
+
+      Assert.assertSame(firstCloseFailure.getCause(), deferredFailure);
+      Assert.assertSame(secondCloseFailure, firstCloseFailure);
+      Assert.assertEquals(
+          firstCloseFailure.getSuppressed(),
+          new Throwable[] { schemaCloseFailure, storeClientCloseFailure });
+      verify(clientResources.schemaReader, times(1)).close();
+      verify(clientResources.storeClient, times(1)).close();
+      verify(producer.mockVeniceWriter, times(1)).close();
+    } finally {
+      clientResources.closeOriginalResources();
+    }
+  }
+
+  @Test(timeOut = 10000)
+  public void testLateDeferredFailureAfterReentrantCloseRemainsVisibleAndSticky() throws Exception {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName + "-late-deferred-failure");
+    TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
+        storeClientConfig,
+        VeniceProperties.empty(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    ClientResourceMocks clientResources = replaceClientResourcesWithMocks(producer);
+    RuntimeException deferredFailure = new RuntimeException("failure after reentrant close");
+    CountDownLatch reentrantCloseReturned = new CountDownLatch(1);
+    CountDownLatch deferredCompletionFinished = new CountDownLatch(1);
+    try {
+      producer.scheduleCloseThenFailure(deferredFailure, reentrantCloseReturned, deferredCompletionFinished);
+      assertTrue(reentrantCloseReturned.await(5, TimeUnit.SECONDS));
+      assertTrue(deferredCompletionFinished.await(5, TimeUnit.SECONDS));
+
+      IOException firstObservedFailure = Assert.expectThrows(IOException.class, producer::close);
+      IOException secondObservedFailure = Assert.expectThrows(IOException.class, producer::close);
+
+      Assert.assertSame(firstObservedFailure.getCause(), deferredFailure);
+      Assert.assertSame(secondObservedFailure, firstObservedFailure);
+      verify(clientResources.schemaReader, times(1)).close();
+      verify(clientResources.storeClient, times(1)).close();
+      verify(producer.mockVeniceWriter, times(1)).close();
+    } finally {
+      clientResources.closeOriginalResources();
+    }
+  }
+
+  @Test(timeOut = 10000)
+  public void testWorkerTerminationFailureKeepsClientsOpen() throws Exception {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName + "-worker-failure");
+    WorkerTerminationFailingOnlineVeniceProducer producer = new WorkerTerminationFailingOnlineVeniceProducer(
+        storeClientConfig,
+        VeniceProperties.empty(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    ClientResourceMocks clientResources = replaceClientResourcesWithMocks(producer);
+    try {
+      Assert.expectThrows(IOException.class, producer::close);
+      verify(clientResources.schemaReader, never()).close();
+      verify(clientResources.storeClient, never()).close();
+
+      producer.close();
+      verify(clientResources.schemaReader, times(1)).close();
+      verify(clientResources.storeClient, times(1)).close();
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(producer);
+      clientResources.closeOriginalResources();
+    }
+  }
+
+  @Test(timeOut = 10000)
+  public void testCallbackTerminationFailureKeepsClientsOpen() throws Exception {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName + "-callback-failure");
+    CallbackTerminationFailingOnlineVeniceProducer producer = new CallbackTerminationFailingOnlineVeniceProducer(
+        storeClientConfig,
+        VeniceProperties.empty(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    ClientResourceMocks clientResources = replaceClientResourcesWithMocks(producer);
+    try {
+      Assert.expectThrows(IOException.class, producer::close);
+      verify(clientResources.schemaReader, never()).close();
+      verify(clientResources.storeClient, never()).close();
+
+      producer.close();
+      verify(clientResources.schemaReader, times(1)).close();
+      verify(clientResources.storeClient, times(1)).close();
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(producer);
+      clientResources.closeOriginalResources();
+    }
   }
 
   private static long remainingNanos(long deadlineNanos) {
@@ -894,7 +1015,8 @@ public class OnlineVeniceProducerTest {
           3,
           Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2, UPDATE_SCHEMA_3, UPDATE_SCHEMA_4),
           true,
-          0);
+          0,
+          storeName);
       // Wait for at least one schema refresh cycle to pick up the new schemas
       Utils.sleep(2000);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -1061,19 +1183,26 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
-  public void testWriterHookIsForwardedToWriterOptions() throws IOException {
-    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
-    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+  @Test(timeOut = 10000)
+  public void testOnlineProducerFactoryWriterHookOverloads() throws Exception {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName + "-factory-hook");
     VeniceWriterHook writerHook = Mockito.mock(VeniceWriterHook.class);
+    Properties producerProperties = new Properties();
+    producerProperties.put(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, TestPubSubProducerAdapterFactory.class.getName());
+    producerProperties.put(CLIENT_PRODUCER_WORKER_COUNT, 0);
+    VeniceProperties producerConfigs = new VeniceProperties(producerProperties);
 
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClientConfig,
-        VeniceProperties.empty(),
-        metricsRepository,
-        false,
-        writerHook)) {
-      Assert.assertSame(producer.getCapturedWriterOptions().getWriterHook(), writerHook);
+    try (OnlineVeniceProducer producer =
+        OnlineProducerFactory.createProducer(storeClientConfig, producerConfigs, null, writerHook)) {
+      Assert.assertSame(producer.getWriterHook(), writerHook);
+      producer.asyncPut("KEY1", mockValue1).get(5, TimeUnit.SECONDS);
+      verify(writerHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
+    }
+
+    ClientConfig legacyStoreClientConfig = configureMocksAndGetStoreConfig(storeName + "-factory-legacy");
+    try (OnlineVeniceProducer producer =
+        OnlineProducerFactory.createProducer(legacyStoreClientConfig, producerConfigs, null)) {
+      Assert.assertNull(producer.getWriterHook());
     }
   }
 
@@ -1179,13 +1308,28 @@ public class OnlineVeniceProducerTest {
         .setStoreName(KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
         .setSpecificValueClass(KafkaMessageEnvelope.class);
 
-    configureMockTransportClient(mockTransportClient, updateEnabled, requestTopicResponse);
+    configureMockTransportClient(mockTransportClient, updateEnabled, requestTopicResponse, 0, storeName);
     configureMockKmeTransportClient(mockKmeTransportClient);
 
     ClientFactoryTestUtils.registerTransportClient(storeClientConfig, mockTransportClient);
     ClientFactoryTestUtils.registerTransportClient(kmeClientConfig, mockKmeTransportClient);
 
     return storeClientConfig;
+  }
+
+  private ClientResourceMocks replaceClientResourcesWithMocks(OnlineVeniceProducer producer) throws Exception {
+    Field schemaReaderField = OnlineVeniceProducer.class.getDeclaredField("schemaReader");
+    schemaReaderField.setAccessible(true);
+    SchemaReader originalSchemaReader = (SchemaReader) schemaReaderField.get(producer);
+    SchemaReader schemaReader = mock(SchemaReader.class);
+    schemaReaderField.set(producer, schemaReader);
+
+    Field storeClientField = OnlineVeniceProducer.class.getDeclaredField("storeClient");
+    storeClientField.setAccessible(true);
+    InternalAvroStoreClient originalStoreClient = (InternalAvroStoreClient) storeClientField.get(producer);
+    InternalAvroStoreClient storeClient = mock(InternalAvroStoreClient.class);
+    storeClientField.set(producer, storeClient);
+    return new ClientResourceMocks(schemaReader, storeClient, originalSchemaReader, originalStoreClient);
   }
 
   private void configureMockTransportClient(
@@ -1200,19 +1344,28 @@ public class OnlineVeniceProducerTest {
       boolean updateEnabled,
       byte[] requestTopicResponse,
       int delayInResponseMs) {
+    configureMockTransportClient(transportClient, updateEnabled, requestTopicResponse, delayInResponseMs, storeName);
+  }
+
+  private void configureMockTransportClient(
+      TransportClient transportClient,
+      boolean updateEnabled,
+      byte[] requestTopicResponse,
+      int delayInResponseMs,
+      String configuredStoreName) {
     doCallRealMethod().when(transportClient).getCopyIfNotUsableInCallback();
     doCallRealMethod().when(transportClient).get(anyString());
     doCallRealMethod().when(transportClient).post(anyString(), any());
 
     int partitionCount = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    Version version = new VersionImpl(storeName, 1, "test-job-id");
+    Version version = new VersionImpl(configuredStoreName, 1, "test-job-id");
     version.setPartitionCount(partitionCount);
 
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1000, 1000, -1, BufferReplayPolicy.REWIND_FROM_EOP);
 
     ZKStore store = new ZKStore(
-        storeName,
+        configuredStoreName,
         "test-owner",
         System.currentTimeMillis(),
         PersistenceType.ROCKS_DB,
@@ -1243,11 +1396,11 @@ public class OnlineVeniceProducerTest {
       } else {
         return getTransportClientFuture(requestTopicResponse, delayInResponseMs);
       }
-    }).when(transportClient).get(eq("request_topic/" + storeName), anyMap());
+    }).when(transportClient).get(eq("request_topic/" + configuredStoreName), anyMap());
 
     doAnswer(invocation -> getTransportClientFuture(STORE_SERIALIZER.serialize(store, null), delayInResponseMs))
         .when(transportClient)
-        .get(eq("store_state/" + storeName), anyMap());
+        .get(eq("store_state/" + configuredStoreName), anyMap());
 
     configureSchemaResponseMocks(
         transportClient,
@@ -1255,7 +1408,8 @@ public class OnlineVeniceProducerTest {
         2,
         Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2),
         updateEnabled,
-        delayInResponseMs);
+        delayInResponseMs,
+        configuredStoreName);
   }
 
   private void configureSchemaResponseMocks(
@@ -1264,7 +1418,8 @@ public class OnlineVeniceProducerTest {
       int supersetSchemaId,
       List<Schema> updateSchemas,
       boolean updateEnabled,
-      int delayInResponseMs) {
+      int delayInResponseMs,
+      String configuredStoreName) {
     String keySchemaStr = KEY_SCHEMA.toString();
     SchemaResponse keySchemaResponse = new SchemaResponse();
     keySchemaResponse.setId(1);
@@ -1272,7 +1427,7 @@ public class OnlineVeniceProducerTest {
 
     doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(keySchemaResponse), delayInResponseMs))
         .when(transportClient)
-        .get(eq("key_schema/" + storeName), anyMap());
+        .get(eq("key_schema/" + configuredStoreName), anyMap());
 
     MultiSchemaIdResponse multiSchemaIdResponse = new MultiSchemaIdResponse();
     if (supersetSchemaId > 0) {
@@ -1285,12 +1440,12 @@ public class OnlineVeniceProducerTest {
     multiSchemaIdResponse.setSchemaIdSet(schemaIdSet);
     doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaIdResponse), delayInResponseMs))
         .when(transportClient)
-        .get(eq("value_schema_ids/" + storeName), anyMap());
+        .get(eq("value_schema_ids/" + configuredStoreName), anyMap());
 
     // Also mock the all_value_schema_ids endpoint used by RouterBackedSchemaReader
     doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaIdResponse), delayInResponseMs))
         .when(transportClient)
-        .get(eq("all_value_schema_ids/" + storeName), anyMap());
+        .get(eq("all_value_schema_ids/" + configuredStoreName), anyMap());
 
     for (int i = 0; i < valueSchemas.size(); i++) {
       SchemaResponse valueSchemaResponse = new SchemaResponse();
@@ -1298,7 +1453,7 @@ public class OnlineVeniceProducerTest {
       valueSchemaResponse.setSchemaStr(valueSchemas.get(i).toString());
       doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(valueSchemaResponse), delayInResponseMs))
           .when(transportClient)
-          .get(eq("value_schema/" + storeName + "/" + (i + 1)), anyMap());
+          .get(eq("value_schema/" + configuredStoreName + "/" + (i + 1)), anyMap());
     }
 
     MultiSchemaResponse.Schema[] valueSchemaArr = new MultiSchemaResponse.Schema[valueSchemas.size()];
@@ -1319,18 +1474,18 @@ public class OnlineVeniceProducerTest {
 
     doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse), delayInResponseMs))
         .when(transportClient)
-        .get(eq("value_schema/" + storeName), anyMap());
+        .get(eq("value_schema/" + configuredStoreName), anyMap());
 
     if (updateEnabled) {
       MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
       allUpdateSchemaResponse.setCluster(clusterName);
-      allUpdateSchemaResponse.setName(storeName);
+      allUpdateSchemaResponse.setName(configuredStoreName);
 
       MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[updateSchemas.size()];
       for (int i = 0; i < updateSchemas.size(); i++) {
         SchemaResponse updateSchemaResponse = new SchemaResponse();
         updateSchemaResponse.setCluster(clusterName);
-        updateSchemaResponse.setName(storeName);
+        updateSchemaResponse.setName(configuredStoreName);
         updateSchemaResponse.setId(i + 1);
         updateSchemaResponse.setDerivedSchemaId(1);
         updateSchemaResponse.setSchemaStr(updateSchemas.get(i).toString());
@@ -1338,7 +1493,7 @@ public class OnlineVeniceProducerTest {
         doAnswer(
             invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(updateSchemaResponse), delayInResponseMs))
                 .when(transportClient)
-                .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
+                .get(eq("update_schema/" + configuredStoreName + "/" + (i + 1)), anyMap());
 
         MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
         schema.setId(i + 1);
@@ -1351,22 +1506,22 @@ public class OnlineVeniceProducerTest {
       doAnswer(
           invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse), delayInResponseMs))
               .when(transportClient)
-              .get(eq("update_schema/" + storeName), anyMap());
+              .get(eq("update_schema/" + configuredStoreName), anyMap());
     } else {
       for (int i = 0; i < updateSchemas.size(); i++) {
         SchemaResponse noUpdateSchemaResponse = new SchemaResponse();
-        noUpdateSchemaResponse
-            .setError("Update schema doesn't exist for value schema id: " + (i + 1) + " of store: " + storeName);
+        noUpdateSchemaResponse.setError(
+            "Update schema doesn't exist for value schema id: " + (i + 1) + " of store: " + configuredStoreName);
 
         doAnswer(
             invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(noUpdateSchemaResponse), delayInResponseMs))
                 .when(transportClient)
-                .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
+                .get(eq("update_schema/" + configuredStoreName + "/" + (i + 1)), anyMap());
       }
 
       MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
       allUpdateSchemaResponse.setCluster(clusterName);
-      allUpdateSchemaResponse.setName(storeName);
+      allUpdateSchemaResponse.setName(configuredStoreName);
 
       MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[0];
       allUpdateSchemaResponse.setSchemas(multiSchemas);
@@ -1374,7 +1529,7 @@ public class OnlineVeniceProducerTest {
       doAnswer(
           invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse), delayInResponseMs))
               .when(transportClient)
-              .get(eq("update_schema/" + storeName), anyMap());
+              .get(eq("update_schema/" + configuredStoreName), anyMap());
     }
   }
 
@@ -1397,16 +1552,7 @@ public class OnlineVeniceProducerTest {
         VeniceProperties backendConfigs,
         MetricsRepository metricsRepository,
         boolean failPubSubWrites) {
-      this(storeClientConfig, backendConfigs, metricsRepository, failPubSubWrites, null);
-    }
-
-    public TestOnlineVeniceProducer(
-        ClientConfig storeClientConfig,
-        VeniceProperties backendConfigs,
-        MetricsRepository metricsRepository,
-        boolean failPubSubWrites,
-        VeniceWriterHook writerHook) {
-      super(storeClientConfig, backendConfigs, metricsRepository, null, writerHook);
+      super(storeClientConfig, backendConfigs, metricsRepository, null);
       this.failPubSubWrites = failPubSubWrites;
 
       configureVeniceWriteMock();
@@ -1440,6 +1586,47 @@ public class OnlineVeniceProducerTest {
       return capturedDispatcher;
     }
 
+    public void scheduleDeferredFailure(RuntimeException failure, CountDownLatch completionRan) {
+      Runnable completion = () -> {
+        try {
+          throw failure;
+        } finally {
+          completionRan.countDown();
+        }
+      };
+      scheduleDeferredCompletionForTest(completion);
+    }
+
+    public void scheduleCloseThenFailure(
+        RuntimeException failure,
+        CountDownLatch closeReturned,
+        CountDownLatch completionFinished) {
+      scheduleDeferredCompletionForTest(() -> {
+        try {
+          try {
+            close();
+          } catch (IOException exception) {
+            throw new AssertionError("Reentrant close unexpectedly failed", exception);
+          }
+          closeReturned.countDown();
+          throw failure;
+        } finally {
+          completionFinished.countDown();
+        }
+      });
+    }
+
+    private void scheduleDeferredCompletionForTest(Runnable completion) {
+      try {
+        Method scheduleDeferredCompletion =
+            AbstractVeniceProducer.class.getDeclaredMethod("scheduleDeferredCompletion", Runnable.class);
+        scheduleDeferredCompletion.setAccessible(true);
+        scheduleDeferredCompletion.invoke(this, completion);
+      } catch (ReflectiveOperationException exception) {
+        throw new RuntimeException(exception);
+      }
+    }
+
     private void configureVeniceWriteMock() {
       doAnswer(getPubSubProducerCallbackAnswer(failPubSubWrites, 3)).when(mockVeniceWriter)
           .put(any(), any(), anyInt(), any());
@@ -1470,6 +1657,99 @@ public class OnlineVeniceProducerTest {
           return null;
         };
       }
+    }
+  }
+
+  private static class WorkerTerminationFailingOnlineVeniceProducer<K, V> extends TestOnlineVeniceProducer<K, V> {
+    WorkerTerminationFailingOnlineVeniceProducer(
+        ClientConfig storeClientConfig,
+        VeniceProperties backendConfigs,
+        MetricsRepository metricsRepository) {
+      super(storeClientConfig, backendConfigs, metricsRepository);
+    }
+
+    @Override
+    protected PartitionedProducerExecutor createDispatcher(
+        String storeName,
+        VeniceProperties configs,
+        MetricsRepository metricsRepository) {
+      return new PartitionedProducerExecutor(1, 1, 0, 1, storeName, metricsRepository) {
+        private final AtomicInteger remainingFailures = new AtomicInteger(2);
+
+        @Override
+        public boolean awaitWorkerTermination(long timeout, TimeUnit unit) throws InterruptedException {
+          return remainingFailures.getAndDecrement() > 0 ? false : super.awaitWorkerTermination(timeout, unit);
+        }
+      };
+    }
+  }
+
+  private static class CallbackTerminationFailingOnlineVeniceProducer<K, V> extends TestOnlineVeniceProducer<K, V> {
+    CallbackTerminationFailingOnlineVeniceProducer(
+        ClientConfig storeClientConfig,
+        VeniceProperties backendConfigs,
+        MetricsRepository metricsRepository) {
+      super(storeClientConfig, backendConfigs, metricsRepository);
+    }
+
+    @Override
+    protected PartitionedProducerExecutor createDispatcher(
+        String storeName,
+        VeniceProperties configs,
+        MetricsRepository metricsRepository) {
+      return new PartitionedProducerExecutor(0, 1, 1, 1, storeName, metricsRepository) {
+        private final AtomicInteger remainingFailures = new AtomicInteger(2);
+
+        @Override
+        public boolean awaitCallbackTermination(long timeout, TimeUnit unit) throws InterruptedException {
+          return remainingFailures.getAndDecrement() > 0 ? false : super.awaitCallbackTermination(timeout, unit);
+        }
+      };
+    }
+  }
+
+  private static class ClientResourceMocks {
+    private final SchemaReader schemaReader;
+    private final InternalAvroStoreClient storeClient;
+    private final SchemaReader originalSchemaReader;
+    private final InternalAvroStoreClient originalStoreClient;
+
+    private ClientResourceMocks(
+        SchemaReader schemaReader,
+        InternalAvroStoreClient storeClient,
+        SchemaReader originalSchemaReader,
+        InternalAvroStoreClient originalStoreClient) {
+      this.schemaReader = schemaReader;
+      this.storeClient = storeClient;
+      this.originalSchemaReader = originalSchemaReader;
+      this.originalStoreClient = originalStoreClient;
+    }
+
+    private void closeOriginalResources() {
+      Utils.closeQuietlyWithErrorLogged(originalSchemaReader, originalStoreClient);
+    }
+  }
+
+  public static class TestPubSubProducerAdapterFactory extends PubSubProducerAdapterFactory<PubSubProducerAdapter> {
+    @Override
+    public PubSubProducerAdapter create(PubSubProducerAdapterContext context) {
+      PubSubProducerAdapter adapter = mock(PubSubProducerAdapter.class);
+      doAnswer(invocation -> {
+        PubSubProducerCallback callback = invocation.getArgument(5);
+        callback.onCompletion(null, null);
+        return CompletableFuture.completedFuture(null);
+      }).when(adapter).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
+      Mockito.when(adapter.getBrokerAddress()).thenReturn(context.getBrokerAddress());
+      return adapter;
+    }
+
+    @Override
+    public String getName() {
+      return "online-producer-factory-test";
+    }
+
+    @Override
+    public void close() {
     }
   }
 

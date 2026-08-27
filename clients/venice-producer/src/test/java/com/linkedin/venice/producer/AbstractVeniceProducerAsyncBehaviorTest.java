@@ -1,10 +1,14 @@
 package com.linkedin.venice.producer;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -23,6 +27,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -40,7 +45,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterMethod;
@@ -66,6 +70,7 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
   private static final String KEY_SCHEMA_STR = "\"int\"";
   private static final Schema KEY_SCHEMA = Schema.parse(KEY_SCHEMA_STR);
   private static final int PARTITION_COUNT = 4;
+  private static final String PENDING_OPERATION_METRIC = "." + TEST_STORE + "--pending_write_operation.Gauge";
 
   private VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter;
   private SchemaReader mockSchemaReader;
@@ -315,7 +320,6 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
 
     CountDownLatch blockingTaskStarted = new CountDownLatch(1);
     CountDownLatch allowBlockingTaskToFinish = new CountDownLatch(1);
-    AtomicBoolean callerWasBlocked = new AtomicBoolean(false);
 
     AtomicInteger putCallCount = new AtomicInteger(0);
     doAnswer(invocation -> {
@@ -339,36 +343,23 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
 
       CountDownLatch submitterStarted = new CountDownLatch(1);
       AtomicBoolean submitterFinished = new AtomicBoolean(false);
-      AtomicLong submitterBlockedTimeMs = new AtomicLong(0);
 
       Thread submitterThread = new Thread(() -> {
         submitterStarted.countDown();
-        long startTime = System.nanoTime();
         for (int i = 1; i <= queueCapacity + 2; i++) {
           producer.asyncPut(0, "value-" + i);
         }
-        submitterBlockedTimeMs.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime));
         submitterFinished.set(true);
       });
       submitterThread.start();
 
       assertTrue(submitterStarted.await(2, TimeUnit.SECONDS), "Submitter should start");
-
-      // Wait for submitter to become blocked (WAITING or TIMED_WAITING state)
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-      while (System.nanoTime() < deadline && !submitterFinished.get()) {
-        Thread.State state = submitterThread.getState();
-        if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
-          callerWasBlocked.set(true);
-          break;
-        }
-        Thread.yield();
-      }
+      assertTrue(producer.getDispatcher().awaitWorkerAdmissionBlocked(5, TimeUnit.SECONDS));
+      assertFalse(submitterFinished.get(), "Caller should be blocked while the worker queue is full");
 
       allowBlockingTaskToFinish.countDown();
       submitterThread.join(10000);
 
-      assertTrue(callerWasBlocked.get(), "Caller should have been blocked when queue was full");
       assertTrue(submitterFinished.get(), "Submitter should eventually finish after queue drains");
     } finally {
       producer.close();
@@ -421,17 +412,7 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
       additionalSubmitter.start();
 
       assertTrue(additionalSubmitStarted.await(2, TimeUnit.SECONDS));
-
-      // Wait for additional submitter to become blocked (WAITING or TIMED_WAITING state)
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-      while (System.nanoTime() < deadline && !additionalSubmitCompleted.get()) {
-        Thread.State state = additionalSubmitter.getState();
-        if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
-          break;
-        }
-        Thread.yield();
-      }
-
+      assertTrue(producer.getDispatcher().awaitWorkerAdmissionBlocked(5, TimeUnit.SECONDS));
       assertFalse(additionalSubmitCompleted.get(), "Additional submit should be blocked");
 
       allowFirstBatchToFinish.countDown();
@@ -615,8 +596,165 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
       assertFalse(
           completionThread == shutdownThread,
           "Worker shutdown rejection must not run user continuations inline");
+      assertTrue(completionThread.getName().startsWith("venice-completion-handoff-t"));
     } finally {
       releaseWorker.countDown();
+      producer.close();
+    }
+  }
+
+  @Test
+  public void testForcedShutdownDoesNotPreemptActiveWriteCompletion() throws Exception {
+    CountDownLatch writerEntered = new CountDownLatch(1);
+    CountDownLatch interruptObserved = new CountDownLatch(1);
+    CountDownLatch releaseWriter = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      PubSubProducerCallback callback = invocation.getArgument(4);
+      writerEntered.countDown();
+      boolean interrupted = false;
+      while (true) {
+        try {
+          releaseWriter.await();
+          break;
+        } catch (InterruptedException exception) {
+          interrupted = true;
+          interruptObserved.countDown();
+        }
+      }
+      callback.onCompletion(null, null);
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    MetricsRepository metricsRepository = new MetricsRepository();
+    TestableVeniceProducer producer = createProducer(1, 10, 0, metricsRepository);
+    VeniceProducerMetrics producerMetrics = producer.spyOnMetrics();
+    AtomicInteger terminalCompletions = new AtomicInteger();
+    CountDownLatch terminalCompletionObserved = new CountDownLatch(1);
+
+    try {
+      CompletableFuture<DurableWrite> durableWrite = producer.asyncPut(0, "value");
+      durableWrite.whenComplete((ignored, failure) -> {
+        terminalCompletions.incrementAndGet();
+        terminalCompletionObserved.countDown();
+      });
+      assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
+
+      producer.getDispatcher().shutdownWorkersNow();
+      assertTrue(interruptObserved.await(5, TimeUnit.SECONDS));
+      assertFalse(durableWrite.isDone());
+      assertFalse(producer.getDispatcher().awaitWorkerTermination(0, TimeUnit.NANOSECONDS));
+
+      releaseWriter.countDown();
+      durableWrite.get(5, TimeUnit.SECONDS);
+      assertTrue(terminalCompletionObserved.await(5, TimeUnit.SECONDS));
+      assertTrue(producer.getDispatcher().awaitWorkerTermination(5, TimeUnit.SECONDS));
+      assertEquals(terminalCompletions.get(), 1);
+      verify(producerMetrics, times(1)).recordSuccessfulRequestWithLatency(anyDouble());
+      verify(producerMetrics, never()).recordFailedRequest();
+      assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC).value(), 0.0);
+    } finally {
+      releaseWriter.countDown();
+      producer.close();
+    }
+  }
+
+  @Test
+  public void testInlineWriteCallbackCanCloseDuringLaterInlineSubmission() throws Exception {
+    AtomicInteger writeCount = new AtomicInteger();
+    AtomicReference<PubSubProducerCallback> firstCallback = new AtomicReference<>();
+    doAnswer(invocation -> {
+      PubSubProducerCallback callback = invocation.getArgument(4);
+      if (writeCount.incrementAndGet() == 1) {
+        firstCallback.set(callback);
+      } else {
+        firstCallback.get().onCompletion(null, null);
+        callback.onCompletion(null, null);
+      }
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    TestableVeniceProducer producer = createProducer(0, 10, 0);
+    AtomicBoolean closeStarted = new AtomicBoolean();
+    AtomicReference<CompletableFuture<DurableWrite>> secondWrite = new AtomicReference<>();
+    CompletableFuture<Void> laterSubmission = null;
+
+    try {
+      CompletableFuture<DurableWrite> firstWrite = producer.asyncPut(0, "first");
+      CompletableFuture<Void> closeReturned = firstWrite.thenRun(() -> {
+        closeStarted.set(true);
+        closeUnchecked(producer);
+      });
+
+      laterSubmission = CompletableFuture.runAsync(
+          () -> secondWrite.set(producer.asyncPut(0, "second")),
+          dedicatedThreadExecutor("test-inline-late-callback"));
+      laterSubmission.get(5, TimeUnit.SECONDS);
+      closeReturned.get(5, TimeUnit.SECONDS);
+      secondWrite.get().get(5, TimeUnit.SECONDS);
+
+      assertTrue(producer.isClosed());
+      assertEquals(writeCount.get(), 2);
+      verify(mockVeniceWriter).close();
+    } finally {
+      awaitQuietly(laterSubmission);
+      if (!closeStarted.get()) {
+        producer.close();
+      }
+    }
+  }
+
+  @Test(timeOut = 10000)
+  public void testCallbackWorkerCloseDefersSynchronousWriterCloseCallbackWhenQueueIsFull() throws Exception {
+    AtomicReference<PubSubProducerCallback> firstCallback = new AtomicReference<>();
+    AtomicReference<PubSubProducerCallback> writerCloseCallback = new AtomicReference<>();
+    AtomicInteger writeCount = new AtomicInteger();
+    doAnswer(invocation -> {
+      PubSubProducerCallback callback = invocation.getArgument(4);
+      if (writeCount.incrementAndGet() == 1) {
+        firstCallback.set(callback);
+      } else {
+        writerCloseCallback.set(callback);
+      }
+      return null;
+    }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+    doAnswer(invocation -> {
+      writerCloseCallback.get().onCompletion(null, null);
+      return null;
+    }).when(mockVeniceWriter).close();
+    MetricsRepository metricsRepository = new MetricsRepository();
+    TestableVeniceProducer producer = createProducer(0, 10, 1, 1, metricsRepository);
+    VeniceProducerMetrics producerMetrics = producer.spyOnMetrics();
+    CountDownLatch queuedCallbackRan = new CountDownLatch(1);
+    AtomicInteger callbackQueueSizeAtClose = new AtomicInteger();
+    AtomicInteger writerCloseFutureCompletions = new AtomicInteger();
+    CompletableFuture<Void> closeReturned = null;
+
+    try {
+      CompletableFuture<DurableWrite> firstWrite = producer.asyncPut(0, "first");
+      CompletableFuture<DurableWrite> writerCloseWrite = producer.asyncPut(0, "writer-close");
+      writerCloseWrite.whenComplete((ignored, failure) -> writerCloseFutureCompletions.incrementAndGet());
+      closeReturned = firstWrite.thenRun(() -> {
+        producer.getDispatcher().executeCallback(queuedCallbackRan::countDown);
+        callbackQueueSizeAtClose.set(producer.getDispatcher().getCallbackQueueSize());
+        closeUnchecked(producer);
+      });
+
+      firstCallback.get().onCompletion(null, null);
+
+      closeReturned.get(5, TimeUnit.SECONDS);
+      assertEquals(callbackQueueSizeAtClose.get(), 1);
+      assertTrue(writerCloseWrite.isDone(), "close() must drain the deferred writer-close completion");
+      writerCloseWrite.get(5, TimeUnit.SECONDS);
+      assertTrue(queuedCallbackRan.await(5, TimeUnit.SECONDS));
+      assertTrue(producer.getDispatcher().awaitCallbackTermination(5, TimeUnit.SECONDS));
+      assertEquals(writerCloseFutureCompletions.get(), 1);
+      verify(producerMetrics, times(2)).recordSuccessfulRequestWithLatency(anyDouble());
+      verify(producerMetrics, never()).recordFailedRequest();
+      assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC).value(), 0.0);
+      verify(mockVeniceWriter).close();
+    } finally {
+      awaitQuietly(closeReturned);
       producer.close();
     }
   }
@@ -731,30 +869,32 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
   }
 
   @Test(timeOut = 10000)
-  public void testDeferredCompletionCloseExemptsNestedRejectedCompletionDepth() {
+  public void testDeferredCompletionCloseExemptsNestedRejectedCompletionDepth() throws Exception {
     TestableVeniceProducer producer = createProducer(1, 10, 0);
-    AtomicBoolean closeReturned = new AtomicBoolean();
+    CompletableFuture<Void> closeReturned = new CompletableFuture<>();
     Executor rejectingExecutor = task -> {
       throw new RejectedExecutionException("deferred executor unavailable");
     };
     producer.scheduleDeferredCompletion(() -> producer.scheduleDeferredCompletion(() -> {
       closeUnchecked(producer);
-      closeReturned.set(true);
+      closeReturned.complete(null);
     }, rejectingExecutor), Runnable::run);
 
-    assertTrue(closeReturned.get());
+    closeReturned.get(5, TimeUnit.SECONDS);
   }
 
   @Test(timeOut = 5000)
-  public void testRejectedDeferredCompletionExecutorFallsBackInline() throws Exception {
+  public void testRejectedDeferredCompletionExecutorFallsBackToVeniceExecutor() throws Exception {
     TestableVeniceProducer producer = createProducer(1, 10, 0);
     try {
-      AtomicReference<Thread> completionThread = new AtomicReference<>();
-      producer.scheduleDeferredCompletion(() -> completionThread.set(Thread.currentThread()), task -> {
+      CompletableFuture<Thread> completionThread = new CompletableFuture<>();
+      producer.scheduleDeferredCompletion(() -> completionThread.complete(Thread.currentThread()), task -> {
         throw new RejectedExecutionException("deferred executor unavailable");
       });
 
-      assertSame(completionThread.get(), Thread.currentThread());
+      Thread fallbackThread = completionThread.get(5, TimeUnit.SECONDS);
+      assertFalse(fallbackThread == Thread.currentThread());
+      assertTrue(fallbackThread.getName().startsWith("venice-completion-handoff-t"));
     } finally {
       producer.close();
     }
@@ -765,13 +905,31 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
   }
 
   private TestableVeniceProducer createProducer(int workerCount, int queueCapacity, int callbackThreadCount) {
+    return createProducer(workerCount, queueCapacity, callbackThreadCount, null);
+  }
+
+  private TestableVeniceProducer createProducer(
+      int workerCount,
+      int queueCapacity,
+      int callbackThreadCount,
+      MetricsRepository metricsRepository) {
+    return createProducer(workerCount, queueCapacity, callbackThreadCount, 100000, metricsRepository);
+  }
+
+  private TestableVeniceProducer createProducer(
+      int workerCount,
+      int queueCapacity,
+      int callbackThreadCount,
+      int callbackQueueCapacity,
+      MetricsRepository metricsRepository) {
     Properties props = new Properties();
     props.setProperty("client.producer.worker.count", String.valueOf(workerCount));
     props.setProperty("client.producer.worker.queue.capacity", String.valueOf(queueCapacity));
     props.setProperty("client.producer.callback.thread.count", String.valueOf(callbackThreadCount));
+    props.setProperty("client.producer.callback.queue.capacity", String.valueOf(callbackQueueCapacity));
 
     TestableVeniceProducer producer = new TestableVeniceProducer(mockVeniceWriter);
-    producer.configure(TEST_STORE, new VeniceProperties(props), null, mockSchemaReader, null);
+    producer.configure(TEST_STORE, new VeniceProperties(props), metricsRepository, mockSchemaReader, null);
     return producer;
   }
 
@@ -807,7 +965,7 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
    */
   private static class TestableVeniceProducer extends AbstractVeniceProducer<Integer, String> {
     private final VeniceWriter<byte[], byte[], byte[]> mockWriter;
-    private PartitionedProducerExecutor dispatcher;
+    private TestPartitionedProducerExecutor dispatcher;
 
     TestableVeniceProducer(VeniceWriter<byte[], byte[], byte[]> mockWriter) {
       this.mockWriter = mockWriter;
@@ -836,12 +994,46 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
         String storeName,
         VeniceProperties configs,
         MetricsRepository metricsRepository) {
-      dispatcher = super.createDispatcher(storeName, configs, metricsRepository);
+      dispatcher = new TestPartitionedProducerExecutor(
+          configs.getInt("client.producer.worker.count"),
+          configs.getInt("client.producer.worker.queue.capacity"),
+          configs.getInt("client.producer.callback.thread.count"),
+          configs.getInt("client.producer.callback.queue.capacity"),
+          storeName,
+          metricsRepository);
       return dispatcher;
     }
 
-    private PartitionedProducerExecutor getDispatcher() {
+    private TestPartitionedProducerExecutor getDispatcher() {
       return dispatcher;
+    }
+
+    private VeniceProducerMetrics spyOnMetrics() {
+      try {
+        Field field = AbstractVeniceProducer.class.getDeclaredField("producerMetrics");
+        field.setAccessible(true);
+        VeniceProducerMetrics metrics = spy((VeniceProducerMetrics) field.get(this));
+        field.set(this, metrics);
+        return metrics;
+      } catch (ReflectiveOperationException exception) {
+        throw new AssertionError("Unable to install producer metrics spy", exception);
+      }
+    }
+  }
+
+  private static final class TestPartitionedProducerExecutor extends PartitionedProducerExecutor {
+    private TestPartitionedProducerExecutor(
+        int workerCount,
+        int workerQueueCapacity,
+        int callbackThreadCount,
+        int callbackQueueCapacity,
+        String storeName,
+        MetricsRepository metricsRepository) {
+      super(workerCount, workerQueueCapacity, callbackThreadCount, callbackQueueCapacity, storeName, metricsRepository);
+    }
+
+    private boolean awaitWorkerAdmissionBlocked(long timeout, TimeUnit unit) throws InterruptedException {
+      return awaitWorkerAdmission(0, timeout, unit);
     }
   }
 }
