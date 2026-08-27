@@ -95,6 +95,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private static final ChunkedPayloadAndManifest EMPTY_CHUNKED_PAYLOAD_AND_MANIFEST =
       new ChunkedPayloadAndManifest(null, null);
+  private static final int ASYNC_BROADCAST_THREAD_COUNT = 8;
 
   // use for running async close and to fetch number of partitions with timeout from producer
   private final ThreadPoolExecutor threadPoolExecutor;
@@ -423,11 +424,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.defaultLeaderMetadata = new DefaultLeaderMetadata(this.writerId);
     this.producerGUID = GuidUtils.getGUID(props);
     this.logger = LogManager.getLogger("VeniceWriter [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
-    // Create a thread pool which can have max 2 threads.
+    // Keep broadcast concurrency bounded because each task can synchronously wait for START_OF_SEGMENT.
     // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
     this.threadPoolExecutor = new ThreadPoolExecutor(
-        2,
-        2,
+        ASYNC_BROADCAST_THREAD_COUNT,
+        ASYNC_BROADCAST_THREAD_COUNT,
         5,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
@@ -1664,14 +1665,34 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Validate.notEmpty(newServingVersionTopic);
     Validate.notEmpty(sourceRegion);
     Validate.notEmpty(destinationRegion);
-    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
-    controlMessage.controlMessageUnion = generateVersionSwapMessage(
-        oldServingVersionTopic,
-        newServingVersionTopic,
-        sourceRegion,
-        destinationRegion,
-        generationId);
-    return broadcastControlMessage(controlMessage, debugInfo);
+    List<CompletableFuture<PubSubProduceResult>> partitionWriteFutures = new ArrayList<>(numberOfPartitions);
+    for (int partition = 0; partition < numberOfPartitions; partition++) {
+      int destinationPartition = partition;
+      CompletableFuture<PubSubProduceResult> partitionWriteFuture = new CompletableFuture<>();
+      partitionWriteFutures.add(partitionWriteFuture);
+      threadPoolExecutor.execute(() -> {
+        try {
+          ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+          controlMessage.controlMessageUnion = generateVersionSwapMessage(
+              oldServingVersionTopic,
+              newServingVersionTopic,
+              sourceRegion,
+              destinationRegion,
+              generationId);
+          sendControlMessage(controlMessage, destinationPartition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER)
+              .whenComplete((result, throwable) -> {
+                if (throwable == null) {
+                  partitionWriteFuture.complete(result);
+                } else {
+                  partitionWriteFuture.completeExceptionally(throwable);
+                }
+              });
+        } catch (Exception e) {
+          partitionWriteFuture.completeExceptionally(e);
+        }
+      });
+    }
+    return partitionWriteFutures;
   }
 
   private VersionSwap generateVersionSwapMessage(

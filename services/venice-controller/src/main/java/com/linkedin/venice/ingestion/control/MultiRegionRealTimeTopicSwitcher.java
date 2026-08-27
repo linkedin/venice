@@ -5,7 +5,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -14,14 +16,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
   private static final Logger LOGGER = LogManager.getLogger(MultiRegionRealTimeTopicSwitcher.class);
-  private static final int DEFAULT_PER_DATA_CENTER_BROADCAST_TIMEOUT_IN_SECONDS = 60;
+  private static final int DEFAULT_BROADCAST_TIMEOUT_IN_SECONDS = 60;
   private final Map<String, String> allAASourceDataCenterBrokerAddressMap;
   private final String localDataCenterName;
 
@@ -56,55 +64,212 @@ public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
         storeName,
         partitionCount,
         allAASourceDataCenterBrokerAddressMap.size());
+    ExecutorService regionExecutor = Executors.newFixedThreadPool(
+        Math.max(1, allAASourceDataCenterBrokerAddressMap.size()),
+        new DaemonThreadFactory("Version-Swap-" + storeName));
     Map<String, CompletableFuture<Void>> dataCenterBroadcastFutureMap = new HashMap<>();
-    for (Map.Entry<String, String> entry: allAASourceDataCenterBrokerAddressMap.entrySet()) {
-      String dataCenterName = entry.getKey();
+    Map<String, VeniceWriter> dataCenterWriterMap = new ConcurrentHashMap<>();
+    long deadlineNs = System.nanoTime() + TimeUnit.SECONDS.toNanos(DEFAULT_BROADCAST_TIMEOUT_IN_SECONDS);
+    AtomicBoolean broadcastAborted = new AtomicBoolean(false);
+    boolean broadcastCompleted = false;
+    try {
+      for (Map.Entry<String, String> entry: allAASourceDataCenterBrokerAddressMap.entrySet()) {
+        String dataCenterName = entry.getKey();
+        String brokerAddress = entry.getValue();
+        dataCenterBroadcastFutureMap.put(
+            dataCenterName,
+            CompletableFuture.runAsync(
+                () -> broadcastVersionSwapToDataCenter(
+                    previousStoreVersion,
+                    nextStoreVersion,
+                    topicName,
+                    partitionCount,
+                    generationId,
+                    dataCenterName,
+                    brokerAddress,
+                    deadlineNs,
+                    dataCenterWriterMap,
+                    broadcastAborted),
+                regionExecutor));
+      }
+
+      CompletableFuture.allOf(dataCenterBroadcastFutureMap.values().toArray(new CompletableFuture[0]))
+          .get(getRemainingTimeInMs(deadlineNs), TimeUnit.MILLISECONDS);
+      broadcastCompleted = true;
+      closeWritersGracefully(dataCenterWriterMap, deadlineNs);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException(
+          getBroadcastFailureMessage(
+              generationId,
+              storeName,
+              previousStoreVersion,
+              nextStoreVersion,
+              topicName,
+              dataCenterBroadcastFutureMap),
+          e);
+    } catch (ExecutionException | TimeoutException e) {
+      throw new VeniceException(
+          getBroadcastFailureMessage(
+              generationId,
+              storeName,
+              previousStoreVersion,
+              nextStoreVersion,
+              topicName,
+              dataCenterBroadcastFutureMap),
+          e);
+    } finally {
+      if (!broadcastCompleted) {
+        broadcastAborted.set(true);
+        closeWritersUngracefully(dataCenterWriterMap);
+      }
+      regionExecutor.shutdownNow();
+    }
+  }
+
+  private void broadcastVersionSwapToDataCenter(
+      Version previousStoreVersion,
+      Version nextStoreVersion,
+      String topicName,
+      int partitionCount,
+      long generationId,
+      String dataCenterName,
+      String brokerAddress,
+      long deadlineNs,
+      Map<String, VeniceWriter> dataCenterWriterMap,
+      AtomicBoolean broadcastAborted) {
+    VeniceWriter veniceWriter = null;
+    boolean partitionBroadcastCompleted = false;
+    try {
       VeniceWriterOptions.Builder writerOptionsBuilder =
           new VeniceWriterOptions.Builder(topicName).setTime(getTimer()).setPartitionCount(partitionCount);
       if (!dataCenterName.equals(localDataCenterName)) {
-        writerOptionsBuilder.setBrokerAddress(entry.getValue());
+        writerOptionsBuilder.setBrokerAddress(brokerAddress);
       }
-      try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(writerOptionsBuilder.build())) {
-        List<CompletableFuture<PubSubProduceResult>> futures =
-            veniceWriter.nonBlockingBroadcastVersionSwapWithRegionInfo(
-                previousStoreVersion.kafkaTopicName(),
-                nextStoreVersion.kafkaTopicName(),
-                localDataCenterName,
-                dataCenterName,
-                generationId,
-                Collections.emptyMap());
-        dataCenterBroadcastFutureMap
-            .put(dataCenterName, CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])));
+      veniceWriter = veniceWriterFactory.createVeniceWriter(writerOptionsBuilder.build());
+      dataCenterWriterMap.put(dataCenterName, veniceWriter);
+      List<CompletableFuture<PubSubProduceResult>> partitionFutures =
+          veniceWriter.nonBlockingBroadcastVersionSwapWithRegionInfo(
+              previousStoreVersion.kafkaTopicName(),
+              nextStoreVersion.kafkaTopicName(),
+              localDataCenterName,
+              dataCenterName,
+              generationId,
+              Collections.emptyMap());
+      CompletableFuture.allOf(partitionFutures.toArray(new CompletableFuture[0]))
+          .get(getRemainingTimeInMs(deadlineNs), TimeUnit.MILLISECONDS);
+      partitionBroadcastCompleted = true;
+      LOGGER.info(
+          "Successfully sent Version Swap message with generation id: {}, source data center: {} for store: {} from version: {} to version: {} to topic: {} in data center: {}",
+          generationId,
+          localDataCenterName,
+          previousStoreVersion.getStoreName(),
+          previousStoreVersion.getNumber(),
+          nextStoreVersion.getNumber(),
+          topicName,
+          dataCenterName);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while broadcasting Version Swap message to " + dataCenterName, e);
+    } catch (ExecutionException | TimeoutException e) {
+      throw new VeniceException("Failed to broadcast Version Swap message to " + dataCenterName, e);
+    } finally {
+      if (veniceWriter != null && (!partitionBroadcastCompleted || broadcastAborted.get())
+          && dataCenterWriterMap.remove(dataCenterName, veniceWriter)) {
+        closeWriterUngracefully(dataCenterName, veniceWriter);
+      }
+    }
+  }
+
+  private void closeWritersGracefully(Map<String, VeniceWriter> dataCenterWriterMap, long deadlineNs) {
+    if (dataCenterWriterMap.isEmpty()) {
+      return;
+    }
+    Map<String, CompletableFuture<VeniceResourceCloseResult>> closeFutureMap = new HashMap<>();
+    for (Map.Entry<String, VeniceWriter> entry: dataCenterWriterMap.entrySet()) {
+      try {
+        closeFutureMap.put(entry.getKey(), entry.getValue().closeAsync(true));
+      } catch (RuntimeException e) {
+        LOGGER.warn(
+            "Failed to start graceful close for Version Swap writer in data center: {}; falling back to ungraceful close",
+            entry.getKey(),
+            e);
+        closeWriterUngracefully(entry.getKey(), entry.getValue());
       }
     }
 
-    // Check the result of each data center broadcast
-    for (Map.Entry<String, CompletableFuture<Void>> entry: dataCenterBroadcastFutureMap.entrySet()) {
-      try {
-        entry.getValue().get(DEFAULT_PER_DATA_CENTER_BROADCAST_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
-        LOGGER.info(
-            "Successfully sent Version Swap message with generation id: {}, source data center: {} for store: {} from version: {} to version: {} to topic: {} in data center: {}",
-            generationId,
-            localDataCenterName,
-            storeName,
-            previousStoreVersion.getNumber(),
-            nextStoreVersion.getNumber(),
-            topicName,
-            entry.getValue());
-      } catch (Exception e) {
-        String message = String.format(
-            "Failed to broadcast Version Swap message with generation id: %s, source data center: %s for store: %s from version: %s to version: %s to topic: %s in data center: %s",
-            generationId,
-            localDataCenterName,
-            storeName,
-            previousStoreVersion.getNumber(),
-            nextStoreVersion.getNumber(),
-            topicName,
+    try {
+      CompletableFuture.allOf(closeFutureMap.values().toArray(new CompletableFuture[0]))
+          .get(getRemainingTimeInMs(deadlineNs), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOGGER.warn("Interrupted while gracefully closing Version Swap writers; falling back to ungraceful close", e);
+    } catch (ExecutionException | TimeoutException e) {
+      LOGGER.warn("Failed to gracefully close all Version Swap writers; falling back to ungraceful close", e);
+    }
+
+    for (Map.Entry<String, CompletableFuture<VeniceResourceCloseResult>> entry: closeFutureMap.entrySet()) {
+      CompletableFuture<VeniceResourceCloseResult> closeFuture = entry.getValue();
+      if (!closeFuture.isDone() || closeFuture.isCancelled() || closeFuture.isCompletedExceptionally()) {
+        LOGGER.warn(
+            "Graceful close did not complete successfully for Version Swap writer in data center: {}; falling back to ungraceful close",
             entry.getKey());
-        LOGGER.error(message, e);
-        throw new VeniceException(message);
+        closeWriterUngracefully(entry.getKey(), dataCenterWriterMap.get(entry.getKey()));
       }
     }
+  }
+
+  private void closeWritersUngracefully(Map<String, VeniceWriter> dataCenterWriterMap) {
+    for (Map.Entry<String, VeniceWriter> entry: dataCenterWriterMap.entrySet()) {
+      if (dataCenterWriterMap.remove(entry.getKey(), entry.getValue())) {
+        closeWriterUngracefully(entry.getKey(), entry.getValue());
+      }
+    }
+  }
+
+  private void closeWriterUngracefully(String dataCenterName, VeniceWriter veniceWriter) {
+    try {
+      veniceWriter.closeAsync(false);
+    } catch (RuntimeException e) {
+      LOGGER.warn("Failed to start ungraceful close for Version Swap writer in data center: {}", dataCenterName, e);
+    }
+  }
+
+  long getRemainingTimeInMs(long deadlineNs) throws TimeoutException {
+    long remainingTimeInMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - System.nanoTime());
+    if (remainingTimeInMs <= 0) {
+      throw new TimeoutException("Version Swap broadcast exceeded its deadline");
+    }
+    return remainingTimeInMs;
+  }
+
+  private String getBroadcastFailureMessage(
+      long generationId,
+      String storeName,
+      Version previousStoreVersion,
+      Version nextStoreVersion,
+      String topicName,
+      Map<String, CompletableFuture<Void>> dataCenterBroadcastFutureMap) {
+    StringBuilder incompleteDataCenters = new StringBuilder();
+    for (Map.Entry<String, CompletableFuture<Void>> entry: dataCenterBroadcastFutureMap.entrySet()) {
+      if (!entry.getValue().isDone() || entry.getValue().isCompletedExceptionally()) {
+        if (incompleteDataCenters.length() > 0) {
+          incompleteDataCenters.append(',');
+        }
+        incompleteDataCenters.append(entry.getKey());
+      }
+    }
+    String message = String.format(
+        "Failed to broadcast Version Swap message with generation id: %s, source data center: %s for store: %s from version: %s to version: %s to topic: %s in data center(s): %s",
+        generationId,
+        localDataCenterName,
+        storeName,
+        previousStoreVersion.getNumber(),
+        nextStoreVersion.getNumber(),
+        topicName,
+        incompleteDataCenters);
+    LOGGER.error(message);
+    return message;
   }
 
   long getVersionSwapGenerationId() {
