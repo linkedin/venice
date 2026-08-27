@@ -26,6 +26,7 @@ import com.linkedin.venice.stats.dimensions.VeniceComputeOperationType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateFourEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -51,8 +52,8 @@ import java.util.function.Supplier;
 
 /**
  * {@code ServerHttpRequestStats} contains counters measuring the performance of handling requests from Routers.
- * Both OTel {@link com.linkedin.venice.stats.metrics.MetricEntityState} fields and Tehuti {@link Sensor} fields
- * coexist in this class. The record methods on MetricEntityState subclasses write to both systems.
+ * OTel {@link MetricEntityState} fields and Tehuti {@link Sensor} fields coexist in this class. A metric state may
+ * record to both systems or to OTel only, depending on how it is constructed.
  */
 public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> successRequestMetric;
@@ -81,7 +82,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor databaseLookupLatencyForLargeValueSensor;
   private final Sensor readComputeLatencyForSmallValueSensor;
   private final Sensor readComputeLatencyForLargeValueSensor;
-  private final Sensor readComputeEfficiencySensor;
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
   private final Sensor successRequestRatioSensor;
@@ -97,16 +97,13 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
       String storeName,
       String clusterName,
       RequestType requestType,
-      boolean isKeyValueProfilingEnabled,
       ServerHttpRequestStats totalStats,
-      boolean isDaVinciClient,
-      boolean readOtelStatsEnabled) {
+      boolean isDaVinciClient) {
     super(isDaVinciClient ? dummySystemStoreMetricRepo : metricsRepository, storeName, requestType);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .isTotalStats(isTotalStats())
-            .setOtelEnabledOverride(readOtelStatsEnabled)
             .setStoreName(storeName)
             .setClusterName(clusterName)
             .setRequestType(requestType)
@@ -121,7 +118,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo computeOtelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .isTotalStats(isTotalStats())
-            .setOtelEnabledOverride(readOtelStatsEnabled)
             .setStoreName(storeName)
             .setClusterName(clusterName)
             .build();
@@ -337,14 +333,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
             getName(),
             getFullMetricName("storage_engine_read_compute_latency_for_large_value")));
 
-    readComputeEfficiencySensor = registerPerStoreAndTotal(
-        "storage_engine_read_compute_efficiency",
-        totalStats,
-        () -> totalStats.readComputeEfficiencySensor,
-        new Avg(),
-        new Min(),
-        new Max());
-
     // Compute-only: use computeBaseDimensionsMap (no VENICE_REQUEST_METHOD — always COMPUTE)
     deserializationTimeMetric = MetricEntityStateOneEnum.create(
         STORAGE_ENGINE_READ_COMPUTE_DESERIALIZATION_TIME.getMetricEntity(),
@@ -408,18 +396,13 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         () -> totalStats.earlyTerminatedEarlyRequestCountSensor,
         new OccurrenceRate());
 
-    if (isKeyValueProfilingEnabled || requestType == RequestType.SINGLE_GET) {
-      final MeasurableStat[] valueSizeStats;
-      final MeasurableStat[] keySizeStats;
-      if (isKeyValueProfilingEnabled) {
-        valueSizeStats =
-            TehutiUtils.getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_value_size"));
-        keySizeStats =
-            TehutiUtils.getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_key_size"));
-      } else {
-        valueSizeStats = new MeasurableStat[] { new Avg(), new Max() };
-        keySizeStats = new MeasurableStat[] { new Avg(), new Max() };
-      }
+    /*
+     * Preserve the existing Tehuti behavior by registering key/value-size sensors only for single-get requests.
+     * OTel metric states are created for every request type; multi-get and compute use the OTel-only states below.
+     */
+    if (requestType == RequestType.SINGLE_GET) {
+      MeasurableStat[] valueSizeStats = new MeasurableStat[] { new Avg(), new Max() };
+      MeasurableStat[] keySizeStats = new MeasurableStat[] { new Avg(), new Max() };
 
       responseValueSizeMetric = MetricEntityStateThreeEnums.create(
           READ_RESPONSE_VALUE_SIZE.getMetricEntity(),
@@ -607,10 +590,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   // (unlike deserialization which operates on potentially chunked values).
   public void recordReadComputeSerializationLatency(double latency) {
     serializationTimeMetric.record(latency);
-  }
-
-  public void recordReadComputeEfficiency(double efficiency) {
-    readComputeEfficiencySensor.record(efficiency);
   }
 
   public void recordDotProductCount(int count) {

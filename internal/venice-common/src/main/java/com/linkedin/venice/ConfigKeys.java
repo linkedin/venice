@@ -2116,10 +2116,8 @@ public class ConfigKeys {
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
 
   /**
-   * A config that turns the key/value profiling stats on and off. This config can be placed in both Router and SNs and it
-   * is off by default. When switching it on, We will emit a fine grained histogram that reflects the distribution of
-   * key and value size. Since this will be run in the critical read path and it will emit additional ~20 stats, please
-   * be cautious when turning it on.
+   * Router-only config that controls request-key-size metrics. It is off by default because collecting per-key sizes
+   * adds work to the critical read path.
    */
   public static final String KEY_VALUE_PROFILING_ENABLED = "key.value.profiling.enabled";
 
@@ -2674,15 +2672,6 @@ public class ConfigKeys {
    * turned off separately without affecting other server/DaVinci OTel metrics.
    */
   public static final String SERVER_INGESTION_OTEL_STATS_ENABLED = "server.ingestion.otel.stats.enabled";
-
-  /**
-   * Whether to emit OTel metrics for server read stats. When enabled (and the global OTel flag is also enabled),
-   * per-store read OTel metrics are recorded. Enabled by default so that turning on OTel for servers
-   * automatically includes read stats. Can be set to {@code false} to disable read OTel stats
-   * independently — useful if read OTel metrics cause issues and need to be turned off separately
-   * without affecting other server/DaVinci OTel metrics.
-   */
-  public static final String SERVER_READ_OTEL_STATS_ENABLED = "server.read.otel.stats.enabled";
 
   /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config

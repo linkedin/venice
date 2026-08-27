@@ -379,8 +379,6 @@ public class TestStreaming {
                 .assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
             Assert.assertTrue(
                 routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
-            Assert.assertTrue(
-                getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
             Assert.assertEquals(getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"), 0.0);
           } else {
             Assert.assertEquals(
@@ -401,10 +399,6 @@ public class TestStreaming {
 
   private double getAggregateRouterMetricValue(String metricName) {
     return MetricsUtils.getSum(metricName, veniceCluster.getVeniceRouters());
-  }
-
-  private double getMaxServerMetricValue(String metricName) {
-    return MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
   }
 
   private void verifyMultiGetResult(Map<String, Object> resultMap) {

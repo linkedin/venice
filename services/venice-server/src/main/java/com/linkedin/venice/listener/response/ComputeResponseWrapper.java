@@ -12,7 +12,7 @@ public class ComputeResponseWrapper extends MultiKeyResponseWrapper<ComputeRespo
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
   public ComputeResponseWrapper(int maxKeyCount) {
-    this(maxKeyCount, new ComputeResponseStats());
+    this(maxKeyCount, new ComputeResponseStats(maxKeyCount));
   }
 
   public ComputeResponseWrapper(int maxKeyCount, ComputeResponseStats responseStats) {

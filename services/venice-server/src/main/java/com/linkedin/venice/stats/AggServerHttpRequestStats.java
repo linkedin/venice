@@ -18,19 +18,13 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       String clusterName,
       MetricsRepository metricsRepository,
       RequestType requestType,
-      boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
       boolean unregisterMetricForDeletedStoreEnabled,
-      boolean isDaVinciClient,
-      boolean readOtelStatsEnabled) {
+      boolean isDaVinciClient) {
     super(
         clusterName,
         metricsRepository,
-        new ServerHttpRequestStatsSupplier(
-            requestType,
-            isKeyValueProfilingEnabled,
-            isDaVinciClient,
-            readOtelStatsEnabled),
+        new ServerHttpRequestStatsSupplier(requestType, isDaVinciClient),
         metadataRepository,
         unregisterMetricForDeletedStoreEnabled,
         false);
@@ -38,19 +32,11 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
 
   static class ServerHttpRequestStatsSupplier implements StatsSupplier<ServerHttpRequestStats> {
     private final RequestType requestType;
-    private final boolean isKeyValueProfilingEnabled;
     private final boolean isDaVinciClient;
-    private final boolean readOtelStatsEnabled;
 
-    ServerHttpRequestStatsSupplier(
-        RequestType requestType,
-        boolean isKeyValueProfilingEnabled,
-        boolean isDaVinciClient,
-        boolean readOtelStatsEnabled) {
+    ServerHttpRequestStatsSupplier(RequestType requestType, boolean isDaVinciClient) {
       this.requestType = requestType;
-      this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
       this.isDaVinciClient = isDaVinciClient;
-      this.readOtelStatsEnabled = readOtelStatsEnabled;
     }
 
     @Override
@@ -69,10 +55,8 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
           storeName,
           clusterName,
           requestType,
-          isKeyValueProfilingEnabled,
           totalStats,
-          isDaVinciClient,
-          readOtelStatsEnabled);
+          isDaVinciClient);
     }
   }
 
