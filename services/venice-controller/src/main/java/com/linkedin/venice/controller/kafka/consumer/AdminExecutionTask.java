@@ -588,6 +588,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
         .setTargetRegionPromoted(message.targetRegionPromoted)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
+        .setTTLRepushEnabled(message.ttlRepushEnabled)
         .setFlinkVeniceViewsEnabled(message.flinkVeniceViewsEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
         .setPreviousCurrentVersion(message.previousCurrentVersion);

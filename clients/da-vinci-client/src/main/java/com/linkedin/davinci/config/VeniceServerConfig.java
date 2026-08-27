@@ -127,6 +127,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DRAIN_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HELIX_JOIN_AS_UNKNOWN;
@@ -763,6 +767,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int lagBasedReplicaAutoResubscribeThresholdInSeconds;
   private final int lagBasedReplicaAutoResubscribeMaxReplicaCount;
 
+  private final boolean futureVersionStandbyLagCheckEnabled;
+  private final long futureVersionStandbyLagThreshold;
+  private final int futureVersionStandbyLagCheckTimeoutMinutes;
+  private final int futureVersionStandbyLagCheckPollIntervalMinutes;
+
   private final int serverIngestionInfoLogLineLimit;
 
   private final boolean parallelResourceShutdownEnabled;
@@ -1347,6 +1356,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_THRESHOLD_IN_SECONDS, 600);
     this.lagBasedReplicaAutoResubscribeMaxReplicaCount =
         serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT, 3);
+    this.futureVersionStandbyLagCheckEnabled =
+        serverProperties.getBoolean(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED, false);
+    this.futureVersionStandbyLagThreshold =
+        serverProperties.getLong(SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD, 1000L);
+    this.futureVersionStandbyLagCheckTimeoutMinutes =
+        serverProperties.getInt(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES, 2 * 60);
+    this.futureVersionStandbyLagCheckPollIntervalMinutes =
+        serverProperties.getInt(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES, 15);
     this.useMetricsBasedPositionInLagComputation =
         serverProperties.getBoolean(SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION, false);
     this.useUpstreamPubSubPositionWithFallback =
@@ -2418,6 +2435,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getLagBasedReplicaAutoResubscribeMaxReplicaCount() {
     return lagBasedReplicaAutoResubscribeMaxReplicaCount;
+  }
+
+  public boolean isFutureVersionStandbyLagCheckEnabled() {
+    return futureVersionStandbyLagCheckEnabled;
+  }
+
+  public long getFutureVersionStandbyLagThreshold() {
+    return futureVersionStandbyLagThreshold;
+  }
+
+  public int getFutureVersionStandbyLagCheckTimeoutMinutes() {
+    return futureVersionStandbyLagCheckTimeoutMinutes;
+  }
+
+  public int getFutureVersionStandbyLagCheckPollIntervalMinutes() {
+    return futureVersionStandbyLagCheckPollIntervalMinutes;
   }
 
   public boolean isUseMetricsBasedPositionInLagComputationEnabled() {

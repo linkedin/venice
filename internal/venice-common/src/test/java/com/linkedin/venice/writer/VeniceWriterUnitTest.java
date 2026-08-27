@@ -57,6 +57,7 @@ import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -87,7 +88,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -102,6 +106,47 @@ public class VeniceWriterUnitTest {
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+
+  @Test(timeOut = TIMEOUT)
+  public void testVersionSwapBroadcastsPartitionsConcurrentlyAndInOrder() throws Exception {
+    int partitionCount = 4;
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CountDownLatch allPartitionsStarted = new CountDownLatch(partitionCount);
+    Map<Integer, List<ControlMessageType>> controlMessageTypesByPartition = new ConcurrentHashMap<>();
+    when(mockedProducer.sendMessage(anyString(), anyInt(), any(), any(), any(), any())).thenAnswer(invocation -> {
+      int partition = invocation.getArgument(1);
+      KafkaMessageEnvelope envelope = invocation.getArgument(3);
+      ControlMessage controlMessage = (ControlMessage) envelope.payloadUnion;
+      ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+      controlMessageTypesByPartition.computeIfAbsent(partition, ignored -> new ArrayList<>()).add(controlMessageType);
+      if (controlMessageType == ControlMessageType.START_OF_SEGMENT) {
+        allPartitionsStarted.countDown();
+        assertTrue(
+            allPartitionsStarted.await(2, TimeUnit.SECONDS),
+            "START_OF_SEGMENT sends should run concurrently across partitions");
+      }
+      return CompletableFuture.completedFuture(mock(PubSubProduceResult.class));
+    });
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder("test_rt").setPartitionCount(partitionCount).build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, VeniceProperties.empty(), mockedProducer);
+
+    List<CompletableFuture<PubSubProduceResult>> futures = writer.nonBlockingBroadcastVersionSwapWithRegionInfo(
+        "test_v1",
+        "test_v2",
+        "source-region",
+        "destination-region",
+        1L,
+        Collections.emptyMap());
+    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
+
+    assertEquals(controlMessageTypesByPartition.size(), partitionCount);
+    for (int partition = 0; partition < partitionCount; partition++) {
+      assertEquals(
+          controlMessageTypesByPartition.get(partition),
+          Arrays.asList(ControlMessageType.START_OF_SEGMENT, ControlMessageType.VERSION_SWAP));
+    }
+    writer.close(false);
+  }
 
   @Test(dataProvider = "Chunking-And-Partition-Counts", dataProviderClass = DataProviderUtils.class)
   public void testTargetPartitionIsSameForAllOperationsWithTheSameKey(boolean isChunkingEnabled, int partitionCount) {

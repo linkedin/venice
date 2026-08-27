@@ -788,7 +788,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
-    this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
+    this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled() && hybridStoreConfig.isPresent() && !isDaVinciClient;
     this.nearlineLatencyTimestampSource = serverConfig.getNearlineLatencyTimestampSource();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -3867,6 +3867,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * 1 from the end position in order to arrive at the correct lag of 0.
      */
     return diff - 1;
+  }
+
+  /**
+   * Best-effort measurement of how far behind {@code partition}'s local version topic consumption is, relative to
+   * the end of the local version topic partition. Unlike {@link #isReadyToServe(PartitionConsumptionState)}, this
+   * does not require END_OF_PUSH to have been received, so it can be used to gate in-progress (future version)
+   * pushes.
+   *
+   * @return the lag in number of records, or {@link Long#MAX_VALUE} if it could not be measured (e.g. no
+   * {@link PartitionConsumptionState} yet for the partition, or a PubSub error occurred).
+   */
+  public long getLocalVersionTopicLag(int partition) {
+    PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+    if (pcs == null) {
+      return Long.MAX_VALUE;
+    }
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+    return measureLagWithCallToPubSub(localKafkaServer, topicPartition, pcs.getLatestProcessedVtPosition());
   }
 
   public abstract int getWriteComputeErrorCode();

@@ -53,8 +53,10 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.File;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -63,6 +65,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -914,6 +917,107 @@ public class StoreBackendTest {
     // Sanity: DVC is now serving version2.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+    }
+  }
+
+  @DataProvider(name = "terminalVersionStatuses")
+  public static Object[][] terminalVersionStatuses() {
+    return new Object[][] { { VersionStatus.ROLLED_BACK }, { VersionStatus.ERROR }, { VersionStatus.KILLED } };
+  }
+
+  @DataProvider(name = "nonTerminalSubscribableStatuses")
+  public static Object[][] nonTerminalSubscribableStatuses() {
+    return new Object[][] { { VersionStatus.STARTED }, { VersionStatus.PUSHED } };
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testRestartDoesNotSubscribeRetainedTerminalTargetVersion(VersionStatus terminalStatus) throws Exception {
+    int partition = 0;
+    version1.setStatus(VersionStatus.ONLINE);
+    version2.setStatus(terminalStatus);
+    version2.setTargetSwapRegion("dc-0");
+    store.setCurrentVersion(version1.getNumber());
+
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+
+    assertEquals(storeBackend.getSubscribedVersionNumbers(), Collections.singleton(version1.getNumber()));
+    assertFalse(
+        versionMap.containsKey(version2.kafkaTopicName()),
+        "A restarted DVC must not subscribe a retained " + terminalStatus + " version as its future version");
+  }
+
+  @Test(dataProvider = "nonTerminalSubscribableStatuses")
+  public void testRestartSubscribesRetainedNonTerminalTargetVersion(VersionStatus subscribableStatus) throws Exception {
+    int partition = 0;
+    version1.setStatus(VersionStatus.ONLINE);
+    version2.setStatus(subscribableStatus);
+    version2.setTargetSwapRegion("dc-0");
+    store.setCurrentVersion(version1.getNumber());
+
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+
+    assertEquals(
+        storeBackend.getSubscribedVersionNumbers(),
+        new HashSet<>(Arrays.asList(version1.getNumber(), version2.getNumber())));
+    assertTrue(
+        versionMap.containsKey(version2.kafkaTopicName()),
+        "A restarted DVC must still subscribe a retained " + subscribableStatus
+            + " target-region version as its future version");
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testLatestNonFaultyVersionSkipsTerminalStatus(VersionStatus terminalStatus) {
+    version1.setStatus(VersionStatus.ONLINE);
+    version2.setStatus(terminalStatus);
+    Version selected = backend.getVeniceLatestNonFaultyVersion(store.getName(), Collections.emptySet());
+    assertEquals(
+        selected.getNumber(),
+        version1.getNumber(),
+        "Latest non-faulty selection must skip the terminal higher version " + terminalStatus);
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testExistingFutureVersionDeletedWhenStatusBecomesTerminal(VersionStatus terminalStatus) throws Exception {
+    int partition = 0;
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    assertTrue(versionMap.containsKey(version2.kafkaTopicName()), "version2 must first be subscribed as future");
+
+    store.updateVersionStatus(version2.getNumber(), terminalStatus);
+    backend.handleStoreChanged(storeBackend);
+
+    assertFalse(
+        versionMap.containsKey(version2.kafkaTopicName()),
+        "Future version must be deleted once its status becomes " + terminalStatus);
+    verify(ingestionBackend, times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
+    assertEquals(storeBackend.getSubscribedVersionNumbers(), Collections.singleton(version1.getNumber()));
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testTerminalFutureVersionNotPromotedByIngestionCompletion(VersionStatus terminalStatus) throws Exception {
+    int partition = 0;
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    assertTrue(versionMap.containsKey(version2.kafkaTopicName()), "version2 must first be subscribed as future");
+
+    versionMap.get(version2.kafkaTopicName()).completePartition(partition);
+    store.setCurrentVersion(version2.getNumber());
+    store.updateVersionStatus(version2.getNumber(), terminalStatus);
+
+    // Isolate the promotion race from asynchronous bootstrapping callback timing.
+    storeBackend.trySwapDaVinciCurrentVersion(null);
+
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(
+          versionRef.get().getVersion().getNumber(),
+          version1.getNumber(),
+          "A terminal future version must not be promoted to current by the ingestion-completion swap path");
     }
   }
 }

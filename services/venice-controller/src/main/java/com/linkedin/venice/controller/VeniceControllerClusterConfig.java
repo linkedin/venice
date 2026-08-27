@@ -88,6 +88,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_MAX_PER_ROUND;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PER_VERSION_ZNODE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL;
@@ -102,6 +103,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
@@ -334,6 +336,7 @@ public class VeniceControllerClusterConfig {
   private final int adminConsumptionMaxWorkerThreadPoolSize;
   private final double storageEngineOverheadRatio;
   private final long deprecatedJobTopicRetentionMs;
+  private final long pushRetryCooldownMs;
 
   private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
@@ -539,6 +542,7 @@ public class VeniceControllerClusterConfig {
   private final String sslFactoryClassName;
   private final int refreshAttemptsForZkReconnect;
   private final long refreshIntervalForZkReconnectInMs;
+  private final boolean perVersionZnodeEnabled;
   private final boolean enableOfflinePushSSLAllowlist;
   private final boolean enableNearlinePushSSLAllowlist;
   private final List<String> pushSSLAllowlist;
@@ -788,6 +792,10 @@ public class VeniceControllerClusterConfig {
     // this so the request_topic call does not expire client-side and retry the non-idempotent create
     // while the controller is still waiting.
     this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(16));
+    this.pushRetryCooldownMs = props.getLong(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, TimeUnit.MINUTES.toMillis(10));
+    if (pushRetryCooldownMs < 0) {
+      throw new ConfigurationException(CONTROLLER_PUSH_RETRY_COOLDOWN_MS + " cannot be negative.");
+    }
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -853,6 +861,7 @@ public class VeniceControllerClusterConfig {
     this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9);
     this.refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, TimeUnit.SECONDS.toMillis(10));
+    this.perVersionZnodeEnabled = props.getBoolean(CONTROLLER_PER_VERSION_ZNODE_ENABLED, false);
     this.enableOfflinePushSSLAllowlist = props.getBooleanWithAlternative(
         ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST,
         // go/inclusivecode deferred(Reference will be removed when clients have migrated)
@@ -1593,6 +1602,10 @@ public class VeniceControllerClusterConfig {
     return offLineJobWaitTimeInMilliseconds;
   }
 
+  public long getPushRetryCooldownMs() {
+    return pushRetryCooldownMs;
+  }
+
   public long getDelayToRebalanceMS() {
     return delayToRebalanceMS;
   }
@@ -1642,6 +1655,10 @@ public class VeniceControllerClusterConfig {
 
   public long getRefreshIntervalForZkReconnectInMs() {
     return refreshIntervalForZkReconnectInMs;
+  }
+
+  public boolean isPerVersionZnodeEnabled() {
+    return perVersionZnodeEnabled;
   }
 
   public boolean isEnableOfflinePushSSLAllowlist() {

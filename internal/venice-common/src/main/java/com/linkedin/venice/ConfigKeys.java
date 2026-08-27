@@ -342,6 +342,16 @@ public class ConfigKeys {
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
 
   /**
+   * When true, the controller persists newly added store versions as individual ZK znodes at
+   * {@code /<cluster>/Stores/<name>/versions/<n>} rather than appending them inside the store znode JSON. Existing
+   * embedded versions age out through normal version lifecycle removals, so the active version set gradually shifts to
+   * per-version znodes. The read path understands both layouts, so this flag must only flip after
+   * every reader in the deployment (router, server, da-vinci, fast-client) is running a build that contains the
+   * split-aware read path.
+   */
+  public static final String CONTROLLER_PER_VERSION_ZNODE_ENABLED = "controller.per.version.znode.enabled";
+
+  /**
    * Fallback to remain compatible with the old config spelling.
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
@@ -349,6 +359,11 @@ public class ConfigKeys {
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String CONCURRENT_PUSH_DETECTION_STRATEGY = "concurrent.push.detection.strategy";
+  /**
+   * Minimum interval between admitted user-store version-creation attempts in the leader parent controller. A value of
+   * 0 disables the process-local cooldown.
+   */
+  public static final String CONTROLLER_PUSH_RETRY_COOLDOWN_MS = "controller.push.retry.cooldown.ms";
 
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
@@ -3258,6 +3273,42 @@ public class ConfigKeys {
    */
   public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT =
       "server.lag.based.replica.auto.resubscribe.max.replica.count";
+
+  /**
+   * Config to enable/disable blocking the OFFLINE-&gt;STANDBY transition for future-version replicas whose push
+   * is still in progress (i.e. not yet PUSHED/ONLINE), until the replica's local version topic consumption lag
+   * drops to or below {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD}. This prevents Helix from electing a
+   * brand-new/lagging replica as leader immediately after it reaches STANDBY. Default is false.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED =
+      "server.future.version.standby.lag.check.enabled";
+
+  /**
+   * Config to control the acceptable local version topic lag (number of records behind the end of the topic)
+   * for a future-version, in-progress-push replica to be allowed to complete the OFFLINE-&gt;STANDBY transition.
+   * Only used when {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 1000 records,
+   * a small buffer to absorb normal producer/consumer jitter rather than requiring an exact catch-up.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD =
+      "server.future.version.standby.lag.threshold";
+
+  /**
+   * Config to control the maximum duration, in minutes, to block the OFFLINE-&gt;STANDBY transition while waiting
+   * for a future-version, in-progress-push replica's lag to become acceptable. This is a best-effort wait: once
+   * the timeout elapses, the transition proceeds regardless of the measured lag, to avoid liveness issues.
+   * Only used when {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 120 min = 2 hours,
+   * to accommodate replicas that are still bootstrapping.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES =
+      "server.future.version.standby.lag.check.timeout.minutes";
+
+  /**
+   * Config to control the interval, in minutes, between successive lag re-measurements while waiting for a
+   * future-version, in-progress-push replica's lag to become acceptable. Only used when
+   * {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 15 min.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES =
+      "server.future.version.standby.lag.check.poll.interval.minutes";
 
   /**
    * Whether to enable producer throughput optimization for realtime workload or not.

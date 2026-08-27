@@ -70,6 +70,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
       Reporter reporter,
       PubSubConsumerAdapter consumer) {
     DataWriterTaskTracker taskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
-    return new KafkaInputRecordReader(split, job, taskTracker, consumer);
+    // This overload reuses one consumer across dictionary-training splits.
+    return new KafkaInputRecordReader(split, job, taskTracker, consumer, true);
   }
 }

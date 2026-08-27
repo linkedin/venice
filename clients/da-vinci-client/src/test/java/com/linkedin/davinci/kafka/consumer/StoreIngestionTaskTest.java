@@ -6261,6 +6261,47 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
+  public void testGetLocalVersionTopicLag() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).getLocalVersionTopicLag(anyInt());
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+
+    // No PartitionConsumptionState yet for this partition -> lag cannot be measured
+    assertEquals(
+        storeIngestionTask.getLocalVersionTopicLag(PARTITION_FOO),
+        Long.MAX_VALUE,
+        "When no PCS exists for the partition, lag should be reported as infinite.");
+
+    // Set the private final fields normally populated by the constructor, which is bypassed by mock()
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    PubSubTopic versionTopic = topicRepository.getTopic(Version.composeKafkaTopic("test_store", 1));
+    Field versionTopicField = storeIngestionTask.getClass().getSuperclass().getDeclaredField("versionTopic");
+    versionTopicField.setAccessible(true);
+    versionTopicField.set(storeIngestionTask, versionTopic);
+    Field localKafkaServerField = storeIngestionTask.getClass().getSuperclass().getDeclaredField("localKafkaServer");
+    localKafkaServerField.setAccessible(true);
+    localKafkaServerField.set(storeIngestionTask, "localhost:1234");
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubPosition currentPosition = InMemoryPubSubPosition.of(5L);
+    doReturn(currentPosition).when(pcs).getLatestProcessedVtPosition();
+    pcsMap.put(PARTITION_FOO, pcs);
+
+    doReturn(123L).when(storeIngestionTask)
+        .measureLagWithCallToPubSub(
+            eq("localhost:1234"),
+            eq(new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO)),
+            eq(currentPosition));
+
+    assertEquals(
+        storeIngestionTask.getLocalVersionTopicLag(PARTITION_FOO),
+        123L,
+        "When a PCS exists, lag should be delegated to measureLagWithCallToPubSub against the local VT.");
+  }
+
+  @Test
   public void testMeasureLagWithCallToPubSubWhenTopicDoesNotExist() {
     final PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     final InMemoryPubSubPosition endPosition = InMemoryPubSubPosition.of(10L);
@@ -6424,6 +6465,58 @@ public abstract class StoreIngestionTaskTest {
     DefaultPubSubMessage rtRecord =
         new ImmutablePubSubMessage(key, value, rtPartition, InMemoryPubSubPosition.of(0), 0, 0);
     assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
+  }
+
+  /**
+   * versionFlag, isHybrid, isDaVinci, expectedEnabled: Global RT DIV is enabled only for a hybrid, non-DaVinci
+   * store whose version flag is on; batch-only stores and DaVinci clients force it off.
+   */
+  @DataProvider(name = "globalRtDivGatingParams")
+  public Object[][] globalRtDivGatingParams() {
+    return new Object[][] { { true, true, false, true }, { true, false, false, false }, { true, true, true, false },
+        { false, true, false, false } };
+  }
+
+  @Test(dataProvider = "globalRtDivGatingParams")
+  public void testGlobalRtDivGating(boolean versionFlag, boolean isHybrid, boolean isDaVinci, boolean expectedEnabled) {
+    HybridStoreConfig hybridStoreConfig =
+        isHybrid ? new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP) : null;
+    MockStoreVersionConfigs configs = setupStoreAndVersionMocks(
+        2,
+        new PartitionerConfigImpl(),
+        Optional.ofNullable(hybridStoreConfig),
+        false,
+        true,
+        AA_OFF);
+    configs.version.setGlobalRtDivEnabled(versionFlag);
+
+    StoreIngestionTaskFactory factory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        new HashMap<>(),
+        false,
+        null,
+        null,
+        this.mockStorageService).setIsDaVinciClient(isDaVinci)
+            .setAggKafkaConsumerService(aggKafkaConsumerService)
+            .build();
+
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+    StoreIngestionTask ingestionTask = factory.getNewIngestionTask(
+        this.mockStorageService,
+        configs.store,
+        configs.version,
+        kafkaProps,
+        isCurrentVersion,
+        configs.storeVersionConfig,
+        PARTITION_FOO,
+        Optional.empty(),
+        null,
+        null);
+
+    assertEquals(ingestionTask.isGlobalRtDivEnabled(), expectedEnabled);
   }
 
   /**

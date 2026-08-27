@@ -5,7 +5,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,6 +36,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.mockito.InOrder;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -80,6 +83,52 @@ public class PubSubSplitIteratorTest {
     PubSubSplitIterator iterator3 = new PubSubSplitIterator(mockConsumer3, customSplit, false);
     assertEquals(iterator3.getTopicPartition(), testTopicPartition);
     iterator3.close();
+  }
+
+  @Test
+  public void testNonEmptyAssignmentHandoffWaitsForTargetPartition() throws IOException {
+    PubSubTopicPartition previousTopicPartition = new PubSubTopicPartitionImpl(testTopic, TEST_PARTITION + 1);
+    when(mockConsumer.getAssignment()).thenReturn(Collections.singleton(previousTopicPartition));
+    when(mockConsumer.positionDifference(any(), any(), any())).thenReturn(10L, 9L);
+
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> previousPartitionOnly = new HashMap<>();
+    previousPartitionOnly.put(previousTopicPartition, Collections.singletonList(createMockDataMessage(100L)));
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> overlappingPoll = new HashMap<>();
+    overlappingPoll.put(previousTopicPartition, Collections.singletonList(createMockDataMessage(101L)));
+    overlappingPoll.put(testTopicPartition, Collections.singletonList(createMockDataMessage(5L)));
+    when(mockConsumer.poll(anyLong())).thenReturn(previousPartitionOnly, overlappingPoll);
+
+    PubSubSplitIterator iterator = new PubSubSplitIterator(mockConsumer, testSplit, false, true, 1, 3, 0);
+    PubSubInputRecord record = iterator.next();
+
+    assertNotNull(record);
+    assertEquals(record.getOffset(), 5L);
+    InOrder inOrder = inOrder(mockConsumer);
+    inOrder.verify(mockConsumer).getAssignment();
+    inOrder.verify(mockConsumer).subscribe(eq(testTopicPartition), any(PubSubPosition.class), eq(true));
+    inOrder.verify(mockConsumer).pause(previousTopicPartition);
+    inOrder.verify(mockConsumer).poll(1L);
+    inOrder.verify(mockConsumer).pause(previousTopicPartition);
+    inOrder.verify(mockConsumer).poll(1L);
+    inOrder.verify(mockConsumer).batchUnsubscribe(Collections.singleton(previousTopicPartition));
+    iterator.close();
+  }
+
+  @Test
+  public void testNonEmptyAssignmentHandoffKeepsPreviousAssignmentAfterOldOnlyPolls() {
+    PubSubTopicPartition previousTopicPartition = new PubSubTopicPartitionImpl(testTopic, TEST_PARTITION + 1);
+    when(mockConsumer.getAssignment()).thenReturn(Collections.singleton(previousTopicPartition));
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> previousPartitionOnly = new HashMap<>();
+    previousPartitionOnly.put(previousTopicPartition, Collections.singletonList(createMockDataMessage(100L)));
+    when(mockConsumer.poll(anyLong())).thenReturn(previousPartitionOnly);
+
+    PubSubSplitIterator iterator = new PubSubSplitIterator(mockConsumer, testSplit, false, true, 1, 2, 0);
+    VeniceException exception = expectThrows(VeniceException.class, iterator::next);
+
+    assertTrue(exception.getMessage().contains("Empty poll after"));
+    verify(mockConsumer, times(2)).pause(previousTopicPartition);
+    verify(mockConsumer, never()).batchUnsubscribe(any());
+    iterator.close();
   }
 
   @Test
