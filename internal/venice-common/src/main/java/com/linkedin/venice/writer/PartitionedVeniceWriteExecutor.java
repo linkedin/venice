@@ -22,6 +22,7 @@ public class PartitionedVeniceWriteExecutor {
   private final AtomicBoolean inlineWorkerAdmissionOpen = new AtomicBoolean(true);
   private final ReentrantLock inlineWorkerLock = new ReentrantLock();
   private final Condition inlineWorkersDrained = inlineWorkerLock.newCondition();
+  private final ThreadLocal<Integer> inlineWorkerDepth = new ThreadLocal<>();
   private int activeInlineWorkers;
 
   /** Creates an executor with the historical Online Venice Producer thread and metric names. */
@@ -163,6 +164,14 @@ public class PartitionedVeniceWriteExecutor {
     return workerCount;
   }
 
+  protected boolean awaitWorkerAdmission(int workerIndex, long timeout, TimeUnit unit) throws InterruptedException {
+    return workers != null && workers[stripe(workerIndex)].awaitBlockedAdmission(timeout, unit);
+  }
+
+  protected boolean awaitCallbackAdmission(long timeout, TimeUnit unit) throws InterruptedException {
+    return callbackExecutor != null && callbackExecutor.awaitBlockedAdmission(timeout, unit);
+  }
+
   public void shutdownWorkers() {
     if (workers == null) {
       inlineWorkerLock.lock();
@@ -232,14 +241,37 @@ public class PartitionedVeniceWriteExecutor {
 
   /** Drains accepted worker tasks, forcing interruption after timeout or caller interruption. */
   public boolean shutdownWorkersAndAwait(long timeout, TimeUnit unit) {
-    shutdownWorkers();
-    return shutdownAndAwait(true, timeout, unit);
+    return shutdownWorkersAndAwait(timeout, unit, timeout, unit);
   }
 
-  /** Drains accepted callbacks, forcing interruption after timeout or caller interruption. */
-  public boolean shutdownCallbacksAndAwait(long timeout, TimeUnit unit) {
-    shutdownCallbacks();
-    return shutdownAndAwait(false, timeout, unit);
+  boolean shutdownWorkersAndAwait(
+      long gracefulTimeout,
+      TimeUnit gracefulTimeoutUnit,
+      long forcedTimeout,
+      TimeUnit forcedTimeoutUnit) {
+    shutdownWorkers();
+    boolean interrupted = false;
+    boolean terminated = false;
+    try {
+      terminated = awaitWorkerTermination(gracefulTimeout, gracefulTimeoutUnit);
+    } catch (InterruptedException exception) {
+      interrupted = true;
+    }
+    if (!terminated) {
+      shutdownWorkersNow();
+      long deadlineNanos = System.nanoTime() + forcedTimeoutUnit.toNanos(forcedTimeout);
+      while (!terminated && System.nanoTime() < deadlineNanos) {
+        try {
+          terminated = awaitWorkerTermination(Math.max(0, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS);
+        } catch (InterruptedException exception) {
+          interrupted = true;
+        }
+      }
+    }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    }
+    return terminated;
   }
 
   private BlockingBoundedExecutor[] createWorkers(
@@ -294,6 +326,7 @@ public class PartitionedVeniceWriteExecutor {
   }
 
   private void runInline(Runnable task, Consumer<Throwable> rejectionCallback) {
+    Integer previousDepth;
     inlineWorkerLock.lock();
     try {
       if (!inlineWorkerAdmissionOpen.get()) {
@@ -302,6 +335,8 @@ public class PartitionedVeniceWriteExecutor {
         throw exception;
       }
       activeInlineWorkers++;
+      previousDepth = inlineWorkerDepth.get();
+      inlineWorkerDepth.set(previousDepth == null ? 1 : previousDepth + 1);
     } finally {
       inlineWorkerLock.unlock();
     }
@@ -311,8 +346,11 @@ public class PartitionedVeniceWriteExecutor {
       inlineWorkerLock.lock();
       try {
         activeInlineWorkers--;
-        if (activeInlineWorkers == 0) {
-          inlineWorkersDrained.signalAll();
+        inlineWorkersDrained.signalAll();
+        if (previousDepth == null) {
+          inlineWorkerDepth.remove();
+        } else {
+          inlineWorkerDepth.set(previousDepth);
         }
       } finally {
         inlineWorkerLock.unlock();
@@ -328,7 +366,9 @@ public class PartitionedVeniceWriteExecutor {
     long remainingNanos = unit.toNanos(timeout);
     inlineWorkerLock.lockInterruptibly();
     try {
-      while (activeInlineWorkers > 0) {
+      Integer currentDepth = inlineWorkerDepth.get();
+      int currentThreadInlineDepth = currentDepth == null ? 0 : currentDepth;
+      while (activeInlineWorkers > currentThreadInlineDepth) {
         if (remainingNanos <= 0) {
           return false;
         }
@@ -352,36 +392,4 @@ public class PartitionedVeniceWriteExecutor {
     return true;
   }
 
-  private boolean shutdownAndAwait(boolean workerExecutors, long timeout, TimeUnit unit) {
-    boolean interrupted = false;
-    boolean terminated = false;
-    try {
-      terminated = workerExecutors ? awaitWorkerTermination(timeout, unit) : awaitCallbackTermination(timeout, unit);
-    } catch (InterruptedException exception) {
-      interrupted = true;
-    }
-    if (!terminated) {
-      if (workerExecutors) {
-        shutdownWorkersNow();
-      } else {
-        shutdownCallbacksNow();
-      }
-      // Forced interruption gets its own bounded termination window.
-      long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
-      while (!terminated && System.nanoTime() < deadlineNanos) {
-        try {
-          long remainingNanos = deadlineNanos - System.nanoTime();
-          terminated = workerExecutors
-              ? awaitWorkerTermination(remainingNanos, TimeUnit.NANOSECONDS)
-              : awaitCallbackTermination(remainingNanos, TimeUnit.NANOSECONDS);
-        } catch (InterruptedException exception) {
-          interrupted = true;
-        }
-      }
-    }
-    if (interrupted) {
-      Thread.currentThread().interrupt();
-    }
-    return terminated;
-  }
 }

@@ -1,17 +1,15 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,9 +25,11 @@ final class BlockingBoundedExecutor {
   private final Semaphore queueSlots;
   private final AtomicBoolean accepting = new AtomicBoolean(true);
   private final AtomicBoolean forceShutdown = new AtomicBoolean(false);
-  private final Set<TrackedTask> activeTasks = Collections.newSetFromMap(new ConcurrentHashMap<TrackedTask, Boolean>());
   private final Object lifecycleLock = new Object();
+  private final ReentrantLock admissionSignalLock = new ReentrantLock();
+  private final Condition admissionBlocked = admissionSignalLock.newCondition();
   private final String name;
+  private int blockedAdmissions;
 
   BlockingBoundedExecutor(int threadCount, int queueCapacity, String name) {
     this.name = name;
@@ -93,24 +93,17 @@ final class BlockingBoundedExecutor {
 
   void shutdownNow() {
     List<Runnable> queuedTasks;
-    List<TrackedTask> activeTaskSnapshot;
     synchronized (lifecycleLock) {
       accepting.set(false);
       forceShutdown.set(true);
-      activeTaskSnapshot = new ArrayList<>(activeTasks);
       queuedTasks = executor.shutdownNow();
     }
 
     RejectedExecutionException exception =
         new RejectedExecutionException("Executor " + name + " was shut down immediately");
+    // shutdownNow only returns tasks that never started. A task that reached its delegate owns completion.
     for (Runnable queuedTask: queuedTasks) {
       ((TrackedTask) queuedTask).reject(exception);
-    }
-    for (TrackedTask activeTask: activeTaskSnapshot) {
-      activeTask.reject(exception);
-    }
-    for (TrackedTask activeTask: activeTasks) {
-      activeTask.reject(exception);
     }
   }
 
@@ -130,9 +123,37 @@ final class BlockingBoundedExecutor {
     return CURRENT_EXECUTOR.get() == this;
   }
 
+  boolean awaitBlockedAdmission(long timeout, TimeUnit unit) throws InterruptedException {
+    long remainingNanos = unit.toNanos(timeout);
+    admissionSignalLock.lockInterruptibly();
+    try {
+      while (blockedAdmissions == 0) {
+        if (remainingNanos <= 0) {
+          return false;
+        }
+        remainingNanos = admissionBlocked.awaitNanos(remainingNanos);
+      }
+      return true;
+    } finally {
+      admissionSignalLock.unlock();
+    }
+  }
+
   private void acquireQueueSlot(Consumer<Throwable> rejectionCallback) {
+    boolean admissionWasBlocked = false;
     try {
       while (accepting.get()) {
+        if (!admissionWasBlocked && queueSlots.tryAcquire()) {
+          if (accepting.get()) {
+            return;
+          }
+          queueSlots.release();
+          break;
+        }
+        if (!admissionWasBlocked) {
+          admissionWasBlocked = true;
+          recordBlockedAdmission();
+        }
         if (queueSlots.tryAcquire(ADMISSION_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS)) {
           if (accepting.get()) {
             return;
@@ -150,6 +171,29 @@ final class BlockingBoundedExecutor {
           new RejectedExecutionException("Interrupted while waiting for queue space in " + name, exception);
       notifyRejection(rejectionCallback, rejection);
       throw rejection;
+    } finally {
+      if (admissionWasBlocked) {
+        clearBlockedAdmission();
+      }
+    }
+  }
+
+  private void recordBlockedAdmission() {
+    admissionSignalLock.lock();
+    try {
+      blockedAdmissions++;
+      admissionBlocked.signalAll();
+    } finally {
+      admissionSignalLock.unlock();
+    }
+  }
+
+  private void clearBlockedAdmission() {
+    admissionSignalLock.lock();
+    try {
+      blockedAdmissions--;
+    } finally {
+      admissionSignalLock.unlock();
     }
   }
 
@@ -186,15 +230,14 @@ final class BlockingBoundedExecutor {
       BlockingBoundedExecutor previousExecutor = CURRENT_EXECUTOR.get();
       CURRENT_EXECUTOR.set(owner);
       try {
-        owner.activeTasks.add(this);
         releaseQueueSlot();
+        // Linearize forced rejection before delegate execution; interruption cannot revoke an active delegate.
         if (owner.forceShutdown.get()) {
           reject(new RejectedExecutionException("Executor " + owner.name + " was shut down immediately"));
           return;
         }
         task.run();
       } finally {
-        owner.activeTasks.remove(this);
         if (previousExecutor == null) {
           CURRENT_EXECUTOR.remove();
         } else {
