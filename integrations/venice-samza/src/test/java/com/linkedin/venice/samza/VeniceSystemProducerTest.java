@@ -14,29 +14,39 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.schema.StoreSchemaFetcher;
+import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -46,11 +56,16 @@ import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.SamzaException;
@@ -483,6 +498,211 @@ public class VeniceSystemProducerTest {
     assertNull(capturedConfig.getProvidedPrimaryControllerColoD2Client());
   }
 
+  @Test(dataProvider = "startupRollbackPoints")
+  public void testStartupFailureRollsBackPublishedResources(StartupFailurePoint failurePoint) throws Exception {
+    StartupRollbackScenario scenario = new StartupRollbackScenario(failurePoint);
+
+    VeniceException thrown = expectThrows(VeniceException.class, scenario.producer::start);
+
+    assertSame(thrown, scenario.startupFailure);
+    assertTrue(scenario.producer.isStopped());
+    verify(scenario.controllerClient).close();
+    verify(scenario.schemaFetcher).close();
+    verify(scenario.transportClient).close();
+    if (failurePoint == StartupFailurePoint.AFTER_PUSH_MONITOR) {
+      verify(scenario.pushMonitor).start();
+      verify(scenario.pushMonitor).close();
+      verify(scenario.pushMonitor, never()).getCurrentStatus();
+      verify(scenario.writer, never()).close();
+    } else {
+      verify(scenario.writer).close();
+      assertTrue(scenario.dispatcher.get().isStopped());
+      if (failurePoint == StartupFailurePoint.AFTER_QUOTA_MONITOR_START) {
+        verify(scenario.quotaMonitor).start();
+        verify(scenario.quotaMonitor).close();
+      } else {
+        verify(scenario.quotaMonitor, never()).close();
+      }
+    }
+  }
+
+  @DataProvider(name = "startupRollbackPoints")
+  public Object[][] startupRollbackPoints() {
+    return new Object[][] { { StartupFailurePoint.AFTER_STREAM_DISPATCHER }, { StartupFailurePoint.AFTER_PUSH_MONITOR },
+        { StartupFailurePoint.AFTER_QUOTA_MONITOR_START } };
+  }
+
+  @Test
+  public void testRollbackCleanupFailureBlocksReplacementUntilWriterIsClosed() throws Exception {
+    StartupRollbackScenario scenario = new StartupRollbackScenario(StartupFailurePoint.AFTER_STREAM_DISPATCHER);
+    VeniceException closeFailure = new VeniceException("writer close failed");
+    AtomicBoolean allowWriterClose = new AtomicBoolean();
+    doAnswer(invocation -> {
+      if (!allowWriterClose.get()) {
+        throw closeFailure;
+      }
+      return null;
+    }).when(scenario.writer).close();
+
+    VeniceException startupFailure = expectThrows(VeniceException.class, scenario.producer::start);
+    assertSame(startupFailure, scenario.startupFailure);
+    assertTrue(containsThrowable(startupFailure.getSuppressed(), closeFailure));
+    assertFalse(scenario.producer.isStopped());
+
+    VeniceException cleanupRetryFailure = expectThrows(VeniceException.class, scenario.producer::start);
+    assertSame(cleanupRetryFailure.getCause(), closeFailure);
+    verify(scenario.producer).setupClientsAndReInitProvider();
+    verify(scenario.producer).getVeniceWriter(any());
+    verify(scenario.producer).createStreamWriteDispatcher(scenario.writer);
+    verify(scenario.writer, times(2)).close();
+
+    allowWriterClose.set(true);
+    assertSame(expectThrows(VeniceException.class, scenario.producer::start), scenario.startupFailure);
+    assertTrue(scenario.producer.isStopped());
+    verify(scenario.producer, times(2)).setupClientsAndReInitProvider();
+    verify(scenario.producer, times(2)).getVeniceWriter(any());
+    verify(scenario.producer, times(2)).createStreamWriteDispatcher(scenario.writer);
+    verify(scenario.writer, times(4)).close();
+
+    scenario.producer.stop();
+    verify(scenario.writer, times(4)).close();
+  }
+
+  @Test
+  public void testSuccessfulRetryAfterCompleteStartupRollback() throws Exception {
+    VeniceException startupFailure = new VeniceException("first quota monitor creation failed");
+    ControllerClient firstController = buildLifecycleController(Version.PushType.STREAM, true);
+    ControllerClient secondController = buildLifecycleController(Version.PushType.STREAM, true);
+    StoreSchemaFetcher firstSchemaFetcher = mock(StoreSchemaFetcher.class);
+    StoreSchemaFetcher secondSchemaFetcher = mock(StoreSchemaFetcher.class);
+    TransportClient firstTransportClient = mock(TransportClient.class);
+    TransportClient secondTransportClient = mock(TransportClient.class);
+    AbstractVeniceWriter<byte[], byte[], byte[]> firstWriter = mock(AbstractVeniceWriter.class);
+    AbstractVeniceWriter<byte[], byte[], byte[]> secondWriter = mock(AbstractVeniceWriter.class);
+    RouterBasedHybridStoreQuotaMonitor secondQuotaMonitor = mock(RouterBasedHybridStoreQuotaMonitor.class);
+    AtomicBoolean firstWriterClosed = new AtomicBoolean();
+    AtomicInteger setupAttempts = new AtomicInteger();
+    AtomicInteger writerAttempts = new AtomicInteger();
+    AtomicInteger quotaAttempts = new AtomicInteger();
+
+    VeniceSystemProducer producer = spy(newLifecycleProducer(Version.PushType.STREAM));
+    doNothing().when(producer).getKeySchema();
+    doNothing().when(producer).refreshSchemaCache();
+    doAnswer(invocation -> {
+      boolean firstAttempt = setupAttempts.getAndIncrement() == 0;
+      producer.setControllerClient(firstAttempt ? firstController : secondController);
+      setField(producer, "schemaFetcher", firstAttempt ? firstSchemaFetcher : secondSchemaFetcher);
+      setField(producer, "transportClient", firstAttempt ? firstTransportClient : secondTransportClient);
+      return null;
+    }).when(producer).setupClientsAndReInitProvider();
+    doAnswer(invocation -> {
+      if (writerAttempts.getAndIncrement() == 0) {
+        return firstWriter;
+      }
+      assertTrue(firstWriterClosed.get(), "The retry must not replace a writer before rollback completes");
+      return secondWriter;
+    }).when(producer).getVeniceWriter(any());
+    doAnswer(invocation -> {
+      if (quotaAttempts.getAndIncrement() == 0) {
+        throw startupFailure;
+      }
+      return secondQuotaMonitor;
+    }).when(producer).createHybridStoreQuotaMonitor();
+    doAnswer(invocation -> {
+      firstWriterClosed.set(true);
+      return null;
+    }).when(firstWriter).close();
+
+    assertSame(expectThrows(VeniceException.class, producer::start), startupFailure);
+    verify(firstWriter).close();
+    verify(firstController).close();
+    verify(firstSchemaFetcher).close();
+    verify(firstTransportClient).close();
+
+    producer.start();
+    producer.start();
+    verify(producer, times(2)).setupClientsAndReInitProvider();
+    verify(secondWriter, never()).close();
+
+    producer.stop();
+    assertTrue(producer.isStopped());
+    verify(secondWriter).close();
+    verify(secondQuotaMonitor).start();
+    verify(secondQuotaMonitor).close();
+    verify(secondController).close();
+    verify(secondSchemaFetcher).close();
+    verify(secondTransportClient).close();
+  }
+
+  @Test
+  public void testNormalStopLogsAuxiliaryCleanupFailuresWithoutPropagatingThem() throws Exception {
+    ControllerClient controllerClient = buildMockControllerClient(1, -1);
+    VeniceWriter<byte[], byte[], byte[]> writer = mock(VeniceWriter.class);
+    VeniceSystemProducer producer = buildStartedProducerSpy(controllerClient, writer);
+    RouterBasedPushMonitor pushMonitor = mock(RouterBasedPushMonitor.class);
+    RouterBasedHybridStoreQuotaMonitor quotaMonitor = mock(RouterBasedHybridStoreQuotaMonitor.class);
+    StoreSchemaFetcher schemaFetcher = mock(StoreSchemaFetcher.class);
+    TransportClient transportClient = mock(TransportClient.class);
+    producer.setPushMonitor(pushMonitor);
+    setField(producer, "hybridStoreQuotaMonitor", Optional.of(quotaMonitor));
+    setField(producer, "schemaFetcher", schemaFetcher);
+    setField(producer, "transportClient", transportClient);
+    doThrow(new VeniceException("controller close failed")).when(controllerClient).close();
+    doThrow(new VeniceException("push monitor close failed")).when(pushMonitor).close();
+    doThrow(new VeniceException("quota monitor close failed")).when(quotaMonitor).close();
+    doThrow(new VeniceException("schema fetcher close failed")).when(schemaFetcher).close();
+    doThrow(new VeniceException("transport client close failed")).when(transportClient).close();
+
+    producer.stop();
+
+    assertTrue(producer.isStopped());
+    verify(writer).close();
+    verify(controllerClient).close();
+    verify(pushMonitor).close();
+    verify(quotaMonitor).close();
+    verify(schemaFetcher).close();
+    verify(transportClient).close();
+  }
+
+  @Test
+  public void testStreamReprocessingStopTreatsMonitorCloseAsOneShotBestEffortCleanup() {
+    VeniceSystemProducer producer = newLifecycleProducer(Version.PushType.STREAM_REPROCESSING);
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    RouterBasedPushMonitor pushMonitor = mock(RouterBasedPushMonitor.class);
+    AtomicInteger closeAttempts = new AtomicInteger();
+    when(pushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.COMPLETED);
+    doAnswer(invocation -> {
+      if (closeAttempts.getAndIncrement() == 0) {
+        throw new VeniceException("push monitor close failed");
+      }
+      return null;
+    }).when(pushMonitor).close();
+    producer.setControllerClient(controllerClient);
+    setField(producer, "topicName", "test_store_v1_sr");
+    producer.setPushMonitor(pushMonitor);
+
+    producer.stop();
+    producer.stop();
+
+    verify(pushMonitor).getCurrentStatus();
+    verify(pushMonitor).close();
+    verify(controllerClient).close();
+  }
+
+  @Test
+  public void testStoppedProducerRejectsDirectSendAndFlushWithSamzaException() {
+    ControllerClient controllerClient = buildMockControllerClient(1, -1);
+    VeniceWriter<byte[], byte[], byte[]> writer = mock(VeniceWriter.class);
+    VeniceSystemProducer producer = buildStartedProducerSpy(controllerClient, writer);
+    producer.stop();
+
+    SamzaException sendFailure = expectThrows(SamzaException.class, () -> producer.send("key", "value"));
+    SamzaException flushFailure = expectThrows(SamzaException.class, () -> producer.flush("source"));
+
+    assertTrue(sendFailure.getMessage().contains("already stopped"));
+    assertTrue(flushFailure.getMessage().contains("already stopped"));
+  }
+
   private VeniceSystemProducer buildStartedProducerSpy(
       ControllerClient mockControllerClient,
       VeniceWriter<byte[], byte[], byte[]> mockWriter) {
@@ -628,5 +848,125 @@ public class VeniceSystemProducerTest {
             .setPrimaryControllerD2ServiceName("ChildController")
             .build());
     assertNotNull(producer);
+  }
+
+  private VeniceSystemProducer newLifecycleProducer(Version.PushType pushType) {
+    return new VeniceSystemProducer(
+        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+            .setPushType(pushType)
+            .setSamzaJobId("push-job-id-1")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setDiscoveryUrl("discoveryUrl")
+            .build());
+  }
+
+  private ControllerClient buildLifecycleController(Version.PushType pushType, boolean hybridQuotaEnabled) {
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+    versionCreationResponse
+        .setKafkaTopic(pushType == Version.PushType.STREAM_REPROCESSING ? "test_store_v1_sr" : "test_store_rt");
+    versionCreationResponse.setKafkaBootstrapServers("kafka:9092");
+    versionCreationResponse.setPartitions(1);
+    versionCreationResponse.setVersion(1);
+    when(
+        controllerClient.requestTopicForWrites(
+            anyString(),
+            anyLong(),
+            any(),
+            anyString(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyBoolean(),
+            anyLong())).thenReturn(versionCreationResponse);
+
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setHybridStoreDiskQuotaEnabled(hybridQuotaEnabled);
+    storeInfo.setVersions(Arrays.asList(new VersionImpl("test_store", 1, "test_store_v1")));
+    StoreResponse storeResponse = new StoreResponse();
+    storeResponse.setStore(storeInfo);
+    when(controllerClient.getStore(anyString())).thenReturn(storeResponse);
+    return controllerClient;
+  }
+
+  private static void setField(Object target, String fieldName, Object value) {
+    for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+      try {
+        Field field = type.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+        return;
+      } catch (NoSuchFieldException exception) {
+        // Continue with the superclass for mock implementations.
+      } catch (IllegalAccessException exception) {
+        throw new AssertionError("Unable to set test resource " + fieldName, exception);
+      }
+    }
+    throw new AssertionError("Unable to find test resource " + fieldName);
+  }
+
+  private static boolean containsThrowable(Throwable[] candidates, Throwable expected) {
+    for (Throwable candidate: candidates) {
+      if (candidate == expected || candidate.getCause() == expected
+          || containsThrowable(candidate.getSuppressed(), expected)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private enum StartupFailurePoint {
+    AFTER_STREAM_DISPATCHER, AFTER_PUSH_MONITOR, AFTER_QUOTA_MONITOR_START
+  }
+
+  private final class StartupRollbackScenario {
+    private final VeniceException startupFailure = new VeniceException("startup failed after resource publication");
+    private final ControllerClient controllerClient;
+    private final StoreSchemaFetcher schemaFetcher = mock(StoreSchemaFetcher.class);
+    private final TransportClient transportClient = mock(TransportClient.class);
+    private final AbstractVeniceWriter<byte[], byte[], byte[]> writer = mock(AbstractVeniceWriter.class);
+    private final RouterBasedPushMonitor pushMonitor = mock(RouterBasedPushMonitor.class);
+    private final RouterBasedHybridStoreQuotaMonitor quotaMonitor = mock(RouterBasedHybridStoreQuotaMonitor.class);
+    private final AtomicReference<VeniceSystemProducerWriteDispatcher> dispatcher = new AtomicReference<>();
+    private final VeniceSystemProducer producer;
+
+    private StartupRollbackScenario(StartupFailurePoint failurePoint) {
+      Version.PushType pushType = failurePoint == StartupFailurePoint.AFTER_PUSH_MONITOR
+          ? Version.PushType.STREAM_REPROCESSING
+          : Version.PushType.STREAM;
+      controllerClient = buildLifecycleController(pushType, failurePoint != StartupFailurePoint.AFTER_PUSH_MONITOR);
+      producer = spy(newLifecycleProducer(pushType));
+      doNothing().when(producer).getKeySchema();
+      doNothing().when(producer).refreshSchemaCache();
+      doAnswer(invocation -> {
+        producer.setControllerClient(controllerClient);
+        setField(producer, "schemaFetcher", schemaFetcher);
+        setField(producer, "transportClient", transportClient);
+        return null;
+      }).when(producer).setupClientsAndReInitProvider();
+      doAnswer(invocation -> {
+        VeniceSystemProducerWriteDispatcher created = (VeniceSystemProducerWriteDispatcher) invocation.callRealMethod();
+        dispatcher.set(created);
+        return created;
+      }).when(producer).createStreamWriteDispatcher(writer);
+
+      if (failurePoint == StartupFailurePoint.AFTER_PUSH_MONITOR) {
+        when(pushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.COMPLETED);
+        doReturn(pushMonitor).when(producer).createPushMonitor(anyString());
+        doThrow(startupFailure).when(producer).getVeniceWriter(any());
+      } else {
+        doReturn(writer).when(producer).getVeniceWriter(any());
+        if (failurePoint == StartupFailurePoint.AFTER_STREAM_DISPATCHER) {
+          doThrow(startupFailure).when(producer).createHybridStoreQuotaMonitor();
+        } else {
+          doReturn(quotaMonitor).when(producer).createHybridStoreQuotaMonitor();
+          doThrow(startupFailure).when(quotaMonitor).start();
+        }
+      }
+    }
   }
 }

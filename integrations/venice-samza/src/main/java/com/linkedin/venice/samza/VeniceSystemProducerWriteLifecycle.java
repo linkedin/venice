@@ -18,6 +18,7 @@ final class VeniceSystemProducerWriteLifecycle {
   private final ReentrantReadWriteLock admissionLock = new ReentrantReadWriteLock(true);
   private final ReentrantLock fenceLock = new ReentrantLock(true);
   private final Object admissions = new Object();
+  private final Object fenceSignal = new Object();
   private final AtomicReference<Throwable> firstFailure = new AtomicReference<>();
   private volatile boolean accepting = true;
   private volatile boolean stopped;
@@ -27,6 +28,7 @@ final class VeniceSystemProducerWriteLifecycle {
 
   void runFlushFence(Runnable action) {
     lockInterruptibly(fenceLock, "Interrupted before Venice SystemProducer flush");
+    signalFenceAcquired();
     try {
       lockInterruptibly(admissionLock.writeLock(), "Interrupted before Venice SystemProducer flush");
       try {
@@ -48,6 +50,7 @@ final class VeniceSystemProducerWriteLifecycle {
       return StopStatus.FAILED;
     }
     stopFenceHeld = true;
+    signalFenceAcquired();
     if (stopped) {
       stopFenceHeld = false;
       fenceLock.unlock();
@@ -64,6 +67,9 @@ final class VeniceSystemProducerWriteLifecycle {
 
     accepting = false;
     stopAdmissionHeld = true;
+    synchronized (admissions) {
+      admissions.notifyAll();
+    }
     try {
       if (!awaitPendingAdmissionsUntil(deadlineNanos, restoreInterrupt)) {
         recordFailure(new VeniceException("Timed out while draining Venice SystemProducer write admissions"));
@@ -134,13 +140,37 @@ final class VeniceSystemProducerWriteLifecycle {
     return stopped;
   }
 
-  boolean isFenceHeld() {
-    return fenceLock.isLocked();
+  boolean awaitFence(long timeout, TimeUnit unit) throws InterruptedException {
+    long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+    synchronized (fenceSignal) {
+      while (!fenceLock.isLocked()) {
+        long remainingNanos = remainingNanos(deadlineNanos);
+        if (remainingNanos <= 0) {
+          return false;
+        }
+        TimeUnit.NANOSECONDS.timedWait(fenceSignal, remainingNanos);
+      }
+      return true;
+    }
   }
 
   int getPendingAdmissions() {
     synchronized (admissions) {
       return pendingAdmissions;
+    }
+  }
+
+  boolean awaitStopAdmission(long timeout, TimeUnit unit) throws InterruptedException {
+    long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+    synchronized (admissions) {
+      while (!stopAdmissionHeld) {
+        long remainingNanos = remainingNanos(deadlineNanos);
+        if (remainingNanos <= 0) {
+          return false;
+        }
+        TimeUnit.NANOSECONDS.timedWait(admissions, remainingNanos);
+      }
+      return true;
     }
   }
 
@@ -213,5 +243,11 @@ final class VeniceSystemProducerWriteLifecycle {
 
   static long remainingNanos(long deadlineNanos) {
     return Math.max(0, deadlineNanos - System.nanoTime());
+  }
+
+  private void signalFenceAcquired() {
+    synchronized (fenceSignal) {
+      fenceSignal.notifyAll();
+    }
   }
 }

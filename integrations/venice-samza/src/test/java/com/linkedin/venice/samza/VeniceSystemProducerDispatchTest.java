@@ -34,7 +34,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -527,8 +526,12 @@ public class VeniceSystemProducerDispatchTest {
 
   private static void awaitFenceHeld(VeniceSystemProducer producer) {
     VeniceSystemProducerWriteDispatcher dispatcher = getField(producer, "streamWriteDispatcher");
-    VeniceSystemProducerWriteLifecycle lifecycle = getField(dispatcher, "lifecycle");
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertTrue(lifecycle.isFenceHeld()));
+    try {
+      assertTrue(dispatcher.awaitFence(5, TimeUnit.SECONDS));
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError("Interrupted while waiting for dispatcher fence", exception);
+    }
   }
 
   @SuppressWarnings("unchecked")

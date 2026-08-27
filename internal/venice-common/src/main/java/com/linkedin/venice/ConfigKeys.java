@@ -2807,7 +2807,7 @@ public class ConfigKeys {
 
   /**
    * Number of VeniceSystemProducer durable-completion callback threads.
-   * Default: 0, which completes callbacks on the PubSub thread.
+   * Default: 0, which hands durable completion to the shared Venice completion executor.
    */
   public static final String VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT =
       "venice.system.producer.callback.thread.count";

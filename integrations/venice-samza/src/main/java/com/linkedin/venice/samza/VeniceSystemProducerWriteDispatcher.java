@@ -6,16 +6,16 @@ import static com.linkedin.venice.samza.VeniceSystemProducerWriteCommand.CALLBAC
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.utils.VeniceCompletionExecutor;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.PartitionedVeniceWriteExecutor;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -39,7 +39,9 @@ final class VeniceSystemProducerWriteDispatcher {
   private final LongConsumer markerAdmissionWait;
   private final VeniceSystemProducerWriteLifecycle lifecycle = new VeniceSystemProducerWriteLifecycle();
   private final AtomicBoolean legacyRoutingWarningLogged = new AtomicBoolean();
+  private volatile boolean terminalWriterFlushFinished;
   private volatile boolean writerClosed;
+  private Future<?> writerCleanupFuture;
 
   VeniceSystemProducerWriteDispatcher(
       AbstractVeniceWriter<byte[], byte[], byte[]> writer,
@@ -63,7 +65,7 @@ final class VeniceSystemProducerWriteDispatcher {
   VeniceSystemProducerWriteDispatcher(
       AbstractVeniceWriter<byte[], byte[], byte[]> writer,
       PartitionedVeniceWriteExecutor executor) {
-    this(writer, executor, SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS, ForkJoinPool.commonPool());
+    this(writer, executor, SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS, VeniceCompletionExecutor::execute);
   }
 
   VeniceSystemProducerWriteDispatcher(
@@ -92,24 +94,6 @@ final class VeniceSystemProducerWriteDispatcher {
     this.markerAdmissionWait = markerAdmissionWait;
   }
 
-  CompletableFuture<Void> put(byte[] key, byte[] value, int valueSchemaId, long logicalTimestamp) {
-    return dispatch(VeniceSystemProducerWriteCommand.put(key, value, valueSchemaId, logicalTimestamp));
-  }
-
-  CompletableFuture<Void> update(
-      byte[] key,
-      byte[] value,
-      int valueSchemaId,
-      int derivedSchemaId,
-      long logicalTimestamp) {
-    return dispatch(
-        VeniceSystemProducerWriteCommand.update(key, value, valueSchemaId, derivedSchemaId, logicalTimestamp));
-  }
-
-  CompletableFuture<Void> delete(byte[] key, long logicalTimestamp) {
-    return dispatch(VeniceSystemProducerWriteCommand.delete(key, logicalTimestamp));
-  }
-
   Future<Void> getSubmissionFuture(CompletableFuture<Void> durableFuture) {
     return VeniceSystemProducerWriteCommand.getSubmissionFuture(durableFuture);
   }
@@ -133,7 +117,6 @@ final class VeniceSystemProducerWriteDispatcher {
     long deadlineNanos = System.nanoTime() + shutdownTimeoutNanos;
     try {
       boolean workersTerminated;
-      boolean fenceCompleted = false;
       boolean forceWorkerShutdown = false;
       boolean stopAdmissionDrained;
       VeniceSystemProducerWriteLifecycle.StopStatus stopStatus = lifecycle.beginStop(deadlineNanos, restoreInterrupt);
@@ -149,9 +132,7 @@ final class VeniceSystemProducerWriteDispatcher {
             for (CompletableFuture<Void> marker: enqueueMarkers(deadlineNanos)) {
               await(marker, "Venice SystemProducer stop marker failed", deadlineNanos);
             }
-            flushWriter();
             checkForFailure();
-            fenceCompleted = true;
           } catch (Throwable throwable) {
             recordFailure(throwable);
             forceWorkerShutdown = true;
@@ -162,20 +143,14 @@ final class VeniceSystemProducerWriteDispatcher {
 
         if (forceWorkerShutdown) {
           executor.shutdownWorkersNow();
-        } else {
-          executor.shutdownWorkers();
         }
         workersTerminated = executor.shutdownWorkersAndAwait(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS);
         captureInterrupt(restoreInterrupt);
         if (!workersTerminated) {
           recordFailure(new VeniceException("Timed out while draining Venice SystemProducer workers"));
         } else if (stopAdmissionDrained && !writerClosed) {
-          if (fenceCompleted) {
-            closeWriter();
-          } else {
-            flushAndCloseWriter();
-          }
-          captureInterrupt(restoreInterrupt);
+          startWriterCleanupIfNeeded();
+          awaitWriterCleanup(deadlineNanos, restoreInterrupt);
         }
 
         if (workersTerminated && writerClosed) {
@@ -221,10 +196,10 @@ final class VeniceSystemProducerWriteDispatcher {
     } catch (UnsupportedOperationException unsupportedRouting) {
       if (legacyRoutingWarningLogged.compareAndSet(false, true)) {
         LOGGER.warn(
-            "Writer {} does not expose partition routing; falling back to serialized-key hashing for worker striping",
+            "Writer {} does not expose partition routing; falling back to stripe 0 to preserve write ordering",
             writer.getClass().getName());
       }
-      return Arrays.hashCode(key);
+      return 0;
     } catch (Throwable throwable) {
       recordFailure(throwable);
       throw propagate("Unable to determine the Venice partition", throwable);
@@ -273,6 +248,10 @@ final class VeniceSystemProducerWriteDispatcher {
   }
 
   private void executeCallbackCompletion(VeniceSystemProducerWriteCommand command, Throwable failure) {
+    if (!executor.isCallbackExecutorEnabled()) {
+      handoffCompletion(() -> command.completeDurable(failure));
+      return;
+    }
     AtomicBoolean completionClaimed = new AtomicBoolean();
     Runnable directCompletion = () -> {
       if (completionClaimed.compareAndSet(false, true)) {
@@ -284,23 +263,12 @@ final class VeniceSystemProducerWriteDispatcher {
         handoffCompletion(() -> command.completeDurable(failure));
       }
     };
-    /*
-     * Direct completion normally preserves callbackThreadCount=0 semantics, but a writer may deliver a callback from
-     * flush/close while the lifecycle fence is held. Hand off in that case so user continuations cannot reenter a fenced
-     * flush or stop on the callback thread.
-     */
-    if (!executor.isCallbackExecutorEnabled() && lifecycle.isFenceHeld()) {
-      fallbackHandoff.run();
-      return;
-    }
     if (!executor.tryExecuteCallback(directCompletion, ignored -> fallbackHandoff.run())) {
       fallbackHandoff.run();
     }
   }
 
-  /**
-   * Transfers exceptional completion ownership without making user continuations part of producer shutdown.
-   */
+  /** Transfers completion ownership without making user continuations part of producer shutdown. */
   private void handoffCompletion(Runnable completion) {
     Runnable guardedCompletion = () -> {
       try {
@@ -312,15 +280,7 @@ final class VeniceSystemProducerWriteDispatcher {
     try {
       completionHandoffExecutor.execute(guardedCompletion);
     } catch (RejectedExecutionException rejection) {
-      if (completionHandoffExecutor == ForkJoinPool.commonPool()) {
-        guardedCompletion.run();
-        return;
-      }
-      try {
-        ForkJoinPool.commonPool().execute(guardedCompletion);
-      } catch (RejectedExecutionException fallbackRejection) {
-        guardedCompletion.run();
-      }
+      VeniceCompletionExecutor.execute(guardedCompletion);
     }
   }
 
@@ -347,28 +307,56 @@ final class VeniceSystemProducerWriteDispatcher {
     return markers;
   }
 
-  private void flushAndCloseWriter() {
-    boolean restoreInterrupt = Thread.interrupted();
-    try {
-      flushWriter();
-    } catch (Throwable ignored) {
-      // The sticky failure is rethrown after physical cleanup.
-    } finally {
-      restoreInterrupt |= Thread.interrupted();
+  private void startWriterCleanupIfNeeded() {
+    if (writerCleanupFuture != null && !writerCleanupFuture.isDone()) {
+      return;
     }
-    closeWriter();
-    restoreInterrupt |= Thread.interrupted();
-    if (restoreInterrupt) {
-      Thread.currentThread().interrupt();
-    }
+    boolean flushRequired = !terminalWriterFlushFinished;
+    FutureTask<Void> cleanupTask = new FutureTask<>(() -> {
+      cleanupWriter(flushRequired);
+      return null;
+    });
+    writerCleanupFuture = cleanupTask;
+    VeniceCompletionExecutor.execute(cleanupTask);
   }
 
-  private void closeWriter() {
+  private void cleanupWriter(boolean flushRequired) {
+    Throwable cleanupFailure = null;
+    if (flushRequired) {
+      try {
+        writer.flush();
+      } catch (Throwable throwable) {
+        recordFailure(throwable);
+        cleanupFailure = throwable;
+      } finally {
+        terminalWriterFlushFinished = true;
+      }
+    }
     try {
       writer.close();
       writerClosed = true;
     } catch (Throwable throwable) {
       recordFailure(throwable);
+      if (cleanupFailure == null) {
+        cleanupFailure = throwable;
+      }
+    }
+    if (cleanupFailure != null) {
+      throw propagate("Venice SystemProducer writer cleanup failed", cleanupFailure);
+    }
+  }
+
+  private void awaitWriterCleanup(long deadlineNanos, AtomicBoolean restoreInterrupt) {
+    try {
+      writerCleanupFuture.get(remainingNanos(deadlineNanos), TimeUnit.NANOSECONDS);
+    } catch (InterruptedException exception) {
+      restoreInterrupt.set(true);
+      throw new VeniceException("Interrupted while cleaning up Venice SystemProducer writer", exception);
+    } catch (ExecutionException exception) {
+      Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+      recordFailure(cause);
+    } catch (TimeoutException exception) {
+      throw new VeniceException("Timed out while cleaning up Venice SystemProducer writer", exception);
     }
   }
 
@@ -407,6 +395,14 @@ final class VeniceSystemProducerWriteDispatcher {
 
   int getPendingAdmissions() {
     return lifecycle.getPendingAdmissions();
+  }
+
+  boolean awaitStopAdmission(long timeout, TimeUnit unit) throws InterruptedException {
+    return lifecycle.awaitStopAdmission(timeout, unit);
+  }
+
+  boolean awaitFence(long timeout, TimeUnit unit) throws InterruptedException {
+    return lifecycle.awaitFence(timeout, unit);
   }
 
   private static long remainingNanos(long deadlineNanos) {
