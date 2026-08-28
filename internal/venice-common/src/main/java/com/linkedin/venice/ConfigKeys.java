@@ -2792,6 +2792,24 @@ public class ConfigKeys {
   public static final String CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY = "client.producer.callback.queue.capacity";
 
   /**
+   * Number of partition worker threads (stripes) for the VeniceSystemProducer async STREAM dispatch path.
+   * Records are routed to a worker by their Venice partition, so during normal dispatch a partition blocked
+   * by leader rebalance does not stall partitions mapped to other stripes; partitions that share a stripe are
+   * serialized and can wait on one another. {@code flush()} is a global durability boundary across all stripes
+   * (all pre-fence submissions precede the flush). Default: 4. Set to 0 to DISABLE async dispatch (writes
+   * execute inline on the caller thread, preserving the legacy synchronous behavior).
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_COUNT = "venice.system.producer.worker.count";
+
+  /**
+   * Bounded queue capacity per VeniceSystemProducer worker (stripe) for backpressure. When a worker's queue
+   * is full the submitting thread blocks until space frees up; writes are never dropped. Default: 100000.
+   * Ignored when the worker count is 0.
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY =
+      "venice.system.producer.worker.queue.capacity";
+
+  /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
    */
   public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =

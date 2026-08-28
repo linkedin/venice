@@ -2788,6 +2788,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
+   * Computes the Venice partition for {@code key} by serializing it with this writer's key serializer and
+   * applying the configured partitioner. Enables partition-stable striped dispatch upstream of the writer.
+   */
+  @Override
+  public int getPartitionId(K key) {
+    return getPartition(keySerializer.serialize(topicName, key));
+  }
+
+  /**
    * @param partition for which we want to get the current {@link Segment}. Segment will be
    *                  ended automatically if its creation time is prior to
    *                  {@link #maxElapsedTimeForSegmentInMs}. The intention of having "shorter"

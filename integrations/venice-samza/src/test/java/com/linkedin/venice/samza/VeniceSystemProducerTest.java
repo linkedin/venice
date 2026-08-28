@@ -16,10 +16,12 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
@@ -32,15 +34,22 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.BatchingVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -48,12 +57,18 @@ import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.SamzaException;
 import org.apache.samza.config.Config;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
@@ -226,10 +241,10 @@ public class VeniceSystemProducerTest {
     ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
-    producerSpy.send("myKey", "myValue");
+    awaitSubmitted(producerSpy.send("myKey", "myValue"));
     verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
 
-    producerSpy.send((Object) "myKey", null);
+    awaitSubmitted(producerSpy.send((Object) "myKey", null));
     verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
 
     producerSpy.stop();
@@ -250,7 +265,7 @@ public class VeniceSystemProducerTest {
     ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
-    producerSpy.send("myKey", "myValue");
+    awaitSubmitted(producerSpy.send("myKey", "myValue"));
     verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
 
     producerSpy.stop();
@@ -483,24 +498,347 @@ public class VeniceSystemProducerTest {
     assertNull(capturedConfig.getProvidedPrimaryControllerColoD2Client());
   }
 
+  /**
+   * Awaits the async STREAM dispatch submission so the writer interaction becomes observable. The protected
+   * {@code send(Object, Object)} returns after bounded queue admission without waiting for the writer, so tests
+   * that verify the writer/hook call must first await submission to stay deterministic.
+   */
+  private static void awaitSubmitted(java.util.concurrent.CompletableFuture<Void> future) {
+    VeniceSystemProducerWriteCommand.awaitSubmission(future);
+  }
+
   private VeniceSystemProducer buildStartedProducerSpy(
       ControllerClient mockControllerClient,
-      VeniceWriter<byte[], byte[], byte[]> mockWriter) {
-    VeniceSystemProducer producer = new VeniceSystemProducer(
-        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
-            .setPushType(Version.PushType.STREAM)
-            .setSamzaJobId("push-job-id-1")
-            .setRunningFabric("dc-0")
-            .setFactory(mock(VeniceSystemFactory.class))
-            .setDiscoveryUrl("discoveryUrl")
-            .build());
-    VeniceSystemProducer producerSpy = spy(producer);
+      AbstractVeniceWriter<byte[], byte[], byte[]> mockWriter) {
+    return buildStartedProducerSpy(mockControllerClient, mockWriter, null);
+  }
+
+  private VeniceSystemProducer buildStartedProducerSpy(
+      ControllerClient mockControllerClient,
+      AbstractVeniceWriter<byte[], byte[], byte[]> mockWriter,
+      Config samzaConfig) {
+    VeniceSystemProducerConfig.Builder builder = new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("push-job-id-1")
+        .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
+        .setDiscoveryUrl("discoveryUrl");
+    if (samzaConfig != null) {
+      builder.setSamzaConfig(samzaConfig);
+    }
+    VeniceSystemProducer producerSpy = spy(new VeniceSystemProducer(builder.build()));
     doNothing().when(producerSpy).setupClientsAndReInitProvider();
     doNothing().when(producerSpy).refreshSchemaCache();
     producerSpy.setControllerClient(mockControllerClient);
     doReturn(mockWriter).when(producerSpy).getVeniceWriter(any());
     producerSpy.start();
     return producerSpy;
+  }
+
+  /**
+   * Real {@link VeniceWriter} + a {@link PubSubProducerAdapter} whose first {@code sendMessage} (the lazy
+   * START_OF_SEGMENT control record) blocks. Proves the async STREAM contract end-to-end through
+   * VeniceSystemProducer: the protected {@code send(Object, Object)} returns after bounded queue admission while
+   * the writer is still blocked (durability and submission both incomplete), whereas the public {@code put}
+   * (which awaits submission) stays blocked until the writer submission returns. Same partition => same stripe =>
+   * strict FIFO, so releasing the segment unblocks both in order.
+   */
+  @Test(timeOut = 30_000)
+  public void streamSendIsAsyncWhileFirstSegmentBlocksAndPublicPutWaitsForSubmission() throws Exception {
+    CountDownLatch firstSendEntered = new CountDownLatch(1);
+    CountDownLatch releaseFirstSend = new CountDownLatch(1);
+    AtomicInteger sendCount = new AtomicInteger();
+    java.util.concurrent.atomic.AtomicReference<Object> firstKey = new java.util.concurrent.atomic.AtomicReference<>();
+    java.util.concurrent.atomic.AtomicReference<Object> firstEnvelope =
+        new java.util.concurrent.atomic.AtomicReference<>();
+
+    PubSubProducerAdapter blockingAdapter = mock(PubSubProducerAdapter.class);
+    when(blockingAdapter.sendMessage(any(), any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+      if (sendCount.getAndIncrement() == 0) {
+        firstKey.set(invocation.getArgument(2));
+        firstEnvelope.set(invocation.getArgument(3));
+        firstSendEntered.countDown();
+        assertTrue(releaseFirstSend.await(20, TimeUnit.SECONDS), "first sendMessage was never released");
+      }
+      PubSubProducerCallback callback = invocation.getArgument(5);
+      PubSubProduceResult result = mock(PubSubProduceResult.class);
+      if (callback != null) {
+        callback.onCompletion(result, null);
+      }
+      return java.util.concurrent.CompletableFuture.completedFuture(result);
+    });
+    VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
+        new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).build(),
+        VeniceProperties.empty(),
+        blockingAdapter);
+    VeniceSystemProducer producerSpy =
+        buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) realWriter);
+
+    // Protected send is async: it returns after queue admission even though the worker is blocked on the segment.
+    java.util.concurrent.CompletableFuture<Void> asyncFuture = producerSpy.send("asyncKey", "asyncValue");
+    assertTrue(firstSendEntered.await(20, TimeUnit.SECONDS), "worker never reached the blocked writer");
+    // The blocked send is the lazy START_OF_SEGMENT control record, not the data record: assert it explicitly
+    // rather than assuming ordering by index.
+    assertTrue(((KafkaKey) firstKey.get()).isControlMessage(), "first blocked send must be a control message");
+    ControlMessage blockedControlMessage = (ControlMessage) ((KafkaMessageEnvelope) firstEnvelope.get()).payloadUnion;
+    assertEquals(
+        ControlMessageType.valueOf(blockedControlMessage),
+        ControlMessageType.START_OF_SEGMENT,
+        "first blocked send must be START_OF_SEGMENT");
+    VeniceSystemProducerWriteCommand.DurableWriteFuture durable =
+        (VeniceSystemProducerWriteCommand.DurableWriteFuture) asyncFuture;
+    assertFalse(durable.getSubmissionFuture().isDone(), "submission completed while writer was blocked");
+    assertFalse(asyncFuture.isDone(), "durable completed while writer was blocked");
+
+    // Public put awaits submission: it must stay blocked (FIFO behind the blocked record) until release.
+    CountDownLatch putReturned = new CountDownLatch(1);
+    Thread putThread = new Thread(() -> {
+      producerSpy.put("blockKey", "blockValue");
+      putReturned.countDown();
+    });
+    putThread.start();
+    assertFalse(putReturned.await(300, TimeUnit.MILLISECONDS), "public put returned before writer submission");
+
+    releaseFirstSend.countDown();
+    assertTrue(putReturned.await(20, TimeUnit.SECONDS), "public put never returned after release");
+    durable.getSubmissionFuture().get(20, TimeUnit.SECONDS);
+    asyncFuture.get(20, TimeUnit.SECONDS);
+    putThread.join(TimeUnit.SECONDS.toMillis(20));
+
+    producerSpy.stop();
+  }
+
+  /**
+   * Public {@code put}, public {@code delete}, and the Samza envelope {@code send} all call the protected
+   * {@code send(Object, Object)} exactly once and then wait through submission (durability handoff), whereas a
+   * foreign (non-durable) future returned by an override must be a no-op wait so the public op returns
+   * immediately without waiting or casting.
+   */
+  @Test(timeOut = 30_000)
+  public void publicPutDeleteAndEnvelopeSendWaitForSubmissionAndForeignFutureDoesNot() throws Exception {
+    VeniceSystemProducer producerSpy =
+        buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) mock(VeniceWriter.class));
+    AtomicInteger sendInvocations = new AtomicInteger();
+    java.util.concurrent.BlockingQueue<VeniceSystemProducerWriteCommand> issued =
+        new java.util.concurrent.LinkedBlockingQueue<>();
+    doAnswer(invocation -> {
+      sendInvocations.incrementAndGet();
+      VeniceSystemProducerWriteCommand command =
+          VeniceSystemProducerWriteCommand.put(new byte[] { 1 }, new byte[] { 2 }, 1, 0L);
+      issued.add(command);
+      return command.getDurableFuture();
+    }).when(producerSpy).send((Object) any(), any());
+
+    SystemStream systemStream = new SystemStream("venice", "test_store");
+    assertPublicOpWaitsForSubmission(() -> producerSpy.put("k", "v"), issued);
+    assertPublicOpWaitsForSubmission(() -> producerSpy.delete("k"), issued);
+    assertPublicOpWaitsForSubmission(
+        () -> producerSpy.send("src", new OutgoingMessageEnvelope(systemStream, "k", "v")),
+        issued);
+    assertEquals(sendInvocations.get(), 3, "each public op must call protected send exactly once");
+
+    // A foreign future from an override must not cause an internal wait/cast: the public put returns at once.
+    java.util.concurrent.CompletableFuture<Void> foreign = new java.util.concurrent.CompletableFuture<>();
+    doReturn(foreign).when(producerSpy).send((Object) any(), any());
+    CountDownLatch putReturned = new CountDownLatch(1);
+    Thread foreignPut = new Thread(() -> {
+      producerSpy.put("k", "v");
+      putReturned.countDown();
+    });
+    foreignPut.start();
+    assertTrue(putReturned.await(20, TimeUnit.SECONDS), "public put must not wait on a foreign future");
+    foreignPut.join();
+    assertFalse(foreign.isDone(), "a foreign future must be left untouched");
+
+    producerSpy.stop();
+  }
+
+  private void assertPublicOpWaitsForSubmission(
+      Runnable publicOp,
+      java.util.concurrent.BlockingQueue<VeniceSystemProducerWriteCommand> issued) throws Exception {
+    CountDownLatch returned = new CountDownLatch(1);
+    Thread t = new Thread(() -> {
+      publicOp.run();
+      returned.countDown();
+    });
+    t.start();
+    VeniceSystemProducerWriteCommand command = issued.poll(20, TimeUnit.SECONDS);
+    assertNotNull(command, "protected send was not invoked by the public op");
+    assertFalse(returned.await(300, TimeUnit.MILLISECONDS), "public op returned before submission completed");
+    command.finishSubmission(null);
+    assertTrue(returned.await(20, TimeUnit.SECONDS), "public op did not return after submission completed");
+    t.join();
+  }
+
+  /**
+   * Invalid worker configs must fail fast at start() rather than silently defaulting: a negative worker count, a
+   * nonpositive queue capacity, and a malformed integer are all rejected with {@link SamzaException}.
+   */
+  @Test(timeOut = 30_000)
+  public void streamRejectsInvalidWorkerConfig() {
+    assertStartRejectsConfig(VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG, "-1");
+    assertStartRejectsConfig(VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG, "notAnInt");
+    assertStartRejectsConfig(VeniceSystemProducerWriteDispatcher.WORKER_QUEUE_CAPACITY_CONFIG, "0");
+  }
+
+  private void assertStartRejectsConfig(String key, String value) {
+    Map<String, String> configMap = new HashMap<>();
+    configMap.put(key, value);
+    VeniceSystemProducerConfig.Builder builder = new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("push-job-id-1")
+        .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
+        .setDiscoveryUrl("discoveryUrl")
+        .setSamzaConfig(new MapConfig(configMap));
+    VeniceSystemProducer producerSpy = spy(new VeniceSystemProducer(builder.build()));
+    doNothing().when(producerSpy).setupClientsAndReInitProvider();
+    doNothing().when(producerSpy).refreshSchemaCache();
+    producerSpy.setControllerClient(buildMockControllerClient(1, -1));
+    doReturn(mock(VeniceWriter.class)).when(producerSpy).getVeniceWriter(any());
+    try {
+      producerSpy.start();
+      fail("start() must reject invalid config " + key + "=" + value);
+    } catch (SamzaException expected) {
+      // expected: invalid config must not silently default.
+    }
+    // Validation runs before client setup and writer allocation, so neither was reached.
+    verify(producerSpy, never()).setupClientsAndReInitProvider();
+    verify(producerSpy, never()).getVeniceWriter(any());
+    // The producer did not silently start inline: a retry re-validates and rejects again rather than proceeding.
+    try {
+      producerSpy.start();
+      fail("a retry after invalid config must re-validate, not silently start inline");
+    } catch (SamzaException expected) {
+      // expected: still rejected, so no inline fallback slipped through.
+    }
+    verify(producerSpy, never()).getVeniceWriter(any());
+  }
+
+  /**
+   * A worker count of 0 is the kill switch: no dispatcher is created, so writes run fully inline on the caller
+   * thread exactly as before. The inline path returns a plain (non-durable) future, so the writer op is observable
+   * immediately without awaiting submission.
+   */
+  @Test(timeOut = 30_000)
+  public void streamWithZeroWorkersIsFullyInlineKillSwitch() {
+    Map<String, String> configMap = new HashMap<>();
+    configMap.put(VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG, "0");
+
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(
+        buildMockControllerClient(1, -1),
+        (AbstractVeniceWriter) mockWriter,
+        new MapConfig(configMap));
+
+    java.util.concurrent.CompletableFuture<Void> future = producerSpy.send("inlineKey", "inlineValue");
+    // Inline: the writer was already called synchronously on this thread, before any await.
+    verify(mockWriter).put(any(), any(), eq(1), anyLong(), any());
+    assertFalse(
+        future instanceof VeniceSystemProducerWriteCommand.DurableWriteFuture,
+        "kill switch produced a durable future");
+
+    producerSpy.stop();
+  }
+
+  /**
+   * Focused batching-enabled coverage: a batching writer routes through the same async dispatcher unchanged. Proves
+   * dispatch (worker calls the batching writer's op via partition routing), flush (fence + writer flush), and stop
+   * (drain without closing the writer) preserve existing behavior for the batching path.
+   */
+  @Test(timeOut = 30_000)
+  public void streamBatchingWriterDispatchFlushAndStopPreserveBehavior() {
+    BatchingVeniceWriter<byte[], byte[], byte[]> batchingWriter = mock(BatchingVeniceWriter.class);
+    when(batchingWriter.getPartitionId(any())).thenReturn(0);
+    when(batchingWriter.put(any(), any(), anyInt(), anyLong(), any()))
+        .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
+
+    VeniceSystemProducer producerSpy =
+        buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) batchingWriter);
+
+    awaitSubmitted(producerSpy.send("batchKey", "batchValue"));
+    verify(batchingWriter).put(any(), any(), eq(1), anyLong(), any());
+
+    // Flush is the checkpoint fence: it must flush the underlying batching writer.
+    producerSpy.flush("source");
+    verify(batchingWriter).flush();
+
+    // Stop drains workers and is idempotent; baseline writer close is owned by the producer, not the dispatcher.
+    producerSpy.stop();
+    producerSpy.stop();
+  }
+
+  /**
+   * Item B: an interrupted {@code stop()} must still drain losslessly and close the writer before returning, then
+   * restore the interrupt. A worker is blocked inside {@code writer.put}; the caller enters {@code stop()} already
+   * interrupted. Graceful drain never force-interrupts the worker, so {@code stop()} does not return (and the writer
+   * is not closed) until the worker is released. Once it returns, the writer has been closed and the interrupt is set.
+   */
+  @Test(timeOut = 30_000)
+  public void interruptedStopStillClosesWriterThenRestoresInterrupt() throws Exception {
+    CountDownLatch workerInPut = new CountDownLatch(1);
+    CountDownLatch releasePut = new CountDownLatch(1);
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    when(mockWriter.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
+      workerInPut.countDown();
+      releasePut.await();
+      return java.util.concurrent.CompletableFuture.completedFuture(mock(PubSubProduceResult.class));
+    });
+
+    VeniceSystemProducer producerSpy =
+        buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) mockWriter);
+
+    // Admit one async write; the worker enters writer.put and blocks there.
+    producerSpy.send("k", "v");
+    assertTrue(workerInPut.await(10, TimeUnit.SECONDS), "worker never entered writer.put");
+
+    java.util.concurrent.atomic.AtomicBoolean interruptSetOnReturn = new java.util.concurrent.atomic.AtomicBoolean();
+    CountDownLatch stopReturned = new CountDownLatch(1);
+    Thread stopper = new Thread(() -> {
+      Thread.currentThread().interrupt(); // enter stop() already interrupted
+      producerSpy.stop();
+      interruptSetOnReturn.set(Thread.currentThread().isInterrupted());
+      stopReturned.countDown();
+    });
+    stopper.start();
+
+    // stop() must keep draining (not return, not close the writer) while the worker is still running.
+    assertFalse(stopReturned.await(300, TimeUnit.MILLISECONDS), "stop() returned before the worker drained");
+    verify(mockWriter, never()).close();
+
+    // Release the worker: the drain completes, the writer is closed, stop() returns with the interrupt restored.
+    releasePut.countDown();
+    assertTrue(stopReturned.await(10, TimeUnit.SECONDS), "stop() never returned after the worker drained");
+    verify(mockWriter).close();
+    assertTrue(interruptSetOnReturn.get(), "stop() dropped the observed interrupt instead of restoring it");
+  }
+
+  @Test(timeOut = 30_000)
+  public void interruptedIdleStopStillClosesWriterThenRestoresInterrupt() throws Exception {
+    // The idle / already-drained dispatcher case: the worker drain returns immediately and never throws
+    // InterruptedException, so only capturing the entry interrupt at the top of stop() preserves it. stop()
+    // must still close the writer with the interrupt clear, then restore the interrupt on return.
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    when(mockWriter.put(any(), any(), anyInt(), anyLong(), any()))
+        .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
+
+    VeniceSystemProducer producerSpy =
+        buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) mockWriter);
+
+    java.util.concurrent.atomic.AtomicBoolean interruptSetOnReturn = new java.util.concurrent.atomic.AtomicBoolean();
+    CountDownLatch stopReturned = new CountDownLatch(1);
+    Thread stopper = new Thread(() -> {
+      Thread.currentThread().interrupt(); // enter stop() already interrupted, with an idle dispatcher
+      producerSpy.stop();
+      interruptSetOnReturn.set(Thread.currentThread().isInterrupted());
+      stopReturned.countDown();
+    });
+    stopper.start();
+
+    assertTrue(stopReturned.await(10, TimeUnit.SECONDS), "idle stop() never returned");
+    stopper.join();
+    verify(mockWriter).close();
+    assertTrue(interruptSetOnReturn.get(), "idle stop() dropped the entry interrupt instead of restoring it");
   }
 
   private ControllerClient buildMockControllerClient(int valueSchemaId, int derivedSchemaId) {
@@ -557,7 +895,7 @@ public class VeniceSystemProducerTest {
     ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
 
-    producerSpy.send("myKey", "myValue");
+    awaitSubmitted(producerSpy.send("myKey", "myValue"));
 
     verify(mockWriter).put(any(), any(), eq(1), anyLong(), any());
     producerSpy.stop();
@@ -569,7 +907,7 @@ public class VeniceSystemProducerTest {
     ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
 
-    producerSpy.send((Object) "myKey", null);
+    awaitSubmitted(producerSpy.send((Object) "myKey", null));
 
     verify(mockWriter).delete(any(), anyLong(), any());
     producerSpy.stop();
@@ -581,7 +919,7 @@ public class VeniceSystemProducerTest {
     ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
 
-    producerSpy.send("myKey", "myValue");
+    awaitSubmitted(producerSpy.send("myKey", "myValue"));
 
     verify(mockWriter).update(any(), any(), eq(1), eq(1), anyLong(), any());
     producerSpy.stop();

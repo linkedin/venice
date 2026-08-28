@@ -88,4 +88,17 @@ public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
       DeleteMetadata deleteMetadata);
 
   public abstract void flush();
+
+  /**
+   * Returns the partition id that {@code key} maps to under this writer's partitioner, or a conservative
+   * default of {@code 0} for writers that cannot compute it. Additive and binary-compatible: callers that
+   * need partition-stable routing (for example striped dispatch) can use it, while legacy writers fall back
+   * to a single stripe. Overridden by {@link VeniceWriter} and delegated by {@link BatchingVeniceWriter}.
+   *
+   * @param key the (typed) key to route
+   * @return a non-negative partition id, or 0 when routing is unavailable
+   */
+  public int getPartitionId(K key) {
+    return 0;
+  }
 }
