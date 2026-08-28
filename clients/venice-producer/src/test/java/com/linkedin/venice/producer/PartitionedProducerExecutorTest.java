@@ -567,4 +567,65 @@ public class PartitionedProducerExecutorTest {
       executor.shutdown();
     }
   }
+
+  // ==================== Interrupt-Resistant Drain Tests ====================
+
+  @Test
+  public void testAwaitTerminationAbsorbsInterruptAndDrainsBeforeForceShutdown() throws InterruptedException {
+    // Mirrors AbstractVeniceProducer.close(): shutdown(); awaitTermination(...); and on InterruptedException it
+    // force-cancels via shutdownNow(). An interrupted close thread must NOT drop queued worker writes:
+    // awaitTermination absorbs the interrupt, keeps draining against the original deadline, and only surfaces
+    // InterruptedException once the workers have drained, so the subsequent shutdownNow() is a no-op.
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(1, 100, 0, 100, TEST_STORE, null);
+
+    CountDownLatch inFlightEntered = new CountDownLatch(1);
+    CountDownLatch releaseWorker = new CountDownLatch(1);
+    AtomicBoolean queuedTaskRan = new AtomicBoolean(false);
+
+    // Task A parks the single worker; Task B (same partition) queues behind it and must not be dropped.
+    executor.submit(0, () -> {
+      inFlightEntered.countDown();
+      try {
+        assertTrue(releaseWorker.await(5, TimeUnit.SECONDS));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    executor.submit(0, () -> queuedTaskRan.set(true));
+    assertTrue(inFlightEntered.await(5, TimeUnit.SECONDS), "in-flight worker task should start");
+
+    executor.shutdown();
+
+    AtomicBoolean interruptObserved = new AtomicBoolean(false);
+    AtomicBoolean queuedRanBeforeForce = new AtomicBoolean(false);
+    CountDownLatch closeReturned = new CountDownLatch(1);
+    Thread closer = new Thread(() -> {
+      Thread.currentThread().interrupt(); // the close thread is already interrupted when it starts draining
+      try {
+        executor.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        interruptObserved.set(true);
+        queuedRanBeforeForce.set(queuedTaskRan.get()); // captured before the force shutdownNow below
+        executor.shutdownNow();
+      } finally {
+        closeReturned.countDown();
+      }
+    });
+    closer.start();
+
+    // The interrupted close thread must keep draining rather than return/force early while the worker is parked.
+    assertFalse(
+        closeReturned.await(300, TimeUnit.MILLISECONDS),
+        "awaitTermination must keep draining despite the interrupt");
+
+    releaseWorker.countDown();
+    assertTrue(closeReturned.await(5, TimeUnit.SECONDS), "awaitTermination must surface the interrupt after draining");
+    closer.join();
+
+    assertTrue(interruptObserved.get(), "awaitTermination must surface the interrupt it absorbed");
+    assertTrue(queuedTaskRan.get(), "the queued worker write must not be dropped");
+    assertTrue(queuedRanBeforeForce.get(), "the queued write must drain before the force shutdownNow");
+
+    executor.shutdownNow();
+  }
 }
