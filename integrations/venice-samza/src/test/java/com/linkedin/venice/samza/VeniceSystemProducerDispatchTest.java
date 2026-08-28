@@ -11,6 +11,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -169,6 +170,16 @@ public class VeniceSystemProducerDispatchTest {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch firstDeleteEntered = new CountDownLatch(1);
     CountDownLatch releaseFirstDelete = new CountDownLatch(1);
+    CountDownLatch laterWritesRouted = new CountDownLatch(2);
+    CountDownLatch releaseLaterWrites = new CountDownLatch(1);
+    AtomicInteger routedWriteCount = new AtomicInteger();
+    when(writer.getPartitionId(any())).thenAnswer(invocation -> {
+      if (routedWriteCount.getAndIncrement() > 0) {
+        laterWritesRouted.countDown();
+        releaseLaterWrites.await();
+      }
+      return 0;
+    });
     AtomicInteger deleteCount = new AtomicInteger();
     List<Long> deleteTimestamps = Collections.synchronizedList(new ArrayList<>());
     when(writer.delete(any(), anyLong(), any())).thenAnswer(invocation -> {
@@ -195,22 +206,40 @@ public class VeniceSystemProducerDispatchTest {
     update.put("name", "before");
     RecordSerializer<Object> serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema);
     byte[] expectedBytes = serializer.serialize(update);
+    CompletableFuture<CompletableFuture<Void>> blocker = null;
+    CompletableFuture<CompletableFuture<Void>> updateSend = null;
+    CompletableFuture<CompletableFuture<Void>> deleteSend = null;
     try {
-      producer.send((Object) "blocker", null);
+      blocker = CompletableFuture.supplyAsync(
+          () -> producer.send((Object) "blocker", null),
+          dedicatedThreadExecutor("test-serialization-blocker"));
       assertTrue(firstDeleteEntered.await(5, TimeUnit.SECONDS));
 
-      producer.send((Object) "update-key", new VeniceObjectWithTimestamp(update, 1234));
-      producer.send((Object) "delete-key", new VeniceObjectWithTimestamp(null, 5678));
+      updateSend = CompletableFuture.supplyAsync(
+          () -> producer.send((Object) "update-key", new VeniceObjectWithTimestamp(update, 1234)),
+          dedicatedThreadExecutor("test-serialization-update"));
+      deleteSend = CompletableFuture.supplyAsync(
+          () -> producer.send((Object) "delete-key", new VeniceObjectWithTimestamp(null, 5678)),
+          dedicatedThreadExecutor("test-serialization-delete"));
+      assertTrue(laterWritesRouted.await(5, TimeUnit.SECONDS));
       update.put("name", "after");
 
+      releaseLaterWrites.countDown();
       releaseFirstDelete.countDown();
+      blocker.get(5, TimeUnit.SECONDS);
+      updateSend.get(5, TimeUnit.SECONDS);
+      deleteSend.get(5, TimeUnit.SECONDS);
       producer.flush("source");
 
       assertTrue(Arrays.equals(updateBytes.get(), expectedBytes));
       assertEquals(updateTimestamp.get().longValue(), 1234);
       assertTrue(deleteTimestamps.contains(5678L));
     } finally {
+      releaseLaterWrites.countDown();
       releaseFirstDelete.countDown();
+      awaitQuietly(blocker);
+      awaitQuietly(updateSend);
+      awaitQuietly(deleteSend);
       producer.stop();
     }
   }
@@ -254,18 +283,22 @@ public class VeniceSystemProducerDispatchTest {
     });
     VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
     CompletableFuture<Void> flush = null;
+    CompletableFuture<CompletableFuture<Void>> send = null;
     try {
-      producer.send((Object) "key", "value");
+      send = CompletableFuture
+          .supplyAsync(() -> producer.send((Object) "key", "value"), dedicatedThreadExecutor("test-producer-send"));
       assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
 
       flush =
           CompletableFuture.runAsync(() -> producer.flush("source"), dedicatedThreadExecutor("test-producer-flush"));
       awaitFenceHeld(producer);
       releaseWriter.countDown();
+      send.get(5, TimeUnit.SECONDS);
       flush.get(5, TimeUnit.SECONDS);
       verify(writer).flush();
     } finally {
       releaseWriter.countDown();
+      awaitQuietly(send);
       awaitQuietly(flush);
       stopQuietly(producer);
     }
@@ -283,18 +316,22 @@ public class VeniceSystemProducerDispatchTest {
     });
     VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
     CompletableFuture<Void> stop = null;
+    CompletableFuture<CompletableFuture<Void>> send = null;
     try {
-      producer.send((Object) "key", "value");
+      send = CompletableFuture
+          .supplyAsync(() -> producer.send((Object) "key", "value"), dedicatedThreadExecutor("test-producer-send"));
       assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
       stop = CompletableFuture.runAsync(producer::stop, dedicatedThreadExecutor("test-producer-stop"));
       awaitFenceHeld(producer);
       releaseWriter.countDown();
+      send.get(5, TimeUnit.SECONDS);
       stop.get(5, TimeUnit.SECONDS);
       InOrder shutdownOrder = inOrder(writer);
       shutdownOrder.verify(writer).flush();
       shutdownOrder.verify(writer).close();
     } finally {
       releaseWriter.countDown();
+      awaitQuietly(send);
       awaitQuietly(stop);
       if (!producer.isStopped()) {
         stopQuietly(producer);
@@ -361,8 +398,10 @@ public class VeniceSystemProducerDispatchTest {
         interruptPreserved.set(Thread.currentThread().isInterrupted());
       }
     });
+    CompletableFuture<CompletableFuture<Void>> send = null;
     try {
-      producer.send((Object) "key", "value");
+      send = CompletableFuture
+          .supplyAsync(() -> producer.send((Object) "key", "value"), dedicatedThreadExecutor("test-producer-send"));
       assertTrue(writerEntered.await(5, TimeUnit.SECONDS));
       flushThread.start();
       awaitFenceHeld(producer);
@@ -376,7 +415,44 @@ public class VeniceSystemProducerDispatchTest {
       flushThread.interrupt();
       releaseWriter.countDown();
       flushThread.join(TimeUnit.SECONDS.toMillis(5));
+      awaitQuietly(send);
       producer.stop();
+    }
+  }
+
+  @Test(timeOut = 10000)
+  public void testConcurrentStopDuringPreparationCannotFallBackToInlineWrite() throws Exception {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    VeniceSystemProducer producer = buildStartedProducer(writer, 1, false, -1);
+    ControllerClient controller = mock(ControllerClient.class);
+    CountDownLatch schemaRequestEntered = new CountDownLatch(1);
+    CountDownLatch releaseSchemaRequest = new CountDownLatch(1);
+    SchemaResponse valueSchema = new SchemaResponse();
+    valueSchema.setId(1);
+    valueSchema.setDerivedSchemaId(-1);
+    when(controller.getValueOrDerivedSchemaId(anyString(), anyString())).thenAnswer(invocation -> {
+      schemaRequestEntered.countDown();
+      releaseSchemaRequest.await();
+      return valueSchema;
+    });
+    producer.setControllerClient(controller);
+
+    CompletableFuture<CompletableFuture<Void>> put =
+        CompletableFuture.supplyAsync(() -> producer.put("key", "value"), dedicatedThreadExecutor("test-stop-race"));
+    try {
+      assertTrue(schemaRequestEntered.await(5, TimeUnit.SECONDS));
+      producer.stop();
+      releaseSchemaRequest.countDown();
+
+      ExecutionException failure = expectThrows(ExecutionException.class, () -> put.get(5, TimeUnit.SECONDS));
+      assertTrue(failure.getCause() instanceof VeniceException);
+      verify(writer, never()).put(any(), any(), eq(1), anyLong(), any());
+    } finally {
+      releaseSchemaRequest.countDown();
+      awaitQuietly(put);
+      if (!producer.isStopped()) {
+        stopQuietly(producer);
+      }
     }
   }
 

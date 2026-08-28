@@ -844,11 +844,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   @Override
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
-    if (!isStarted) {
-      throw new SamzaException("Send called on Venice System Producer that is not started yet!");
-    }
-    if (streamWriteDispatcher != null) {
-      streamWriteDispatcher.checkForFailure();
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        captureDispatcher("Send called on Venice System Producer that is not started yet!");
+    if (dispatcher != null) {
+      dispatcher.checkForFailure();
     }
     String storeOfIncomingMessage = outgoingMessageEnvelope.getSystemStream().getStream();
     if (!storeOfIncomingMessage.equals(storeName)) {
@@ -893,12 +892,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
     }
 
-    CompletableFuture<Void> durableFuture =
-        send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
-    if (streamWriteDispatcher != null) {
-      waitForSubmission(streamWriteDispatcher.getSubmissionFuture(durableFuture));
-      streamWriteDispatcher.checkForFailure();
-    }
+    send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
   }
 
   /**
@@ -917,17 +911,31 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    * @return a {@link CompletableFuture} that completes when the write is acknowledged
    */
   protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        captureDispatcher("Cannot send with a Venice SystemProducer that is not started or is already stopped");
+    CompletableFuture<Void> durableFuture = send(keyObject, valueObject, dispatcher);
+    waitForStreamSubmissionIfNeeded(durableFuture, dispatcher);
+    return durableFuture;
+  }
+
+  private CompletableFuture<Void> send(
+      Object keyObject,
+      Object valueObject,
+      VeniceSystemProducerWriteDispatcher dispatcher) {
     if (!isStarted) {
       throw new SamzaException("Cannot send with a Venice SystemProducer that is not started or is already stopped");
     }
-    if (streamWriteDispatcher != null) {
-      streamWriteDispatcher.checkForFailure();
+    if (Version.PushType.STREAM.equals(pushType)) {
+      if (dispatcher == null) {
+        throw new SamzaException("Cannot send with a Venice SystemProducer that is not started or is already stopped");
+      }
+      dispatcher.checkForFailure();
     }
     VeniceSystemProducerWriteCommand command = prepareWrite(keyObject, valueObject);
-    if (streamWriteDispatcher == null) {
+    if (!Version.PushType.STREAM.equals(pushType)) {
       return sendInline(command);
     }
-    return streamWriteDispatcher.dispatch(command);
+    return dispatcher.dispatch(command);
   }
 
   private VeniceSystemProducerWriteCommand prepareWrite(Object keyObject, Object valueObject) {
@@ -1001,15 +1009,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   public CompletableFuture<Void> put(Object keyObject, Object valueObject) {
-    CompletableFuture<Void> durableFuture = send(keyObject, valueObject);
-    waitForStreamSubmissionIfNeeded(durableFuture);
-    return durableFuture;
+    return send(keyObject, valueObject);
   }
 
   public CompletableFuture<Void> delete(Object keyObject) {
-    CompletableFuture<Void> durableFuture = send(keyObject, null);
-    waitForStreamSubmissionIfNeeded(durableFuture);
-    return durableFuture;
+    return send(keyObject, null);
   }
 
   /**
@@ -1019,14 +1023,23 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    if (!isStarted) {
-      throw new SamzaException("Cannot flush a Venice SystemProducer that is not started or is already stopped");
-    }
-    if (streamWriteDispatcher == null) {
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        captureDispatcher("Cannot flush a Venice SystemProducer that is not started or is already stopped");
+    if (!Version.PushType.STREAM.equals(pushType)) {
       getInternalWriter().flush();
       return;
     }
-    streamWriteDispatcher.flush();
+    if (dispatcher == null) {
+      throw new SamzaException("Cannot flush a Venice SystemProducer that is not started or is already stopped");
+    }
+    dispatcher.flush();
+  }
+
+  private VeniceSystemProducerWriteDispatcher captureDispatcher(String stoppedMessage) {
+    if (!isStarted) {
+      throw new SamzaException(stoppedMessage);
+    }
+    return streamWriteDispatcher;
   }
 
   private void waitForSubmission(Future<Void> submissionFuture) {
@@ -1047,12 +1060,17 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
   }
 
-  private void waitForStreamSubmissionIfNeeded(CompletableFuture<Void> durableFuture) {
-    if (streamWriteDispatcher == null) {
+  private void waitForStreamSubmissionIfNeeded(
+      CompletableFuture<Void> durableFuture,
+      VeniceSystemProducerWriteDispatcher dispatcher) {
+    if (!Version.PushType.STREAM.equals(pushType)) {
       return;
     }
-    waitForSubmission(streamWriteDispatcher.getSubmissionFuture(durableFuture));
-    streamWriteDispatcher.checkForFailure();
+    if (dispatcher == null) {
+      throw new SamzaException("Cannot send with a Venice SystemProducer that is not started or is already stopped");
+    }
+    waitForSubmission(dispatcher.getSubmissionFuture(durableFuture));
+    dispatcher.checkForFailure();
   }
 
   private static Schema getSchemaFromObject(Object object) {

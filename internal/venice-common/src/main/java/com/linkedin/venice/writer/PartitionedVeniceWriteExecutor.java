@@ -236,12 +236,37 @@ public class PartitionedVeniceWriteExecutor {
       return false;
     }
     long remainingNanos = deadlineNanos - System.nanoTime();
-    return remainingNanos > 0 && awaitCallbackTermination(remainingNanos, TimeUnit.NANOSECONDS);
+    return awaitCallbackTermination(Math.max(0, remainingNanos), TimeUnit.NANOSECONDS);
   }
 
-  /** Drains accepted worker tasks, forcing interruption after timeout or caller interruption. */
+  /** Drains accepted worker tasks within one total timeout, forcing interruption with the remaining time. */
   public boolean shutdownWorkersAndAwait(long timeout, TimeUnit unit) {
-    return shutdownWorkersAndAwait(timeout, unit, timeout, unit);
+    long timeoutNanos = Math.max(0, unit.toNanos(timeout));
+    long deadlineNanos = System.nanoTime() + timeoutNanos;
+    shutdownWorkers();
+    boolean interrupted = false;
+    boolean terminated = false;
+    try {
+      terminated = awaitWorkerTermination(timeoutNanos, TimeUnit.NANOSECONDS);
+    } catch (InterruptedException exception) {
+      interrupted = true;
+    }
+    if (!terminated) {
+      shutdownWorkersNow();
+      long remainingNanos;
+      do {
+        remainingNanos = Math.max(0, deadlineNanos - System.nanoTime());
+        try {
+          terminated = awaitWorkerTermination(remainingNanos, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException exception) {
+          interrupted = true;
+        }
+      } while (!terminated && remainingNanos > 0);
+    }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    }
+    return terminated;
   }
 
   boolean shutdownWorkersAndAwait(
@@ -384,8 +409,8 @@ public class PartitionedVeniceWriteExecutor {
       throws InterruptedException {
     long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
     for (BlockingBoundedExecutor executor: executors) {
-      long remainingNanos = deadlineNanos - System.nanoTime();
-      if (remainingNanos <= 0 || !executor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS)) {
+      long remainingNanos = Math.max(0, deadlineNanos - System.nanoTime());
+      if (!executor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS)) {
         return false;
       }
     }

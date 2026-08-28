@@ -32,6 +32,20 @@ public class PartitionedVeniceWriteExecutorTest {
   }
 
   @Test
+  public void testAwaitTerminationReportsAlreadyTerminatedExecutorsWithZeroTimeout() throws Exception {
+    PartitionedVeniceWriteExecutor inlineExecutor =
+        new PartitionedVeniceWriteExecutor(0, 1, 0, 1, "terminated-store", null);
+    PartitionedVeniceWriteExecutor workerExecutor =
+        new PartitionedVeniceWriteExecutor(1, 1, 0, 1, "terminated-store", null);
+    inlineExecutor.shutdown();
+    workerExecutor.shutdown();
+    assertTrue(workerExecutor.awaitWorkerTermination(5, TimeUnit.SECONDS));
+
+    assertTrue(inlineExecutor.awaitTermination(0, TimeUnit.NANOSECONDS));
+    assertTrue(workerExecutor.awaitTermination(0, TimeUnit.NANOSECONDS));
+  }
+
+  @Test
   public void testSameStripePreservesFifo() throws Exception {
     PartitionedVeniceWriteExecutor executor = new PartitionedVeniceWriteExecutor(2, 100, 0, 1, "fifo-store", null);
     List<Integer> order = Collections.synchronizedList(new ArrayList<>());
@@ -242,6 +256,41 @@ public class PartitionedVeniceWriteExecutorTest {
       assertEquals(queuedRejections.get(), 1);
     } finally {
       releaseActive.countDown();
+      executor.shutdownWorkersNow();
+      executor.awaitWorkerTermination(5, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test(timeOut = 15000)
+  public void testTwoArgShutdownSharesOneTotalTerminationWindow() throws Exception {
+    PartitionedVeniceWriteExecutor executor =
+        new PartitionedVeniceWriteExecutor(1, 1, 0, 1, "shared-shutdown-window-store", null);
+    CountDownLatch activeStarted = new CountDownLatch(1);
+    CountDownLatch forcedInterruptObserved = new CountDownLatch(1);
+    CountDownLatch allowTaskTermination = new CountDownLatch(1);
+    executor.submit(0, () -> {
+      activeStarted.countDown();
+      try {
+        new CountDownLatch(1).await();
+      } catch (InterruptedException exception) {
+        forcedInterruptObserved.countDown();
+        await(allowTaskTermination);
+      }
+    });
+    assertTrue(activeStarted.await(5, TimeUnit.SECONDS));
+
+    CompletableFuture<Boolean> shutdownResult = new CompletableFuture<>();
+    Thread shutdownThread = new Thread(
+        () -> shutdownResult.complete(executor.shutdownWorkersAndAwait(5, TimeUnit.SECONDS)),
+        "test-shared-shutdown-window");
+    shutdownThread.start();
+    try {
+      assertTrue(forcedInterruptObserved.await(10, TimeUnit.SECONDS));
+      assertFalse(shutdownResult.get(1, TimeUnit.SECONDS));
+    } finally {
+      allowTaskTermination.countDown();
+      shutdownThread.interrupt();
+      shutdownThread.join(TimeUnit.SECONDS.toMillis(5));
       executor.shutdownWorkersNow();
       executor.awaitWorkerTermination(5, TimeUnit.SECONDS);
     }

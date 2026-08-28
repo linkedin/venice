@@ -1335,13 +1335,6 @@ public class OnlineVeniceProducerTest {
   private void configureMockTransportClient(
       TransportClient transportClient,
       boolean updateEnabled,
-      byte[] requestTopicResponse) throws IOException {
-    configureMockTransportClient(transportClient, updateEnabled, requestTopicResponse, 0);
-  }
-
-  private void configureMockTransportClient(
-      TransportClient transportClient,
-      boolean updateEnabled,
       byte[] requestTopicResponse,
       int delayInResponseMs) {
     configureMockTransportClient(transportClient, updateEnabled, requestTopicResponse, delayInResponseMs, storeName);
