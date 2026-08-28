@@ -184,28 +184,44 @@ class VeniceSystemProducerWriteCommand {
   /**
    * Waits for writer submission if {@code future} is a producer-owned {@link DurableWriteFuture}; otherwise
    * (inline path or a foreign future returned by a subclass override) returns immediately without waiting or
-   * casting. Submission failures are surfaced to preserve the synchronous put/delete/send contract.
+   * casting. Submission failures are surfaced to preserve the synchronous put/delete/send contract. The wait is
+   * uninterruptible: once the command has been admitted the write proceeds regardless, so an interrupt cannot
+   * abandon the wait (which would let the caller retry and duplicate the write); the interrupt is remembered and
+   * the thread's interrupt flag is restored before this method returns or throws.
    */
   static void awaitSubmission(CompletableFuture<Void> future) {
     if (!(future instanceof DurableWriteFuture)) {
       return;
     }
+    CompletableFuture<Void> submissionFuture = ((DurableWriteFuture) future).getSubmissionFuture();
+    boolean interrupted = false;
     try {
-      ((DurableWriteFuture) future).getSubmissionFuture().get();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException("Interrupted while waiting for write submission", e);
-    } catch (ExecutionException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof RuntimeException) {
-        throw (RuntimeException) cause;
+      while (true) {
+        try {
+          submissionFuture.get();
+          return;
+        } catch (InterruptedException e) {
+          // The command was already admitted and the write continues on the stripe worker, so abandoning the
+          // wait would let the caller retry and duplicate the write. Remember the interrupt and keep waiting
+          // for submission to finish; the flag is restored below before returning or throwing.
+          interrupted = true;
+        } catch (ExecutionException e) {
+          Throwable cause = e.getCause();
+          if (cause instanceof RuntimeException) {
+            throw (RuntimeException) cause;
+          }
+          // A fatal Error (e.g. OutOfMemoryError, assertion) must propagate with its original identity rather
+          // than being wrapped, so callers and the JVM see the true failure.
+          if (cause instanceof Error) {
+            throw (Error) cause;
+          }
+          throw new VeniceException("Write submission failed", cause);
+        }
       }
-      // A fatal Error (e.g. OutOfMemoryError, assertion) must propagate with its original identity rather
-      // than being wrapped, so callers and the JVM see the true failure.
-      if (cause instanceof Error) {
-        throw (Error) cause;
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
       }
-      throw new VeniceException("Write submission failed", cause);
     }
   }
 }

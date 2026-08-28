@@ -19,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.testng.annotations.Test;
 
 
@@ -168,6 +169,37 @@ public class VeniceSystemProducerWriteCommandTest {
     command.finishSubmission(null);
     assertTrue(returned.await(AWAIT_SECONDS, TimeUnit.SECONDS), "must return once submission completes");
     t.join();
+  }
+
+  @Test
+  public void awaitSubmissionIsUninterruptibleAndRestoresInterrupt() throws Exception {
+    // Once a command is admitted the write proceeds on the stripe worker, so an interrupt must not abandon the
+    // wait (which would let the caller retry and duplicate the write). The waiter keeps blocking through the
+    // interrupt, returns only when submission completes, and returns with the interrupt flag restored.
+    VeniceSystemProducerWriteCommand command =
+        VeniceSystemProducerWriteCommand.put(new byte[] { 1 }, new byte[] { 2 }, 1, 0L);
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch returned = new CountDownLatch(1);
+    AtomicBoolean interruptSetOnReturn = new AtomicBoolean(false);
+    Thread waiter = new Thread(() -> {
+      started.countDown();
+      VeniceSystemProducerWriteCommand.awaitSubmission(command.getDurableFuture());
+      interruptSetOnReturn.set(Thread.currentThread().isInterrupted());
+      returned.countDown();
+    });
+    waiter.start();
+    assertTrue(started.await(AWAIT_SECONDS, TimeUnit.SECONDS));
+    assertFalse(returned.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS), "must block before interruption");
+
+    waiter.interrupt();
+    assertFalse(
+        returned.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS),
+        "interrupt must not abandon the wait while submission is incomplete");
+
+    command.finishSubmission(null);
+    assertTrue(returned.await(AWAIT_SECONDS, TimeUnit.SECONDS), "must return once submission completes");
+    assertTrue(interruptSetOnReturn.get(), "interrupt flag must be restored before returning");
+    waiter.join();
   }
 
   @Test
