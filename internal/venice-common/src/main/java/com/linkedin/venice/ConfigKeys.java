@@ -2808,6 +2808,26 @@ public class ConfigKeys {
   public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
 
   /**
+   * Controls when {@link com.linkedin.venice.writer.VeniceWriter} attaches the
+   * {@link com.linkedin.venice.pubsub.api.PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER vtp}
+   * protocol-schema header to outbound messages. The pre-existing emission gate is
+   * {@code segmentNumber == 0 && messageSequenceNumber == 0} on the outgoing producer metadata.
+   * On the data path that gate matches only the first segment-start record produced on a
+   * partition (segment 0, sequence 0); subsequent data SOS records use non-zero
+   * {@code segmentNumber} and are unaffected. Heartbeats pin both coordinates to {@code 0}, so
+   * every heartbeat matches the gate. Accepts one of the
+   * {@link com.linkedin.venice.writer.VtpHeaderEmissionMode} names: {@code SOS_AND_HB} (default,
+   * preserves the pre-existing behavior — emit on both first data SOS and every heartbeat),
+   * {@code SOS_ONLY} (apply the same 0/0 gate but skip heartbeats — i.e., emit on the first
+   * data SOS per partition and on DoL stamps, which also carry 0/0 coordinates but are not
+   * heartbeats), or {@code NONE} (never emit). Use {@code SOS_ONLY} when heartbeat
+   * fan-out dominates the consumer-side per-record memory footprint and consumers can bootstrap
+   * the {@code KafkaMessageEnvelope} schema from the first data SOS or an out-of-band schema
+   * cache.
+   */
+  public static final String VENICE_WRITER_VTP_HEADER_EMISSION_MODE = "venice.writer.vtp.header.emission.mode";
+
+  /**
    * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
    * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given
    * producer's state is defined as:
