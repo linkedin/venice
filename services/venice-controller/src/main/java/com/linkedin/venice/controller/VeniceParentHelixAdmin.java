@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
-import static com.linkedin.venice.meta.VersionStatus.CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
@@ -19,7 +18,6 @@ import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
-import static java.lang.Thread.currentThread;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -1414,9 +1412,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // - ONLINE: push already completed; any pending deferred-swap roll-forward is orchestrated by
     // DeferredVersionSwapService and a subsequent push simply supersedes it. Keys off ZK version
     // status alone (not the parent VT, which may never exist under PARENT_VERSION_STATUS_ONLY).
-    // Non-terminal statuses are resolved below: CREATED/PUSHED block the next push outright; STARTED
-    // polls the child job status to decide (it may already be terminal in the children even though the
-    // parent hasn't caught up yet).
+    // Every remaining (non-terminal) status blocks the next push outright.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
@@ -1430,65 +1426,25 @@ public class VeniceParentHelixAdmin implements Admin {
             lastVersion.getStatus());
         return Optional.empty();
       default:
-        // Non-terminal — fall through to the polling/wait branch below.
+        // Non-terminal — fall through to the block-the-next-push branch below.
         break;
     }
+
+    // The only statuses left after the terminal cases above are non-terminal: CREATED (version exists
+    // but its push has not begun), STARTED (push in flight), and PUSHED (a deferred-swap version whose
+    // push completed in its target region but whose swap is still pending). In all of these the version
+    // is not yet done from the user's perspective, so the next push must wait. STARTED is treated the
+    // same as CREATED/PUSHED rather than polling the child job status: a job-status poll only observes
+    // ingestion completion, which for a deferred-swap version does not imply the version swap has
+    // finished, so unblocking on a terminal poll would let a concurrent push slip in during the
+    // STARTED -> PUSHED transition.
     LOGGER.info(
-        "Found latest version status: {} for store: {}, version: {}",
-        lastVersion.getStatus(),
+        "The push for version {} (pushJobId {}) of store {} is not completed (status {}); the next push must wait.",
+        lastVersionNum,
+        lastVersion.getPushJobId(),
         storeName,
-        lastVersionNum);
-    Optional<String> latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
-
-    if (lastVersion.getStatus() == CREATED || lastVersion.getStatus() == PUSHED) {
-      // CREATED: the version exists but its push has not begun. PUSHED: a target-region push that has
-      // completed in its target region but not yet in the rest. In both cases a future version already
-      // occupies the store, so the next push must wait. STARTED is excluded here: a STARTED version may
-      // already be terminal in child regions but not yet reflected on the parent, so it is handled by
-      // the polling branch below. (Unlike STARTED, polling PUSHED children would incorrectly report the
-      // push as terminal, since the children have already completed it.)
-      LOGGER.info(
-          "The push for version {} (pushJobId {}) of store {} is not completed (status {}); the next push must wait.",
-          lastVersionNum,
-          lastVersion.getPushJobId(),
-          storeName,
-          lastVersion.getStatus());
-      return latestTopic;
-    }
-
-    /**
-     * A STARTED version can reflect either a push that is still in flight or one that already completed
-     * in the child regions but whose parent version status has not yet been advanced -- the parent
-     * version only transitions out of STARTED when a job-status poll observes a terminal child status
-     * (see {@link #getOffLineJobStatus}). Poll the child job status to tell these apart: block while it
-     * is non-terminal, otherwise let the next push proceed.
-     */
-    final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
-    ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
-    Map<String, String> extraInfo = new HashMap<>();
-
-    int retryTimes = 5;
-    int current = 0;
-    while (current++ < retryTimes) {
-      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopic.get());
-      jobStatus = offlineJobStatus.getExecutionStatus();
-      extraInfo = offlineJobStatus.getExtraInfo();
-      if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-        break;
-      }
-      // Retry since there is a connection failure when querying job status against each datacenter
-      try {
-        timer.sleep(SLEEP_MS_BETWEEN_RETRY);
-      } catch (InterruptedException e) {
-        currentThread().interrupt();
-        throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
-      }
-    }
-    if (!jobStatus.isTerminal()) {
-      LOGGER.info("Job status: {} for {} is not terminal, extra info: {}", jobStatus, latestTopic.get(), extraInfo);
-      return latestTopic;
-    }
-    return Optional.empty();
+        lastVersion.getStatus());
+    return Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
   }
 
   /**

@@ -3741,12 +3741,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testGetTopicForCurrentPushJobBlocksInProgressVersion() {
-    // Regression coverage for the in-progress/polling branch of getTopicForCurrentPushJob. Terminal
-    // statuses early-exit (see testGetTopicForCurrentPushJob); a non-terminal latest version must
-    // instead block the next push - either immediately (CREATED/PUSHED) or by polling
-    // getOffLinePushStatus until the offline job status is terminal (STARTED, since a STARTED version
-    // may already be terminal in the children but not yet reflected on the parent). This guards the
-    // stuck-push prevention behavior.
+    // Regression coverage for the in-progress branch of getTopicForCurrentPushJob. Terminal statuses
+    // early-exit (see testGetTopicForCurrentPushJob); a non-terminal latest version (CREATED, STARTED,
+    // or PUSHED) must instead block the next push immediately and return the in-flight topic, without
+    // polling getOffLinePushStatus. STARTED is not polled because a terminal job-status poll only
+    // reflects ingestion completion, not deferred version-swap completion, so polling could let a
+    // concurrent push slip in during the STARTED -> PUSHED transition. This guards the stuck-push
+    // prevention behavior.
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
@@ -3760,46 +3761,18 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
     doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    doCallRealMethod().when(mockParentAdmin).setTimer(any());
-    mockParentAdmin.setTimer(new TestMockTime());
 
     String latestTopic = storeName + "_v1";
 
-    // CREATED: the version exists but its push has not begun -> blocked immediately, without polling
-    // offline push status.
-    doReturn(inProgressStore(storeName, VersionStatus.CREATED)).when(mockParentAdmin).getStore(clusterName, storeName);
-    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
+    // Every non-terminal status blocks the next push immediately and returns the in-flight topic,
+    // without polling offline push status.
+    for (VersionStatus status: Arrays.asList(VersionStatus.CREATED, VersionStatus.STARTED, VersionStatus.PUSHED)) {
+      doReturn(inProgressStore(storeName, status)).when(mockParentAdmin).getStore(clusterName, storeName);
+      Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+      Assert.assertTrue(currentPush.isPresent(), "Expected status " + status + " to block the next push");
+      assertEquals(currentPush.get(), latestTopic);
+    }
     verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
-
-    // PUSHED: a target-region push that has completed in its target region but not yet in the rest ->
-    // also blocked immediately, without polling offline push status.
-    doReturn(inProgressStore(storeName, VersionStatus.PUSHED)).when(mockParentAdmin).getStore(clusterName, storeName);
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
-
-    // STARTED reaches the polling branch: the parent doesn't yet know whether the push finished in
-    // the children, so a non-terminal (PROGRESS) offline status blocks the next push and returns the
-    // in-flight topic.
-    doReturn(inProgressStore(storeName, VersionStatus.STARTED)).when(mockParentAdmin).getStore(clusterName, storeName);
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, atLeast(1)).getOffLinePushStatus(clusterName, latestTopic);
-
-    // UNKNOWN in a region triggers retries; once the overall status is terminal (COMPLETED) the parent
-    // recognizes the STARTED version has already finished in the children and allows the next push
-    // (returns empty).
-    Map<String, String> extraInfo = new HashMap<>();
-    extraInfo.put("dc-0", ExecutionStatus.UNKNOWN.toString());
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
   private Store inProgressStore(String storeName, VersionStatus status) {
