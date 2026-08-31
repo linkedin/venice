@@ -59,6 +59,51 @@ public class UpdateStoreQueryParamsTest {
   }
 
   @Test
+  public void testThroughputQuotaRoundTrip() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setThroughputQuotaInBytes(123456L);
+    params.setThroughputQuotaInRecords(789L);
+    Assert.assertEquals(params.getThroughputQuotaInBytes(), Optional.of(123456L));
+    Assert.assertEquals(params.getThroughputQuotaInRecords(), Optional.of(789L));
+
+    // -1 is the "no limit" sentinel and must round-trip like any other value.
+    params.setThroughputQuotaInBytes(-1L);
+    params.setThroughputQuotaInRecords(-1L);
+    Assert.assertEquals(params.getThroughputQuotaInBytes(), Optional.of(-1L));
+    Assert.assertEquals(params.getThroughputQuotaInRecords(), Optional.of(-1L));
+  }
+
+  @Test
+  public void testThroughputQuotaUnsetIsEmpty() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    Assert.assertFalse(params.getThroughputQuotaInBytes().isPresent());
+    Assert.assertFalse(params.getThroughputQuotaInRecords().isPresent());
+  }
+
+  @Test
+  public void testStoreInfoCopyIncludesPubSubEncryptionKeyUrn() {
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setEncryptionEnabled(true);
+    storeInfo.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    storeInfo.setReplicationMetadataVersionId(-1);
+    UpdateStoreQueryParams copiedParams = new UpdateStoreQueryParams(storeInfo, false);
+    assertEquals(copiedParams.getPubSubEncryptionKeyUrn(), Optional.of(pubSubEncryptionKeyUrn));
+  }
+
+  @Test
+  public void testStoreInfoCopyIncludesPubSubEncryptionKeyUrnWhenEncryptionIsDisabled() {
+    StoreInfo storeInfo = new StoreInfo();
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
+    storeInfo.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    storeInfo.setReplicationMetadataVersionId(-1);
+
+    UpdateStoreQueryParams copiedParams = new UpdateStoreQueryParams(storeInfo, false);
+
+    assertEquals(copiedParams.getPubSubEncryptionKeyUrn(), Optional.of(pubSubEncryptionKeyUrn));
+  }
+
+  @Test
   public void testExternalStorageReadModeRoundTrip() {
     for (ExternalStorageReadMode mode: ExternalStorageReadMode.values()) {
       UpdateStoreQueryParams params = new UpdateStoreQueryParams();

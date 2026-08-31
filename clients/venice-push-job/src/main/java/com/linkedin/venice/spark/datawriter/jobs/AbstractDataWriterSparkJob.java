@@ -42,6 +42,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VAL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
@@ -49,7 +50,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -62,7 +62,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -82,12 +81,16 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
+import com.linkedin.venice.hadoop.exceptions.VeniceStorageQuotaExceededException;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.hadoop.task.datawriter.IncrementalPushWriteQuotaUtils;
+import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.spark.chunk.SparkChunkAssembler;
@@ -109,6 +112,7 @@ import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
@@ -125,11 +129,13 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.LongSupplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
+import org.apache.spark.TaskContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapGroupsFunction;
 import org.apache.spark.api.java.function.MapFunction;
@@ -150,6 +156,7 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.LongAccumulator;
+import org.apache.spark.util.TaskCompletionListener;
 
 
 /**
@@ -355,13 +362,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // does not live under the push.job.external.storage.* prefix.
     jobConf.set(PUSH_JOB_DUAL_WRITE_TARGET_REGIONS, String.join(",", pushJobSetting.dualWriteTargetRegions));
 
-    // Incremental push throttling configs - pass through to partition writer
+    // Incremental push throttling: the driver computes the per-partition-writer quota once (validating fail-fast here,
+    // before the Spark job runs) and forwards it, so the data-writer tasks consume it directly without re-deriving the
+    // split.
     jobConf.set(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
-    jobConf.set(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
-    jobConf.set(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.versionSeparateRealTimeTopicEnabled);
     jobConf.set(
-        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
-        props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
+        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION,
+        Long.toString(
+            IncrementalPushWriteQuotaUtils.perPartitionQuotaForPush(
+                pushJobSetting.isIncrementalPush,
+                pushJobSetting.pushToSeparateRealtimeTopicEnabled,
+                pushJobSetting.versionSeparateRealTimeTopicEnabled,
+                props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1),
+                pushJobSetting.partitionCount)));
     jobConf.set(
         INCREMENTAL_PUSH_RATE_LIMITER_TYPE,
         props.getString(
@@ -489,10 +502,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     }
 
     boolean isChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled();
-    LOGGER.info(
-        "Applying TTL filtering with start timestamp: {} (chunking enabled: {})",
-        pushJobSetting.repushTTLStartTimeMs,
-        isChunkingEnabled);
+    if (isChunkingEnabled) {
+      // Every row is passed through unfiltered in this method when chunking is enabled (TTL filtering
+      // is instead applied post-assembly in applyChunkAssembly()), so skip building a
+      // SparkKafkaInputTTLFilter (and the HDFS schema fetch / dictionary consumer it may create) per
+      // partition entirely, rather than constructing one that's guaranteed to be a no-op.
+      LOGGER.info("TTL filtering deferred to post-assembly (chunking enabled); skipping raw TTL filter stage");
+      return dataFrame;
+    }
+
+    LOGGER.info("Applying TTL filtering with start timestamp: {}", pushJobSetting.repushTTLStartTimeMs);
 
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
 
@@ -511,9 +530,18 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     final StageMetrics ttlMetrics = stageMetricsRegistry.register("ttl_filter");
 
     // Apply filter using mapPartitions for efficiency (one filter instance per partition)
+    boolean needsSslForDictionaryConsumer =
+        pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT;
     dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
-      SparkKafkaInputTTLFilter ttlFilter =
-          new SparkKafkaInputTTLFilter(new VeniceProperties(broadcastFilterProps.value()));
+      // SSL is only needed here when the source is ZSTD_WITH_DICT compressed, since that's the only
+      // case where SparkKafkaInputTTLFilter's VeniceRmdTTLFilter creates a PubSub consumer to read the
+      // compression dictionary (see KafkaInputUtils#getCompressor). Gating on this avoids turning an
+      // unrelated executor-side token-file problem into a hard failure for TTL repushes of
+      // NO_OP/GZIP-compressed stores, which never needed SSL on this path.
+      VeniceProperties partitionFilterProps = new VeniceProperties(broadcastFilterProps.value());
+      VeniceProperties executorFilterProps =
+          needsSslForDictionaryConsumer ? VPJSSLUtils.setupSSLForExecutor(partitionFilterProps) : partitionFilterProps;
+      SparkKafkaInputTTLFilter ttlFilter = new SparkKafkaInputTTLFilter(executorFilterProps);
       try {
         CountingIterator countedInput = new CountingIterator(
             iterator,
@@ -533,14 +561,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           // handled separately in the reducer, not in the mapper's TTL filter chain).
           if (messageType == MessageType.DELETE.getValue()) {
             return true; // Keep DELETE records unchanged
-          }
-
-          // If chunking is enabled, skip ALL records in the raw TTL filter. TTL filtering
-          // will be handled post-assembly in applyChunkAssembly() instead. This avoids
-          // double-filtering where the raw filter's value/RMD modifications for
-          // PARTIALLY_UPDATED records are lost
-          if (isChunkingEnabled) {
-            return true;
           }
 
           // shouldFilter returns true if record should be removed
@@ -633,7 +653,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             byte[] firstValue = rowsList.get(0).getAs(VALUE_COLUMN_NAME);
             for (int i = 1; i < rowsList.size(); i++) {
               byte[] currentValue = rowsList.get(i).getAs(VALUE_COLUMN_NAME);
-              if (!java.util.Arrays.equals(firstValue, currentValue)) {
+              if (!Arrays.equals(firstValue, currentValue)) {
                 hasDistinctValues = true;
                 break;
               }
@@ -676,6 +696,13 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   protected Dataset<Row> applyChunkAssembly(Dataset<Row> dataFrame) {
     boolean isRmdChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isRmdChunkingEnabled();
     boolean isTTLEnabled = pushJobSetting.repushTTLEnabled;
+    // SSL is only needed ahead of TTL filtering when the source is ZSTD_WITH_DICT compressed, since
+    // that's the only case where VeniceRmdTTLFilter creates a PubSub consumer to read the compression
+    // dictionary (see KafkaInputUtils#getCompressor). Gating on this avoids turning an unrelated
+    // executor-side token-file problem into a hard failure for TTL repushes of NO_OP/GZIP-compressed
+    // stores, which never needed SSL on this path.
+    boolean needsSslForDictionaryConsumer =
+        isTTLEnabled && pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT;
 
     LOGGER.info("Chunk assembly starting (TTL filtering: {}). Input schema: {}", isTTLEnabled, dataFrame.schema());
 
@@ -704,50 +731,141 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     dataFrame = dataFrame
         // Group by key
         .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
-        // For each key group, sort by offset DESC and assemble
-        .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
-          long groupStartNs = System.nanoTime();
-          // Collect rows and sort by offset DESC (highest first)
-          List<Row> rowsList = new ArrayList<>();
-          rowsIterator.forEachRemaining(row -> {
-            chunkMetrics.recordsIn.add(1);
-            chunkMetrics.bytesIn.add(CountingIterator.computeByteSizeByIndices(row, inKeyIdx, inValIdx, inRmdIdx));
-            rowsList.add(row);
-          });
-
-          if (rowsList.isEmpty()) {
-            chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
-            return Collections.emptyIterator();
-          }
-
-          // Sort by offset DESC
-          rowsList.sort((r1, r2) -> {
-            long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
-            long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
-            return Long.compare(offset2, offset1);
-          });
-
-          // Assemble chunks (and apply TTL filtering if enabled)
-          SparkChunkAssembler assembler =
-              new SparkChunkAssembler(isRmdChunkingEnabled, isTTLEnabled, broadcastFilterProps);
-          Row assembled = assembler.assembleChunks(keyBytes, rowsList.iterator());
-
-          if (assembled == null) {
-            // Latest record is DELETE, chunks incomplete, or filtered by TTL
-            emptyRecordAcc.add(1);
-            chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
-            return Collections.emptyIterator();
-          }
-
-          chunkMetrics.recordsOut.add(1);
-          chunkMetrics.bytesOut
-              .add(CountingIterator.computeByteSizeByIndices(assembled, outKeyIdx, outValIdx, outRmdIdx));
-          chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
-          return Collections.singletonList(assembled).iterator();
-        }, encoder);
+        // For each key group, sort by offset DESC and assemble. ChunkAssemblyFunction caches the
+        // SparkChunkAssembler (and the SSL materialization it needs) once per Spark task and reuses it
+        // across all key groups processed by that task, instead of rebuilding it per key group.
+        .flatMapGroups(
+            new ChunkAssemblyFunction(
+                isRmdChunkingEnabled,
+                isTTLEnabled,
+                needsSslForDictionaryConsumer,
+                broadcastFilterProps,
+                inKeyIdx,
+                inValIdx,
+                inRmdIdx,
+                outKeyIdx,
+                outValIdx,
+                outRmdIdx,
+                emptyRecordAcc,
+                chunkMetrics),
+            encoder);
 
     LOGGER.info("Chunk assembly completed. Output schema: {}", dataFrame.schema());
     return dataFrame;
+  }
+
+  /**
+   * {@link FlatMapGroupsFunction} used by {@link #applyChunkAssembly(Dataset)}. Spark reuses the same
+   * deserialized function instance across every key group processed within a given task, so the
+   * {@link SparkChunkAssembler} (and, transitively, the executor-side SSL materialization and any
+   * dictionary/schema PubSub consumer it needs) is built lazily on the first key group and reused for
+   * the rest of the task, instead of being rebuilt per key group. The assembler is released via a
+   * {@link TaskContext} completion listener so its resources don't outlive the task.
+   */
+  private static class ChunkAssemblyFunction implements FlatMapGroupsFunction<byte[], Row, Row> {
+    private static final long serialVersionUID = 1L;
+
+    private final boolean isRmdChunkingEnabled;
+    private final boolean isTTLEnabled;
+    private final boolean needsSslForDictionaryConsumer;
+    private final VeniceProperties broadcastFilterProps;
+    private final int inKeyIdx;
+    private final int inValIdx;
+    private final int inRmdIdx;
+    private final int outKeyIdx;
+    private final int outValIdx;
+    private final int outRmdIdx;
+    private final LongAccumulator emptyRecordAcc;
+    private final StageMetrics chunkMetrics;
+
+    private transient SparkChunkAssembler assembler;
+
+    ChunkAssemblyFunction(
+        boolean isRmdChunkingEnabled,
+        boolean isTTLEnabled,
+        boolean needsSslForDictionaryConsumer,
+        VeniceProperties broadcastFilterProps,
+        int inKeyIdx,
+        int inValIdx,
+        int inRmdIdx,
+        int outKeyIdx,
+        int outValIdx,
+        int outRmdIdx,
+        LongAccumulator emptyRecordAcc,
+        StageMetrics chunkMetrics) {
+      this.isRmdChunkingEnabled = isRmdChunkingEnabled;
+      this.isTTLEnabled = isTTLEnabled;
+      this.needsSslForDictionaryConsumer = needsSslForDictionaryConsumer;
+      this.broadcastFilterProps = broadcastFilterProps;
+      this.inKeyIdx = inKeyIdx;
+      this.inValIdx = inValIdx;
+      this.inRmdIdx = inRmdIdx;
+      this.outKeyIdx = outKeyIdx;
+      this.outValIdx = outValIdx;
+      this.outRmdIdx = outRmdIdx;
+      this.emptyRecordAcc = emptyRecordAcc;
+      this.chunkMetrics = chunkMetrics;
+    }
+
+    @Override
+    public Iterator<Row> call(byte[] keyBytes, Iterator<Row> rowsIterator) {
+      long groupStartNs = System.nanoTime();
+      // Collect rows and sort by offset DESC (highest first)
+      List<Row> rowsList = new ArrayList<>();
+      rowsIterator.forEachRemaining(row -> {
+        chunkMetrics.recordsIn.add(1);
+        chunkMetrics.bytesIn.add(CountingIterator.computeByteSizeByIndices(row, inKeyIdx, inValIdx, inRmdIdx));
+        rowsList.add(row);
+      });
+
+      if (rowsList.isEmpty()) {
+        chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
+        return Collections.emptyIterator();
+      }
+
+      // Sort by offset DESC
+      rowsList.sort((r1, r2) -> {
+        long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
+        long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
+        return Long.compare(offset2, offset1);
+      });
+
+      Row assembled = getOrCreateAssembler().assembleChunks(keyBytes, rowsList.iterator());
+
+      if (assembled == null) {
+        // Latest record is DELETE, orphan chunks (no manifest), or filtered by TTL
+        emptyRecordAcc.add(1);
+        chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
+        return Collections.emptyIterator();
+      }
+
+      chunkMetrics.recordsOut.add(1);
+      chunkMetrics.bytesOut.add(CountingIterator.computeByteSizeByIndices(assembled, outKeyIdx, outValIdx, outRmdIdx));
+      chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
+      return Collections.singletonList(assembled).iterator();
+    }
+
+    /**
+     * Lazily builds the {@link SparkChunkAssembler} for this task (materializing executor-side SSL
+     * first, only if the source is ZSTD_WITH_DICT compressed and TTL filtering will actually need a
+     * dictionary consumer) and registers a task-completion listener to release it once, so it isn't
+     * rebuilt for every key group processed by this task.
+     */
+    private SparkChunkAssembler getOrCreateAssembler() {
+      if (assembler == null) {
+        VeniceProperties executorFilterProps = needsSslForDictionaryConsumer
+            ? VPJSSLUtils.setupSSLForExecutor(broadcastFilterProps)
+            : broadcastFilterProps;
+        SparkChunkAssembler newAssembler =
+            new SparkChunkAssembler(isRmdChunkingEnabled, isTTLEnabled, executorFilterProps);
+        TaskContext taskContext = TaskContext.get();
+        if (taskContext != null) {
+          taskContext.addTaskCompletionListener((TaskCompletionListener) context -> newAssembler.close());
+        }
+        assembler = newAssembler;
+      }
+      return assembler;
+    }
   }
 
   /**
@@ -770,7 +888,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     DataWriterAccumulators accumulators = accumulatorsForDataWriterJob;
 
     // Optimization: if strategies and dictionaries are the same and metrics are disabled, skip the map stage
-    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict) && !metricEnabled) {
+    if (sourceStrategy == destStrategy && Arrays.equals(sourceDict, destDict) && !metricEnabled) {
       LOGGER.info("Source and destination compression are identical ({}). Skipping re-encoding stage.", sourceStrategy);
       return dataFrame;
     }
@@ -835,6 +953,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     return taskTracker;
   }
 
+  /**
+   * Spark measures the serialized input size and checks it against the storage quota before writing (see
+   * {@code enforceStorageQuotaBeforeWrite}), so the driver-side post-write quota check is redundant and is
+   * skipped for Spark when the pre-write check is enabled.
+   */
+  @Override
+  public boolean performsPreWriteQuotaCheck() {
+    return pushJobSetting != null && pushJobSetting.sparkPreWriteQuotaCheckEnabled;
+  }
+
   @VisibleForTesting
   protected DataWriterAccumulators getAccumulatorsForDataWriterJob() {
     return accumulatorsForDataWriterJob;
@@ -870,7 +998,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     validateRmdSchema(pushJobSetting);
 
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
-    ExpressionEncoder<Row> partitionRecordCountEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
+    ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
 
     Properties jobProps = new Properties();
@@ -879,6 +1007,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
 
     LOGGER.info("Triggering Spark job for data writer");
+    // Tracks the DataFrame persisted by the pre-write quota check so it can be released after the write.
+    Dataset<Row> quotaCheckedInput = null;
     try {
       if (pushJobSetting.isSourceKafka) {
         // Apply chunk assembly if chunking is enabled
@@ -910,6 +1040,12 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
       // TODO: Add map-side combiner to reduce the data size before shuffling
 
+      if (pushJobSetting.sparkPreWriteQuotaCheckEnabled) {
+        // Optional pre-write quota stage; materializes serialized rows before PubSub writes.
+        quotaCheckedInput = enforceStorageQuotaBeforeWrite(dataFrame);
+        dataFrame = quotaCheckedInput;
+      }
+
       // Partition the data using the custom partitioner and sort the data within that partition
       dataFrame = SparkPartitionUtils.repartitionAndSortWithinPartitions(
           dataFrame,
@@ -939,37 +1075,109 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         } finally {
           kafkaWriteMetrics.timeNs.add(System.nanoTime() - startNs);
         }
-      }, partitionRecordCountEncoder);
+      }, partitionWriterTaskOutputEncoder);
 
       /*
-       * collect() returns exactly one (partitionId, recordCount) row per Spark partition. With
-       * speculative execution, if the original task and a speculative attempt both finish at the
-       * same time, Spark's TaskScheduler accepts the result from whichever one successfully
-       * communicates completion first and immediately kills the other; the duplicate's work is
-       * discarded to prevent duplicate data processing. So no two rows in the collected list will
-       * ever share the same partition id, and we can populate the map directly via put().
+       * collect() returns exactly one successful task-output row per Spark partition:
+       * (partitionId, recordCount, failedExternalStorageRegions, externalStorageWriteTimeMs,
+       * veniceWriteTimeMs). With speculative execution, if the original task and a speculative attempt both
+       * finish at the same time, Spark's TaskScheduler accepts the result from whichever one successfully
+       * communicates completion first and immediately kills the other; the duplicate's work is discarded to
+       * prevent duplicate data processing. So no two rows in the collected list will ever share the same
+       * partition id, and only the winning task's final disabled-region set and accrued write times
+       * contribute here. This is exactly why the two duration totals travel as row columns instead of
+       * LongAccumulators: accumulator updates from a killed speculative attempt would still be added on the
+       * driver and inflate the sums.
        *
-       * The collected data volume is bounded by numPartitions (e.g. 10K partitions = ~160KB) so
-       * collectAsList() is safe.
+       * The collected data volume is bounded by numPartitions plus a small failed-region list per
+       * partition (e.g. 10K partitions with record counts only is ~160KB), so collectAsList() is
+       * safe.
        */
       String topicName = pushJobSetting.topic;
-      List<Row> partitionCountRows = dataFrame.collectAsList();
-      Map<Integer, Long> perPartitionRecordCounts = new HashMap<>(partitionCountRows.size());
-      for (Row row: partitionCountRows) {
+      List<Row> taskOutputRows = dataFrame.collectAsList();
+      Map<Integer, Long> perPartitionRecordCounts = new HashMap<>(taskOutputRows.size());
+      Set<String> failedExternalStorageRegions = new HashSet<>();
+      // Summed task wall-clock durations across partitions, not the push's wall-clock duration.
+      long externalStorageWriteTimeMs = 0;
+      long veniceWriteTimeMs = 0;
+      for (Row row: taskOutputRows) {
         perPartitionRecordCounts.put(row.getInt(0), row.getLong(1));
+        if (!row.isNullAt(2)) {
+          failedExternalStorageRegions.addAll(row.getList(2));
+        }
+        externalStorageWriteTimeMs += row.getLong(3);
+        veniceWriteTimeMs += row.getLong(4);
       }
       taskTracker.setPerPartitionRecordCounts(perPartitionRecordCounts);
+      taskTracker.setFailedExternalStorageRegions(failedExternalStorageRegions);
+      taskTracker.setExternalStorageWriteTimeMs(externalStorageWriteTimeMs);
+      taskTracker.setVeniceWriteTimeMs(veniceWriteTimeMs);
       LOGGER.info(
-          "Collected per-partition record counts for topic: {} ({} partitions)",
+          "Collected per-partition record counts for topic: {} ({} partitions). Summed task durations: "
+              + "externalStorageWriteTimeMs={}, veniceWriteTimeMs={}",
           topicName,
-          perPartitionRecordCounts.size());
+          perPartitionRecordCounts.size(),
+          externalStorageWriteTimeMs,
+          veniceWriteTimeMs);
     } finally {
+      // Release the DataFrame cached by the pre-write quota check now that the write is done.
+      if (quotaCheckedInput != null) {
+        quotaCheckedInput.unpersist();
+      }
       // No matter what, always log the final accumulator values
       logAccumulatorValues();
       if (stageMetricsRegistry != null) {
         LOGGER.info("VPJ Pipeline Stage Diagnostics:\n{}", stageMetricsRegistry.snapshot().getFormattedReport());
       }
     }
+  }
+
+  /**
+   * Intermediary stage between reading/serializing the input (stage 1) and writing to PubSub (stage 2):
+   * materialize the record-processing pass once, measure the serialized data size, and fail the push before
+   * any data is written if it exceeds the store's storage quota. Failing here avoids writing the entire
+   * dataset only to have it rejected by the driver-side post-write quota check.
+   *
+   * <p>The size is not recomputed: the record-processing pass (the same pass that produces the compression
+   * stats) already accumulates the key size and compressed value size, so we read
+   * {@code getTotalKeySize() + getTotalValueSize()} — the exact quantity the driver-side check uses.
+   * Persisting lets the downstream write reuse the result so that pass runs exactly once (which also keeps
+   * the size accumulators single-counted). Repush (source PubSub) and unlimited-quota stores skip the check.
+   *
+   * @param processedDataFrame the serialized (key, value, ...) rows, before partitioning/sorting
+   * @return the persisted DataFrame to be written, or the original one if the check was skipped
+   */
+  private Dataset<Row> enforceStorageQuotaBeforeWrite(Dataset<Row> processedDataFrame) {
+    // Repush (source PubSub) is not subject to the storage quota check. Also skip when the quota known at
+    // job start is already unlimited — no materialization or controller round-trip is needed.
+    if (pushJobSetting.isSourceKafka || pushJobSetting.storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
+      return processedDataFrame;
+    }
+
+    // Materialize the record-processing pass once so the size is known; the write below reuses the result.
+    Dataset<Row> persistedDataFrame = processedDataFrame.persist();
+    persistedDataFrame.count();
+    long totalInputDataSizeInBytes = taskTracker.getTotalKeySize() + taskTracker.getTotalValueSize();
+
+    // Resolve the quota AFTER the record-processing pass. If the driver injected a supplier, it re-fetches
+    // the quota from the controller here — so a quota changed while the input was being read/serialized
+    // (i.e. during this pass, which can be long) is honored. Otherwise fall back to the job-start value.
+    LongSupplier quotaSupplier = getCurrentStorageQuotaSupplier();
+    long storageQuota = quotaSupplier != null ? quotaSupplier.getAsLong() : pushJobSetting.storeStorageQuota;
+    LOGGER.info(
+        "Measured serialized input data size before writing to PubSub: {} (store quota: {})",
+        ByteUtils.generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+        ByteUtils.generateHumanReadableByteCountString(storageQuota));
+    if (storageQuota != Store.UNLIMITED_STORAGE_QUOTA && totalInputDataSizeInBytes > storageQuota) {
+      persistedDataFrame.unpersist();
+      throw new VeniceStorageQuotaExceededException(
+          String.format(
+              "Storage quota exceeded. Store quota %s, Input data size %s. Please request at least %s additional quota.",
+              ByteUtils.generateHumanReadableByteCountString(storageQuota),
+              ByteUtils.generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+              ByteUtils.generateHumanReadableByteCountString(totalInputDataSizeInBytes - storageQuota)));
+    }
+    return persistedDataFrame;
   }
 
   @Override
@@ -987,6 +1195,13 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   /**
    * Creates the partition writer factory. Can be overridden for testing purposes.
+   *
+   * <p><b>Breaking change note:</b> the returned function's output rows must conform to
+   * {@link com.linkedin.venice.spark.SparkConstants#PARTITION_RECORD_COUNT_SCHEMA}, which this change extends
+   * from 3 columns to 5 by appending {@code externalStorageWriteTimeMs} and {@code veniceWriteTimeMs} (both
+   * non-nullable {@code long}). Any out-of-tree override that still emits the old 3-column shape will fail
+   * row-encoder validation.
+   *
    * @param broadcastProperties the broadcast job properties
    * @param accumulators the data writer accumulators
    * @return the partition writer factory

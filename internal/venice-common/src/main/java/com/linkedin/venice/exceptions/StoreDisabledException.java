@@ -5,9 +5,11 @@ public class StoreDisabledException extends VeniceException {
     super(
         "Store:" + storeName + " has been disabled. Can not accept the request to " + action + " on version:"
             + versionNumber);
+    super.errorType = ErrorType.STORE_DISABLED;
   }
 
   public StoreDisabledException(String storeName, String action) {
     super("Store:" + storeName + " has been disabled. Can not accept the request to " + action);
+    super.errorType = ErrorType.STORE_DISABLED;
   }
 }

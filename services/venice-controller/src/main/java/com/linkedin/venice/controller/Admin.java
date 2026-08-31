@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1015,6 +1016,41 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   default void updateStoreVersionStatus(String clusterName, String storeName, int version, VersionStatus status) {
     throw new VeniceUnsupportedOperationException("updateStoreVersionStatus");
+  }
+
+  /**
+   * Update a specific version's {@link StorageMode} in the selected region(s) without mutating the
+   * store-level default. Used by VPJ fail-open external dual-write pushes to downgrade only the failed child
+   * colo's current version back to INTERNAL before EOP.
+   */
+  default void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter) {
+    updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        version,
+        storageMode,
+        regionFilter,
+        VersionStorageModeUpdateReason.UNSPECIFIED);
+  }
+
+  /**
+   * Same as {@link #updateStoreVersionStorageMode(String, String, int, StorageMode, String)}, plus why the update
+   * was requested. The reason only drives controller telemetry — notably the alertable per-region counter emitted
+   * for {@link VersionStorageModeUpdateReason#EXTERNAL_WRITE_FAILURE} — and never changes the resulting mode.
+   */
+  default void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter,
+      VersionStorageModeUpdateReason reason) {
+    throw new VeniceUnsupportedOperationException("updateStoreVersionStorageMode");
   }
 
   /**

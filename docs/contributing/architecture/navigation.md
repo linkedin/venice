@@ -54,4 +54,4 @@ Besides code, the repository also contains:
 - `specs`, which contains formal specifications, in TLA+ and FizzBee, for some aspects of the Venice architecture.
 
 If you have any questions about where some contribution belongs, do not hesitate to reach out on the
-[community slack](http://slack.venicedb.org)!
+[community Discord](https://discord.gg/6aZZfwswDt)!

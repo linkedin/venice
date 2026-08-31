@@ -5,6 +5,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
@@ -49,6 +50,7 @@ public class ReadOnlyStoreTest {
     List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
     storeLifecycleHooks.add(new LifecycleHooksRecordImpl("testLifecycleHooksClassName", Collections.emptyMap()));
     store.setStoreLifecycleHooks(storeLifecycleHooks);
+    store.setPubSubEncryptionKeyUrn("keyUrn:abc");
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
 
@@ -111,6 +113,7 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getVersions().size(), store.getVersions().size());
     assertEqualsSystemStores(storeProperties.getSystemStores(), store.getSystemStores());
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
+    assertEquals(storeProperties.getPubSubEncryptionKeyUrn(), store.getPubSubEncryptionKeyUrn());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
@@ -346,6 +349,41 @@ public class ReadOnlyStoreTest {
   }
 
   @Test
+  public void testCloneStorePropertiesPreservesVersionTargetRegionPromoted() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+    store.addVersion(new VersionImpl(store.getName(), 1, "push1"));
+    store.setVersionTargetRegionPromoted(1, true);
+    assertTrue(store.getVersion(1).isTargetRegionPromoted());
+
+    // Regression: ReadOnlyStore.convertVersion previously dropped targetRegionPromoted, so a
+    // Store -> StoreProperties round-trip via cloneStoreProperties emitted the schema default
+    // (false) for every version. Non-target DaVinci clients read this field (via the meta system
+    // store / request-based store_properties, both built from cloneStoreProperties) to know when
+    // to resume paused ingestion, so losing it here deadlocked paused-SIT resume.
+    StoreProperties promoted = new ReadOnlyStore(store).cloneStoreProperties();
+    assertEquals(promoted.getVersions().size(), 1);
+    assertTrue(promoted.getVersions().get(0).getTargetRegionPromoted());
+  }
+
+  @Test
+  public void testCloneStorePropertiesTargetRegionPromotedDefaultsFalse() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+    store.addVersion(new VersionImpl(store.getName(), 1, "push1"));
+    assertFalse(store.getVersion(1).isTargetRegionPromoted());
+
+    // Unpromoted versions must round-trip as false (not silently flipped).
+    StoreProperties cloned = new ReadOnlyStore(store).cloneStoreProperties();
+    assertEquals(cloned.getVersions().size(), 1);
+    assertFalse(cloned.getVersions().get(0).getTargetRegionPromoted());
+  }
+
+  @Test
   public void testReadOnlyEtlConfigDelegatesGetEtlActiveFabrics() {
     ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
     store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, 2, Arrays.asList("dc-0", "dc-1")));
@@ -394,5 +432,32 @@ public class ReadOnlyStoreTest {
     }
     // Backing store is unchanged
     assertTrue(store.getVersion(1).isTargetRegionPromoted());
+  }
+
+  @Test
+  public void testSetVersionStorageMode() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("testStore", "testOwner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(store.getName(), 1, "push1"));
+    store.addVersion(new VersionImpl(store.getName(), 2, "push2"));
+
+    store.setVersionStorageMode(1, StorageMode.DUAL_WRITE);
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+    assertEquals(store.getVersion(2).getStorageMode(), StorageMode.INTERNAL);
+
+    try {
+      store.setVersionStorageMode(99, StorageMode.DUAL_WRITE);
+      throw new AssertionError("Expected VeniceException");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("Version:99 does not exist"));
+    }
+
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    try {
+      readOnlyStore.setVersionStorageMode(1, StorageMode.INTERNAL);
+      throw new AssertionError("Expected UnsupportedOperationException");
+    } catch (UnsupportedOperationException e) {
+      // expected
+    }
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
   }
 }

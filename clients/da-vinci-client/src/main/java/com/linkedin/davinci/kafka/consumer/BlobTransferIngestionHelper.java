@@ -12,6 +12,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -420,6 +421,7 @@ public class BlobTransferIngestionHelper {
           replicaId,
           e);
       storageEngine.dropPartition(partition, false);
+      throw new VeniceException("Failed to adjust storage partition after blob transfer for replica: " + replicaId, e);
     }
   }
 

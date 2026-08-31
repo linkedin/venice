@@ -6,6 +6,8 @@ import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SCHEMA_ID_COLUMN_NAME;
@@ -15,6 +17,7 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.IntegerType;
 import static org.apache.spark.sql.types.DataTypes.LongType;
@@ -29,39 +32,58 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
+import com.linkedin.venice.hadoop.exceptions.VeniceStorageQuotaExceededException;
 import com.linkedin.venice.jobs.ComputeJob;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
+import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
+import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.fs.Path;
+import org.apache.spark.TaskContext;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.RuntimeConfig;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import scala.collection.JavaConverters;
 
 
 public class AbstractDataWriterSparkJobTest {
@@ -94,6 +116,61 @@ public class AbstractDataWriterSparkJobTest {
 
       // Properties with SPARK_DATA_WRITER_CONF_PREFIX should get applied after stripping the prefix
       Assert.assertEquals(jobConf.get(dummyConfig), dummyConfigValue);
+    }
+  }
+
+  /**
+   * {@code spark.data.writer.conf.*} is documented as the mechanism for passing custom configuration into VPJ's
+   * Spark custom input format (the {@code VeniceHdfsSource}/{@code VeniceHdfsInputTable}/
+   * {@code VeniceHdfsInputScanBuilder} DataSource V2 chain), analogous to MR's {@code hadoop-conf.*} mechanism
+   * (which strips its prefix directly into the {@code JobConf} that MR's InputFormat and tasks read from).
+   *
+   * {@link #testConfigure} only proves the stripped key lands in {@code SparkSession.conf()}, which is visible on
+   * the driver. It does NOT prove the value reaches the DataSource V2 table/scan (i.e. what
+   * {@code VeniceHdfsSource#getTable} actually receives as its {@code configs} map) or executor partition readers.
+   *
+   * This test forces the real production custom-input-format path to run and records what
+   * {@link VeniceHdfsSource#getTable} actually received, proving the custom option reaches the DataFrameReader
+   * options that DataSource V2 threads through to the table/scan, not just the driver-side SparkSession runtime
+   * config.
+   */
+  @Test
+  public void testCustomDataWriterConfigForwardedToHdfsDataSource() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    String customOptionKey = "custom.reader.option";
+    String customOptionValue = "custom-reader-value";
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + customOptionKey, customOptionValue);
+
+    VeniceHdfsSource.recordLastReceivedConfigs(null);
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
+
+      // The custom option does reach SparkSession runtime config (driver-visible)...
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertEquals(jobConf.get(customOptionKey), customOptionValue);
+
+      // ...force the real custom-input-format DataSource V2 resolution to run...
+      Dataset<Row> dataFrame = dataWriterSparkJob.getUserInputDataFrame();
+      dataFrame.count();
+
+      // ...and confirm VeniceHdfsSource#getTable was invoked and its `configs` map (the DataFrameReader/reader
+      // options DataSource V2 actually threads through to the table/scan/executors) received the custom option
+      // too: SparkSession.conf() alone is a driver-only channel that this DataSource cannot see.
+      Assert.assertNotNull(
+          VeniceHdfsSource.lastReceivedConfigs,
+          "Expected VeniceHdfsSource#getTable to have been invoked while resolving the custom input format");
+      Assert.assertEquals(
+          VeniceHdfsSource.lastReceivedConfigs.get(customOptionKey),
+          customOptionValue,
+          "spark.data.writer.conf.* options must be forwarded as DataFrameReader options as well as SparkSession "
+              + "runtime config, so they reach the custom DataSource and executor partition readers");
+    } finally {
+      VeniceHdfsSource.recordLastReceivedConfigs(null);
     }
   }
 
@@ -352,6 +429,204 @@ public class AbstractDataWriterSparkJobTest {
     }
   }
 
+  @DataProvider(name = "storageQuotaMatrix")
+  public Object[][] storageQuotaMatrix() {
+    return new Object[][] {
+        { "big file, small start quota, changed to big before write", 1L, StorageQuotaRefresh.BIG, true, true },
+        { "big file, small start quota, no change", 1L, StorageQuotaRefresh.SMALL, true, false },
+        { "small file, big start quota, no change", Long.MAX_VALUE, StorageQuotaRefresh.BIG, false, true },
+        { "small file, big start quota, changed to small before write", Long.MAX_VALUE, StorageQuotaRefresh.SMALL,
+            false, false },
+        { "big file, small start quota, changed to exactly input size before write", 1L,
+            StorageQuotaRefresh.EXACT_INPUT_SIZE, true, true } };
+  }
+
+  @Test(dataProvider = "storageQuotaMatrix")
+  public void testRunJobEnforcesPreWriteStorageQuotaMatrix(
+      String caseName,
+      long startQuota,
+      StorageQuotaRefresh refreshedQuota,
+      boolean inputShouldExceedStartQuota,
+      boolean expectSuccess) throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.partitionCount = 1;
+    setting.rmdField = "";
+    setting.storeStorageQuota = startQuota;
+    setting.sparkPreWriteQuotaCheckEnabled = true;
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+    AtomicLong quotaRefreshCount = new AtomicLong();
+
+    try (QuotaTestingDataWriterSparkJob job = new QuotaTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(properties), setting);
+      job.setCurrentStorageQuotaSupplier(() -> {
+        quotaRefreshCount.incrementAndGet();
+        return refreshedQuota.resolve(job);
+      });
+
+      job.runJob();
+
+      Assert.assertEquals(quotaRefreshCount.get(), 1L);
+      long totalInputDataSize = getTotalInputDataSize(job);
+      Assert.assertTrue(totalInputDataSize > 1L, caseName);
+      if (inputShouldExceedStartQuota) {
+        Assert.assertTrue(totalInputDataSize > startQuota, caseName);
+      } else {
+        Assert.assertTrue(totalInputDataSize < startQuota, caseName);
+      }
+
+      if (expectSuccess) {
+        Assert.assertEquals(job.getStatus(), ComputeJob.Status.SUCCEEDED, caseName);
+        Assert.assertNull(job.getFailureReason(), caseName);
+        Assert.assertTrue(job.isWriterFactoryCreated(), caseName);
+      } else {
+        Assert.assertEquals(job.getStatus(), ComputeJob.Status.FAILED, caseName);
+        Assert.assertTrue(job.getFailureReason() instanceof VeniceStorageQuotaExceededException, caseName);
+        Assert.assertFalse(job.isWriterFactoryCreated(), caseName);
+      }
+    }
+  }
+
+  @Test
+  public void testRunJobSkipsPreWriteStorageQuotaCheckForKifRepush() throws IOException {
+    PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
+    setting.storeStorageQuota = 1L;
+    setting.sparkPreWriteQuotaCheckEnabled = true;
+
+    AtomicLong quotaRefreshCount = new AtomicLong();
+    try (KifQuotaTestingDataWriterSparkJob job = new KifQuotaTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      job.setCurrentStorageQuotaSupplier(() -> {
+        quotaRefreshCount.incrementAndGet();
+        return 1L;
+      });
+
+      job.runJob();
+
+      Assert.assertEquals(job.getStatus(), ComputeJob.Status.SUCCEEDED);
+      Assert.assertNull(job.getFailureReason());
+      Assert.assertTrue(job.isWriterFactoryCreated(), "KIF repush should continue to the writer path");
+      Assert.assertEquals(quotaRefreshCount.get(), 0L, "KIF repush must not refresh or enforce storage quota");
+    }
+  }
+
+  @Test
+  public void testRunJobSkipsPreWriteStorageQuotaCheckWhenConfigDisabled() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.partitionCount = 1;
+    setting.rmdField = "";
+    setting.storeStorageQuota = 1L;
+    setting.sparkPreWriteQuotaCheckEnabled = false;
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+    AtomicLong quotaRefreshCount = new AtomicLong();
+
+    try (QuotaTestingDataWriterSparkJob job = new QuotaTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(properties), setting);
+      job.setCurrentStorageQuotaSupplier(() -> {
+        quotaRefreshCount.incrementAndGet();
+        return 1L;
+      });
+
+      Assert.assertFalse(job.performsPreWriteQuotaCheck());
+      job.runJob();
+
+      Assert.assertEquals(job.getStatus(), ComputeJob.Status.SUCCEEDED);
+      Assert.assertNull(job.getFailureReason());
+      Assert.assertTrue(job.isWriterFactoryCreated());
+      Assert.assertEquals(quotaRefreshCount.get(), 0L);
+      Assert.assertTrue(getTotalInputDataSize(job) > setting.storeStorageQuota);
+    }
+  }
+
+  @Test
+  public void testRunComputeJobAggregatesFailedExternalStorageRegionsFromTaskOutput() throws IOException {
+    PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
+    setting.partitionCount = 2;
+
+    try (TaskOutputTestingDataWriterSparkJob job = new TaskOutputTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      job.runComputeJob();
+
+      Map<Integer, Long> expectedCounts = new HashMap<>();
+      expectedCounts.put(0, 3L);
+      expectedCounts.put(1, 5L);
+      Assert.assertEquals(job.getTaskTracker().getPerPartitionRecordCounts(), expectedCounts);
+
+      Set<String> expectedFailedRegions = new HashSet<>();
+      expectedFailedRegions.add("dc-0");
+      expectedFailedRegions.add("dc-1");
+      Assert.assertEquals(job.getTaskTracker().getFailedExternalStorageRegions(), expectedFailedRegions);
+
+      // Durations are summed over one successful row per partition, never via accumulators.
+      Assert.assertEquals(job.getTaskTracker().getExternalStorageWriteTimeMs(), 1000L);
+      Assert.assertEquals(job.getTaskTracker().getVeniceWriteTimeMs(), 42L);
+    }
+  }
+
+  @Test
+  public void testRunComputeJobDoesNotUseAccumulatorsForWriteTimes() throws IOException {
+    PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
+    setting.partitionCount = 2;
+
+    try (TaskOutputTestingDataWriterSparkJob job = new TaskOutputTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      job.runComputeJob();
+
+      /*
+       * The task-output rows above are the only source of the two totals. A tracker built on the very same
+       * accumulator set, but never fed the collected rows, must therefore report nothing: proof that no
+       * LongAccumulator is carrying these durations, which is what makes them safe under speculative
+       * execution.
+       */
+      SparkDataWriterTaskTracker accumulatorOnlyView =
+          new SparkDataWriterTaskTracker(job.getAccumulatorsForDataWriterJob());
+      Assert.assertEquals(accumulatorOnlyView.getExternalStorageWriteTimeMs(), 0L);
+      Assert.assertEquals(accumulatorOnlyView.getVeniceWriteTimeMs(), 0L);
+      Assert.assertEquals(job.getTaskTracker().getExternalStorageWriteTimeMs(), 1000L);
+    }
+  }
+
+  private static long getTotalInputDataSize(QuotaTestingDataWriterSparkJob job) {
+    return job.getTaskTracker().getTotalKeySize() + job.getTaskTracker().getTotalValueSize();
+  }
+
+  private static scala.collection.Seq<String> toScalaSeq(String... values) {
+    return JavaConverters.asScalaBuffer(new ArrayList<>(Arrays.asList(values))).toSeq();
+  }
+
+  private PushJobSetting getDefaultKafkaInputPushJobSetting() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.storeName = Utils.getUniqueString("TEST_STORE");
+    setting.jobId = Utils.getUniqueString("TEST_JOB");
+    setting.isSourceKafka = true;
+    setting.kafkaInputTopic = Version.composeKafkaTopic(setting.storeName, 1);
+    setting.repushSourcePubsubBroker = "localhost:9092";
+    setting.repushTTLEnabled = false;
+    setting.topic = Version.composeKafkaTopic(setting.storeName, 2);
+    setting.pushDestinationPubsubBroker = "localhost:9092";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
+    setting.partitionerParams = null;
+    setting.partitionCount = 1;
+    setting.storeKeySchema = Schema.create(Schema.Type.STRING);
+    setting.storeCompressionStrategy = CompressionStrategy.NO_OP;
+    setting.topicCompressionStrategy = CompressionStrategy.NO_OP;
+    setting.sourceKafkaInputVersionInfo = new VersionImpl(setting.storeName, 1, setting.jobId);
+    setting.sourceKafkaInputVersionInfo.setCompressionStrategy(CompressionStrategy.NO_OP);
+    setting.sourceVersionCompressionStrategy = CompressionStrategy.NO_OP;
+    setting.valueSchemaId = 1;
+    setting.inputHasRecords = true;
+    setting.inputFileDataSizeInBytes = 1000;
+    setting.maxRecordSizeBytes = Integer.MAX_VALUE;
+    return setting;
+  }
+
   private PushJobSetting getDefaultPushJobSetting(File inputDir, Schema dataSchema) {
     PushJobSetting setting = new PushJobSetting();
     setting.storeName = Utils.getUniqueString("TEST_STORE");
@@ -530,5 +805,105 @@ public class AbstractDataWriterSparkJobTest {
     protected Dataset<Row> getKafkaInputDataFrame() {
       return getSparkSession().emptyDataFrame();
     }
+  }
+
+  private static class QuotaTestingDataWriterSparkJob extends DataWriterSparkJob {
+    private boolean writerFactoryCreated;
+
+    boolean isWriterFactoryCreated() {
+      return writerFactoryCreated;
+    }
+
+    @Override
+    protected MapPartitionsFunction<Row, Row> createPartitionWriterFactory(
+        Broadcast<Properties> broadcastProperties,
+        DataWriterAccumulators accumulators) {
+      writerFactoryCreated = true;
+      return iterator -> {
+        long recordCount = 0;
+        int partitionId = 0;
+        while (iterator.hasNext()) {
+          Row row = iterator.next();
+          partitionId = row.getInt(row.fieldIndex(PARTITION_COLUMN_NAME));
+          recordCount++;
+          accumulators.outputRecordCounter.add(1);
+        }
+        accumulators.partitionWriterCloseCounter.add(1);
+        return Collections.singletonList(RowFactory.create(partitionId, recordCount, toScalaSeq(), 0L, 0L)).iterator();
+      };
+    }
+  }
+
+  private static class TaskOutputTestingDataWriterSparkJob extends DataWriterSparkJob {
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      List<Row> rows = Arrays.asList(
+          new GenericRowWithSchema(
+              new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "test-key-1".getBytes(),
+                  "test-value-1".getBytes(), 1, "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA),
+          new GenericRowWithSchema(
+              new Object[] { "region1", 1, 101L, MessageType.PUT.getValue(), 1, "test-key-2".getBytes(),
+                  "test-value-2".getBytes(), 1, "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA));
+      return getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    }
+
+    @Override
+    protected MapPartitionsFunction<Row, Row> createPartitionWriterFactory(
+        Broadcast<Properties> broadcastProperties,
+        DataWriterAccumulators accumulators) {
+      return iterator -> {
+        while (iterator.hasNext()) {
+          iterator.next();
+        }
+
+        int partitionId = TaskContext.get().partitionId();
+        switch (partitionId) {
+          case 0:
+            return Collections.singletonList(RowFactory.create(0, 3L, toScalaSeq("dc-1", "dc-0"), 700L, 40L))
+                .iterator();
+          case 1:
+            return Collections.singletonList(RowFactory.create(1, 5L, toScalaSeq("dc-1"), 300L, 2L)).iterator();
+          default:
+            return Collections.singletonList(RowFactory.create(partitionId, 0L, toScalaSeq(), 0L, 0L)).iterator();
+        }
+      };
+    }
+  }
+
+  private static class KifQuotaTestingDataWriterSparkJob extends QuotaTestingDataWriterSparkJob {
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      List<Row> rows = Collections.singletonList(
+          new GenericRowWithSchema(
+              new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "test-key".getBytes(),
+                  "test-value".getBytes(), 1, "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA));
+      return getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    }
+  }
+
+  public enum StorageQuotaRefresh {
+    SMALL {
+      @Override
+      long resolve(QuotaTestingDataWriterSparkJob job) {
+        return 1L;
+      }
+    },
+    BIG {
+      @Override
+      long resolve(QuotaTestingDataWriterSparkJob job) {
+        return Long.MAX_VALUE;
+      }
+    },
+    EXACT_INPUT_SIZE {
+      @Override
+      long resolve(QuotaTestingDataWriterSparkJob job) {
+        return getTotalInputDataSize(job);
+      }
+    };
+
+    abstract long resolve(QuotaTestingDataWriterSparkJob job);
   }
 }

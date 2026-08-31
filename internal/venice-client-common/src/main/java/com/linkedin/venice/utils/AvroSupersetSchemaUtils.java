@@ -343,4 +343,89 @@ public class AvroSupersetSchemaUtils {
     }
     return true;
   }
+
+  /**
+   * Relaxed variant of {@link #validateSubsetValueSchema} used to decide whether the input (superset) value schema can
+   * be projected down to {@param writerValueSchema}. On top of the strict subset rule, and recursively at every nesting
+   * level (records, array elements, map values), this tolerates the two artifacts of OpenHouse (OH) schema evolution:
+   * <ul>
+   *   <li>nullable wrapping on the input side -- an input field typed {@code [null, X]} (a null-first 2-branch union,
+   *   the shape OH produces so a field can default to null) matches a non-union writer field typed {@code X}; and</li>
+   *   <li>extra fields present in an input record but absent from the corresponding writer record (OH never removes
+   *   columns, so the superset accumulates them at every level).</li>
+   * </ul>
+   * The guardrails of the strict check still hold recursively: a writer field missing from the input, a type mismatch,
+   * reverse nullability drift ({@code [null, X]} writer vs {@code X} input), and null-last/complex unions all fail.
+   */
+  public static boolean validateSubsetValueSchemaForProjection(Schema writerValueSchema, String inputSchemaStr) {
+    Schema inputSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(inputSchemaStr);
+    return isProjectionSubset(writerValueSchema, inputSchema);
+  }
+
+  private static boolean isProjectionSubset(Schema writerSchema, Schema inputSchema) {
+    // Normalize single-element unions [X] to X (semantically equivalent) so they project like the bare type.
+    writerSchema = unwrapSingleElementUnion(writerSchema);
+    inputSchema = unwrapSingleElementUnion(inputSchema);
+    rejectComplexUnion(writerSchema);
+    rejectComplexUnion(inputSchema);
+    // A nullable-union writer [null, X] requires a nullable-union input [null, X']; unwrap both to the non-null branch.
+    if (AvroSchemaUtils.isNullableUnionPair(writerSchema)
+        && writerSchema.getTypes().get(0).getType() == Schema.Type.NULL) {
+      return AvroSchemaUtils.isNullableUnionPair(inputSchema)
+          && inputSchema.getTypes().get(0).getType() == Schema.Type.NULL
+          && isProjectionSubset(writerSchema.getTypes().get(1), inputSchema.getTypes().get(1));
+    }
+    // Unwrap nullable wrapping on the input side only: an input null-first [null, X] against a non-union writer matches
+    // writer vs X. Null-last ([X, null]) is not OH-produced, so it is left to fail the type check below.
+    if (writerSchema.getType() != Schema.Type.UNION && AvroSchemaUtils.isNullableUnionPair(inputSchema)
+        && inputSchema.getTypes().get(0).getType() == Schema.Type.NULL) {
+      return isProjectionSubset(writerSchema, inputSchema.getTypes().get(1));
+    }
+    if (writerSchema.getType() != inputSchema.getType()) {
+      return false;
+    }
+    switch (writerSchema.getType()) {
+      case RECORD:
+        for (Schema.Field writerField: writerSchema.getFields()) {
+          Schema.Field inputField = inputSchema.getField(writerField.name());
+          // A writer field absent from the input means the writer is not a (projection) subset of the input. Extra
+          // input fields (absent from the writer) are tolerated -- they are simply never iterated here.
+          if (inputField == null) {
+            return false;
+          }
+          if (!isProjectionSubset(writerField.schema(), inputField.schema())) {
+            return false;
+          }
+        }
+        return true;
+      case ARRAY:
+        return isProjectionSubset(writerSchema.getElementType(), inputSchema.getElementType());
+      case MAP:
+        return isProjectionSubset(writerSchema.getValueType(), inputSchema.getValueType());
+      default:
+        // Primitives, enums, and fixed must match exactly.
+        return writerSchema.equals(inputSchema);
+    }
+  }
+
+  /**
+   * Complex unions (more than one non-null branch, e.g. {@code [X, Y]} or {@code [null, X, Y]}) are not supported for
+   * value schema projection. Only nullable wrapping ({@code [null, X]}) is allowed. Throws if {@param schema} is a
+   * complex union.
+   */
+  private static void rejectComplexUnion(Schema schema) {
+    if (schema.getType() != Schema.Type.UNION) {
+      return;
+    }
+    int nonNullBranchCount = 0;
+    for (Schema branch: schema.getTypes()) {
+      if (branch.getType() != Schema.Type.NULL) {
+        nonNullBranchCount++;
+      }
+    }
+    if (nonNullBranchCount > 1) {
+      throw new VeniceException(
+          "Complex unions (more than one non-null branch) are not supported for value schema projection: " + schema);
+    }
+  }
 }

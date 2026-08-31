@@ -57,7 +57,9 @@ public final class VenicePushJobConstants {
   public static final String PARTITION_COUNT = "partition.count";
   public static final String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
   public static final String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
+  public static final int DEFAULT_POLL_STATUS_RETRY_ATTEMPTS = 100;
   public static final String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
+  public static final int DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS = 10;
   public static final String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
   public static final String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
   public static final String PUSH_JOB_TIMEOUT_OVERRIDE_MS = "push.job.timeout.override.ms";
@@ -71,10 +73,10 @@ public final class VenicePushJobConstants {
    *  Enabling this collects metrics for all compression strategies regardless of
    *  the configured compression strategy. This means: zstd dictionary will be
    *  created even if {@link CompressionStrategy#ZSTD_WITH_DICT} is not the configured
-   *  store compression strategy (refer {@link VenicePushJob#shouldBuildZstdCompressionDictionary})
+   *  store compression strategy (refer to {@code VenicePushJob.shouldBuildZstdCompressionDictionary})
    *  <br><br>
    *
-   *  This config also gets evaluated in {@link VenicePushJob#evaluateCompressionMetricCollectionEnabled}
+   *  This config also gets evaluated in {@code VenicePushJob.evaluateCompressionMetricCollectionEnabled}
    *  <br><br>
    */
   public static final String COMPRESSION_METRIC_COLLECTION_ENABLED = "compression.metric.collection.enabled";
@@ -348,9 +350,12 @@ public final class VenicePushJobConstants {
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
 
   /**
-   * Optional writer (target) value schema ID. When set, input records are projected down to this schema
-   * via {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}; the input schema must
-   * be a strict superset of it.
+   * <strong>Internal / advanced use only &mdash; NOT for regular push jobs.</strong> Optional writer (target) value
+   * schema ID; when set, input records are projected down to that registered schema (via
+   * {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}) before serialization. The input schema must
+   * be a projection-compatible superset. Supports full (batch) pushes only. Projection <em>drops</em> fields absent
+   * from the target schema (silent, irreversible data loss if misused); leave unset (default {@code -1}) unless
+   * operating an internal flow (e.g. purger/re-push) that requires it.
    */
   public static final String TARGET_WRITER_VALUE_SCHEMA_ID_PROP = "target.writer.value.schema.id";
 
@@ -505,6 +510,9 @@ public final class VenicePushJobConstants {
    */
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
+  /** Enables Spark's pre-write quota check. Disabled by default. */
+  public static final String SPARK_PRE_WRITE_QUOTA_CHECK = "spark.pre.write.quota.check";
+
   /**
    * Namespace for the external-storage dual-write subsystem. Every property whose key starts with this
    * prefix is forwarded verbatim from the VPJ driver into the Spark executor's {@code RuntimeConfig} so
@@ -516,6 +524,9 @@ public final class VenicePushJobConstants {
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE} — buffer threshold for the dual-write wrapper</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES} — bounded retry count for {@code batchPut}</li>
    *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS} — sleep between retry attempts</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE} — optionally disable a region after retry exhaustion and continue the push</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND} — per-region global record-rate cap</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND} — per-region global byte-rate cap</li>
    * </ul>
    * Any other key under this prefix is opaque pass-through and is the responsibility of the impl to
    * interpret. Operators should not assume new OSS-owned keys will appear here without a release note.
@@ -559,6 +570,41 @@ public final class VenicePushJobConstants {
   public static final long DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS = 1000L;
 
   /**
+   * Whether VPJ should fail open when one region's external writer keeps failing after exhausting
+   * {@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES}. Default {@code false} preserves the historical
+   * fail-fast behavior: any regional external-write failure aborts the push before Kafka produce. When set
+   * to {@code true}, the failed region is reported once, its external writer is disabled for the rest of the
+   * task, healthy external regions continue receiving writes, Kafka produce continues, and the VPJ driver is
+   * expected to flip that region's current version {@code storageMode} to {@code INTERNAL} before EOP.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE =
+      "push.job.external.storage.fail.open.on.region.failure";
+  public static final boolean DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE = false;
+
+  /**
+   * Global write quota in records per second for the external-storage dual-write path, applied <em>per target
+   * region</em>. Any value {@code <= 0} disables record-rate throttling ({@code -1} is the recommended
+   * "unlimited" sentinel). Because partition-writer tasks run in separate executors with no shared throttler,
+   * the budget is enforced by static even split: each task limits its external writes to
+   * {@code value / partition.count} records/sec, so the aggregate across all tasks writing to one region stays
+   * at or below {@code value}. The split requires {@code value >= partition.count} (else a task would get
+   * 0/sec); a smaller value fails the task fast. Independent of
+   * {@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND} — either dimension may be set alone.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND =
+      "push.job.external.storage.write.quota.records.per.region.per.second";
+
+  /**
+   * Global write quota in bytes per second for the external-storage dual-write path, applied <em>per target
+   * region</em>. Bytes counted per record are the external key bytes plus the RocksDB-formatted value bytes
+   * (4-byte schema-id prefix + value payload). Any value {@code <= 0} disables byte-rate throttling
+   * ({@code -1} = unlimited). Split evenly across {@code partition.count} tasks exactly like
+   * {@link #PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND}.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND =
+      "push.job.external.storage.write.quota.bytes.per.region.per.second";
+
+  /**
    * Comma-separated list of region names whose store-level {@link com.linkedin.venice.meta.StorageMode} is
    * {@code DUAL_WRITE} for this push. Resolved by the VPJ driver per region (the parent controller fans out
    * to each child region's store-level storage mode), propagated to each Spark/MR executor's task
@@ -590,14 +636,24 @@ public final class VenicePushJobConstants {
   public static final String NEWER_KME_SCHEMAS_PREFIX = "newer.kme.schemas.prefix.";
 
   /**
-   * Write quota in records per second for incremental pushes.
+   * Global write quota in records per second for incremental pushes.
    * Any value {@code <= 0} disables throttling (unlimited writes). The recommended sentinel for
    * explicitly configuring "unlimited" is {@code -1}.
-   * This quota is enforced per partition-writer task. The effective aggregate write rate across the entire
-   * job is {@code recordsPerSecond * numberOfTasks}.
+   * This quota is split evenly across partition-writer tasks for local enforcement, so the effective aggregate
+   * write rate across the job/store is at or below the configured value.
    */
   public static final String INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND =
       "incremental.push.write.quota.records.per.second";
+
+  /**
+   * Internal, driver-computed per-partition-writer slice of {@link #INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND}.
+   * The driver computes {@code globalQuota / partitionCount} once (after validating splittability) and forwards this
+   * value to the data-writer tasks, so each partition writer enforces it directly without re-deriving the split. A
+   * value {@code <= 0} means throttling does not apply (batch push, separate real-time topic push, or disabled quota).
+   * This is not a user-facing config; it is set by {@link VenicePushJob}.
+   */
+  public static final String INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION =
+      "incremental.push.write.quota.records.per.second.per.partition";
 
   /**
    * Time window in milliseconds over which throttling is measured. Defaults to 1 second.

@@ -2,12 +2,14 @@ package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.utils.Utils;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -24,7 +26,10 @@ public abstract class HeapSizeEstimatorTest {
    * for now, though we could come back to it later...
    */
   private static final int SKIP_EXPECTED_FIELD_OVERHEAD = -1;
-  private static final Runtime RUNTIME = Runtime.getRuntime();
+  // com.sun.management.ThreadMXBean is a HotSpot extension not in the --release 8 API snapshot,
+  // so we use the standard interface and invoke getCurrentThreadAllocatedBytes() via reflection.
+  private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
+  private static final Method GET_THREAD_ALLOCATED_BYTES = resolveGetThreadAllocatedBytes();
   private static final int NUMBER_OF_ALLOCATIONS_WHEN_MEASURING = 200_000;
   protected static final int JAVA_MAJOR_VERSION = Utils.getJavaMajorVersion();
   protected static final int BOOLEAN_SIZE = 1;
@@ -118,17 +123,14 @@ public abstract class HeapSizeEstimatorTest {
 
   protected void empiricalMeasurement(Class c, int predictedUsage, Supplier<?> constructor) {
     /**
-     * The reason for having multiple attempts is that the allocation measurement method is not always reliable.
-     * Presumably, this is because GC could kick in during the middle of the allocation loop. If the allocated memory
-     * is negative then for sure it's not right. If the GC reduces memory allocated but not enough to make the
-     * measurement go negative, then we cannot know if it's a measurement error, or a bug... In any case, we will do
-     * a few attempts and assume that the measurement is good if it falls within the prescribed delta (even though
-     * technically that could be a false negative).
+     * The previous approach used Runtime.maxMemory() - Runtime.freeMemory() to measure heap usage, which
+     * was susceptible to GC running during the allocation loop, causing measurements to be too low (or even
+     * negative). We now use ThreadMXBean.getCurrentThreadAllocatedBytes() which tracks allocations on the
+     * current thread monotonically, independent of GC activity.
      */
     int currentAttempt = 0;
     int totalAttempts = 10;
     while (currentAttempt++ < totalAttempts) {
-      assertNotEquals(RUNTIME.maxMemory(), Long.MAX_VALUE);
       Object[] allocations = new Object[NUMBER_OF_ALLOCATIONS_WHEN_MEASURING];
 
       if (constructor == null) {
@@ -172,7 +174,6 @@ public abstract class HeapSizeEstimatorTest {
           fail(errorMessage);
         }
       }
-
       double memoryAllocatedPerInstance =
           (double) memoryAllocatedByInstantiations / (double) NUMBER_OF_ALLOCATIONS_WHEN_MEASURING;
 
@@ -180,7 +181,8 @@ public abstract class HeapSizeEstimatorTest {
         assertNotNull(allocations[i]);
       }
 
-      // Since the above method for measuring allocated memory is imperfect, we need to tolerate some delta.
+      // Since the above method measures all bytes allocated on the current thread, we need to tolerate some
+      // delta due to JVM internal bookkeeping allocations that may occur between our two measurement points.
       double allocatedToPredictedRatio = memoryAllocatedPerInstance / (double) predictedUsage;
       double delta = Math.abs(1 - allocatedToPredictedRatio);
 
@@ -203,7 +205,7 @@ public abstract class HeapSizeEstimatorTest {
           String.valueOf(predictedUsage),
           String.format("%.3f", memoryAllocatedPerInstance));
 
-      // A best-effort attempt to minimize the chance of needing to GC in the middle of the next measurement run...
+      // Release the allocated objects to keep heap usage from growing across measurement iterations.
       allocations = null;
       System.gc();
 
@@ -227,9 +229,34 @@ public abstract class HeapSizeEstimatorTest {
     return finalSize;
   }
 
+  private static Method resolveGetThreadAllocatedBytes() {
+    try {
+      // Load the com.sun.management.ThreadMXBean interface (exported by jdk.management) via
+      // Class.forName rather than casting the impl instance — this avoids an IllegalAccessException
+      // when the implementation class is in a non-exported package (Java 17+ module system).
+      Class<?> iface = Class.forName("com.sun.management.ThreadMXBean");
+      if (!iface.isInstance(THREAD_MX_BEAN)) {
+        throw new IllegalStateException("ThreadMXBean does not implement com.sun.management.ThreadMXBean on this JVM");
+      }
+      return iface.getMethod("getCurrentThreadAllocatedBytes");
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException("getCurrentThreadAllocatedBytes() is not available on this JVM", e);
+    }
+  }
+
   private static long getCurrentlyAllocatedMemory() {
-    System.gc();
-    return RUNTIME.maxMemory() - RUNTIME.freeMemory();
+    try {
+      // Use (long)(Long) to unbox explicitly: invoke() returns Object, which holds a boxed Long.
+      long bytes = (long) (Long) GET_THREAD_ALLOCATED_BYTES.invoke(THREAD_MX_BEAN);
+      if (bytes < 0) {
+        throw new IllegalStateException(
+            "getCurrentThreadAllocatedBytes() returned " + bytes
+                + "; thread allocation tracking may be disabled on this JVM");
+      }
+      return bytes;
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException("Failed to invoke getCurrentThreadAllocatedBytes()", e);
+    }
   }
 
   @BeforeClass

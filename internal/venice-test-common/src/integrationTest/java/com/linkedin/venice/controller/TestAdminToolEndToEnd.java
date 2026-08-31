@@ -23,6 +23,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -156,6 +157,66 @@ public class TestAdminToolEndToEnd {
         Assert.assertEquals(updatedMetadata.getPosition(), baselinePosition);
         Assert.assertEquals(updatedMetadata.getUpstreamPosition(), baselineUpstreamPosition);
       });
+    }
+  }
+
+  @Test(timeOut = 4 * TEST_TIMEOUT)
+  public void testUpdateStoreThroughputQuotaViaAdminTool() throws Exception {
+    long throughputQuotaInBytes = 12345678L;
+    long throughputQuotaInRecords = 4321L;
+    String storeName = Utils.getUniqueString("test-throughput-quota-store");
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(1)
+                .numberOfRouters(1)
+                .replicationFactor(1)
+                .build())) {
+      String clusterName = venice.getClusterNames()[0];
+      VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
+
+      try (
+          ControllerClient parentControllerClient =
+              new ControllerClient(clusterName, parentController.getControllerUrl());
+          ControllerClient childControllerClient = ControllerClient.constructClusterControllerClient(
+              clusterName,
+              venice.getChildRegions().get(0).getControllerConnectString())) {
+
+        NewStoreResponse newStoreResponse =
+            parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+        Assert.assertFalse(newStoreResponse.isError(), newStoreResponse.getError());
+
+        // Sanity: a freshly created store has no throughput limit (the -1 "unlimited" sentinel).
+        StoreInfo storeBeforeUpdate = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(storeBeforeUpdate.getThroughputQuotaInBytes(), -1L);
+        Assert.assertEquals(storeBeforeUpdate.getThroughputQuotaInRecords(), -1L);
+
+        // Drive the change exactly as an operator would: run the admin-tool CLI against the live
+        // parent controller. Nothing is mocked -- this exercises the full prod path AdminTool arg
+        // parsing -> ControllerClient -> parent controller -> admin channel -> child controller ->
+        // ZooKeeper -> getStore read-back.
+        String[] updateStoreArgs = { "--update-store", "--url", parentController.getControllerUrl(), "--cluster",
+            clusterName, "--store", storeName, "--throughput-quota-in-bytes", Long.toString(throughputQuotaInBytes),
+            "--throughput-quota-in-records", Long.toString(throughputQuotaInRecords) };
+        AdminTool.main(updateStoreArgs);
+
+        // The parent controller is the source of truth and is updated synchronously.
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+          Assert.assertEquals(parentStore.getThroughputQuotaInBytes(), throughputQuotaInBytes);
+          Assert.assertEquals(parentStore.getThroughputQuotaInRecords(), throughputQuotaInRecords);
+        });
+
+        // The value must also propagate to the child region through the admin channel.
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreInfo childStore = childControllerClient.getStore(storeName).getStore();
+          Assert.assertEquals(childStore.getThroughputQuotaInBytes(), throughputQuotaInBytes);
+          Assert.assertEquals(childStore.getThroughputQuotaInRecords(), throughputQuotaInRecords);
+        });
+      }
     }
   }
 }

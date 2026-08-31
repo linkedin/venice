@@ -1,6 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.StorageMode;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -42,5 +44,56 @@ public class ControllerClientTest {
     }, r -> false));
 
     Assert.assertEquals(attempts.get(), 3, "Should exhaust all attempts before throwing");
+  }
+
+  /**
+   * Callers written against the pre-existing overloads must keep compiling and must land on the same request the
+   * controller already understands, with the reason defaulted rather than invented.
+   */
+  @Test
+  public void testUpdateStoreVersionStorageModeWithoutReasonDefaultsToUnspecified() {
+    ControllerClient client = Mockito.mock(ControllerClient.class);
+    Mockito.doCallRealMethod()
+        .when(client)
+        .updateStoreVersionStorageMode(Mockito.anyString(), Mockito.anyInt(), Mockito.any());
+    Mockito.doCallRealMethod()
+        .when(client)
+        .updateStoreVersionStorageMode(Mockito.anyString(), Mockito.anyInt(), Mockito.any(), Mockito.any());
+
+    client.updateStoreVersionStorageMode("store", 1, StorageMode.INTERNAL);
+    client.updateStoreVersionStorageMode("store", 1, StorageMode.INTERNAL, "dc-1");
+
+    Mockito.verify(client)
+        .updateStoreVersionStorageMode(
+            "store",
+            1,
+            StorageMode.INTERNAL,
+            null,
+            VersionStorageModeUpdateReason.UNSPECIFIED);
+    Mockito.verify(client)
+        .updateStoreVersionStorageMode(
+            "store",
+            1,
+            StorageMode.INTERNAL,
+            "dc-1",
+            VersionStorageModeUpdateReason.UNSPECIFIED);
+  }
+
+  @Test
+  public void testVersionStorageModeUpdateReasonParsing() {
+    Assert.assertEquals(
+        VersionStorageModeUpdateReason.parseOrDefault("EXTERNAL_WRITE_FAILURE"),
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+    Assert.assertEquals(
+        VersionStorageModeUpdateReason.parseOrDefault("external_write_failure"),
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+    // Absent, blank or unknown values must never fail the request; they simply are not alertable.
+    Assert
+        .assertEquals(VersionStorageModeUpdateReason.parseOrDefault(null), VersionStorageModeUpdateReason.UNSPECIFIED);
+    Assert
+        .assertEquals(VersionStorageModeUpdateReason.parseOrDefault("  "), VersionStorageModeUpdateReason.UNSPECIFIED);
+    Assert.assertEquals(
+        VersionStorageModeUpdateReason.parseOrDefault("SOMETHING_FROM_A_NEWER_CLIENT"),
+        VersionStorageModeUpdateReason.UNSPECIFIED);
   }
 }

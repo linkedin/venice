@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ArrayUtils;
@@ -325,6 +326,12 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
+  /**
+   * Set when this replica became ready to serve via the dead-leader fallback rather than a fresh leader-complete signal.
+   * Guards the one-time WARN log and annotates the completion notification.
+   */
+  private boolean readyToServeViaDeadLeaderFallback;
+
   private List<String> pendingReportIncPushVersionList;
 
   // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
@@ -389,6 +396,7 @@ public class PartitionConsumptionState {
    */
   private final VeniceStoreWriteType writeType;
   private final VeniceChunkingStatus chunkingStatus;
+  private final VeniceReplicationMode replicationMode;
   private final String localRegionName;
 
   /**
@@ -415,6 +423,7 @@ public class PartitionConsumptionState {
       boolean hybrid,
       boolean isWriteComputationEnabled,
       boolean isChunked,
+      boolean isActiveActiveReplicationEnabled,
       String localRegionName) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
@@ -466,6 +475,9 @@ public class PartitionConsumptionState {
     cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
     this.writeType = isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
     this.chunkingStatus = isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
+    this.replicationMode = isActiveActiveReplicationEnabled
+        ? VeniceReplicationMode.ACTIVE_ACTIVE
+        : VeniceReplicationMode.NON_ACTIVE_ACTIVE;
     this.localRegionName = localRegionName;
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
@@ -476,6 +488,7 @@ public class PartitionConsumptionState {
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
+    this.readyToServeViaDeadLeaderFallback = false;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
     this.activeKeyCount.set(offsetRecord.getActiveKeyCount());
@@ -844,6 +857,8 @@ public class PartitionConsumptionState {
         .append(leaderCompleteState)
         .append(", lastLeaderCompleteStateUpdateInMs=")
         .append(lastLeaderCompleteStateUpdateInMs)
+        .append(", readyToServeViaDeadLeaderFallback=")
+        .append(readyToServeViaDeadLeaderFallback)
         .append(", consumeRemotely=")
         .append(consumeRemotely)
         .append(", latestMessageConsumedTimestampInMs=")
@@ -1035,6 +1050,26 @@ public class PartitionConsumptionState {
 
   public void setStoreLevelPaused(boolean storeLevelPaused) {
     this.storeLevelPaused = storeLevelPaused;
+  }
+
+  /**
+   * True while this partition is <em>physically held right now</em> by the future-slot pause — a
+   * reconciled cache maintained every tick by {@link StoreIngestionTask#reconcileFutureSlotPause},
+   * not the durable "region unpromoted" intent (that lives in
+   * {@link StoreIngestionTask#isPauseAfterStartOfPush()}).
+   * <p>
+   * Independent of {@link #storeLevelPaused} (which pauses via unsubscribe/resubscribe). The
+   * reconciler coordinates the two: while store-level pause owns the unsubscribed consumer this flag
+   * is cleared, and the physical pause is re-applied the tick after store-level EXIT_PAUSE resubscribes.
+   */
+  private volatile boolean futureSlotPaused = false;
+
+  public boolean isFutureSlotPaused() {
+    return futureSlotPaused;
+  }
+
+  public void setFutureSlotPaused(boolean futureSlotPaused) {
+    this.futureSlotPaused = futureSlotPaused;
   }
 
   public void setTransientRecord(
@@ -1359,12 +1394,17 @@ public class PartitionConsumptionState {
    *
    * <p>If the leader topic is a version topic:
    * <ul>
-   *   <li>If remote consumption is enabled, returns the latest processed remote VT position.</li>
-   *   <li>Otherwise, returns the latest processed local VT position.</li>
+   *   <li>If {@code useCheckpointedDivRtPosition} is true (the F-&gt;L transition path), returns the durable,
+   *       DIV-consistent checkpointed VT position via {@link #getCheckpointedVtLeaderPosition()} so the leader never
+   *       resumes ahead of the VT DIV producer state it persisted. See that method for why the in-memory processed
+   *       position is unsafe here.</li>
+   *   <li>Otherwise (steady state), returns the latest processed remote/local VT position from in-memory state.</li>
    * </ul>
    *
    * @param pubSubBrokerAddress the upstream PubSub broker address
-   * @param useCheckpointedDivRtPosition whether to use the global DIV checkpoint (LCRP) as the RT start position
+   * @param useCheckpointedDivRtPosition whether this is the F-&gt;L transition path and the durable DIV checkpoint
+   *                                     should be used as the start position (LCRP for RT, checkpointed VT position
+   *                                     for VT)
    * @return the position the leader should consume from
    */
   public PubSubPosition getLeaderPosition(String pubSubBrokerAddress, boolean useCheckpointedDivRtPosition) {
@@ -1374,9 +1414,46 @@ public class PartitionConsumptionState {
       return (useCheckpointedDivRtPosition)
           ? getDivRtCheckpointPosition(pubSubBrokerAddress)
           : getLatestProcessedRtPosition(pubSubBrokerAddress);
+    } else if (useCheckpointedDivRtPosition) {
+      return getCheckpointedVtLeaderPosition();
     } else {
       return consumeRemotely() ? getLatestProcessedRemoteVtPosition() : getLatestProcessedVtPosition();
     }
+  }
+
+  /**
+   * Resolves the VT (version-topic) leader start position for the F-&gt;L transition path to the durable,
+   * DIV-consistent last-consumed VT position (LCVP), falling back to {@link PubSubSymbolicPosition#EARLIEST} when none
+   * was ever checkpointed.
+   *
+   * <p>Background: the in-memory processed VT positions ({@link #getLatestProcessedRemoteVtPosition()} /
+   * {@link #getLatestProcessedVtPosition()}) are advanced per-record by {@code updateLatestInMemoryProcessedOffset}
+   * as the leader drains records. After a server restart that wipes RocksDB, the leader can re-consume the local VT
+   * during the data-on-leader (DoL) phase and advance the in-memory processed-remote-VT position from the local-VT
+   * records' {@code leaderMetadataFooter.upstreamOffset} - without registering the source-VT producer's DIV segments.
+   * On F-&gt;L promotion, subscribing the source VT at that in-memory position can land many records past where the
+   * persisted VT DIV producer state is valid, producing {@code ImproperlyStartedSegmentException} /
+   * {@code MissingDataException}.
+   *
+   * <p>The LCVP, in contrast, is snapshotted into the {@link OffsetRecord} atomically with the {@code consumerDiv} VT
+   * producer-state segments (see {@code PartitionTracker#updateOffsetRecord}), so resuming from it is DIV-consistent by
+   * construction.
+   *
+   * <ul>
+   *   <li>Remote source-VT leader ({@link #consumeRemotely()} == true): uses the remote LCVP
+   *       {@link OffsetRecord#getLatestConsumedRemoteVtPosition()} (last position consumed from the remote/source VT).
+   *       The local LCVP is intentionally NOT used here: it tracks the local VT (re-)produce position, a different
+   *       position domain from the remote source VT this leader subscribes to.</li>
+   *   <li>Local-VT leader ({@link #consumeRemotely()} == false): uses the local LCVP
+   *       {@link OffsetRecord#getLatestConsumedVtPosition()}, matching
+   *       {@code LeaderFollowerStoreIngestionTask#getLocalVtSubscribePosition} under Global RT DIV.</li>
+   * </ul>
+   */
+  PubSubPosition getCheckpointedVtLeaderPosition() {
+    PubSubPosition checkpointedPosition = consumeRemotely()
+        ? getOffsetRecord().getLatestConsumedRemoteVtPosition()
+        : getOffsetRecord().getLatestConsumedVtPosition();
+    return checkpointedPosition == null ? PubSubSymbolicPosition.EARLIEST : checkpointedPosition;
   }
 
   public void setStartOfPushTimestamp(long startOfPushTimestamp) {
@@ -1441,6 +1518,14 @@ public class PartitionConsumptionState {
 
   public void setLastLeaderCompleteStateUpdateInMs(long lastLeaderCompleteStateUpdateInMs) {
     this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
+  }
+
+  public boolean isReadyToServeViaDeadLeaderFallback() {
+    return readyToServeViaDeadLeaderFallback;
+  }
+
+  public void setReadyToServeViaDeadLeaderFallback(boolean readyToServeViaDeadLeaderFallback) {
+    this.readyToServeViaDeadLeaderFallback = readyToServeViaDeadLeaderFallback;
   }
 
   public String getReplicaId() {
@@ -1553,7 +1638,15 @@ public class PartitionConsumptionState {
       if (localRegionName != null && !localRegionName.isEmpty()) {
         locality = r.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
       }
-      return new HeartbeatKey(storeName, version, getPartition(), r, writeType, chunkingStatus, locality);
+      return new HeartbeatKey(
+          storeName,
+          version,
+          getPartition(),
+          r,
+          writeType,
+          chunkingStatus,
+          locality,
+          replicationMode);
     });
   }
 

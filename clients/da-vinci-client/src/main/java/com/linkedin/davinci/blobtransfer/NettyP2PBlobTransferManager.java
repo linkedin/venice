@@ -1,6 +1,12 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.NO_CANDIDATES;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
@@ -11,10 +17,14 @@ import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
@@ -22,8 +32,10 @@ import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -31,7 +43,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,6 +69,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       "Replica {} peer {} does not have the requested blob. Exception: {}";
   private static final String FAILED_TO_FETCH_BLOB_MSG =
       "Replica {} failed to fetch blob from peer {}. Deleting partially downloaded blobs. Exception: {}";
+  private static final String PEER_SCHEMA_MISMATCH_MSG =
+      "Replica {} peer {} rejected blob transfer due to schema-version mismatch. Exception: {}";
 
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
@@ -122,14 +135,25 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           NO_PEERS_FOUND_ERROR_MSG_FORMAT,
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
       perPartitionTransferFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
+      if (response != null && response.isSourceAware()) {
+        recordVersionTopicFallback(storeName, version, NO_CANDIDATES);
+      }
       return perPartitionTransferFuture;
     }
 
     List<String> discoverPeers = response.getDiscoveryResult();
     List<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
-    // 2: Process peers sequentially to fetch the blob
-    processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, perPartitionTransferFuture);
+    // 2. Process the discovered peers sequentially in finder-provided priority order.
+    processPeersSequentially(
+        connectablePeers,
+        response.getServerHostNames(),
+        response.isSourceAware(),
+        storeName,
+        version,
+        partition,
+        tableFormat,
+        perPartitionTransferFuture);
 
     return perPartitionTransferFuture;
   }
@@ -141,7 +165,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * 1. If no peers info are found for the requested blob, a VenicePeersNotFoundException is thrown.
    *    In this case, blob transfer is not used for bootstrapping at all.
    * 2. If all peers fail to connect or have no snapshot, a VenicePeersAllFailedException is thrown,
-   *    and Kafka is used for bootstrapping instead.
+   *    and version-topic consumption is used for bootstrapping instead.
    *
    * - Non-fatal cases, move to the next possible host:
    * 3. If one host connect error, it will throw VenicePeersCannotConnectException then move to the next possible host.
@@ -181,6 +205,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    *
    *
    * @param uniqueConnectablePeers the set of peers to process
+   * @param serverHostNames the discovered hosts that are Venice servers, used to attribute source metrics
+   * @param sourceAware whether the peer finder distinguishes Venice servers from Da Vinci peers
    * @param storeName the name of the store
    * @param version the version of the store
    * @param partition the partition of the store
@@ -189,6 +215,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    */
   private void processPeersSequentially(
       List<String> uniqueConnectablePeers,
+      Set<String> serverHostNames,
+      boolean sourceAware,
       String storeName,
       int version,
       int partition,
@@ -202,6 +230,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
 
     // Iterate through each peer and chain the futures
     for (String chosenHost: uniqueConnectablePeers) {
+      VeniceBlobTransferSource source = serverHostNames.contains(chosenHost) ? VENICE_SERVER : DAVINCI_PEER;
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
@@ -230,27 +259,39 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           long transferTime = Duration.between(startTime, Instant.now()).getSeconds();
           LOGGER.info(FETCHED_BLOB_SUCCESS_MSG, replicaId, chosenHost, transferTime);
           perPartitionTransferFuture.complete(inputStream);
+          if (sourceAware) {
+            recordBlobTransferRequest(storeName, version, source, SUCCESS);
+          }
           // Updating the blob transfer stats with the transfer time and throughput
           updateBlobTransferFileReceiveStats(transferTime, storeName, version, partition);
         }).exceptionally(ex -> {
+          // A cancellation closes the in-flight channel, which surfaces here as a transfer failure. That is a
+          // deliberate abort rather than an unusable source, so it must not count against the source.
+          if (sourceAware && !statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
+            recordBlobTransferRequest(storeName, version, source, FAIL);
+          }
           handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
           return null;
         });
       }, replicaBlobFetchExecutor);
     }
 
-    // error case 2: all hosts have been tried and failed for blob transfer
+    // error case 2: all hosts in this pass have been tried and failed for blob transfer
     chainOfPeersFuture.thenRun(() -> {
-      if (!perPartitionTransferFuture.isDone()) {
-        if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
-          // Receive cancellation request, skip Kafka bootstrapping
-          perPartitionTransferFuture.completeExceptionally(
-              new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
-        } else {
-          // All hosts failed, fall back to Kafka bootstrapping
-          perPartitionTransferFuture.completeExceptionally(
-              new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
-        }
+      if (perPartitionTransferFuture.isDone()) {
+        return;
+      }
+      if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
+        // Receive cancellation request, skip version-topic bootstrapping
+        perPartitionTransferFuture.completeExceptionally(
+            new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
+        return;
+      }
+      // No usable peers available, fall back to version-topic bootstrapping.
+      perPartitionTransferFuture.completeExceptionally(
+          new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
+      if (sourceAware) {
+        recordVersionTopicFallback(storeName, version, ALL_HOSTS_FAILED);
       }
     });
   }
@@ -271,8 +312,12 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     } else if (ex.getCause() instanceof VeniceBlobTransferFileNotFoundException) {
       // error case 4: the connected host does not have the requested file, move to the next available host
       LOGGER.error(PEER_NO_SNAPSHOT_MSG, replicaId, chosenHost, ex.getMessage());
+    } else if (ex.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException) {
+      // error case 5: peer rejected the request before any file work because its protocol versions
+      // don't match ours. No bytes were written, so skip the partition-dir cleanup.
+      LOGGER.error(PEER_SCHEMA_MISMATCH_MSG, replicaId, chosenHost, ex.getMessage());
     } else {
-      // error case 5: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
+      // error case 6: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
       // expected, move to the next possible host
       RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(storeName, version, partition, baseDir);
       LOGGER.error(FAILED_TO_FETCH_BLOB_MSG, replicaId, chosenHost, ex.getMessage());
@@ -321,6 +366,37 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
   }
 
+  private void recordBlobTransferRequest(
+      String storeName,
+      int version,
+      VeniceBlobTransferSource source,
+      VeniceResponseStatusCategory status) {
+    try {
+      aggVersionedBlobTransferStats.recordBlobTransferRequest(storeName, version, source, status);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to record blob transfer request metric for store {} version {} source {} status {}",
+          storeName,
+          version,
+          source,
+          status,
+          e);
+    }
+  }
+
+  private void recordVersionTopicFallback(String storeName, int version, VeniceBlobTransferFallbackReason reason) {
+    try {
+      aggVersionedBlobTransferStats.recordBlobTransferVersionTopicFallback(storeName, version, reason);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to record blob transfer version-topic fallback metric for store {} version {} reason {}",
+          storeName,
+          version,
+          reason,
+          e);
+    }
+  }
+
   /**
    * Get the connectable hosts for the given storeName, version, and partition
    * @param discoverPeers the list of discovered peers
@@ -330,15 +406,19 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @return the set of unique connectable hosts
    */
   private List<String> getConnectableHosts(List<String> discoverPeers, String storeName, int version, int partition) {
-    // Extract unique hosts from the discovered peers
-    Set<String> uniquePeers = discoverPeers.stream().map(peer -> peer.split("_")[0]).collect(Collectors.toSet());
+    // Extract unique hosts from the discovered peers while preserving discovery order. Composite finders can mark this
+    // order as meaningful (for example, Da Vinci peers before Venice servers); otherwise we shuffle as before.
+    Set<String> uniquePeers = new LinkedHashSet<>();
+    for (String peer: discoverPeers) {
+      uniquePeers.add(peer.split("_")[0]);
+    }
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
 
     LOGGER.info("Discovered {} unique peers for replica {}, peers are {}", uniquePeers.size(), replicaId, uniquePeers);
 
     // Get the connectable hosts for this store, version, and partition
     Set<String> connectablePeers =
-        nettyClient.getConnectableHosts((HashSet<String>) uniquePeers, storeName, version, partition);
+        nettyClient.getConnectableHosts(new HashSet<>(uniquePeers), storeName, version, partition);
 
     LOGGER.info(
         "Total {} unique connectable peers for replica {}, peers are {}",
@@ -346,10 +426,15 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         replicaId,
         connectablePeers);
 
-    // Change to list and shuffle the list
-    List<String> connectablePeersList = connectablePeers.stream().collect(Collectors.toList());
-    Collections.shuffle(connectablePeersList);
-
+    List<String> connectablePeersList = new ArrayList<>();
+    for (String peer: uniquePeers) {
+      if (connectablePeers.contains(peer)) {
+        connectablePeersList.add(peer);
+      }
+    }
+    if (!peerFinder.shouldPreservePeerOrder()) {
+      Collections.shuffle(connectablePeersList);
+    }
     return connectablePeersList;
   }
 }

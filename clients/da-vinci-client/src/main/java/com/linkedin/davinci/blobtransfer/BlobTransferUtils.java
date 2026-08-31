@@ -3,6 +3,7 @@ package com.linkedin.davinci.blobtransfer;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
@@ -10,12 +11,19 @@ import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.AttributeKey;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,6 +40,26 @@ public class BlobTransferUtils {
   public static final String BLOB_TRANSFER_STATUS = "X-Blob-Transfer-Status";
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
+  /**
+   * Protocol version of the {@code PartitionState} schema the requester is compiled
+   * against. Set by the client on the blob-transfer request so the server can fail
+   * fast with a 412 PRECONDITION_FAILED before any file work begins.
+   */
+  public static final String BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION =
+      "X-Blob-Transfer-Partition-State-Schema-Version";
+  /** Same purpose as {@link #BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION} but for {@code StoreVersionState}. */
+  public static final String BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION =
+      "X-Blob-Transfer-Store-Version-State-Schema-Version";
+  /** Sentinel returned by {@link #parseProtocolVersionHeader} when the header is missing or unparseable. */
+  private static final int VERSION_UNKNOWN = -1;
+
+  /**
+   * Channel attribute carrying the {@link BlobTransferRequestOrigin} of an inbound request. Set by
+   * {@code BlobTransferAclHandler} during the TLS/ACL stage and read by downstream handlers
+   * ({@code P2PFileTransferServerHandler}, admission control) for prioritization and store-level ACL.
+   */
+  public static final AttributeKey<BlobTransferRequestOrigin> BLOB_TRANSFER_REQUEST_ORIGIN =
+      AttributeKey.valueOf("blobTransferRequestOrigin");
 
   public enum BlobTransferType {
     FILE, METADATA
@@ -77,6 +105,24 @@ public class BlobTransferUtils {
   }
 
   /**
+   * Identifies the origin (caller type) of an inbound blob transfer request, as observed
+   * by the receiving Venice Server or DaVinci instance.
+   */
+  public enum BlobTransferRequestOrigin {
+    /**
+     * A peer Venice server or same-application DaVinci instance (server-to-server or DVC-to-DVC bootstrap). Bypasses
+     * the store-level ACL and counts against the server-origin concurrency cap.
+     */
+    SERVER,
+
+    /**
+     * An external consumer (e.g. a Stateful CDC client) bootstrapping a snapshot. Subject to the per-store read ACL
+     * and counted against the client-origin concurrency cap.
+     */
+    CLIENT
+  }
+
+  /**
    * Check if the HttpResponse message is for metadata.
    * @param msg the HttpResponse message
    * @return true if the message is a metadata message, false otherwise
@@ -87,6 +133,83 @@ public class BlobTransferUtils {
       return false;
     }
     return metadataHeader.equals(BlobTransferUtils.BlobTransferType.METADATA.name());
+  }
+
+  /**
+   * Compare the schema-version headers on a P2P blob-transfer GET request against the
+   * local binary's compiled-in {@code currentProtocolVersion}. Used by the server right
+   * next to the table-format check so a schema mismatch is rejected with a 412
+   * PRECONDITION_FAILED before any file work begins — otherwise the client would pay
+   * for the entire file transfer and only discover the mismatch at the metadata stage.
+   *
+   * <p>An exact-match policy is used (rather than e.g. "peer &lt;= local"). Blob transfer
+   * is the fast path; if the binaries on the two ends are not in lock-step we want to
+   * step aside and let Kafka bootstrap take over rather than rely on cross-version Avro
+   * promotion of the partition metadata. Skew between peers is limited to rolling-deploy
+   * windows, so the cost of being strict is bounded.
+   *
+   * <p>Behaviour for the absent / malformed cases is intentionally permissive so a
+   * server-side rollout of the new headers cannot break peers that haven't been upgraded
+   * yet, and so a header parsing bug cannot reject a request:
+   * <ul>
+   *   <li>Both headers absent — pass through (peer is on an older binary).</li>
+   *   <li>Header value non-numeric or out of byte range — pass through; the existing
+   *       deserialization-time exception remains as the safety net for the truly
+   *       incompatible case (no regression vs. today).</li>
+   * </ul>
+   *
+   * <p>Returns a diagnostic string suitable for the response body when the request is
+   * incompatible, or {@code null} when it is compatible.
+   */
+  public static String compareRequestedSchemaVersionsAgainstLocal(HttpRequest request) {
+    String psHeader = request.headers().get(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);
+    String svsHeader = request.headers().get(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION);
+    if (psHeader == null && svsHeader == null) {
+      return null;
+    }
+
+    int peerPs = parseProtocolVersionHeader(psHeader, BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);
+    int peerSvs = parseProtocolVersionHeader(svsHeader, BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION);
+
+    int localPs = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion();
+    int localSvs = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion();
+
+    boolean psMismatch = peerPs != VERSION_UNKNOWN && peerPs != localPs;
+    boolean svsMismatch = peerSvs != VERSION_UNKNOWN && peerSvs != localSvs;
+
+    if (psMismatch || svsMismatch) {
+      return "Blob transfer schema version mismatch: requester PartitionState=" + renderVersion(peerPs)
+          + ", StoreVersionState=" + renderVersion(peerSvs) + "; local PartitionState=" + localPs
+          + ", StoreVersionState=" + localSvs;
+    }
+    return null;
+  }
+
+  // The header value is peer-controlled, so this can be hit on every request/response if a
+  // misbehaving peer keeps sending bad headers. Log at DEBUG to avoid log spam — when this
+  // returns VERSION_UNKNOWN the caller treats it as pass-through, and a real version mismatch
+  // gets logged at WARN by the caller with full peer-host context. Malformed values that slip
+  // through are caught by the existing deserialization-time exception.
+  private static int parseProtocolVersionHeader(String value, String headerName) {
+    if (value == null) {
+      return VERSION_UNKNOWN;
+    }
+    try {
+      int parsed = Integer.parseInt(value.trim());
+      // Protocol versions are encoded into a single byte on the wire (see InternalAvroSpecificSerializer).
+      if (parsed < 0 || parsed > Byte.MAX_VALUE) {
+        LOGGER.debug("Out-of-range value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
+        return VERSION_UNKNOWN;
+      }
+      return parsed;
+    } catch (NumberFormatException e) {
+      LOGGER.debug("Malformed value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
+      return VERSION_UNKNOWN;
+    }
+  }
+
+  private static String renderVersion(int v) {
+    return v == VERSION_UNKNOWN ? "<unknown>" : Integer.toString(v);
   }
 
   /**
@@ -191,19 +314,47 @@ public class BlobTransferUtils {
   }
 
   /**
-   * Create the acl handler for blob transfer, for both DVC peers and server peers
+   * Create the acl handler for blob transfer, for both DVC peers and server peers.
+   *
+   * @param serverAcceptClientBlobRequestEnabled whether this server accepts client-origin requests; gates the
+   *        client-origin accept check and per-store read ACL in the returned handler.
    */
-  public static Optional<BlobTransferAclHandler> createAclHandler(VeniceConfigLoader configLoader) {
+  public static Optional<BlobTransferAclHandler> createAclHandler(
+      VeniceConfigLoader configLoader,
+      Optional<DynamicAccessController> storeAccessController,
+      boolean serverAcceptClientBlobRequestEnabled) {
     if (!isBlobTransferDVCSslEnabled(configLoader) || !isBlobTransferAclValidationEnabled(configLoader)) {
       String errorMsg =
           "Blob transfer SSL or ACL validation is not enabled. sslEnabled: " + isBlobTransferDVCSslEnabled(configLoader)
               + ", aclEnabled: " + isBlobTransferAclValidationEnabled(configLoader) + ", skip create ACL handler.";
       throw new IllegalArgumentException(errorMsg);
     }
+    String identityParserClassName =
+        configLoader.getCombinedProperties().getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(identityParserClassName);
+    validateAclHandlerConfig(storeAccessController, serverAcceptClientBlobRequestEnabled, identityParserClass);
     try {
-      return Optional.of(new BlobTransferAclHandler());
+      IdentityParser identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+      return Optional
+          .of(new BlobTransferAclHandler(storeAccessController, identityParser, serverAcceptClientBlobRequestEnabled));
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to create ACL handler for blob transfer", e);
+    }
+  }
+
+  private static void validateAclHandlerConfig(
+      Optional<DynamicAccessController> storeAccessController,
+      boolean serverAcceptClientBlobRequestEnabled,
+      Class<IdentityParser> identityParserClass) {
+    if (serverAcceptClientBlobRequestEnabled && !storeAccessController.isPresent()) {
+      throw new IllegalArgumentException(
+          "storeAccessController is required when accepting client-origin blob transfer requests");
+    }
+    if (storeAccessController.isPresent() && DefaultIdentityParser.class.isAssignableFrom(identityParserClass)) {
+      throw new IllegalArgumentException(
+          "Blob transfer requires a non-default identity.parser.class when a store access controller is present; "
+              + "DefaultIdentityParser parses the cert subject DN and can misclassify same-issuer peers as "
+              + "CLIENT-origin");
     }
   }
 

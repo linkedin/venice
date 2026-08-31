@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
@@ -143,7 +144,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         adapterSerializer,
         clusterName,
         metaStoreWriter,
-        clusterLockManager);
+        clusterLockManager,
+        config.isPerVersionZnodeEnabled());
     this.storeMetadataRepository = new HelixReadWriteStoreRepositoryAdapter(
         admin.getReadOnlyZKSharedSystemStoreRepository(),
         readWriteStoreRepository,
@@ -164,9 +166,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
       // used directly for external view purposes.
       spectatorManager = this.helixManager;
     } else {
-      // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and
-      // messages.
-      spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
+      // Use a separate helix manager with specified helix zk address for listening on the external view to prevent it
+      // from blocking state transition and messages.
+      spectatorManager = getSpectatorManager(clusterName, config.getZkAddress());
     }
     this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
     this.customizedViewRepo =
@@ -212,7 +214,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
               true,
               updatedStore.isMigrating(),
               this::isSourceCluster);
-        });
+        },
+        admin.getStoreLifecycleHooksCache());
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
         clusterName,
@@ -238,7 +241,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
         pushMonitor);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
     this.accessController = accessController;
-    if (config.getErrorPartitionAutoResetLimit() > 0) {
+    // Error partition reset is a child-controller-only feature; do not initialize it in the parent controller
+    // regardless of the configured limit.
+    if (!config.isParent() && config.getErrorPartitionAutoResetLimit() > 0) {
       errorPartitionResetTask = new ErrorPartitionResetTask(
           clusterName,
           helixAdminClient,
@@ -382,6 +387,11 @@ public class HelixVeniceClusterResources implements VeniceResource {
         Thread.currentThread().interrupt();
       }
     }
+  }
+
+  @VisibleForTesting
+  ErrorPartitionResetTask getErrorPartitionResetTask() {
+    return errorPartitionResetTask;
   }
 
   /**
@@ -593,7 +603,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
     return clusterName.equals(storeConfig.getCluster());
   }
 
-  private SafeHelixManager getSpectatorManager(String clusterName, String zkAddress) {
+  // Package-private (not private) so tests can capture the ZK address this is invoked with, verifying the spectator
+  // manager binds to the Helix ZK address from config rather than the Venice-metadata zkClient.
+  SafeHelixManager getSpectatorManager(String clusterName, String zkAddress) {
     SafeHelixManager manager =
         new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, "", InstanceType.SPECTATOR, zkAddress));
     try {

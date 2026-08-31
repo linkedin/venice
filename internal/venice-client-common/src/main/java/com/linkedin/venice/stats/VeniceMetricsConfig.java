@@ -290,8 +290,8 @@ public class VeniceMetricsConfig {
     private AggregationTemporalitySelector otelAggregationTemporalitySelector =
         AggregationTemporalitySelector.deltaPreferred();
     private boolean useOtelExponentialHistogram = true;
-    private int otelExponentialHistogramMaxScale = 3;
-    private int otelExponentialHistogramMaxBuckets = 250;
+    private int otelExponentialHistogramMaxScale = 5;
+    private int otelExponentialHistogramMaxBuckets = 370;
     private MetricReader otelAdditionalMetricsReader = null;
     private MetricConfig tehutiMetricConfig = null;
 

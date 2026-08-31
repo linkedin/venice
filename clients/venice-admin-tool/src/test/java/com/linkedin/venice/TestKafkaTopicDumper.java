@@ -486,6 +486,31 @@ public class TestKafkaTopicDumper {
     verify(mockConsumer, atLeastOnce()).unSubscribe(topicPartition);
   }
 
+  @Test
+  public void testProcessRecordSkipsGlobalRtDivMessages() {
+    PubSubConsumerAdapter mockConsumer = mock(PubSubConsumerAdapter.class);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test"), 0);
+    KafkaTopicDumper dumper = new KafkaTopicDumper(mockConsumer, topicPartition, 3);
+
+    // Global RT DIV records carry DIV metadata, not user data. Only the KafkaKey header marks them, while the
+    // envelope still looks like a PUT, so they must be skipped before their payload is deserialized as a user value.
+    KafkaKey globalRtDivKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, Utils.getUniqueString("key-").getBytes());
+    DefaultPubSubMessage divMessage = mock(DefaultPubSubMessage.class);
+    when(divMessage.getKey()).thenReturn(globalRtDivKey);
+    when(divMessage.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(0L));
+    dumper.processRecord(divMessage);
+    // The record is skipped before its payload is ever inspected.
+    verify(divMessage, never()).getValue();
+
+    // A regular data record is not skipped: its payload is inspected for processing.
+    KafkaKey putKey = new KafkaKey(MessageType.PUT, Utils.getUniqueString("key-").getBytes());
+    DefaultPubSubMessage putMessage = mock(DefaultPubSubMessage.class);
+    when(putMessage.getKey()).thenReturn(putKey);
+    when(putMessage.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(1L));
+    dumper.processRecord(putMessage);
+    verify(putMessage, atLeastOnce()).getValue();
+  }
+
   private List<DefaultPubSubMessage> createMockMessages(int count, long startPosition) {
     List<DefaultPubSubMessage> messages = new ArrayList<>();
     for (int i = 0; i < count; i++) {

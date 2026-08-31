@@ -78,10 +78,14 @@ public class StoreInfo {
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     storeInfo.setCompactionEnabled(store.isCompactionEnabled());
     storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
+    storeInfo.setEncryptionEnabled(store.isEncryptionEnabled());
+    storeInfo.setPubSubEncryptionKeyUrn(store.getPubSubEncryptionKeyUrn());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
+    storeInfo.setThroughputQuotaInBytes(store.getThroughputQuotaInBytes());
+    storeInfo.setThroughputQuotaInRecords(store.getThroughputQuotaInRecords());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
@@ -366,6 +370,10 @@ public class StoreInfo {
 
   private long compactionThreshold;
 
+  private boolean encryptionEnabled;
+
+  private String pubSubEncryptionKeyUrn = "";
+
   private long minCompactionLagSeconds;
 
   private long maxCompactionLagSeconds;
@@ -373,6 +381,10 @@ public class StoreInfo {
   private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
   private int maxNearlineRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+
+  private long throughputQuotaInBytes = -1;
+
+  private long throughputQuotaInRecords = -1;
 
   private boolean unusedSchemaDeletionEnabled;
 
@@ -899,6 +911,22 @@ public class StoreInfo {
     this.compactionThreshold = compactionThreshold;
   }
 
+  public boolean isEncryptionEnabled() {
+    return this.encryptionEnabled;
+  }
+
+  public void setEncryptionEnabled(boolean encryptionEnabled) {
+    this.encryptionEnabled = encryptionEnabled;
+  }
+
+  public String getPubSubEncryptionKeyUrn() {
+    return pubSubEncryptionKeyUrn;
+  }
+
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    this.pubSubEncryptionKeyUrn = pubSubEncryptionKeyUrn;
+  }
+
   public long getMinCompactionLagSeconds() {
     return minCompactionLagSeconds;
   }
@@ -929,6 +957,22 @@ public class StoreInfo {
 
   public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
     this.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
+  }
+
+  public long getThroughputQuotaInBytes() {
+    return this.throughputQuotaInBytes;
+  }
+
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    this.throughputQuotaInBytes = throughputQuotaInBytes;
+  }
+
+  public long getThroughputQuotaInRecords() {
+    return this.throughputQuotaInRecords;
+  }
+
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    this.throughputQuotaInRecords = throughputQuotaInRecords;
   }
 
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {

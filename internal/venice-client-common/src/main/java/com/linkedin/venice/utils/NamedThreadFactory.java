@@ -10,8 +10,10 @@ import org.apache.logging.log4j.Logger;
  */
 public class NamedThreadFactory implements ThreadFactory {
   private static final Logger LOGGER = LogManager.getLogger(NamedThreadFactory.class);
+  public static final int UNSPECIFIED_PRIORITY = -1;
   private String threadName;
   private final Runnable uncaughtExceptionHook;
+  private final int priority;
   private int threadSequenceNum;
 
   /**
@@ -25,9 +27,18 @@ public class NamedThreadFactory implements ThreadFactory {
     this(threadName, null);
   }
 
+  public NamedThreadFactory(String threadName, int priority) {
+    this(threadName, null, priority);
+  }
+
   public NamedThreadFactory(String threadName, Runnable uncaughtExceptionHook) {
+    this(threadName, uncaughtExceptionHook, UNSPECIFIED_PRIORITY);
+  }
+
+  public NamedThreadFactory(String threadName, Runnable uncaughtExceptionHook, int priority) {
     this.threadName = threadName;
     this.uncaughtExceptionHook = uncaughtExceptionHook;
+    this.priority = priority;
     this.threadSequenceNum = 0;
   }
 
@@ -39,6 +50,9 @@ public class NamedThreadFactory implements ThreadFactory {
   @Override
   public Thread newThread(Runnable runnable) {
     Thread thread = new Thread(runnable, this.threadName + "-" + this.threadSequenceNum);
+    if (priority != UNSPECIFIED_PRIORITY) {
+      thread.setPriority(priority);
+    }
     thread.setUncaughtExceptionHandler((t, e) -> {
       LOGGER.error("Thread {} throws uncaught exception. ", t.getName(), e);
       if (uncaughtExceptionHook != null) {

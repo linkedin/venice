@@ -237,10 +237,14 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setCompactionEnabled(store.isCompactionEnabled());
     setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
+    setEncryptionEnabled(store.isEncryptionEnabled());
+    setPubSubEncryptionKeyUrn(store.getPubSubEncryptionKeyUrn());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
+    setThroughputQuotaInBytes(store.getThroughputQuotaInBytes());
+    setThroughputQuotaInRecords(store.getThroughputQuotaInRecords());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
     setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     setBlobDbEnabled(store.getBlobDbEnabled());
@@ -986,6 +990,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public void setEncryptionEnabled(boolean encryptionEnabled) {
+    this.storeProperties.encryptionEnabled = encryptionEnabled;
+  }
+
+  @Override
+  public boolean isEncryptionEnabled() {
+    return this.storeProperties.encryptionEnabled;
+  }
+
+  @Override
+  public String getPubSubEncryptionKeyUrn() {
+    return this.storeProperties.pubSubEncryptionKeyUrn.toString();
+  }
+
+  @Override
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    this.storeProperties.pubSubEncryptionKeyUrn = pubSubEncryptionKeyUrn;
+  }
+
+  @Override
   public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
     this.storeProperties.minCompactionLagSeconds = minCompactionLagSeconds;
   }
@@ -1018,6 +1042,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
     this.storeProperties.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
+  }
+
+  @Override
+  public long getThroughputQuotaInBytes() {
+    return this.storeProperties.throughputQuotaInBytes;
+  }
+
+  @Override
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    this.storeProperties.throughputQuotaInBytes = throughputQuotaInBytes;
+  }
+
+  @Override
+  public long getThroughputQuotaInRecords() {
+    return this.storeProperties.throughputQuotaInRecords;
+  }
+
+  @Override
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    this.storeProperties.throughputQuotaInRecords = throughputQuotaInRecords;
   }
 
   @Override

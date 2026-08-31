@@ -1,6 +1,7 @@
 package com.linkedin.venice.grpc;
 
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.NamedThreadFactory;
 import io.grpc.BindableService;
 import io.grpc.ServerCredentials;
 import io.grpc.ServerInterceptor;
@@ -131,7 +132,8 @@ public class VeniceGrpcServerConfig {
         interceptors = Collections.emptyList();
       }
       if (executor == null) {
-        executor = Executors.newFixedThreadPool(numThreads);
+        executor = Executors
+            .newFixedThreadPool(numThreads, new NamedThreadFactory("VeniceGrpcServer-" + port, Thread.NORM_PRIORITY));
       }
     }
   }

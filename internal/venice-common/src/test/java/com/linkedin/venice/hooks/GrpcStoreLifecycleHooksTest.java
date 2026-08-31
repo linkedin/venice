@@ -34,6 +34,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         emptyStoreConfig);
@@ -57,6 +58,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -83,6 +85,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         configWithExtras);
@@ -106,13 +109,14 @@ public class GrpcStoreLifecycleHooksTest {
     VeniceProperties emptyConfig = new VeniceProperties(new HashMap<>());
     Lazy<JobStatusQueryResponse> mockJobStatus = Mockito.mock(Lazy.class);
 
-    StoreVersionLifecycleEventOutcome result1 =
-        hook1.postStoreVersionSwap(TEST_CLUSTER_NAME, TEST_STORE_NAME, 1, TEST_REGION_NAME, mockJobStatus, emptyConfig);
+    StoreVersionLifecycleEventOutcome result1 = hook1
+        .postStoreVersionSwap(TEST_CLUSTER_NAME, TEST_STORE_NAME, 1, 0, TEST_REGION_NAME, mockJobStatus, emptyConfig);
 
     StoreVersionLifecycleEventOutcome result2 = hook2.postStoreVersionSwap(
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         2, // Different version to avoid cache interference
+        1,
         TEST_REGION_NAME,
         mockJobStatus,
         emptyConfig);
@@ -139,6 +143,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         invalidConfig);
@@ -157,11 +162,11 @@ public class GrpcStoreLifecycleHooksTest {
 
     // Test with different store names - should all return PROCEED for empty config
     StoreVersionLifecycleEventOutcome result1 =
-        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, "store1", 1, TEST_REGION_NAME, mockJobStatus, emptyConfig);
+        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, "store1", 1, 0, TEST_REGION_NAME, mockJobStatus, emptyConfig);
     StoreVersionLifecycleEventOutcome result2 =
-        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, "store2", 1, TEST_REGION_NAME, mockJobStatus, emptyConfig);
+        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, "store2", 1, 0, TEST_REGION_NAME, mockJobStatus, emptyConfig);
     StoreVersionLifecycleEventOutcome result3 =
-        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, "store3", 1, TEST_REGION_NAME, mockJobStatus, emptyConfig);
+        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, "store3", 1, 0, TEST_REGION_NAME, mockJobStatus, emptyConfig);
 
     assertEquals(result1, StoreVersionLifecycleEventOutcome.PROCEED);
     assertEquals(result2, StoreVersionLifecycleEventOutcome.PROCEED);
@@ -177,10 +182,10 @@ public class GrpcStoreLifecycleHooksTest {
     GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(defaultConfigs);
 
     // Test with different region names - should all return PROCEED for empty config
-    StoreVersionLifecycleEventOutcome result1 =
-        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, TEST_STORE_NAME, 1, TEST_REGION_NAME, mockJobStatus, emptyConfig);
-    StoreVersionLifecycleEventOutcome result2 =
-        hook.postStoreVersionSwap(TEST_CLUSTER_NAME, TEST_STORE_NAME, 1, TEST_REGION_NAME2, mockJobStatus, emptyConfig);
+    StoreVersionLifecycleEventOutcome result1 = hook
+        .postStoreVersionSwap(TEST_CLUSTER_NAME, TEST_STORE_NAME, 1, 0, TEST_REGION_NAME, mockJobStatus, emptyConfig);
+    StoreVersionLifecycleEventOutcome result2 = hook
+        .postStoreVersionSwap(TEST_CLUSTER_NAME, TEST_STORE_NAME, 1, 0, TEST_REGION_NAME2, mockJobStatus, emptyConfig);
 
     assertEquals(result1, StoreVersionLifecycleEventOutcome.PROCEED);
     assertEquals(result2, StoreVersionLifecycleEventOutcome.PROCEED);
@@ -222,6 +227,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -239,6 +245,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -249,6 +256,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -269,6 +277,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -285,6 +294,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -295,6 +305,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -315,6 +326,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -325,6 +337,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);
@@ -335,6 +348,7 @@ public class GrpcStoreLifecycleHooksTest {
         TEST_CLUSTER_NAME,
         TEST_STORE_NAME,
         TEST_VERSION_NUMBER,
+        0,
         TEST_REGION_NAME,
         mockJobStatus,
         validConfig);

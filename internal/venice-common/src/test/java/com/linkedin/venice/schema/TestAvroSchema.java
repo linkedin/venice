@@ -75,6 +75,7 @@ public class TestAvroSchema {
     ps.lastConsumedVersionTopicPubSubPosition = ByteBuffer.wrap("".getBytes());
     ps.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
     ps.upstreamVersionTopicPubSubPosition = ByteBuffer.wrap("".getBytes());
+    ps.upstreamLastConsumedVersionTopicPubSubPosition = ByteBuffer.wrap("".getBytes());
 
     AvroSerializer serializer = new AvroSerializer(ps.getSchema());
     byte[] serializedBytes = serializer.serialize(ps);

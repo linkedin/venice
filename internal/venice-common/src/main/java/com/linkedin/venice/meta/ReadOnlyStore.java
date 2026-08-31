@@ -1089,10 +1089,14 @@ public class ReadOnlyStore implements Store {
     // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
     storeProperties.setCompactionEnabled(isCompactionEnabled());
     storeProperties.setCompactionThresholdMilliseconds(getCompactionThresholdMilliseconds());
+    storeProperties.setEncryptionEnabled(isEncryptionEnabled());
+    storeProperties.setPubSubEncryptionKeyUrn(getPubSubEncryptionKeyUrn());
     storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
     storeProperties.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
+    storeProperties.setThroughputQuotaInBytes(getThroughputQuotaInBytes());
+    storeProperties.setThroughputQuotaInRecords(getThroughputQuotaInRecords());
     storeProperties.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
     storeProperties.setVersions(convertVersions(getVersions()));
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
@@ -1636,6 +1640,11 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setVersionStorageMode(int versionNumber, StorageMode storageMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   @Nonnull
   public Version getVersionOrThrow(int versionNumber) throws StoreVersionNotFoundException {
     return new ReadOnlyVersion(this.delegate.getVersionOrThrow(versionNumber));
@@ -1695,6 +1704,26 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isEncryptionEnabled() {
+    return this.delegate.isEncryptionEnabled();
+  }
+
+  @Override
+  public void setEncryptionEnabled(boolean encryptionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public String getPubSubEncryptionKeyUrn() {
+    return this.delegate.getPubSubEncryptionKeyUrn();
+  }
+
+  @Override
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return this.delegate.getMinCompactionLagSeconds();
   }
@@ -1731,6 +1760,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getThroughputQuotaInBytes() {
+    return this.delegate.getThroughputQuotaInBytes();
+  }
+
+  @Override
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getThroughputQuotaInRecords() {
+    return this.delegate.getThroughputQuotaInRecords();
+  }
+
+  @Override
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
     throw new UnsupportedOperationException();
   }
 
@@ -2049,6 +2098,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
     storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
+    storeVersion.setTargetRegionPromoted(version.isTargetRegionPromoted());
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
     storeVersion.setGlobalRtDivEnabled(version.isGlobalRtDivEnabled());
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));

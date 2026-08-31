@@ -45,6 +45,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.StatefulVeniceChangelogConsumer;
@@ -55,7 +56,9 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogKey;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
@@ -65,6 +68,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -82,10 +86,12 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -325,40 +331,132 @@ public class StatefulVeniceChangelogConsumerTest {
           assertTrue(consumer2EventsList.size() >= 10);
         });
 
-        // Restart the first consumer - DVRT should be properly re-hooked into a new SIT
-        statefulVeniceChangelogConsumer.start().get();
+        // Create a fresh consumer after stop. Closed consumer instances are terminal.
+        try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> restartedConsumer =
+            veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(storeName)) {
+          restartedConsumer.start().get();
 
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
-          pollChangeEventsFromChangeCaptureConsumer(
-              polledChangeEventsMap,
-              polledChangeEventsList,
-              statefulVeniceChangelogConsumer);
-          // 40 near-line put events, but one of them overwrites a key from batch push.
-          // Also, Deletes won't show up on restart when scanning RocksDB.
-          // Use >= to be resilient to at-least-once delivery: the change capture topic replay
-          // after restart may surface a few extra delete or duplicate events as unique keys.
-          // Upper bound guards against gross duplication bugs.
-          int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
-          int upperBound = (int) (expectedRecordCount * 1.1);
-          assertTrue(
-              polledChangeEventsMap.size() >= expectedRecordCount,
-              "Expected at least " + expectedRecordCount + " records, but got " + polledChangeEventsMap.size());
-          assertTrue(
-              polledChangeEventsMap.size() <= upperBound,
-              "Too many records (" + polledChangeEventsMap.size() + "), expected at most " + upperBound
-                  + ". Possible duplicate event production.");
-          verifyPut(polledChangeEventsMap, 100, 110, 3, false);
-          verifyPut(polledChangeEventsMap, 120, 130, 3, false);
-          verifyPut(polledChangeEventsMap, 140, 150, 3, false);
-          verifyPut(polledChangeEventsMap, 160, 170, 3, false);
-        });
-        verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+            pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, polledChangeEventsList, restartedConsumer);
+            // 40 near-line put events, but one of them overwrites a key from batch push.
+            // Also, Deletes won't show up on restart when scanning RocksDB.
+            // Use >= to be resilient to at-least-once delivery: the change capture topic replay
+            // after restart may surface a few extra delete or duplicate events as unique keys.
+            // Upper bound guards against gross duplication bugs.
+            int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
+            int upperBound = (int) (expectedRecordCount * 1.1);
+            assertTrue(
+                polledChangeEventsMap.size() >= expectedRecordCount,
+                "Expected at least " + expectedRecordCount + " records, but got " + polledChangeEventsMap.size());
+            assertTrue(
+                polledChangeEventsMap.size() <= upperBound,
+                "Too many records (" + polledChangeEventsMap.size() + "), expected at most " + upperBound
+                    + ". Possible duplicate event production.");
+            verifyPut(polledChangeEventsMap, 100, 110, 3, false);
+            verifyPut(polledChangeEventsMap, 120, 130, 3, false);
+            verifyPut(polledChangeEventsMap, 140, 150, 3, false);
+            verifyPut(polledChangeEventsMap, 160, 170, 3, false);
+          });
+          verifyVCCSequenceId(polledChangeEventsList, new HashMap<>(), -1);
+        }
       } finally {
         cleanUpStoreAndVerify(storeName2);
       }
     } finally {
       cleanUpStoreAndVerify(storeName);
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testStatefulCdcDoesNotResurrectRolledBackVersionAfterRestart() throws Exception {
+    String storeName = Utils.getUniqueString("store");
+    String inputDirPath = setUpStore(storeName);
+
+    Properties testConsumerProperties =
+        ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath);
+    testConsumerProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(zkAddress)
+            .setControllerRequestRetryCount(3)
+            .setD2Client(d2Client);
+
+    try {
+      VeniceChangelogConsumerClientFactory factory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+      try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> consumer =
+          factory.getStatefulChangelogConsumer(storeName)) {
+        consumer.start().get();
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(1));
+        });
+
+        Properties props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
+        IntegrationTestPushUtils.runVPJ(props);
+        clusterWrapper.useControllerClient(controllerClient -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+            assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
+          });
+        });
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(2));
+        });
+      }
+      // Reset process-local state while preserving the on-disk engines used by the restarted client.
+      AvroGenericDaVinciClient.resetDaVinciBackendForTests();
+
+      clusterWrapper.useControllerClient(controllerClient -> {
+        ControllerResponse rollbackResponse = controllerClient.rollbackToBackupVersion(storeName);
+        assertFalse(rollbackResponse.isError(), "rollback failed: " + rollbackResponse.getError());
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          StoreResponse storeResponse = controllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError(), "getStore error: " + storeResponse.getError());
+          assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+          assertTrue(
+              storeResponse.getStore().getVersion(2).isPresent()
+                  && storeResponse.getStore().getVersion(2).get().getStatus() == VersionStatus.ROLLED_BACK,
+              "Expected v2 to be ROLLED_BACK after rollback, got: " + storeResponse.getStore().getVersion(2));
+        });
+      });
+
+      VeniceChangelogConsumerClientFactory restartedFactory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+      Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> restartEventsMap =
+          new HashMap<>();
+      List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> restartEventsList =
+          new ArrayList<>();
+      try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> restartedConsumer =
+          restartedFactory.getStatefulChangelogConsumer(storeName)) {
+        restartedConsumer.start().get();
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(1));
+        });
+
+        try (VeniceSystemProducer veniceProducer =
+            IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
+          runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 0, 200, false);
+        }
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+          pollChangeEventsFromChangeCaptureConsumer(restartEventsMap, restartEventsList, restartedConsumer);
+          assertTrue(restartEventsMap.size() >= 10, "Expected at least the 10 fresh v1 nearline puts after restart");
+        });
+        for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> message: restartEventsList) {
+          int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
+          assertEquals(versionFromMessage, 1, "No change event may originate from the rolled-back v2");
+        }
+
+        assertEquals(getSubscribedVersionNumbers(storeName), Collections.singleton(1));
+      }
+    } finally {
+      cleanUpStoreAndVerify(storeName);
+    }
+  }
+
+  private Set<Integer> getSubscribedVersionNumbers(String storeName) {
+    return AvroGenericDaVinciClient.getBackend().getSubscribedVersionNumbers(storeName);
   }
 
   /**

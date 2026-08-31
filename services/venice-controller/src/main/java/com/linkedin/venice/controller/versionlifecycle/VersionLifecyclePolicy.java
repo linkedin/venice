@@ -2,17 +2,16 @@ package com.linkedin.venice.controller.versionlifecycle;
 
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
-import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -68,88 +67,109 @@ public final class VersionLifecyclePolicy {
 
   /**
    * Throws if starting a new push would exceed the store's version budget because existing backup
-   * versions are pending deletion but still within the min cleanup delay (e.g., after a rollback).
-   * Preserve count is {@code N-1} for {@code DELETE_ON_NEW_PUSH_START}, {@code N} otherwise.
-   * Clamps to 1 because {@link Store#retrieveVersionsToDelete(int)} rejects values below 1.
+   * versions are pending deletion but still within the min cleanup delay (e.g. after a killed push).
+   * Preserve count is {@code N-1} for {@code DELETE_ON_NEW_PUSH_START}, {@code N} otherwise, clamped
+   * to 1 because {@link AbstractStore#computeVersionsToDelete} rejects values below 1.
+   *
+   * <p>The parent drives this from LIVE child snapshots (see
+   * {@code VeniceParentHelixAdmin.checkNewPushCapacityFromChildren}), not its own
+   * metadata which can go stale. It runs only on the parent — a throw during child admin-message
+   * consumption ({@code VeniceHelixAdmin.addVersion}) would wedge the admin channel.
+   *
+   * <p>Takes raw fields so callers can pass a child {@code StoreInfo} (not a {@link Store}) directly.
+   * {@code regionName} enriches the rejection message; pass {@code null} to omit it.
    */
   public static void checkBackupVersionCleanupCapacityForNewPush(
       String clusterName,
       String storeName,
-      Store store,
+      String regionName,
+      List<Version> versions,
+      int currentVersion,
+      int storeNumVersionsToPreserve,
+      boolean isMigrating,
       BackupStrategy backupStrategy,
       int minNumberOfStoreVersionsToPreserve,
+      long latestVersionPromoteToCurrentTimestamp,
       long minBackupVersionCleanupDelay,
       long currentTimeMs) {
-    int numVersionToPreserve = Math.max(
+    int clusterNumVersionsToPreserve = Math.max(
         1,
         backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
             ? minNumberOfStoreVersionsToPreserve - 1
             : minNumberOfStoreVersionsToPreserve);
-    List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
+    List<Version> versionsToDelete = AbstractStore.computeVersionsToDelete(
+        versions,
+        currentVersion,
+        clusterNumVersionsToPreserve,
+        storeNumVersionsToPreserve,
+        isMigrating);
     if (versionsToDelete.isEmpty()) {
       return;
     }
-    long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
+    long minRetentionThreshold = latestVersionPromoteToCurrentTimestamp + minBackupVersionCleanupDelay;
     if (currentTimeMs <= minRetentionThreshold) {
       throw new VeniceException(
           String.format(
-              "Cannot start new push for store %s in cluster %s: %d backup version(s) pending deletion "
+              "Cannot start new push for store %s in cluster %s%s: %d backup version(s) pending deletion "
                   + "but still within min cleanup delay (%dms) of latest version promotion. "
                   + "Retry after min delay has elapsed.",
               storeName,
               clusterName,
+              regionName == null ? "" : " (region " + regionName + ")",
               versionsToDelete.size(),
               minBackupVersionCleanupDelay));
     }
   }
 
   /**
-   * Throws if starting a new push would violate the retention window for a rollback-origin version.
-   * Blocks when a {@code ROLLED_BACK} or {@code PARTIALLY_ONLINE} version sits strictly above the
-   * current version — the rollback-origin invariant, since rollback decrements currentVersion below
-   * the rolled-back-from version's number on both parent and child controllers. Stale entries
-   * lingering below currentVersion (e.g., after a subsequent push promoted higher) are skipped.
-   * The block also lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
-   * elapses; past that point, the version will be swept on the next SOP deletion pass.
+   * Throws if a new push would violate the retention window for a rolled-back version in a single
+   * child region. Blocks a {@code ROLLED_BACK} version above currentVersion (rollback decrements
+   * currentVersion, so number > currentVersion is the rollback-origin invariant); entries below
+   * currentVersion are stale and skipped. The block lifts once
+   * {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs} elapses.
+   *
+   * <p>The parent drives this from LIVE child snapshots, not its own metadata (see
+   * {@code VeniceParentHelixAdmin.checkNewPushCapacityFromChildren}), which can go
+   * stale and falsely block for the whole window. It runs only on the parent — a throw during child
+   * admin-message consumption would wedge the admin channel.
+   *
+   * <p>Only {@code ROLLED_BACK} counts: a per-region rollback is binary, so a child is never
+   * rollback-{@code PARTIALLY_ONLINE} (that is a parent-only aggregate). A child
+   * {@code PARTIALLY_ONLINE} is a degraded-mode forward push and must not block.
+   *
+   * <p>Takes raw fields so callers can pass a child {@code StoreInfo} (not a {@link Store}) directly.
+   * {@code regionName} enriches the rejection message; pass {@code null} to omit it.
    */
   public static void checkRollbackOriginVersionCapacityForNewPush(
       String clusterName,
       String storeName,
-      Store store,
+      String regionName,
+      List<Version> versions,
+      int currentVersion,
+      long latestVersionPromoteToCurrentTimestamp,
       long rolledBackVersionRetentionMs,
       long currentTimeMs) {
-    long retentionExpiresAt = store.getLatestVersionPromoteToCurrentTimestamp() + rolledBackVersionRetentionMs;
+    long retentionExpiresAt = latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs;
     if (currentTimeMs > retentionExpiresAt) {
-      // Past retention — SOP deletion will clean up any rollback-origin versions.
+      // Past retention — SOP deletion reclaims it.
       return;
     }
-    int currentVersion = store.getCurrentVersion();
-    for (Version v: store.getVersions()) {
-      VersionStatus status = v.getStatus();
-      // A rollback-origin version is one that was promoted then rolled back to a lower version,
-      // so number > currentVersion holds (parent decrements currentVersion on rollback to mirror
-      // children, see VeniceParentHelixAdmin.updateParentVersionStatusAfterRollback). Once a
-      // subsequent push promotes higher than the rolled-back version, the retention contract is
-      // satisfied/superseded and the entry — which can linger in parent metadata since parent
-      // retains more versions than children — is correctly aged out by this filter.
-      // Push-origin PARTIALLY_ONLINE (number == currentVersion) is correctly excluded.
-      boolean isRollbackOrigin =
-          (status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion;
+    for (Version v: versions) {
+      boolean isRollbackOrigin = v.getStatus() == ROLLED_BACK && v.getNumber() > currentVersion;
       if (isRollbackOrigin) {
         throw new VeniceException(
             String.format(
-                "Cannot start new push for store %s in cluster %s: version %d is %s from a rollback; "
+                "Cannot start new push for store %s in cluster %s: version %d is %s from a rollback%s; "
                     + "retention expires in %dms. Retry after the rolled-back version is cleaned up.",
                 storeName,
                 clusterName,
                 v.getNumber(),
-                status,
+                v.getStatus(),
+                regionName == null ? "" : " in region " + regionName,
                 retentionExpiresAt - currentTimeMs));
       }
     }
-  }
-
-  // ---------- Version selection ----------
+  } // ---------- Version selection ----------
 
   /**
    * Largest {@code ONLINE} version number strictly less than {@code currentVersion}, or

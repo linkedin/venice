@@ -315,6 +315,12 @@ public interface Store {
     // ReadOnlyStore overrides to throw UnsupportedOperationException.
   }
 
+  default void setVersionStorageMode(int versionNumber, StorageMode storageMode) {
+    // No-op default. AbstractStore overrides this using storeVersionsSupplier.getForUpdate() to bypass the
+    // ReadOnlyVersion wrapper returned by getVersion(). ReadOnlyStore overrides to throw
+    // UnsupportedOperationException.
+  }
+
   int peekNextVersionNumber();
 
   /**
@@ -347,6 +353,14 @@ public interface Store {
 
   void setCompactionThresholdMilliseconds(long compactionThreshold);
 
+  boolean isEncryptionEnabled();
+
+  void setEncryptionEnabled(boolean encryptionEnabled);
+
+  String getPubSubEncryptionKeyUrn();
+
+  void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn);
+
   long getMinCompactionLagSeconds();
 
   void setMinCompactionLagSeconds(long minCompactionLagSeconds);
@@ -362,6 +376,14 @@ public interface Store {
   int getMaxNearlineRecordSizeBytes();
 
   void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes);
+
+  long getThroughputQuotaInBytes();
+
+  void setThroughputQuotaInBytes(long throughputQuotaInBytes);
+
+  long getThroughputQuotaInRecords();
+
+  void setThroughputQuotaInRecords(long throughputQuotaInRecords);
 
   void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
 

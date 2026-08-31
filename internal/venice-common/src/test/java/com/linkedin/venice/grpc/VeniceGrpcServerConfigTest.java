@@ -3,6 +3,7 @@ package com.linkedin.venice.grpc;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -14,7 +15,9 @@ import io.grpc.ServerInterceptor;
 import java.util.Collections;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
 
@@ -55,14 +58,22 @@ public class VeniceGrpcServerConfigTest {
   }
 
   @Test
-  public void testBuilderWithDefaultExecutor() {
+  public void testBuilderWithDefaultExecutor() throws Exception {
     BindableService service = mock(BindableService.class);
 
     VeniceGrpcServerConfig config =
         new VeniceGrpcServerConfig.Builder().setPort(8080).addService(service).setNumThreads(4).build();
 
     assertNotNull(config.getExecutor());
-    assertEquals(((ThreadPoolExecutor) config.getExecutor()).getCorePoolSize(), 4);
+    ThreadPoolExecutor executor = (ThreadPoolExecutor) config.getExecutor();
+    assertEquals(executor.getCorePoolSize(), 4);
+    Future<String> threadName = executor.submit(() -> Thread.currentThread().getName());
+    Future<Boolean> isDaemon = executor.submit(() -> Thread.currentThread().isDaemon());
+    Future<Integer> priority = executor.submit(() -> Thread.currentThread().getPriority());
+    assertTrue(threadName.get(5, TimeUnit.SECONDS).startsWith("VeniceGrpcServer-8080-"));
+    assertFalse(isDaemon.get(5, TimeUnit.SECONDS));
+    assertEquals(priority.get(5, TimeUnit.SECONDS).intValue(), Thread.NORM_PRIORITY);
+    executor.shutdownNow();
   }
 
   @Test

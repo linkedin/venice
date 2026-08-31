@@ -27,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
@@ -43,6 +44,7 @@ import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -79,6 +81,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -130,6 +133,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -725,6 +729,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
+    // The graceful-shutdown flush produces the GlobalRtDivState to the LOCAL VT, so the callback's synthetic source
+    // record sits on a non-RT (VT) topic-partition, while the leader's upstream (leaderTopic) is the RT topic whose
+    // LCRP is carried as the consumed position. The remote-LCVP stamp in sendVtDivSnapshotOnCompletion keys off
+    // leaderTopic (RT here) and must skip the stamp, since that RT-domain position is checkpointed separately as the
+    // LCRP; keying off the source record's topic would cross-write the RT LCRP into the remote-VT LCVP field.
+    PubSubTopic mockLocalVtTopic = mock(PubSubTopic.class);
+    doReturn(false).when(mockLocalVtTopic).isRealTime();
+    doReturn(mockLocalVtTopic).when(mockTopicPartition).getPubSubTopic();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
     Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = Lazy.of(() -> mockWriter);
     doReturn(lazyMockWriter).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
@@ -735,6 +747,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes(StandardCharsets.UTF_8);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic mockLeaderRtTopic = mock(PubSubTopic.class);
+    doReturn(true).when(mockLeaderRtTopic).isRealTime();
+    doReturn(mockLeaderRtTopic).when(mockOffsetRecord).getLeaderTopic(any());
     doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
 
     leaderFollowerStoreIngestionTask
@@ -779,7 +794,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
     // and that produceResult should override the LCVP of the VT DIV sent to the drainer
-    fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L));
+    PartitionTracker captured = fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L));
+    // The flush send must not advance the remote VT LCVP: its consumed position (p3) is the RT/LCRP domain,
+    // checkpointed separately, and leaderTopic is RT. It stays at its default rather than picking up the produced
+    // (11L) or the RT LCRP (p3) - a regression guard against cross-writing an RT position into the remote-VT LCVP.
+    assertNotEquals(captured.getLatestConsumedRemoteVtPosition(), InMemoryPubSubPosition.of(11L));
+    assertNotEquals(captured.getLatestConsumedRemoteVtPosition(), p3);
   }
 
   /**
@@ -1149,6 +1169,28 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
+   * Verifies that {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded} stamps the consumed
+   * upstream position carried by the {@link LeaderProducedRecordContext} onto the VT DIV snapshot as the remote LCVP
+   * ({@link PartitionTracker#getLatestConsumedRemoteVtPosition()}) whenever the leader's upstream is a non-RT topic -
+   * the same offset the OffsetRecord checkpoint uses ({@code updateOffsetsAsRemoteConsumeLeader}), independent of
+   * {@code consumeRemotely()}. That is the position an F-&gt;L resume subscribes the remote VT from, and it is synced to
+   * the OffsetRecord only after the record persists - mirroring the local LCVP, rather than being advanced eagerly
+   * per-record during batch validation.
+   */
+  @Test
+  public void testAddVtDivToProducerCallbackIfNeededStampsRemoteLcvp() throws InterruptedException {
+    setUp();
+    LeaderProducerCallback callback = addVtDivToProducerCallbackIfNeededWithMocks(
+        mock(PubSubTopicPartition.class),
+        CompletableFuture.completedFuture(null));
+
+    PartitionTracker captured = fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(42L));
+    // Remote LCVP is the consumed upstream position carried by the LeaderProducedRecordContext (99L), distinct from the
+    // produced local-VT position (42L) carried by the local LCVP asserted above.
+    assertEquals(captured.getLatestConsumedRemoteVtPosition(), InMemoryPubSubPosition.of(99L));
+  }
+
+  /**
    * Verifies that when {@link StoreBufferService#execSyncOffsetFromSnapshotAsync} throws
    * {@link InterruptedException} from inside the produce-completion callback, the exception is
    * caught (so it doesn't propagate up to the producer) and the current thread's interrupt flag
@@ -1219,6 +1261,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
     doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
+    // Stub the consumed upstream position and its presence so the non-RT-source path stamps it onto the snapshot as the
+    // remote LCVP - the LeaderProducedRecordContext offset the OffsetRecord checkpoint uses, not the raw source record.
+    doReturn(true).when(mockContext).hasCorrespondingUpstreamMessage();
+    doReturn(InMemoryPubSubPosition.of(99L)).when(mockContext).getConsumedPosition();
+
+    // The remote-LCVP stamp gate keys off the leader's upstream topic (leaderTopic), not the source consumer record.
+    // A non-RT (VT) leaderTopic models the steady-state remote-VT-source leader, so the stamp runs.
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic mockLeaderVtTopic = mock(PubSubTopic.class);
+    doReturn(false).when(mockLeaderVtTopic).isRealTime();
+    doReturn(mockLeaderVtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
 
     // Build a consumer record on a non-RT topic so the install gate accepts it. Non-control-message
     // record so isNonSegmentControlMessage short-circuits and the install decision flows through
@@ -2487,6 +2541,159 @@ public class LeaderFollowerStoreIngestionTaskTest {
     spy.reportIfCatchUpVersionTopicOffset(pcs, true);
 
     verify(pcs, times(1)).lagHasCaughtUp();
+  }
+
+  /**
+   * When the leader has been silent past the dead-leader threshold, an already-acceptable lag is honoured on its own:
+   * the PCS flag flips exactly once, even across repeated {@code isReadyToServe} ticks.
+   */
+  @Test
+  public void testDeadLeaderFallbackActivatesOnce() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    // Consumption started 4h ago and no leader-complete signal ever arrived: silent for 4h, past the 3h threshold.
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    AtomicBoolean fallbackFlag = new AtomicBoolean(false);
+    when(pcs.isReadyToServeViaDeadLeaderFallback()).thenAnswer(invocation -> fallbackFlag.get());
+    doAnswer(invocation -> {
+      fallbackFlag.set(invocation.getArgument(0));
+      return null;
+    }).when(pcs).setReadyToServeViaDeadLeaderFallback(anyBoolean());
+
+    assertTrue(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 1L, 10L, false, LagType.OFFSET_LAG));
+    // Second poll: still acceptable, but the flag guard prevents a re-activation.
+    assertTrue(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 1L, 10L, false, LagType.OFFSET_LAG));
+
+    verify(pcs, times(1)).setReadyToServeViaDeadLeaderFallback(true);
+  }
+
+  /**
+   * In heartbeat-lag mode a dead leader inflates the heartbeat lag itself, so the measured lag stays above the
+   * threshold. Readiness then falls back to the re-measured offset lag: once offset catch-up is confirmed the fallback
+   * still fires despite the unacceptable heartbeat lag.
+   */
+  @Test
+  public void testDeadLeaderFallbackUsesOffsetCatchUpInHeartbeatMode() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    // Offset threshold 100 per partition; offset lag re-measured at 5 => caught up.
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(hybridStoreConfig.getOffsetLagThresholdToGoOnline()).thenReturn(100L);
+    setField(ctx.task, "hybridStoreConfig", Optional.of(hybridStoreConfig));
+    setField(ctx.task, "partitionCount", 1);
+    doReturn(5L).when(ctx.task).measureHybridOffsetLag(any(PartitionConsumptionState.class), anyBoolean());
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    AtomicBoolean fallbackFlag = new AtomicBoolean(false);
+    when(pcs.isReadyToServeViaDeadLeaderFallback()).thenAnswer(invocation -> fallbackFlag.get());
+    doAnswer(invocation -> {
+      fallbackFlag.set(invocation.getArgument(0));
+      return null;
+    }).when(pcs).setReadyToServeViaDeadLeaderFallback(anyBoolean());
+
+    // Heartbeat lag 999999 is far above the 10 ms threshold, yet offset catch-up carries the fallback.
+    assertTrue(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 999999L, 10L, false, LagType.HEARTBEAT_LAG));
+    verify(pcs, times(1)).setReadyToServeViaDeadLeaderFallback(true);
+  }
+
+  /**
+   * In heartbeat-lag mode, when the re-measured offset lag is still above the offset threshold the replica has not
+   * caught up, so the dead-leader fallback does not fire even though the leader is long silent.
+   */
+  @Test
+  public void testDeadLeaderFallbackNotAppliedWhenOffsetStillLaggingInHeartbeatMode() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(hybridStoreConfig.getOffsetLagThresholdToGoOnline()).thenReturn(100L);
+    setField(ctx.task, "hybridStoreConfig", Optional.of(hybridStoreConfig));
+    setField(ctx.task, "partitionCount", 1);
+    // Offset lag re-measured at 500 => still lagging past the 100 threshold.
+    doReturn(500L).when(ctx.task).measureHybridOffsetLag(any(PartitionConsumptionState.class), anyBoolean());
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    assertFalse(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 999999L, 10L, false, LagType.HEARTBEAT_LAG));
+    verify(pcs, never()).setReadyToServeViaDeadLeaderFallback(true);
+  }
+
+  /**
+   * The fallback only bypasses the leader-complete freshness gate; the offset lag remains authoritative. An offset lag
+   * above the threshold stays unacceptable and never activates the fallback, even when the leader is long silent.
+   */
+  @Test
+  public void testDeadLeaderFallbackNotAppliedWhenLagExceedsThreshold() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs()).thenReturn(TimeUnit.MINUTES.toMillis(5));
+    when(serverConfig.getDeadLeaderReadyToServeFallbackThresholdMs()).thenReturn(TimeUnit.HOURS.toMillis(3));
+    doReturn(serverConfig).when(ctx.task).getServerConfig();
+    doCallRealMethod().when(ctx.task)
+        .checkAndLogIfLagIsAcceptableForHybridStore(
+            any(PartitionConsumptionState.class),
+            anyLong(),
+            anyLong(),
+            anyBoolean(),
+            any(LagType.class));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(ctx.task).isHybridFollower(pcs);
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLeaderCompleteState()).thenReturn(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+    when(pcs.getConsumptionStartTimeInMs()).thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(4));
+
+    assertFalse(ctx.task.checkAndLogIfLagIsAcceptableForHybridStore(pcs, 100L, 10L, false, LagType.OFFSET_LAG));
+
+    verify(pcs, never()).setReadyToServeViaDeadLeaderFallback(true);
   }
 
   private PartitionConsumptionState makePcsForCatchUpTest() {
@@ -3798,6 +4005,30 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testCompleteBlobTransferStopsRecoveryWhenStoragePartitionAdjustmentFails() throws Exception {
+    setUpWithBlobTransfer(false);
+    setUpCompleteBlobTransferMocks();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getPartition()).thenReturn(0);
+    when(pcs.getReplicaId()).thenReturn(versionTopic.getName() + "-0");
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    when(pcs.getPendingBlobTransfer()).thenReturn(CompletableFuture.completedFuture(null));
+
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    doThrow(new VeniceException("Failed to open RocksDB")).when(storageEngine)
+        .adjustStoragePartition(eq(0), any(), any());
+
+    leaderFollowerStoreIngestionTask.completeBlobTransferAndSubscribe(pcs);
+
+    verify(storageEngine).dropPartition(0, false);
+    verify(leaderFollowerStoreIngestionTask, never()).completePostTransferPSCUpdated(pcs);
+    verify(leaderFollowerStoreIngestionTask).reportError(anyString(), eq(0), any(VeniceException.class));
+  }
+
+  @Test
   public void testTrackRecordReceivedSkipsBeforeEOP() throws Exception {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
@@ -4201,5 +4432,209 @@ public class LeaderFollowerStoreIngestionTaskTest {
           forwarded.get(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER),
           "lcs must not propagate: " + description);
     }
+  }
+
+  /**
+   * Regression test for local VT offset corruption (reverted PR #2809 / #2840).
+   *
+   * <p>When a leader's {@code consumeRemotely} flag flips false (the EOP leader-to-local switch or an L->S
+   * transition) after a record has been leader-produced but before the drainer processes it, that record is
+   * handled by the local ({@code !shouldProduceToVersionTopic}) branch of
+   * {@link LeaderFollowerStoreIngestionTask#updateOffsetsFromConsumerRecord} even though it was consumed from an
+   * upstream/remote source. In that branch the local VT position must be advanced from the record's own
+   * provenance, never from {@code consumerRecord.getPosition()} which is the foreign upstream/remote-VT position
+   * (a different topicId/shard) that later crashes the local-VT subscribe with an IllegalStateException.
+   */
+  @Test
+  public void testUpdateOffsetsFromConsumerRecordLocalVtUsesProvenanceNotUpstreamPosition()
+      throws InterruptedException {
+    setUp();
+
+    // Post-flip leader state: LEADER, leaderTopic == local VT, consumeRemotely == false, so
+    // shouldProduceToVersionTopic is false and records are handled by the local (non-produce) branch.
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic versionTopicRef = leaderFollowerStoreIngestionTask.getVersionTopic();
+    doReturn(versionTopicRef).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    doReturn(false).when(mockPartitionConsumptionState).consumeRemotely();
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldProduceToVersionTopic(mockPartitionConsumptionState),
+        "Precondition: with leaderTopic == local VT and consumeRemotely == false the record must reach the local branch");
+
+    // A record consumed from a foreign upstream/remote source; its own position is NOT a local VT position. No
+    // leaderMetadataFooter (a batch record that raced past the flag flip), so no upstream position is filed either.
+    PubSubPosition upstreamRecordPosition = mock(PubSubPosition.class);
+    PubSubTopicPartition sourceTopicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic sourceTopic = mock(PubSubTopic.class);
+    doReturn(false).when(sourceTopic).isRealTime();
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(sourceTopicPartition).when(consumerRecord).getTopicPartition();
+    doReturn(sourceTopic).when(sourceTopicPartition).getPubSubTopic();
+    doReturn(upstreamRecordPosition).when(consumerRecord).getPosition();
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.producerMetadata = new ProducerMetadata();
+    kafkaValue.leaderMetadataFooter = null;
+    doReturn(kafkaValue).when(consumerRecord).getValue();
+
+    LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset upstreamOffsetUpdate =
+        mock(LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset.class);
+    LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset lastKnownUpstream =
+        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class);
+
+    // Case 1: leader-produced record that has a corresponding upstream message. The local VT slot must advance
+    // with the local-VT producedPosition, never the foreign consumerRecord position; and no upstream position is
+    // misfiled for a record without a leaderMetadataFooter.
+    PubSubPosition producedPosition = mock(PubSubPosition.class);
+    LeaderProducedRecordContext lprcWithUpstream = mock(LeaderProducedRecordContext.class);
+    doReturn(true).when(lprcWithUpstream).hasCorrespondingUpstreamMessage();
+    doReturn(producedPosition).when(lprcWithUpstream).getProducedPosition();
+    LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset vtUpdateWithUpstream =
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class);
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        consumerRecord,
+        lprcWithUpstream,
+        vtUpdateWithUpstream,
+        upstreamOffsetUpdate,
+        lastKnownUpstream,
+        () -> "remote-broker-url",
+        false);
+    verify(vtUpdateWithUpstream, times(1)).apply(producedPosition);
+    verify(vtUpdateWithUpstream, never()).apply(upstreamRecordPosition);
+    verify(upstreamOffsetUpdate, never()).apply(any(), any(), any());
+
+    // Case 2: a leader-generated record with no corresponding upstream message (e.g. a chunk) must not advance the
+    // local VT position at all.
+    LeaderProducedRecordContext lprcChunk = mock(LeaderProducedRecordContext.class);
+    doReturn(false).when(lprcChunk).hasCorrespondingUpstreamMessage();
+    doReturn(mock(PubSubPosition.class)).when(lprcChunk).getProducedPosition();
+    LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset vtUpdateChunk =
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class);
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        consumerRecord,
+        lprcChunk,
+        vtUpdateChunk,
+        upstreamOffsetUpdate,
+        lastKnownUpstream,
+        () -> "remote-broker-url",
+        false);
+    verify(vtUpdateChunk, never()).apply(any());
+
+    // Case 3: a record directly consumed from the local VT (no leader-produced context) advances the local VT slot
+    // with its own position, which is a valid local VT position.
+    PubSubPosition localVtPosition = mock(PubSubPosition.class);
+    DefaultPubSubMessage localVtRecord = mock(DefaultPubSubMessage.class);
+    doReturn(sourceTopicPartition).when(localVtRecord).getTopicPartition();
+    doReturn(localVtPosition).when(localVtRecord).getPosition();
+    doReturn(kafkaValue).when(localVtRecord).getValue();
+    LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset vtUpdateLocal =
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class);
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        localVtRecord,
+        null,
+        vtUpdateLocal,
+        upstreamOffsetUpdate,
+        lastKnownUpstream,
+        () -> "remote-broker-url",
+        false);
+    verify(vtUpdateLocal, times(1)).apply(localVtPosition);
+  }
+
+  private static final int NEARLINE_LIMIT_BYTES = 5 * 1024 * 1024;
+
+  private void stubNearlineRecordSizeLimit(int limitBytes) {
+    doReturn(limitBytes).when(leaderFollowerStoreIngestionTask).getMaxNearlineRecordSizeBytes();
+  }
+
+  private static ChunkedValueManifestContainer containerWithAssembledSize(int ceilingBytes, int assembledSizeBytes) {
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer(ceilingBytes);
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.size = assembledSizeBytes;
+    manifest.schemaId = 1;
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    container.setManifest(manifest);
+    return container;
+  }
+
+  private static DefaultPubSubMessage mockUpdateMessage(byte[] keyBytes) {
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.UPDATE, keyBytes);
+    doReturn(kafkaKey).when(message).getKey();
+    return message;
+  }
+
+  /**
+   * The write that first takes a record over the limit is deliberately allowed through; it is the updates after it
+   * that are skipped. Rejecting the offending write would leave the last compliant value in storage, so the manifest
+   * would never report an oversized record and every later update would keep paying the full assemble-and-merge cost.
+   */
+  @Test
+  public void testTheWriteThatCrossesTheLimitIsNotItselfSkipped() throws InterruptedException {
+    setUp();
+    stubNearlineRecordSizeLimit(NEARLINE_LIMIT_BYTES);
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("growing-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, NEARLINE_LIMIT_BYTES)),
+        "The limit is inclusive, so a record exactly at it still accepts the update that will take it over");
+    assertTrue(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("growing-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, NEARLINE_LIMIT_BYTES + 1)),
+        "Once stored oversized, the manifest alone skips every subsequent update, with no server-side state");
+    verify(mockPartitionConsumptionState, never()).setTransientRecord(anyInt(), any(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void testSkippingIsDecidedPerRecordNotPerPartition() throws InterruptedException {
+    setUp();
+    stubNearlineRecordSizeLimit(NEARLINE_LIMIT_BYTES);
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("fat-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, NEARLINE_LIMIT_BYTES + 1)));
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("innocent-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, 1024)),
+        "One oversized key must not stall writes for any other key in the partition");
+  }
+
+  @Test
+  public void testUnlimitedStoreLimitLeavesReadsUnbounded() throws InterruptedException {
+    setUp();
+    stubNearlineRecordSizeLimit(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
+    ChunkedValueManifestContainer container =
+        containerWithAssembledSize(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE, Integer.MAX_VALUE);
+
+    assertFalse(container.isSizeLimitExceeded());
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("k".getBytes()),
+            container),
+        "A store that sets no nearline limit must never have an update skipped");
+  }
+
+  @Test
+  public void testUnlimitedContainerNeverFlagsOversize() {
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.size = Integer.MAX_VALUE;
+    manifest.schemaId = 1;
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    container.setManifest(manifest);
+
+    assertFalse(container.isSizeLimitExceeded(), "Read paths that declare no ceiling must be unaffected");
+    assertEquals(container.getManifest(), manifest);
   }
 }

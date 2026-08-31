@@ -6,6 +6,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.blobtransfer.ServerAndDaVinciBlobFinder;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -41,6 +42,7 @@ public class TestBlobTransferManagerBuilder {
         port,
         tmpPartitionDir.toAbsolutePath().toString(),
         5,
+        2 * 1024 * 1024,
         30,
         30,
         30,
@@ -51,9 +53,12 @@ public class TestBlobTransferManagerBuilder {
         2000000,
         2,
         5,
-        Math.max(4, Runtime.getRuntime().availableProcessors() / 5));
+        Math.max(4, Runtime.getRuntime().availableProcessors() / 5),
+        25,
+        true);
 
     BlobTransferManager blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
+        .setServerFallbackEnabled(true)
         .setClientConfig(clientConfig)
         .setCustomizedViewFuture(null)
         .setStorageMetadataService(storageMetadataService)
@@ -66,6 +71,8 @@ public class TestBlobTransferManagerBuilder {
         .build();
 
     Assert.assertNotNull(blobTransferManager);
+    Assert.assertTrue(
+        ((NettyP2PBlobTransferManager) blobTransferManager).peerFinder instanceof ServerAndDaVinciBlobFinder);
   }
 
   @Test
@@ -85,6 +92,7 @@ public class TestBlobTransferManagerBuilder {
         port,
         tmpPartitionDir.toAbsolutePath().toString(),
         5,
+        2 * 1024 * 1024,
         30,
         30,
         30,
@@ -95,7 +103,9 @@ public class TestBlobTransferManagerBuilder {
         2000000,
         2,
         5,
-        Math.max(4, Runtime.getRuntime().availableProcessors() / 5));
+        Math.max(4, Runtime.getRuntime().availableProcessors() / 5),
+        25,
+        true);
 
     // Case 1: expect exception is thrown due to both clientConfig and customizedViewFuture are not null
     try {

@@ -7,4 +7,8 @@ public interface BlobFinder extends AutoCloseable {
    */
   BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partitionId);
 
+  default boolean shouldPreservePeerOrder() {
+    return false;
+  }
+
 }

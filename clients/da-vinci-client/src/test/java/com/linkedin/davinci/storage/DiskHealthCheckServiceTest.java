@@ -29,6 +29,9 @@ public class DiskHealthCheckServiceTest {
         LogContext.forTests(VeniceComponent.SERVER.name()))) {
       diskHealthCheckService.start();
 
+      assertEquals(
+          diskHealthCheckService.getHealthCheckThread().getPriority(),
+          DiskHealthCheckService.HEALTH_CHECK_THREAD_PRIORITY);
       assertTrue(diskHealthCheckService.isDiskHealthy());
       assertNull(diskHealthCheckService.getErrorMessage());
       assertTrue(diskHealthCheckService.getDiskHealthy());

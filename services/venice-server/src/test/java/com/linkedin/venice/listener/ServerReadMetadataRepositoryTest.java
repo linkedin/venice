@@ -29,6 +29,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -141,6 +142,7 @@ public class ServerReadMetadataRepositoryTest {
     assertNotNull(versionProperties);
     assertEquals(versionProperties.getCurrentVersion(), 2);
     assertEquals(versionProperties.getPartitionCount(), 1);
+    assertEquals(versionProperties.getStorageMode(), StorageMode.INTERNAL.getValue());
     assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
     // If batch get limit is not set should use {@link Store.DEFAULT_BATCH_GET_LIMIT}
     assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), Store.DEFAULT_BATCH_GET_LIMIT);
@@ -156,6 +158,51 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.setBatchGetLimit(300);
     metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
     assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
+  }
+
+  /**
+   * A version's storage mode must survive into the metadata response, since Fast Client gates external-storage
+   * reads on it rather than on any store-level default.
+   */
+  @Test
+  public void testGetMetadataPopulatesCurrentVersionStorageMode() {
+    String storeName = "test-store-storage-mode";
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    mockStore.setStorageNodeReadQuotaEnabled(true);
+    Version v1 = new VersionImpl(storeName, 1, "test-job-id");
+    mockStore.addVersion(v1);
+    // addVersion() stamps the store-level default storageMode onto new versions, so set it afterwards.
+    v1.setStorageMode(StorageMode.DUAL_WRITE);
+    mockStore.setCurrentVersion(1);
+    String topicName = Version.composeKafkaTopic(storeName, 1);
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
+    Partition partition = mock(Partition.class);
+    when(partition.getId()).thenReturn(0);
+    doReturn(Collections.singletonList(new Instance("host1", "host1", 1234))).when(partition)
+        .getReadyToServeInstances();
+    partitionAssignment.addPartition(partition);
+
+    String schema = "\"string\"";
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, schema));
+    Mockito.when(mockSchemaRepo.getValueSchemas(storeName))
+        .thenReturn(Collections.singletonList(new SchemaEntry(0, schema)));
+    Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
+    Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
+
+    MetadataResponse metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
+    assertNotNull(metadataResponse);
+    VersionProperties versionProperties = metadataResponse.getResponseRecord().getVersionMetadata();
+    assertNotNull(versionProperties);
+    assertEquals(versionProperties.getStorageMode(), StorageMode.DUAL_WRITE.getValue());
   }
 
   @Test

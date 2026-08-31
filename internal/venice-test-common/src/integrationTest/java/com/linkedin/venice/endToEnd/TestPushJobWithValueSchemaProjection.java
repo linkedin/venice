@@ -5,9 +5,12 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_WITH_DETAILS_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1OHSupersetSchemaWithNullFirstName;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV2Schema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameWithDetailsV1OHSupersetSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -25,6 +28,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericRecord;
@@ -101,6 +105,96 @@ public class TestPushJobWithValueSchemaProjection {
           Assert.assertNull(value.getSchema().getField("age"), "Projected record should not retain the 'age' field");
         }
       });
+    }
+  }
+
+  /**
+   * Recursive OH evolution end-to-end: the writer schema has a nested {@code address} record and a {@code contacts}
+   * array of records; the input superset wraps top-level fields as [null, X], appends a top-level {@code age}, and adds
+   * extra nullable fields inside the nested record ({@code zip}) and the array element record ({@code primary}).
+   * Projection must recurse through the record, the array elements, unwrap the nullable wrappers, and drop every extra
+   * field at every level. Reading back yields clean writer-schema records.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testProjectsNestedAndArrayOHEvolutionEndToEnd() throws Exception {
+    File inputDir = Utils.getTempDataDirectory();
+    writeSimpleAvroFileWithStringToNameWithDetailsV1OHSupersetSchema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("schema-projection-nested-store");
+
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+    int writerSchemaId;
+    try (ControllerClient controllerClient =
+        createStoreForJob(veniceCluster, STRING_SCHEMA.toString(), NAME_WITH_DETAILS_V1_SCHEMA.toString(), props)) {
+      SchemaResponse writerSchemaIdResponse =
+          controllerClient.getValueSchemaID(storeName, NAME_WITH_DETAILS_V1_SCHEMA.toString());
+      Assert.assertFalse(writerSchemaIdResponse.isError(), writerSchemaIdResponse.getError());
+      writerSchemaId = writerSchemaIdResponse.getId();
+      Assert.assertTrue(writerSchemaId > 0);
+    }
+
+    props.setProperty(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, Integer.toString(writerSchemaId));
+
+    try (VenicePushJob job = new VenicePushJob("test-push-projection-nested", props)) {
+      job.run();
+    }
+
+    try (AvroGenericStoreClient<String, GenericRecord> avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, true, true, () -> {
+        for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; i++) {
+          GenericRecord value = avroClient.get(Integer.toString(i)).get();
+          Assert.assertNotNull(value, "Missing value for key: " + i);
+          // Top-level nullable wrappers unwrapped; extra top-level "age" dropped.
+          Assert.assertEquals(value.get("firstName").toString(), "first_name_" + i);
+          Assert.assertEquals(value.get("lastName").toString(), "last_name_" + i);
+          Assert.assertNull(value.getSchema().getField("age"), "extra top-level field must be dropped");
+          // Nested record projected: city retained, extra "zip" dropped.
+          GenericRecord address = (GenericRecord) value.get("address");
+          Assert.assertEquals(address.get("city").toString(), "city_" + i);
+          Assert.assertNull(address.getSchema().getField("zip"), "extra nested field must be dropped");
+          // Array element record projected: kind retained, extra "primary" dropped.
+          @SuppressWarnings("unchecked")
+          List<GenericRecord> contacts = (List<GenericRecord>) value.get("contacts");
+          Assert.assertEquals(contacts.size(), 1);
+          Assert.assertEquals(contacts.get(0).get("kind").toString(), "kind_" + i);
+          Assert
+              .assertNull(contacts.get(0).getSchema().getField("primary"), "extra array-element field must be dropped");
+        }
+      });
+    }
+  }
+
+  /**
+   * Null value into a non-nullable writer field: the input wraps {@code firstName} as {@code [null, string]} and a
+   * record actually carries null, while the writer keeps {@code firstName} non-nullable. Schema-level projection
+   * validation passes (the nullability drift is accepted), so the push proceeds; the null is copied through during
+   * projection and then fails when the record is serialized against the (non-nullable) writer schema. The push must
+   * therefore fail rather than silently write bad data.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testProjectionFailsWhenNullableInputValueIsNullForNonNullableWriterField() throws Exception {
+    File inputDir = Utils.getTempDataDirectory();
+    // Input data uses the OH-style superset of V1, but firstName (nullable in the input) is null.
+    writeSimpleAvroFileWithStringToNameRecordV1OHSupersetSchemaWithNullFirstName(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("schema-projection-null-value-store");
+
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+    int writerSchemaId;
+    try (ControllerClient controllerClient =
+        createStoreForJob(veniceCluster, STRING_SCHEMA.toString(), NAME_RECORD_V1_SCHEMA.toString(), props)) {
+      SchemaResponse writerSchemaIdResponse =
+          controllerClient.getValueSchemaID(storeName, NAME_RECORD_V1_SCHEMA.toString());
+      Assert.assertFalse(writerSchemaIdResponse.isError(), writerSchemaIdResponse.getError());
+      writerSchemaId = writerSchemaIdResponse.getId();
+      Assert.assertTrue(writerSchemaId > 0);
+    }
+
+    props.setProperty(TARGET_WRITER_VALUE_SCHEMA_ID_PROP, Integer.toString(writerSchemaId));
+    try (VenicePushJob job = new VenicePushJob("test-push-projection-null-value", props)) {
+      // The job must fail; the null firstName cannot be serialized against the non-nullable writer schema.
+      Assert.expectThrows(VeniceException.class, job::run);
     }
   }
 

@@ -22,12 +22,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_WRIT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
@@ -63,6 +65,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.VALIDATE_STORE_DELETED;
 
 import com.linkedin.venice.HttpConstants;
@@ -111,6 +114,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
@@ -1111,6 +1115,43 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setName(store);
         veniceResponse.setCluster(cluster);
         veniceResponse.setRegionToStorageMode(serialized);
+      }
+    };
+  }
+
+  /**
+   * @see Admin#updateStoreVersionStorageMode(String, String, int, StorageMode, String, VersionStorageModeUpdateReason)
+   */
+  public Route updateStoreVersionStorageMode(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        if (!checkIsAllowListUser(
+            request,
+            veniceResponse,
+            () -> isAllowListUser(request) || hasWriteAccessToTopic(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, UPDATE_STORE_VERSION_STORAGE_MODE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+
+        try {
+          int version = Integer.parseInt(request.queryParams(VERSION));
+          StorageMode storageMode = StorageMode.valueOf(request.queryParams(STORAGE_MODE));
+          String regionsFilter = request.queryParamOrDefault(REGIONS_FILTER, "");
+          // An absent or unrecognized reason resolves to UNSPECIFIED so an older client never fails here.
+          VersionStorageModeUpdateReason reason = VersionStorageModeUpdateReason
+              .parseOrDefault(request.queryParamOrDefault(VERSION_STORAGE_MODE_UPDATE_REASON, ""));
+          admin.updateStoreVersionStorageMode(clusterName, storeName, version, storageMode, regionsFilter, reason);
+        } catch (Exception e) {
+          veniceResponse.setError(
+              "Failed when updating version storage mode for store " + storeName + ". Exception type: "
+                  + e.getClass().toString() + ". Detailed message = " + e.getMessage(),
+              e);
+        }
       }
     };
   }

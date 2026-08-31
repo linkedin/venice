@@ -6,11 +6,17 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.EXTERNAL_STORAGE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.VENICE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.getMetric;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.putMetric;
 import static com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER;
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
+import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
@@ -25,9 +31,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_BATCH_BYTES_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
@@ -62,6 +70,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -76,6 +86,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_PRE_WRITE_QUOTA_CHECK;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -118,11 +129,13 @@ import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
+import com.linkedin.venice.hadoop.exceptions.VeniceStorageQuotaExceededException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageWriteThrottler;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.hadoop.validation.NoOpValidator;
@@ -143,6 +156,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -405,8 +419,10 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-    pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
-    pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
+    pushJobSettingToReturn.controllerRetries =
+        props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, DEFAULT_CONTROLLER_REQUEST_RETRY_ATTEMPTS);
+    pushJobSettingToReturn.controllerStatusPollRetries =
+        props.getInt(POLL_STATUS_RETRY_ATTEMPTS, DEFAULT_POLL_STATUS_RETRY_ATTEMPTS);
     pushJobSettingToReturn.pollJobStatusIntervalMs =
         props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
     pushJobSettingToReturn.jobStatusInUnknownStateTimeoutMs =
@@ -482,6 +498,7 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, false);
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
+    pushJobSettingToReturn.sparkPreWriteQuotaCheckEnabled = props.getBoolean(SPARK_PRE_WRITE_QUOTA_CHECK, false);
     pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
         props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
     if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled
@@ -855,13 +872,8 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          Properties kafkaConsumerProperties = new Properties();
-          if (pushJobSetting.enableSSL) {
-            kafkaConsumerProperties.putAll(this.sslProperties.get());
-          }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
           ByteBuffer sourceDict = DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -883,10 +895,14 @@ public class VenicePushJob implements AutoCloseable {
           props,
           optionalCompressionDictionary);
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
-
       // Fetch the version config for separateRealTimeTopicEnabled after version creation,
       Version createdVersion = getStoreVersion(pushJobSetting.storeName, pushJobSetting.version);
       pushJobSetting.versionSeparateRealTimeTopicEnabled = createdVersion.isSeparateRealTimeTopicEnabled();
+
+      // Fail fast here (driver-side, before the data-writer job launches) if external-storage dual-write
+      // throttling is misconfigured for the partition count just assigned to this version. Incremental-push write
+      // quota is validated later, when the data-writer job config is assembled (also driver-side, pre-launch).
+      validateExternalStorageDualWriteQuota(pushJobSetting);
 
       // Update and send push job details with new info to the controller
       pushJobDetails.partitionCount = pushJobSetting.partitionCount;
@@ -936,6 +952,7 @@ public class VenicePushJob implements AutoCloseable {
            */
         }
         runJobWithKillDetection();
+        downgradeFailedExternalStorageRegionsToInternalBeforeEndOfPush();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
@@ -1352,6 +1369,10 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.info("Configuring data writer job");
       dataWriterComputeJob = getDataWriterComputeJob();
       dataWriterComputeJob.configure(props, pushJobSetting);
+      // Give the data writer job a way to read the up-to-date store quota. The Spark pre-write check uses
+      // this to evaluate the input size against the current quota (honoring a quota changed while the push
+      // was running) instead of the value captured at job configuration time.
+      dataWriterComputeJob.setCurrentStorageQuotaSupplier(this::refreshAndGetCurrentStorageQuota);
       LOGGER.info("Triggering data writer job");
       dataWriterComputeJob.runJob();
       if (dataWriterComputeJob.getStatus() != ComputeJob.Status.SUCCEEDED) {
@@ -1369,6 +1390,9 @@ public class VenicePushJob implements AutoCloseable {
         } else {
           if (t instanceof VeniceInvalidInputException) {
             updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+          } else if (t instanceof VeniceStorageQuotaExceededException) {
+            // The Spark data writer's pre-write quota check failed the push before writing.
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
           }
 
           throwVeniceException(t);
@@ -1644,12 +1668,35 @@ public class VenicePushJob implements AutoCloseable {
     return Optional.of(emptyPushZstdDictionary.get());
   }
 
+  private VeniceProperties getSourceDictionaryConsumerProperties() {
+    return getSourceDictionaryConsumerProperties(pushJobSetting.repushSourcePubsubBroker);
+  }
+
+  @VisibleForTesting
+  VeniceProperties getSourceDictionaryConsumerProperties(String sourcePubsubBroker) {
+    return buildSourceDictionaryConsumerProperties(
+        props,
+        pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
+        sourcePubsubBroker);
+  }
+
+  @VisibleForTesting
+  static VeniceProperties buildSourceDictionaryConsumerProperties(
+      VeniceProperties jobProperties,
+      Properties sslProperties,
+      String sourcePubsubBroker) {
+    Properties consumerProperties = jobProperties.toProperties();
+    consumerProperties.putAll(sslProperties);
+    consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, sourcePubsubBroker);
+    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, sourcePubsubBroker);
+    return new VeniceProperties(consumerProperties);
+  }
+
   private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
         .setNewKMESchemasFromController(pushJobSetting.newKmeSchemasFromController)
-        .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
         .setCompressionDictSize(
             props.getInt(
                 COMPRESSION_DICTIONARY_SIZE_LIMIT,
@@ -1664,19 +1711,14 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
           paramBuilder.setKafkaInputBroker(pushJobSetting.repushSourcePubsubBroker)
               .setTopicName(pushJobSetting.kafkaInputTopic)
+              .setConsumerProperties(getSourceDictionaryConsumerProperties().toProperties())
               .setSourceVersionCompressionStrategy(pushJobSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          // set up ssl properties and kafka consumer properties
-          Properties kafkaConsumerProperties = new Properties();
-          if (pushJobSetting.enableSSL) {
-            kafkaConsumerProperties.putAll(this.sslProperties.get());
-          }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
           return DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
         }
       }
       LOGGER.info(
@@ -1718,8 +1760,9 @@ public class VenicePushJob implements AutoCloseable {
           "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
           sourceTopicName,
           sourceKafkaUrl);
-      paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
+      paramBuilder.setKafkaInputBroker(sourceKafkaUrl)
           .setTopicName(sourceTopicName)
+          .setConsumerProperties(getSourceDictionaryConsumerProperties(sourceKafkaUrl).toProperties())
           .setSourceVersionCompressionStrategy(
               repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
       KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
@@ -1769,6 +1812,10 @@ public class VenicePushJob implements AutoCloseable {
     pushJobDetails.totalKeyBytes = -1;
     pushJobDetails.totalRawValueBytes = -1;
     pushJobDetails.totalCompressedValueBytes = -1;
+    // Left null on purpose, matching the v6 schema default: "this push reported no additional metrics".
+    // Only pushes that actually run the dual-write path populate any key, and leaving the map null keeps the
+    // controller from recording a meaningless zero-millisecond observation for every non-dual-write push.
+    pushJobDetails.additionalPushMetrics = null;
     pushJobDetails.failureDetails = "";
     pushJobDetails.pushJobLatestCheckpoint = PushJobCheckpoints.INITIALIZE_PUSH_JOB.getValue();
     pushJobDetails.pushJobConfigs = Collections.singletonMap(
@@ -1788,6 +1835,63 @@ public class VenicePushJob implements AutoCloseable {
       return Collections.emptyMap();
     }
     return dataWriterComputeJob.getTaskTracker().getPerPartitionRecordCounts();
+  }
+
+  private Set<String> getFailedExternalStorageRegions() {
+    String topicName = Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version);
+    if (dataWriterComputeJob == null || dataWriterComputeJob.getTaskTracker() == null) {
+      LOGGER
+          .warn("Cannot retrieve failed external-storage regions for topic: {}: no task tracker available", topicName);
+      return Collections.emptySet();
+    }
+    Set<String> failedRegions = dataWriterComputeJob.getTaskTracker().getFailedExternalStorageRegions();
+    return failedRegions == null ? Collections.emptySet() : failedRegions;
+  }
+
+  private void downgradeFailedExternalStorageRegionsToInternalBeforeEndOfPush() {
+    Set<String> failedRegions = getFailedExternalStorageRegions();
+    if (failedRegions.isEmpty()) {
+      return;
+    }
+    List<String> sortedFailedRegions = new ArrayList<>(failedRegions);
+    Collections.sort(sortedFailedRegions);
+    String regionsFilter = String.join(",", sortedFailedRegions);
+    LOGGER.warn(
+        "External-storage dual-write exhausted retries in regions {} for store {} v{}. "
+            + "Downgrading those version storage modes to INTERNAL before EOP.",
+        sortedFailedRegions,
+        pushJobSetting.storeName,
+        pushJobSetting.version);
+    String failureContext = "Failed to downgrade version storage mode to INTERNAL for store " + pushJobSetting.storeName
+        + " v" + pushJobSetting.version + " in regions " + sortedFailedRegions;
+    ControllerResponse response;
+    try {
+      response = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          client -> client.updateStoreVersionStorageMode(
+              pushJobSetting.storeName,
+              pushJobSetting.version,
+              StorageMode.INTERNAL,
+              regionsFilter,
+              VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE));
+    } catch (Exception e) {
+      throw new VeniceException(
+          failureContext + ". The controller API may be unavailable or not deployed. Root cause: "
+              + getRootCauseMessage(e),
+          e);
+    }
+    if (response.isError()) {
+      throw new VeniceException(failureContext + ". Controller error: " + response.getError());
+    }
+  }
+
+  private static String getRootCauseMessage(Throwable throwable) {
+    Throwable rootCause = throwable;
+    while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+      rootCause = rootCause.getCause();
+    }
+    return rootCause.getMessage() == null ? rootCause.toString() : rootCause.getMessage();
   }
 
   private void updatePushJobDetailsWithDataWriterTracker() {
@@ -1816,6 +1920,27 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
       // size of largest uncompressed value
       pushJobDetails.largestUncompressedValueSizeBytes = taskTracker.getLargestUncompressedValueSize();
+      /*
+       * Summed data-writer task durations for the two write legs, reported through the additionalPushMetrics
+       * map. These are NOT the push job's wall-clock duration (that is pushJobDetails.jobDurationInMs): every
+       * successful task contributes its own elapsed time, so with N parallel tasks the totals can be up to N
+       * times the push duration. Only the dual-write path measures them, so a push that never wrote to
+       * external storage leaves the key absent rather than reporting a zero — which is also how a controller
+       * reading an older v5 record sees it, since v5 resolves the whole map to null.
+       *
+       * Caveat: the ">0" gate below conflates "never measured" with "measured, took under a millisecond" —
+       * both currently report as absent. The tracker interface has no explicit "was this leg tracked" signal
+       * (its defaults are 0, same as a genuine sub-millisecond duration), so a real fix needs that signal
+       * threaded through before this can safely become ">=0".
+       */
+      long externalStorageWriteTimeMs = taskTracker.getExternalStorageWriteTimeMs();
+      if (externalStorageWriteTimeMs > 0) {
+        putMetric(pushJobDetails, EXTERNAL_STORAGE_WRITE_TIME_MS, externalStorageWriteTimeMs);
+      }
+      long veniceWriteTimeMs = taskTracker.getVeniceWriteTimeMs();
+      if (veniceWriteTimeMs > 0) {
+        putMetric(pushJobDetails, VENICE_WRITE_TIME_MS, veniceWriteTimeMs);
+      }
       List<String> summaryLogLines = new ArrayList<>();
       summaryLogLines.add("Total number of records: " + pushJobDetails.totalNumberOfRecords);
       summaryLogLines
@@ -1856,6 +1981,15 @@ public class VenicePushJob implements AutoCloseable {
       long taskIncrementalPushThrottledTimeMs = taskTracker.getIncrementalPushThrottledTimeMs();
       if (taskIncrementalPushThrottledTimeMs > 0) {
         summaryLogLines.add("Incremental push total throttle time: " + taskIncrementalPushThrottledTimeMs + " ms");
+      }
+      Long reportedExternalStorageWriteTimeMs = getMetric(pushJobDetails, EXTERNAL_STORAGE_WRITE_TIME_MS);
+      if (reportedExternalStorageWriteTimeMs != null) {
+        summaryLogLines
+            .add("External storage write time (summed across tasks): " + reportedExternalStorageWriteTimeMs + " ms");
+      }
+      Long reportedVeniceWriteTimeMs = getMetric(pushJobDetails, VENICE_WRITE_TIME_MS);
+      if (reportedVeniceWriteTimeMs != null) {
+        summaryLogLines.add("Venice write time (summed across tasks): " + reportedVeniceWriteTimeMs + " ms");
       }
 
       LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));
@@ -1903,7 +2037,13 @@ public class VenicePushJob implements AutoCloseable {
     // Quota exceeded
     final long totalInputDataSizeInBytes =
         dataWriterTaskTracker.getTotalKeySize() + dataWriterTaskTracker.getTotalValueSize();
-    if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
+    // Skip this post-write quota check for engines that already validate the quota before writing (the
+    // Spark data writer's pre-write intermediary stage). A successful job from such an engine means the
+    // quota was already satisfied, so re-checking here is redundant. MapReduce has no pre-write check, so
+    // it keeps this as the authoritative quota gate.
+    boolean quotaAlreadyCheckedBeforeWrite =
+        dataWriterComputeJob != null && dataWriterComputeJob.performsPreWriteQuotaCheck();
+    if (!quotaAlreadyCheckedBeforeWrite && inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
       Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
       return String.format(
@@ -1950,6 +2090,45 @@ public class VenicePushJob implements AutoCloseable {
           formatRecordTooLargeCompressionStatus());
     }
     return null;
+  }
+
+  /**
+   * Refresh the store storage quota from the controller and return the current value in bytes. Provided to
+   * the data writer job (via {@link DataWriterComputeJob#setCurrentStorageQuotaSupplier}) so the Spark
+   * pre-write quota check evaluates against the up-to-date quota — honoring a quota changed while the push
+   * was running — rather than the value captured at job start. On any error, the job-start value is retained.
+   */
+  long refreshAndGetCurrentStorageQuota() {
+    // Repush disables the quota check via an unlimited quota; don't refresh (and don't re-enable it).
+    if (pushJobSetting.isSourceKafka) {
+      return pushJobSetting.storeStorageQuota;
+    }
+    try {
+      StoreResponse storeResponse = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          c -> c.getStore(pushJobSetting.storeName));
+      if (storeResponse.isError()) {
+        LOGGER.warn(
+            "Failed to refresh storage quota for store {} from controller: {}. Using the value from job start.",
+            pushJobSetting.storeName,
+            storeResponse.getError());
+        return pushJobSetting.storeStorageQuota;
+      }
+      long freshQuota = storeResponse.getStore().getStorageQuotaInByte();
+      if (freshQuota != pushJobSetting.storeStorageQuota) {
+        LOGGER.info(
+            "Storage quota for store {} changed during push from {} to {}.",
+            pushJobSetting.storeName,
+            pushJobSetting.storeStorageQuota,
+            freshQuota);
+        pushJobSetting.storeStorageQuota = freshQuota;
+      }
+      return pushJobSetting.storeStorageQuota;
+    } catch (Exception e) {
+      LOGGER.warn("Failed to refresh storage quota from controller. Using the value from job start.", e);
+      return pushJobSetting.storeStorageQuota;
+    }
   }
 
   /* Helper function to format part of the record too large compression status */
@@ -2389,8 +2568,11 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Configure projection of input records down to a user-specified registered writer (target) value schema, used when
    * the input value schema does not match any registered value schema. Fetches the writer schema by ID, validates that
-   * the input value schema is a strict superset of it, and enables
-   * {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}-based projection.
+   * the input value schema is a projection-compatible superset of it (it may add fields and wrap fields as nullable
+   * unions), and enables {@link com.linkedin.venice.schema.projection.VeniceSchemaProjector}-based projection.
+   *
+   * <p>Note: this is an internal / advanced-use flow (see {@code TARGET_WRITER_VALUE_SCHEMA_ID_PROP}), not intended
+   * for regular push jobs.
    */
   private void configureValueSchemaProjection(ControllerClient controllerClient, PushJobSetting setting) {
     int writerSchemaId = setting.targetWriterValueSchemaId;
@@ -2410,7 +2592,7 @@ public class VenicePushJob implements AutoCloseable {
               + "\nError from the server: " + writerSchemaResponse.getError());
     }
     Schema writerSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(writerSchemaResponse.getSchemaStr());
-    if (!validateSubsetValueSchema(writerSchema, setting.valueSchemaString)) {
+    if (!validateSubsetValueSchemaForProjection(writerSchema, setting.valueSchemaString)) {
       throw new VeniceSchemaMismatchException(
           "Input value schema is not a superset of the target writer value schema (id: " + writerSchemaId
               + "). Input value schema: " + setting.valueSchemaString + " , writer schema: "
@@ -2643,6 +2825,22 @@ public class VenicePushJob implements AutoCloseable {
 
   private Version.PushType getPushType(PushJobSetting pushJobSetting) {
     return pushJobSetting.isIncrementalPush ? Version.PushType.INCREMENTAL : Version.PushType.BATCH;
+  }
+
+  /**
+   * Fail fast on the driver — before launching the data-writer job and allocating its cluster resources — when
+   * external-storage dual-write throttling is misconfigured for the partition count assigned to this version.
+   * Partition count is only known after {@link #createNewStoreVersion}, so this is the earliest it can run (not
+   * before topic creation). The executor-side throttler re-validates as a backstop.
+   */
+  private void validateExternalStorageDualWriteQuota(PushJobSetting setting) {
+    if (setting.dualWriteTargetRegions.isEmpty()) {
+      return;
+    }
+    ExternalStorageWriteThrottler.validateQuota(
+        props.getLong(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND, -1),
+        props.getLong(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND, -1),
+        setting.partitionCount);
   }
 
   /**

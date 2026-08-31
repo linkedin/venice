@@ -44,6 +44,13 @@ public class ServerStatsContext {
   private final AggServerHttpRequestStats computeStats;
   private AggServerHttpRequestStats currentStats;
   private RequestType requestType = RequestType.SINGLE_GET;
+  /**
+   * Best-effort, observability-only copy of the raw request URI, used by {@link StatsHandler} when logging an error
+   * that was recorded without a store attribution. There is currently no handler upstream of the SSL/ACL rejection
+   * points that can populate this for those cases, so it is frequently {@code null}; the logging treats it as optional
+   * and never relies on it being present.
+   */
+  private String requestUri = null;
 
   // a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
   // Set the startTimeInNS in ChannelRead if it is the first package within a HttpRequest.
@@ -86,6 +93,7 @@ public class ServerStatsContext {
     isMisroutedStoreVersion = false;
     flushLatency = -1;
     responseSize = -1;
+    requestUri = null;
 
     newRequest = false;
   }
@@ -120,6 +128,18 @@ public class ServerStatsContext {
 
   public void setStoreName(String name) {
     this.storeName = name;
+  }
+
+  public String getRequestUri() {
+    return requestUri;
+  }
+
+  /**
+   * Best-effort: records the raw request URI for observability only (see {@link #requestUri}). May be left unset, in
+   * which case {@link StatsHandler} simply logs the error without it.
+   */
+  public void setRequestUri(String requestUri) {
+    this.requestUri = requestUri;
   }
 
   public void setMetadataRequest(boolean metadataRequest) {

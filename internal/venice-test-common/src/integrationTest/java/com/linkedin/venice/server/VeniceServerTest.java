@@ -63,7 +63,9 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -85,6 +87,7 @@ import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -269,8 +272,9 @@ public class VeniceServerTest {
     }
   }
 
-  @Test
-  public void testMetadataFetchRequest() throws ExecutionException, InterruptedException, IOException {
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_VERY_LONG_TEST_MS)
+  public void testMetadataFetchRequest()
+      throws ExecutionException, InterruptedException, IOException, TimeoutException {
     Utils.thisIsLocalhost();
     int servers = 6;
     int replicationFactor = 2;
@@ -319,14 +323,29 @@ public class VeniceServerTest {
                   .isError()));
       ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
+      // Wait for the store config update (storageNodeReadQuotaEnabled) to propagate to servers.
+      // The update travels asynchronously via ZK; without this wait, servers may return 403.
       client.start();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        HttpGet probeRequest = new HttpGet(
+            "http://" + cluster.getVeniceServers().get(0).getAddress() + "/"
+                + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
+        Future<HttpResponse> future = client.execute(probeRequest, null);
+        try {
+          HttpResponse probeResponse = future.get(10, TimeUnit.SECONDS);
+          EntityUtils.consume(probeResponse.getEntity());
+          Assert.assertEquals(probeResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
+        } catch (TimeoutException e) {
+          future.cancel(true);
+          throw new AssertionError("Probe timed out — server not ready yet", e);
+        }
+      });
 
       for (int i = 0; i < servers; i++) {
         HttpGet httpsRequest = new HttpGet(
             "http://" + cluster.getVeniceServers().get(i).getAddress() + "/"
                 + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
-        HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
-        Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
+        HttpResponse httpsResponse = client.execute(httpsRequest, null).get(30, TimeUnit.SECONDS);
 
         try (InputStream bodyStream = httpsResponse.getEntity().getContent()) {
           byte[] body = IOUtils.toByteArray(bodyStream);
@@ -370,8 +389,7 @@ public class VeniceServerTest {
         httpsRequest = new HttpGet(
             "http://" + cluster.getVeniceServers().get(i).getAddress() + "/"
                 + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + storeName);
-        httpsResponse = client.execute(httpsRequest, null).get();
-        Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
+        httpsResponse = client.execute(httpsRequest, null).get(30, TimeUnit.SECONDS);
         try (InputStream bodyStream = httpsResponse.getEntity().getContent()) {
           byte[] body = IOUtils.toByteArray(bodyStream);
           Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);

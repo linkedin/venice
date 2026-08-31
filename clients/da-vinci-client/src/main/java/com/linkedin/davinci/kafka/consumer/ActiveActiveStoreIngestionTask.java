@@ -570,7 +570,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         throw new VeniceMessageException(
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
-    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    // The read ceiling is declared only for partial updates. Full PUTs and DELETEs must always read the complete old
+    // value, because view writers such as a ComplexVeniceWriter materialized view depend on it to route correctly.
+    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer(
+        msgType == MessageType.UPDATE ? getMaxNearlineRecordSizeBytes() : ChunkedValueManifestContainer.UNLIMITED_SIZE);
     Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
         () -> getValueBytesForKey(
             partitionConsumptionState,
@@ -637,6 +640,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
 
       case UPDATE:
+        oldValueProvider.get(); // forced here to populate the manifest
+        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
+          // the stored value is already over the limit, so it is neither assembled nor merged
+          // merging anyway would mutate the RMD timestamp in-place, and a transient cache hit shares that record by
+          // reference, so a later PUT or DELETE would lose conflict resolution against a value that was never written
+          return buildIgnoredMergeConflictResult(
+              oldValueProvider,
+              oldValueByteBufferProvider,
+              rmdWithValueSchemaID,
+              valueManifestContainer);
+        }
         mergeConflictResult = mergeConflictResolver.update(
             oldValueByteBufferProvider,
             rmdWithValueSchemaID,
@@ -659,18 +673,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
       aggVersionedIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
-      return new PubSubMessageProcessedResult(
-          new MergeConflictResultWrapper(
-              mergeConflictResult,
-              oldValueProvider,
-              oldValueByteBufferProvider,
-              false,
-              ACTIVE_KEY_COUNT_NOT_TRACKED, // ignored update — no signal computed
-              rmdWithValueSchemaID,
-              valueManifestContainer,
-              null,
-              null,
-              (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
+      return buildIgnoredMergeConflictResult(
+          oldValueProvider,
+          oldValueByteBufferProvider,
+          rmdWithValueSchemaID,
+          valueManifestContainer);
     } else {
       // If rmdWithValueSchemaID is not null this implies Venice has processed this key before
       // it will be produced to VT with as a duplicate key message. emit this info for log compaction
@@ -742,6 +749,30 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               updatedRmdBytes,
               (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
     }
+  }
+
+  /**
+   * Build a result that carries no new value, so the produce path writes nothing for this record. Used both when the
+   * update lost conflict resolution and when it is skipped for exceeding the nearline record size limit; the two are
+   * distinguished by their own metrics, not by the result.
+   */
+  private PubSubMessageProcessedResult buildIgnoredMergeConflictResult(
+      Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider,
+      Lazy<ByteBuffer> oldValueByteBufferProvider,
+      RmdWithValueSchemaId rmdWithValueSchemaID,
+      ChunkedValueManifestContainer valueManifestContainer) {
+    return new PubSubMessageProcessedResult(
+        new MergeConflictResultWrapper(
+            MergeConflictResult.getIgnoredResult(),
+            oldValueProvider,
+            oldValueByteBufferProvider,
+            false,
+            ACTIVE_KEY_COUNT_NOT_TRACKED, // ignored update — no signal computed
+            rmdWithValueSchemaID,
+            valueManifestContainer,
+            null,
+            null,
+            (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
   }
 
   // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after

@@ -1,8 +1,5 @@
 package com.linkedin.venice.exceptions;
 
-import org.apache.http.HttpStatus;
-
-
 /**
  * Base exception that all other Venice exceptions extend
  */
@@ -42,11 +39,12 @@ public class VeniceException extends RuntimeException {
 
   /**
    * If this exception is caught in handling an http request, what status code should be returned?
-   * Exceptions that extend VeniceException can override this for different behavior
-   * @return 500 (Internal Server Error)
+   * By default this is derived from the {@link ErrorType} set on the exception (see
+   * {@link ErrorType#getHttpStatusCode()}), which defaults to 500 (Internal Server Error) for
+   * {@link ErrorType#GENERAL_ERROR}. Exceptions that extend VeniceException can override this for different behavior.
    */
   public int getHttpStatusCode() {
-    return HttpStatus.SC_INTERNAL_SERVER_ERROR;
+    return errorType.getHttpStatusCode();
   }
 
   /**

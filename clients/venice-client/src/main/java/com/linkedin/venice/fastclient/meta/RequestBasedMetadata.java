@@ -27,6 +27,7 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -57,7 +58,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -86,6 +89,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final long connWarmupTimeoutInSeconds;
   /** scheduler to run {@link #refresh()} to periodically update metadata */
   private ScheduledExecutorService scheduler;
+  /** The pending scheduled refresh task; stored so it can be cancelled during {@link #close()} */
+  private volatile ScheduledFuture<?> scheduledRefreshFuture;
   /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
    * Using a new ExecutorService rather than CompletableFuture's default one to not affect
    * the read requests happening in parallel.
@@ -105,6 +110,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, CompressionStrategy> versionCompressionStrategyMap = new VeniceConcurrentHashMap<>();
+  // Keyed by version rather than a scalar because a fetched version switch can be deferred, and the serving version
+  // must never be paired with another version's storage mode.
+  private final Map<Integer, StorageMode> versionStorageModeMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient d2TransportClient;
@@ -460,6 +468,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionCountMap.put(fetchedCurrentVersion, partitionCount);
       versionCompressionStrategyMap
           .put(fetchedCurrentVersion, CompressionStrategy.valueOf(versionMetadata.getCompressionStrategy()));
+      versionStorageModeMap.put(fetchedCurrentVersion, decodeStorageMode(versionMetadata.getStorageMode()));
 
       // Update readyToServeInstanceMap
       Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
@@ -529,6 +538,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionCompressionStrategyMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      versionStorageModeMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
 
       /*
        * Reconcile instance-health tracking with the live serving set (all active versions' replicas) so departed
@@ -716,6 +726,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           LOGGER.error("Listener callback threw for store {}; continuing with remaining callbacks", storeName, t);
         }
       }
+    } catch (InterruptedException e) {
+      // Interrupted during shutdown — restore the flag so the executor can terminate cleanly.
+      Thread.currentThread().interrupt();
     } catch (VeniceClientException clientException) {
       if (clientException.getCause() instanceof VeniceClientHttpException) {
         VeniceClientHttpException clientHttpException = (VeniceClientHttpException) clientException.getCause();
@@ -728,10 +741,17 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       logRefreshException(e);
     } finally {
-      scheduler.schedule(
-          this::refresh,
-          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
-          TimeUnit.SECONDS);
+      try {
+        if (!scheduler.isShutdown()) {
+          scheduledRefreshFuture = scheduler.schedule(
+              this::refresh,
+              isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
+              TimeUnit.SECONDS);
+        }
+      } catch (RejectedExecutionException e) {
+        // Scheduler was shut down between the isShutdown() check and the schedule() call;
+        // this is expected during close() and can be safely ignored.
+      }
     }
   }
 
@@ -745,19 +765,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public void close() throws IOException {
-    scheduler.shutdown();
-    try {
-      if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
-        scheduler.shutdownNow();
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+    // Cancel the pending metadata refresh task — interrupt even if mid-execution since the client
+    // is shutting down and the refresh result would be discarded anyway.
+    ScheduledFuture<?> pendingRefresh = scheduledRefreshFuture;
+    if (pendingRefresh != null) {
+      pendingRefresh.cancel(true);
     }
-    h2ConnWarmupExecutorService.shutdown();
+    scheduler.shutdownNow();
+    h2ConnWarmupExecutorService.shutdownNow();
     try {
-      if (!h2ConnWarmupExecutorService.awaitTermination(60, TimeUnit.SECONDS)) {
-        h2ConnWarmupExecutorService.shutdownNow();
-      }
+      // Brief wait for interrupted threads to complete their catch/finally blocks.
+      scheduler.awaitTermination(1, TimeUnit.SECONDS);
+      h2ConnWarmupExecutorService.awaitTermination(1, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
@@ -887,12 +906,23 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * observes them — the wire field is an {@code int} with no enum constraint and a throw here would break the
    * entire refresh loop.
    *
-   * <p>Must be invoked from within {@link #updateCache(boolean)}'s {@code synchronized} region — both fields read
-   * here ({@link #batchGetLimit}, {@link #externalStorageReadModeRaw}) are written under that monitor and must be
-   * observed as a consistent snapshot.
+   * <p>{@code currentVersionStorageMode} is resolved against {@link #currentVersion} — the version actually being
+   * served — rather than the just-fetched one, because {@link #updateCache(boolean)} can defer adopting a fetched
+   * current version (e.g. its partition resources are not ready yet). It falls back to INTERNAL when the served
+   * version has no recorded entry, which is also what pre-v4 servers yield via the Avro schema default; either way
+   * external-storage reads stay gated off until the storage mode is known to be dual-write or external.
+   *
+   * <p>Must be invoked from within {@link #updateCache(boolean)}'s {@code synchronized} region — all fields read
+   * here ({@link #batchGetLimit}, {@link #externalStorageReadModeRaw}, {@link #versionStorageModeMap}) are written
+   * under that monitor and must be observed as a consistent snapshot.
    */
   private StoreConfigSnapshot buildStoreConfigSnapshot() {
-    return new StoreConfigSnapshot(batchGetLimit.get(), decodeExternalStorageReadMode(externalStorageReadModeRaw));
+    StorageMode servingVersionStorageMode =
+        versionStorageModeMap.getOrDefault(currentVersion.get(), StorageMode.INTERNAL);
+    return new StoreConfigSnapshot(
+        batchGetLimit.get(),
+        decodeExternalStorageReadMode(externalStorageReadModeRaw),
+        servingVersionStorageMode);
   }
 
   private ExternalStorageReadMode decodeExternalStorageReadMode(int raw) {
@@ -905,6 +935,19 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           raw,
           storeName);
       return ExternalStorageReadMode.VENICE_ONLY;
+    }
+  }
+
+  private StorageMode decodeStorageMode(int raw) {
+    try {
+      return StorageMode.valueOf(raw);
+    } catch (VeniceException e) {
+      LOGGER.warn(
+          "Unknown current-version storageMode value {} from metadata response for store: {}; coercing to "
+              + "INTERNAL. This Fast Client may be behind the server's StorageMode enum.",
+          raw,
+          storeName);
+      return StorageMode.INTERNAL;
     }
   }
 

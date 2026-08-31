@@ -72,6 +72,7 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Clos
       String clusterName,
       String storeName,
       int versionNumber,
+      int previousVersion,
       String regionName,
       Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {

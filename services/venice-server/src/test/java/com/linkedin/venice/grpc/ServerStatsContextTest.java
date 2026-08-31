@@ -15,8 +15,6 @@ import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.ParallelMultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.stats.ComputeResponseStats;
-import com.linkedin.venice.listener.response.stats.ComputeResponseStatsWithSizeProfiling;
-import com.linkedin.venice.listener.response.stats.MultiGetResponseStatsWithSizeProfiling;
 import com.linkedin.venice.listener.response.stats.MultiKeyResponseStats;
 import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.listener.response.stats.SingleGetResponseStats;
@@ -200,7 +198,7 @@ public class ServerStatsContextTest {
     context.setRequestKeyCount(105);
     context.setRequestSize(1000);
 
-    ComputeResponseStats responseStats = new ComputeResponseStats();
+    ComputeResponseStats responseStats = new ComputeResponseStats(100);
     responseStats.setRecordCount(100);
     responseStats.addDatabaseLookupLatency(10);
     responseStats.setStorageExecutionSubmissionWaitTime(20.5);
@@ -286,12 +284,12 @@ public class ServerStatsContextTest {
   }
 
   @Test
-  public void testMultiGetWithSizeProfilingRecordsMetrics() {
+  public void testMultiGetRecordsSizeMetrics() {
     ServerStatsContext context = createContext(RequestType.MULTI_GET, OK_RESPONSE_STATUS);
     context.setResponseSize(800);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
 
-    MultiGetResponseStatsWithSizeProfiling responseStats = new MultiGetResponseStatsWithSizeProfiling(3);
+    MultiKeyResponseStats responseStats = new MultiKeyResponseStats(3);
     responseStats.setRecordCount(3);
     responseStats.addKeySize(10);
     responseStats.addKeySize(20);
@@ -301,12 +299,9 @@ public class ServerStatsContextTest {
     responseStats.addValueSize(300);
     context.setReadResponseStats(responseStats);
 
-    // Verify getResponseValueSize returns aggregate
-    assertEquals(responseStats.getResponseValueSize(), 600);
-
     context.recordBasicMetrics(stats);
 
-    // Per-key sizes are recorded via recordUnmergedMetrics with unified recording (both Tehuti and OTel)
+    // Multi-get key/value sizes are recorded through the OTel-only metric states.
     verify(stats).recordKeySizeInByte(10);
     verify(stats).recordKeySizeInByte(20);
     verify(stats).recordKeySizeInByte(30);
@@ -478,11 +473,12 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * Verify MultiGetResponseStatsWithSizeProfiling.merge() correctly merges totalValueSize.
+   * Verify MultiKeyResponseStats.merge() merges the mergeable aggregates (e.g. multiChunkLargeValueCount) while the
+   * per-key/value sizes are recorded unmerged from each chunk's own lists.
    */
   @Test
-  public void testMultiGetResponseStatsMergeTotalValueSize() {
-    MultiGetResponseStatsWithSizeProfiling stats1 = new MultiGetResponseStatsWithSizeProfiling(3);
+  public void testMultiGetResponseStatsMerge() {
+    MultiKeyResponseStats stats1 = new MultiKeyResponseStats(3);
     stats1.setRecordCount(2);
     stats1.addValueSize(100);
     stats1.addValueSize(200);
@@ -490,18 +486,12 @@ public class ServerStatsContextTest {
     stats1.addKeySize(20);
     stats1.incrementMultiChunkLargeValueCount();
 
-    MultiGetResponseStatsWithSizeProfiling stats2 = new MultiGetResponseStatsWithSizeProfiling(2);
+    MultiKeyResponseStats stats2 = new MultiKeyResponseStats(2);
     stats2.setRecordCount(1);
     stats2.addValueSize(300);
     stats2.addKeySize(30);
 
-    assertEquals(stats1.getResponseValueSize(), 300);
-    assertEquals(stats2.getResponseValueSize(), 300);
-
     stats1.merge(stats2);
-
-    // totalValueSize should be merged: 300 + 300 = 600
-    assertEquals(stats1.getResponseValueSize(), 600);
 
     // Verify merged stats record correctly
     ServerHttpRequestStats mockStats = mock(ServerHttpRequestStats.class);
@@ -515,38 +505,8 @@ public class ServerStatsContextTest {
     verify(mockStats).recordKeySizeInByte(20);
     verify(mockStats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 100);
     verify(mockStats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 200);
-  }
-
-  /**
-   * Verify ComputeResponseStats.merge() correctly merges totalValueSize and compute-specific fields.
-   */
-  @Test
-  public void testComputeResponseStatsMergeTotalValueSize() {
-    ComputeResponseStats stats1 = new ComputeResponseStats();
-    stats1.setRecordCount(2);
-    stats1.addValueSize(100);
-    stats1.addValueSize(200);
-    stats1.incrementDotProductCount(10);
-
-    ComputeResponseStats stats2 = new ComputeResponseStats();
-    stats2.setRecordCount(1);
-    stats2.addValueSize(400);
-    stats2.incrementDotProductCount(5);
-
-    assertEquals(stats1.getResponseValueSize(), 300);
-    assertEquals(stats2.getResponseValueSize(), 400);
-
-    stats1.merge(stats2);
-
-    // totalValueSize should be merged: 300 + 400 = 700
-    assertEquals(stats1.getResponseValueSize(), 700);
-
-    // Verify merged compute stats record correctly
-    ServerHttpRequestStats mockStats = mock(ServerHttpRequestStats.class);
-    stats1.recordMetrics(mockStats, OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS);
-
-    // dotProductCount: 10 + 5 = 15
-    verify(mockStats).recordDotProductCount(15);
+    verify(mockStats, never()).recordKeySizeInByte(30);
+    verify(mockStats, never()).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 300);
   }
 
   /**
@@ -555,14 +515,11 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testCompositeRecorderMergesAndRecordsAcrossChunks() {
-    ParallelMultiKeyResponseWrapper<MultiGetResponseWrapper> wrapper = ParallelMultiKeyResponseWrapper.multiGet(
-        3,
-        10,
-        chunkSize -> new MultiGetResponseWrapper(chunkSize, new MultiGetResponseStatsWithSizeProfiling(chunkSize)));
+    ParallelMultiKeyResponseWrapper<MultiGetResponseWrapper> wrapper = ParallelMultiKeyResponseWrapper
+        .multiGet(3, 10, chunkSize -> new MultiGetResponseWrapper(chunkSize, new MultiKeyResponseStats(chunkSize)));
 
     // Accumulate stats in each chunk
-    MultiGetResponseStatsWithSizeProfiling chunk0Stats =
-        (MultiGetResponseStatsWithSizeProfiling) wrapper.getChunk(0).getStatsRecorder();
+    MultiKeyResponseStats chunk0Stats = (MultiKeyResponseStats) wrapper.getChunk(0).getStatsRecorder();
     chunk0Stats.addDatabaseLookupLatency(chunk0Stats.getCurrentTimeInNanos());
     chunk0Stats.addValueSize(100);
     chunk0Stats.addValueSize(200);
@@ -570,13 +527,11 @@ public class ServerStatsContextTest {
     chunk0Stats.addKeySize(20);
     chunk0Stats.incrementMultiChunkLargeValueCount();
 
-    MultiGetResponseStatsWithSizeProfiling chunk1Stats =
-        (MultiGetResponseStatsWithSizeProfiling) wrapper.getChunk(1).getStatsRecorder();
+    MultiKeyResponseStats chunk1Stats = (MultiKeyResponseStats) wrapper.getChunk(1).getStatsRecorder();
     chunk1Stats.addValueSize(300);
     chunk1Stats.addKeySize(30);
 
-    MultiGetResponseStatsWithSizeProfiling chunk2Stats =
-        (MultiGetResponseStatsWithSizeProfiling) wrapper.getChunk(2).getStatsRecorder();
+    MultiKeyResponseStats chunk2Stats = (MultiKeyResponseStats) wrapper.getChunk(2).getStatsRecorder();
     chunk2Stats.addValueSize(400);
     chunk2Stats.addKeySize(40);
 
@@ -628,12 +583,12 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * Verify ComputeResponseStatsWithSizeProfiling.merge() correctly merges compute fields
-   * and totalValueSize from the parent ComputeResponseStats.
+   * Verify ComputeResponseStats.merge() correctly merges compute fields, and that per-key/value sizes are recorded
+   * unmerged from each chunk's own lists.
    */
   @Test
-  public void testComputeResponseStatsWithSizeProfilingMerge() {
-    ComputeResponseStatsWithSizeProfiling stats1 = new ComputeResponseStatsWithSizeProfiling(3);
+  public void testComputeResponseStatsMergeWithKeyAndValueSizes() {
+    ComputeResponseStats stats1 = new ComputeResponseStats(3);
     stats1.setRecordCount(2);
     stats1.addValueSize(100);
     stats1.addValueSize(200);
@@ -642,20 +597,14 @@ public class ServerStatsContextTest {
     stats1.incrementDotProductCount(5);
     stats1.incrementCosineSimilarityCount(3);
 
-    ComputeResponseStatsWithSizeProfiling stats2 = new ComputeResponseStatsWithSizeProfiling(2);
+    ComputeResponseStats stats2 = new ComputeResponseStats(2);
     stats2.setRecordCount(1);
     stats2.addValueSize(400);
     stats2.addKeySize(30);
     stats2.incrementDotProductCount(10);
     stats2.incrementHadamardProductCount(7);
 
-    assertEquals(stats1.getResponseValueSize(), 300);
-    assertEquals(stats2.getResponseValueSize(), 400);
-
     stats1.merge(stats2);
-
-    // totalValueSize should be merged: 300 + 400 = 700
-    assertEquals(stats1.getResponseValueSize(), 700);
 
     // Verify merged stats record correctly — recordMetrics calls recordUnmergedMetrics internally,
     // so per-key sizes from stats1 are also recorded here.
@@ -674,33 +623,28 @@ public class ServerStatsContextTest {
     verify(mockStats).recordKeySizeInByte(20);
     verify(mockStats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 100);
     verify(mockStats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 200);
+    verify(mockStats, never()).recordKeySizeInByte(30);
+    verify(mockStats, never()).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 400);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testMergeThrowsOnIncompatibleTypeForAbstractReadResponseStats() {
-    MultiKeyResponseStats stats = new MultiKeyResponseStats();
+    MultiKeyResponseStats stats = new MultiKeyResponseStats(0);
     ReadResponseStatsRecorder incompatible = mock(ReadResponseStatsRecorder.class);
     stats.merge(incompatible);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testMergeThrowsOnIncompatibleTypeForMultiKeyResponseStats() {
-    MultiKeyResponseStats stats = new MultiKeyResponseStats();
+    MultiKeyResponseStats stats = new MultiKeyResponseStats(0);
     SingleGetResponseStats incompatible = new SingleGetResponseStats();
     stats.merge(incompatible);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testMergeThrowsOnIncompatibleTypeForMultiGetResponseStats() {
-    MultiGetResponseStatsWithSizeProfiling stats = new MultiGetResponseStatsWithSizeProfiling(3);
-    MultiKeyResponseStats incompatible = new MultiKeyResponseStats();
-    stats.merge(incompatible);
-  }
-
-  @Test(expectedExceptions = IllegalArgumentException.class)
   public void testMergeThrowsOnIncompatibleTypeForComputeResponseStats() {
-    ComputeResponseStats stats = new ComputeResponseStats();
-    MultiKeyResponseStats incompatible = new MultiKeyResponseStats();
+    ComputeResponseStats stats = new ComputeResponseStats(0);
+    MultiKeyResponseStats incompatible = new MultiKeyResponseStats(0);
     stats.merge(incompatible);
   }
 }

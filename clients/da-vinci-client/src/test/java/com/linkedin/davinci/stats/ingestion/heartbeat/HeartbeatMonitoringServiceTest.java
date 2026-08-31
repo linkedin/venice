@@ -42,6 +42,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
@@ -356,57 +357,66 @@ public class HeartbeatMonitoringServiceTest {
         0,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 0),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         currentVersion,
         1,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         currentVersion,
         2,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         0,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 0),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         1,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         2,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         0,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 0),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         1,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         2,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     // The above calls initialize entries with current time, and followers will retain the highest timestamp.
     // we'll note the current time that comes AFTER the initialization and use that from which to increment the time.
@@ -483,37 +493,43 @@ public class HeartbeatMonitoringServiceTest {
         1,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         currentVersion,
         2,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         backupVersion,
         1,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         backupVersion,
         2,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         futureVersion,
         1,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addLeaderLagMonitor(
         futureVersion,
         2,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 2),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     // alright, no longer null
     Assert.assertTrue(hasStore(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE));
@@ -554,19 +570,22 @@ public class HeartbeatMonitoringServiceTest {
         1,
         Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         backupVersion,
         1,
         Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
     heartbeatMonitoringService.addFollowerLagMonitor(
         futureVersion,
         1,
         Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     // make sure non hybrid is still not in there
     Assert.assertEquals(
@@ -726,7 +745,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
@@ -736,7 +756,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -754,7 +775,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
@@ -764,7 +786,8 @@ public class HeartbeatMonitoringServiceTest {
         anyInt(),
         anyString(),
         any(VeniceStoreWriteType.class),
-        any(VeniceChunkingStatus.class));
+        any(VeniceChunkingStatus.class),
+        any(VeniceReplicationMode.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -782,7 +805,8 @@ public class HeartbeatMonitoringServiceTest {
         partition,
         replicaId,
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
@@ -792,7 +816,8 @@ public class HeartbeatMonitoringServiceTest {
         partition,
         replicaId,
         VeniceStoreWriteType.REGULAR,
-        VeniceChunkingStatus.UNCHUNKED);
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceReplicationMode.NON_ACTIVE_ACTIVE);
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -990,6 +1015,73 @@ public class HeartbeatMonitoringServiceTest {
               .intValue(),
           50);
     }
+  }
+
+  @Test
+  public void testCleanupLagMonitorHandlesUnpopulatedPartitionWithoutNpe() {
+    // Regression test: PartitionAssignment#getPartition(partitionId) returns null when that partition slot
+    // has not been populated in the customized view yet (e.g. resource exists but this partition has no
+    // reported replicas). checkAndMaybeCleanupLagMonitor previously dereferenced that null Partition directly,
+    // throwing a NullPointerException from the Ingestion-Heartbeat-Lag-Logging-Service-Thread. It should
+    // instead treat the replica as unassigned/lingering, same as the resource-deleted case.
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
+    currentVersion.setHybridStoreConfig(hybridStoreConfig);
+    Store mockStore = mock(Store.class);
+    Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
+    Mockito.when(mockStore.getCurrentVersion()).thenReturn(currentVersion.getNumber());
+    Mockito.when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    Mockito.when(mockStore.getVersion(1)).thenReturn(currentVersion);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    Mockito.when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    doReturn(new StoreVersionInfo(mockStore, currentVersion)).when(mockReadOnlyRepository)
+        .waitVersion(eq(TEST_STORE), eq(1), any(), anyLong());
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+    String hostname = "localhost";
+    int port = 123;
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(regions).when(serverConfig).getRegionNames();
+    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
+    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
+    doReturn(hostname).when(serverConfig).getListenerHostname();
+    doReturn(port).when(serverConfig).getListenerPort();
+    doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
+    String versionTopic = Version.composeKafkaTopic(mockStore.getName(), 1);
+
+    HelixCustomizedViewOfflinePushRepository mockCustomizedViewOfflinePushRepository =
+        mock(HelixCustomizedViewOfflinePushRepository.class);
+    // p0 has no reported replicas yet: getPartition(0) returns null, matching the real
+    // PartitionAssignment#getPartition behavior for an unpopulated slot.
+    PartitionAssignment mockPartitionAssignment = mock(PartitionAssignment.class);
+    doReturn(null).when(mockPartitionAssignment).getPartition(0);
+    doReturn(mockPartitionAssignment).when(mockCustomizedViewOfflinePushRepository)
+        .getPartitionAssignments(versionTopic);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture =
+        CompletableFuture.completedFuture(mockCustomizedViewOfflinePushRepository);
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        mock(HeartbeatMonitoringServiceStats.class),
+        mockCVRepositoryFuture);
+    heartbeatMonitoringService.updateLagMonitor(
+        versionTopic,
+        0,
+        HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
+        Utils.getReplicaId(versionTopic, 0));
+
+    // Must not throw NullPointerException, and the replica should be treated as lingering/unassigned.
+    heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
+    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 1);
+    Assert.assertEquals(
+        heartbeatMonitoringService.getCleanupHeartbeatMap().get(Utils.getReplicaId(versionTopic, 0)).intValue(),
+        1);
   }
 
   @Test

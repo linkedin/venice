@@ -23,6 +23,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UP
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
@@ -33,7 +34,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE_EXECUTION_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
@@ -43,7 +43,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -83,6 +82,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartiti
 import com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.hadoop.task.datawriter.IncrementalPushWriteQuotaUtils;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
@@ -203,13 +203,18 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     }
     conf.setBoolean(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
 
-    // Incremental push throttling configs - pass through to mapper/reducer
+    // Incremental push throttling: the driver computes the per-partition-writer quota once (validating fail-fast here,
+    // before the MR job runs) and forwards it, so the reducer consumes it directly without re-deriving the split.
     conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
-    conf.setBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
-    conf.setBoolean(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.versionSeparateRealTimeTopicEnabled);
     conf.set(
-        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
-        props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
+        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND_PER_PARTITION,
+        Long.toString(
+            IncrementalPushWriteQuotaUtils.perPartitionQuotaForPush(
+                pushJobSetting.isIncrementalPush,
+                pushJobSetting.pushToSeparateRealtimeTopicEnabled,
+                pushJobSetting.versionSeparateRealTimeTopicEnabled,
+                props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1),
+                pushJobSetting.partitionCount)));
     if (props.containsKey(INCREMENTAL_PUSH_RATE_LIMITER_TYPE)) {
       conf.set(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, props.getString(INCREMENTAL_PUSH_RATE_LIMITER_TYPE));
     }

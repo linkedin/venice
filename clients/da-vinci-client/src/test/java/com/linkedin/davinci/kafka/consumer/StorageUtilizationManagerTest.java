@@ -72,6 +72,7 @@ public class StorageUtilizationManagerTest {
           true,
           false,
           false,
+          false,
           null);
       partitionConsumptionStateMap.put(i, pcs);
     }
@@ -84,6 +85,7 @@ public class StorageUtilizationManagerTest {
           mockOffsetRecord,
           pubSubContext,
           true,
+          false,
           false,
           false,
           null);

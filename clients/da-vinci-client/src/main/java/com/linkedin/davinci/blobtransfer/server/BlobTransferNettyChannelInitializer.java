@@ -36,7 +36,10 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
       AggBlobTransferStats aggBlobTransferStats,
       Optional<SSLFactory> sslFactory,
       Optional<BlobTransferAclHandler> aclHandler,
-      int maxAllowedConcurrentSnapshotUsers) {
+      int maxAllowedConcurrentSnapshotUsers,
+      long maxChunkSizeBytes,
+      BlobTransferAdmissionController admissionController,
+      boolean serverAcceptClientBlobRequestEnabled) {
     this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
     this.sslFactory = sslFactory;
     this.alpiniSslFactory = sslFactory.isPresent() ? SslUtils.toAlpiniSSLFactory(sslFactory.get()) : null;
@@ -46,7 +49,10 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
         blobTransferMaxTimeoutInMin,
         blobSnapshotManager,
         aggBlobTransferStats,
-        maxAllowedConcurrentSnapshotUsers);
+        maxAllowedConcurrentSnapshotUsers,
+        maxChunkSizeBytes,
+        admissionController,
+        serverAcceptClientBlobRequestEnabled);
   }
 
   @Override

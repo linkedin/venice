@@ -703,6 +703,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isEncryptionEnabled() {
+    return zkSharedStore.isEncryptionEnabled();
+  }
+
+  @Override
+  public void setEncryptionEnabled(boolean encryptionEnabled) {
+    throwUnsupportedOperationException("setEncryptionEnabled");
+  }
+
+  @Override
+  public String getPubSubEncryptionKeyUrn() {
+    return zkSharedStore.getPubSubEncryptionKeyUrn();
+  }
+
+  @Override
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    throwUnsupportedOperationException("setPubSubEncryptionKeyUrn");
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return zkSharedStore.getMinCompactionLagSeconds();
   }
@@ -780,6 +800,26 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
     throwUnsupportedOperationException("setMaxNearlineRecordSizeBytes");
+  }
+
+  @Override
+  public long getThroughputQuotaInBytes() {
+    return zkSharedStore.getThroughputQuotaInBytes();
+  }
+
+  @Override
+  public void setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    throwUnsupportedOperationException("setThroughputQuotaInBytes");
+  }
+
+  @Override
+  public long getThroughputQuotaInRecords() {
+    return zkSharedStore.getThroughputQuotaInRecords();
+  }
+
+  @Override
+  public void setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    throwUnsupportedOperationException("setThroughputQuotaInRecords");
   }
 
   @Override

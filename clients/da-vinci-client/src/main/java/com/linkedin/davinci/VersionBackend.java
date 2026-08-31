@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_
 
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
@@ -31,6 +32,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.VeniceView;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
@@ -101,8 +103,11 @@ public class VersionBackend {
     // push status store must be enabled both in Da Vinci and the store, and disabled for version-specific clients
     boolean isVersionSpecificClient =
         DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(version.getStoreName()));
+    // View stores inherit the parent store's push-status-store setting but have no push-status system store of their
+    // own, so attempting to report push status for them blocks the shared push-status writer. Exclude them here.
     this.reportPushStatus = !isVersionSpecificClient && store.isDaVinciPushStatusStoreEnabled()
-        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+        && !VeniceView.isViewStore(version.getStoreName())
+        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, true);
     this.heartbeatInterval = this.config.getClusterProperties()
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
     this.stopConsumptionTimeoutInSeconds =
@@ -116,7 +121,10 @@ public class VersionBackend {
                 config.getZstdDictCompressionLevel()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
     long daVinciPushStatusCheckIntervalInMs = this.config.getDaVinciPushStatusCheckIntervalInMs();
-    if (daVinciPushStatusCheckIntervalInMs >= 0) {
+    // Only run the version-level push-status batching task when push-status reporting is actually enabled, so the same
+    // reportPushStatus gate (store setting, version-specific/view-store exclusions, and the cluster flag) reliably
+    // disables both the per-partition and batched push-status write paths.
+    if (reportPushStatus && daVinciPushStatusCheckIntervalInMs >= 0) {
       LogContext logContext =
           backend.getConfigLoader() != null ? backend.getConfigLoader().getVeniceServerConfig().getLogContext() : null;
       this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
@@ -363,7 +371,8 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Map<Integer, Long> timestampsMap,
-      Map<Integer, PubSubPosition> positionMap) {
+      Map<Integer, PubSubPosition> positionMap,
+      boolean createPaused) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
@@ -413,7 +422,7 @@ public class VersionBackend {
       Optional<PubSubPosition> pubSubPosition = (timestampsMap == null && positionMap == null)
           ? Optional.empty()
           : backend.getIngestionService().getPubSubPosition(config, partition, timestampsMap, positionMap);
-      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId);
+      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId, createPaused);
       tryStartHeartbeat();
     }
 
@@ -478,6 +487,22 @@ public class VersionBackend {
       partitionToBatchReportEOIPEnabled.remove(partition);
     }
     tryStopHeartbeat();
+  }
+
+  void resume() {
+    StoreIngestionTask task = backend.getIngestionService().getStoreIngestionTask(version.kafkaTopicName());
+    if (task != null) {
+      task.resumeFromFutureSlotPause();
+    }
+  }
+
+  boolean isPaused() {
+    StoreIngestionTask task = backend.getIngestionService().getStoreIngestionTask(version.kafkaTopicName());
+    // Gate on the SIT-level intent (pause-after-SOP), not the per-partition physical flag which the
+    // reconciler only sets a tick after SOP. Intent is the durable "held until promotion" signal and
+    // covers the pre-SOP window, so maybeResumeDaVinciFutureVersion() still resumes even if promotion
+    // is observed before the first SOP is processed.
+    return task != null && task.isPauseAfterStartOfPush();
   }
 
   void completePartition(int partition) {

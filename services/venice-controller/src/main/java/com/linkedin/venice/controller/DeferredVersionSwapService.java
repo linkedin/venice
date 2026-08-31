@@ -27,7 +27,6 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -93,7 +92,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final Set<String> storesBeingProcessed = ConcurrentHashMap.newKeySet();
   private final Map<String, ThreadPoolStats> clusterToThreadPoolStatsMap = new ConcurrentHashMap<>();
   private final MetricsRepository metricsRepository;
-  private Map<String, StoreLifecycleHooks> storeLifecycleHooksCache = new HashMap<>();
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -813,29 +811,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
       StoreVersionLifecycleEventOutcome outcome;
 
-      if (!storeLifecycleHooksCache.containsKey(lifecycleHooksRecord.getStoreLifecycleHooksClassName())) {
-        try {
-          StoreLifecycleHooks storeLifecycleHook = ReflectUtils.callConstructor(
-              ReflectUtils.loadClass(lifecycleHooksRecord.getStoreLifecycleHooksClassName()),
-              new Class<?>[] { VeniceProperties.class },
-              new Object[] { veniceControllerMultiClusterConfig.getCommonConfig().getProps() });
-
-          storeLifecycleHooksCache.put(lifecycleHooksRecord.getStoreLifecycleHooksClassName(), storeLifecycleHook);
-        } catch (Exception e) {
-          String message = "Encountered exception while executing lifecycle hook: "
-              + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " for store: " + parentStore.getName()
-              + " on version: " + targetVersionNum + ". Exception: " + e;
-          logMessageIfNotRedundant(message);
-          continue;
-        }
+      StoreLifecycleHooks storeLifecycleHook = veniceParentHelixAdmin.getVeniceHelixAdmin()
+          .getStoreLifecycleHooksCache()
+          .getOrInstantiateHook(lifecycleHooksRecord.getStoreLifecycleHooksClassName());
+      if (storeLifecycleHook == null) {
+        continue;
       }
-
-      StoreLifecycleHooks storeLifecycleHook =
-          storeLifecycleHooksCache.get(lifecycleHooksRecord.getStoreLifecycleHooksClassName());
       Properties properties = new Properties();
       properties.putAll(lifecycleHooksRecord.getStoreLifecycleHooksParams());
       VeniceProperties veniceProperties = new VeniceProperties(properties);
-      outcome = storeLifecycleHook.postStoreVersionSwap(
+      outcome = storeLifecycleHook.preStoreVersionSwap(
           clusterName,
           parentStore.getName(),
           targetVersionNum,
@@ -859,7 +844,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             + regionsToRollback;
         logMessageIfNotRedundant(message);
 
-        veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), regionsToRollback);
+        veniceParentHelixAdmin
+            .rollbackToBackupVersionForDeferredVersionSwap(clusterName, parentStore.getName(), regionsToRollback);
         updateStore(clusterName, parentStore.getName(), VersionStatus.ROLLED_BACK, targetVersionNum);
         LOGGER.info(
             "Updated store status to ROLLED_BACK for store: {} on version: {}",

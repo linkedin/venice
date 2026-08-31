@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.LongSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -96,6 +97,33 @@ public abstract class DataWriterComputeJob implements ComputeJob {
    */
   public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
     return Optional.empty();
+  }
+
+  /**
+   * Whether this engine validates the storage quota <em>before</em> writing any data (see the Spark data
+   * writer's pre-write intermediary stage, which measures the serialized input size and fails the job
+   * before writing if it exceeds the quota). When this returns {@code true}, the driver-side post-write
+   * quota check in {@code VenicePushJob} is redundant and is skipped. The default is {@code false} (e.g.
+   * MapReduce), which keeps the driver-side post-write check as the authoritative quota gate.
+   */
+  public boolean performsPreWriteQuotaCheck() {
+    return false;
+  }
+
+  /**
+   * Optional provider of the current store storage quota (in bytes), injected by the driver. When set, an
+   * engine that measures the input size before writing (see the Spark data writer's pre-write check) uses
+   * this to evaluate the quota against the up-to-date value — honoring a quota changed while the push ran —
+   * rather than the value captured at job configuration time.
+   */
+  private LongSupplier currentStorageQuotaSupplier = null;
+
+  public void setCurrentStorageQuotaSupplier(LongSupplier currentStorageQuotaSupplier) {
+    this.currentStorageQuotaSupplier = currentStorageQuotaSupplier;
+  }
+
+  protected LongSupplier getCurrentStorageQuotaSupplier() {
+    return currentStorageQuotaSupplier;
   }
 
   @VisibleForTesting

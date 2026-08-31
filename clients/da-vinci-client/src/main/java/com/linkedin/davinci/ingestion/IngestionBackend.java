@@ -18,6 +18,27 @@ public interface IngestionBackend extends Closeable {
       Optional<PubSubPosition> pubSubPosition,
       String replicaId);
 
+  /**
+   * Start consumption for the given partition. If {@code createPaused} is {@code true}, the
+   * {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} will be paused after receiving
+   * START_OF_PUSH (future-slot pause). Only DaVinci clients support {@code createPaused=true}.
+   *
+   * <p>Implementations that do not support paused creation must leave this default in place; it will
+   * throw {@link UnsupportedOperationException} when {@code createPaused=true} is requested.
+   */
+  default void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<PubSubPosition> pubSubPosition,
+      String replicaId,
+      boolean createPaused) {
+    if (createPaused) {
+      throw new UnsupportedOperationException(
+          "createPaused=true is not supported by this IngestionBackend: " + getClass().getSimpleName());
+    }
+    startConsumption(storeConfig, partition, pubSubPosition, replicaId);
+  }
+
   CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition, String replicaId);
 
   void killConsumptionTask(String topicName);

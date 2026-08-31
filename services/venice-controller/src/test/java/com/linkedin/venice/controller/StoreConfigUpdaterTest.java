@@ -17,6 +17,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
@@ -25,6 +26,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -36,10 +38,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -83,6 +87,7 @@ import java.util.stream.Collectors;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -471,6 +476,112 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     }
   }
 
+  @Test(dataProvider = "ttlRepushEnabledValues")
+  public void testApplyOnParentTTLRepushEnabledRoundTrip(boolean ttlRepushEnabled) {
+    String storeName = Utils.getUniqueString("ttl-repush-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setTTLRepushEnabled(ttlRepushEnabled));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.ttlRepushEnabled, ttlRepushEnabled);
+    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(TTL_REPUSH_ENABLED::equals));
+  }
+
+  @DataProvider(name = "ttlRepushEnabledValues")
+  public Object[][] ttlRepushEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test
+  public void testApplyOnParentPreservesTTLRepushEnabledWhenUnset() {
+    String storeName = Utils.getUniqueString("ttl-repush-unset-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setTTLRepushEnabled(true);
+    boolean existingTTLRepushEnabled = store.isTTLRepushEnabled();
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.ttlRepushEnabled, existingTTLRepushEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(TTL_REPUSH_ENABLED::equals));
+  }
+
+  @DataProvider(name = "pubSubEncryptionKeyUrnUpdates")
+  public Object[][] pubSubEncryptionKeyUrnUpdates() {
+    return new Object[][] { { true, "", "keyUrn:abc", null }, { false, "", "keyUrn:abc", "encryption-enabled store" },
+        { true, "", "   ", "non-blank" }, { true, "keyUrn:abc", "keyUrn:abc", null },
+        { true, "keyUrn:abc", "keyUrn:xyz", "already configured" } };
+  }
+
+  @Test(dataProvider = "pubSubEncryptionKeyUrnUpdates")
+  public void testApplyOnParentPubSubEncryptionKeyUrn(
+      boolean encryptionEnabled,
+      String currentPubSubEncryptionKeyUrn,
+      String requestedPubSubEncryptionKeyUrn,
+      String expectedError) {
+    String storeName = Utils.getUniqueString("encryption-key-parent");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setEncryptionEnabled(encryptionEnabled);
+    store.setPubSubEncryptionKeyUrn(currentPubSubEncryptionKeyUrn);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(requestedPubSubEncryptionKeyUrn);
+    if (expectedError != null) {
+      VeniceHttpException exception =
+          expectThrows(VeniceHttpException.class, () -> parentAdmin.updateStore(clusterName, storeName, params));
+      assertTrue(exception.getMessage().contains(expectedError));
+      return;
+    }
+
+    parentAdmin.updateStore(clusterName, storeName, params);
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.pubSubEncryptionKeyUrn.toString(), requestedPubSubEncryptionKeyUrn);
+    assertTrue(
+        message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(PUB_SUB_ENCRYPTION_KEY_URN::equals));
+  }
+
+  @DataProvider(name = "pubSubEncryptionKeyUrnChildRegions")
+  public Object[][] pubSubEncryptionKeyUrnChildRegions() {
+    return new Object[][] { { true, null }, { false, "encryption-enabled store" } };
+  }
+
+  /**
+   * {@code encryptionEnabled} is derived per region from {@code cluster.encryption.enabled} and is
+   * never replicated, so a child can legitimately see it as false for a store the parent already
+   * accepted a key URN for. The child must apply the replicated value rather than reject it, since a
+   * rejection here fails the admin message on every retry and stalls the region's admin queue. A
+   * single-region controller is itself the originator, so it still enforces the precondition.
+   */
+  @Test(dataProvider = "pubSubEncryptionKeyUrnChildRegions")
+  public void testApplyOnChildPubSubEncryptionKeyUrnEnforcesStoreStateOnlyWhenSingleRegion(
+      boolean multiRegion,
+      String expectedError) {
+    String storeName = Utils.getUniqueString("encryption-key-child");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multiClusterConfigs = admin.getMultiClusterConfigs();
+    doReturn(multiRegion).when(multiClusterConfigs).isMultiRegion();
+    Store store = admin.getStore(clusterName, storeName);
+    store.setEncryptionEnabled(false);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn("keyUrn:abc");
+    if (expectedError != null) {
+      VeniceHttpException exception = expectThrows(
+          VeniceHttpException.class,
+          () -> StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params));
+      assertTrue(exception.getMessage().contains(expectedError));
+      return;
+    }
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+  }
+
   /**
    * Drives every trivial field through {@code StoreConfigUpdater.applyOnChild} and uses Mockito
    * verify to confirm the corresponding {@code VeniceHelixAdmin.setX(...)} method was called with
@@ -651,9 +762,9 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    // 23 distinct ifPresent/conditional branches above (added targetRegionPromoted). Allow some
-    // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
-    verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    // 23 fields are configured above; targetRegionPromoted skips its metadata write because this store has no
+    // promotable future version.
+    verify(admin, atLeast(22)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
   }
 
   /**
@@ -730,6 +841,72 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
       StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
       fail("Expected VeniceHttpException because ingestionPausedRegions was set without ingestionPauseMode");
     } catch (VeniceHttpException expected) {
+      // expected
+    }
+  }
+
+  /**
+   * Throughput write-quota uses {@code -1} as the "no limit" sentinel; any value below {@code -1}
+   * is invalid and {@code applyOnChild} must reject it before applying the update.
+   */
+  @Test
+  public void testApplyOnChild_ThroughputQuotaBelowNegativeOne_Throws() {
+    String storeName = Utils.getUniqueString("child-throughput-invalid");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams bytesParams = new UpdateStoreQueryParams().setThroughputQuotaInBytes(-2L);
+    try {
+      StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, bytesParams);
+      fail("Expected VeniceException because throughputQuotaInBytes was below -1");
+    } catch (VeniceException expected) {
+      // expected
+    }
+
+    UpdateStoreQueryParams recordsParams = new UpdateStoreQueryParams().setThroughputQuotaInRecords(-100L);
+    try {
+      StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, recordsParams);
+      fail("Expected VeniceException because throughputQuotaInRecords was below -1");
+    } catch (VeniceException expected) {
+      // expected
+    }
+
+    // The invalid updates must not have been applied.
+    verify(admin, never()).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * Boundary check: {@code -1} (no limit) is a legal throughput write-quota value and must be
+   * applied rather than rejected.
+   */
+  @Test
+  public void testApplyOnChild_ThroughputQuotaNegativeOneAllowed() {
+    String storeName = Utils.getUniqueString("child-throughput-no-limit");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setThroughputQuotaInBytes(-1L).setThroughputQuotaInRecords(-1L);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, atLeastOnce()).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * The same {@code >= -1} validation must guard the parent path so an invalid quota never reaches
+   * the UPDATE_STORE admin message.
+   */
+  @Test
+  public void testApplyOnParent_ThroughputQuotaBelowNegativeOne_Throws() {
+    String storeName = Utils.getUniqueString("parent-throughput-invalid");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setThroughputQuotaInBytes(-2L);
+    try {
+      parentAdmin.updateStore(clusterName, storeName, params);
+      fail("Expected VeniceException because throughputQuotaInBytes was below -1");
+    } catch (VeniceException expected) {
       // expected
     }
   }

@@ -48,6 +48,7 @@ dependencies {
   testImplementation libraries.kafkaClientsTest
   testImplementation libraries.classgraph
   testImplementation libraries.openTelemetryTestSdk
+  testImplementation libraries.bouncyCastleBcpkix
 }
 
 ext {

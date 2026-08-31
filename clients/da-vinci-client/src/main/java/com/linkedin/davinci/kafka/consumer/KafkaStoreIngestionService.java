@@ -93,6 +93,7 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.NamedThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -150,6 +151,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
   // Extra logger dedicated for ingestion info for slow partition.
   private static final Logger INGESTION_DEBUGGER_LOGGER = LogManager.getLogger(TopicPartitionIngestionInfo.class);
+  // Ingestion is important but should yield to the read path, so run it slightly below normal priority.
+  private static final int INGESTION_TASK_THREAD_PRIORITY = Thread.NORM_PRIORITY - 1;
 
   private final StorageService storageService;
 
@@ -609,7 +612,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (heartbeatMonitoringService != null) {
       heartbeatMonitoringService.setKafkaStoreIngestionService(this);
     }
-    ingestionExecutorService = Executors.newCachedThreadPool();
+    ingestionExecutorService =
+        Executors.newCachedThreadPool(new NamedThreadFactory("StoreIngestionService", INGESTION_TASK_THREAD_PRIORITY));
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
 
     storeBufferService.start();
@@ -640,7 +644,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private StoreIngestionTask createStoreIngestionTask(
       VeniceStoreVersionConfig veniceStoreVersionConfig,
-      int partitionId) {
+      int partitionId,
+      boolean pauseAfterStartOfPush) {
     String topicName = veniceStoreVersionConfig.getStoreVersionName();
 
     // For view topic, we need to use internal view store name
@@ -665,7 +670,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     };
 
-    return ingestionTaskFactory.getNewIngestionTask(
+    StoreIngestionTask task = ingestionTaskFactory.getNewIngestionTask(
         storageService,
         store,
         version,
@@ -676,6 +681,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         cacheBackend,
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
+    // Set before the task is submitted to the executor so the flag is visible before
+    // any partition is subscribed and before any SOP can be processed.
+    if (pauseAfterStartOfPush) {
+      task.setPauseAfterStartOfPush(true);
+    }
+    return task;
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -816,16 +827,40 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       Optional<PubSubPosition> pubSubPosition) {
+    startConsumption(veniceStore, partitionId, pubSubPosition, false);
+  }
+
+  /**
+   * Start consumption for the given partition, optionally creating the ingestion task in a paused
+   * state so it stops after receiving START_OF_PUSH (future-slot pause for DaVinci).
+   *
+   * <p>When {@code createPaused=true}, {@code pauseAfterStartOfPush} is set on the
+   * {@link StoreIngestionTask} inside the topic lock, before the task is submitted to the executor
+   * and before any partition is subscribed — guaranteeing that SOP cannot be processed with the
+   * flag unset.
+   *
+   * @param createPaused If {@code true}, the SIT will pause after consuming START_OF_PUSH.
+   *                     Only valid for DaVinci clients.
+   * @throws VeniceException if {@code createPaused=true} and this is not a DaVinci client.
+   */
+  public void startConsumption(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Optional<PubSubPosition> pubSubPosition,
+      boolean createPaused) {
+    if (createPaused && !isDaVinciClient) {
+      throw new VeniceException("createPaused=true is only valid for DaVinci clients, not Venice servers");
+    }
 
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      // Create new store ingestion task atomically.
+      // Create new store ingestion task atomically, flagging it before submit if createPaused.
       AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
       StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
         if (v == null || !v.isIngestionTaskActive()) {
           createNewStoreIngestionTask.set(true);
-          return createStoreIngestionTask(veniceStore, partitionId);
+          return createStoreIngestionTask(veniceStore, partitionId, createPaused);
         }
         return v;
       });
@@ -838,6 +873,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           return;
         }
         ingestionExecutorService.submit(storeIngestionTask);
+      } else if (createPaused && !storeIngestionTask.isPauseAfterStartOfPush()) {
+        // A SIT already exists for this topic and was NOT created in future-slot-paused mode, so the
+        // createPaused=true request cannot be honored (the flag is only wired in at task creation,
+        // before SOP is processed). Fail loudly rather than silently starting an unpaused task when
+        // the caller expects a paused one, which would let a non-target region complete ingestion
+        // before promotion.
+        throw new VeniceException(
+            "createPaused=true requested for topic " + topic
+                + " but an active ingestion task already exists that is not configured to pause after START_OF_PUSH.");
       }
 
       /**
@@ -866,7 +910,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
       storeIngestionTask.subscribePartition(partition, pubSubPosition);
     }
-    LOGGER.info("Started Consuming - Replica: {}.", Utils.getReplicaId(topic, partitionId));
+    LOGGER.info(
+        "Started Consuming{} - Replica: {}.",
+        createPaused ? " (paused)" : "",
+        Utils.getReplicaId(topic, partitionId));
   }
 
   /**

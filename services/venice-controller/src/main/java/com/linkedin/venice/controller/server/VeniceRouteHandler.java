@@ -59,7 +59,7 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
       BooleanSupplier isAllowListUser) {
     if (!isAllowListUser.getAsBoolean()) {
       veniceResponse.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
-      veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+      veniceResponse.setErrorType(ErrorType.ACL_ERROR);
       return false;
     }
     return true;

@@ -50,7 +50,7 @@ public class KafkaInputDictTrainer {
     private final String kafkaInputBroker;
     private final String topicName;
     private final String keySchema;
-    private final Properties sslProperties;
+    private final Properties consumerProperties;
     private final int compressionDictSize;
     private final int dictSampleSize;
     private final CompressionStrategy sourceVersionCompressionStrategy;
@@ -62,7 +62,7 @@ public class KafkaInputDictTrainer {
       this.kafkaInputBroker = builder.kafkaInputBroker;
       this.topicName = builder.topicName;
       this.keySchema = builder.keySchema;
-      this.sslProperties = builder.sslProperties;
+      this.consumerProperties = builder.consumerProperties;
       this.compressionDictSize = builder.compressionDictSize;
       this.dictSampleSize = builder.dictSampleSize;
       this.sourceVersionCompressionStrategy = builder.sourceVersionCompressionStrategy;
@@ -75,7 +75,7 @@ public class KafkaInputDictTrainer {
     private String kafkaInputBroker;
     private String topicName;
     private String keySchema;
-    private Properties sslProperties;
+    private Properties consumerProperties;
     private int compressionDictSize;
     private int dictSampleSize;
     private CompressionStrategy sourceVersionCompressionStrategy;
@@ -97,8 +97,8 @@ public class KafkaInputDictTrainer {
       return this;
     }
 
-    public ParamBuilder setSslProperties(Properties sslProperties) {
-      this.sslProperties = sslProperties;
+    public ParamBuilder setConsumerProperties(Properties consumerProperties) {
+      this.consumerProperties = consumerProperties;
       return this;
     }
 
@@ -166,11 +166,11 @@ public class KafkaInputDictTrainer {
     this.trainerSupplier = trainerSupplier;
     this.sourceVersionCompressionStrategy = param.sourceVersionCompressionStrategy;
     Properties properties = new Properties();
+    properties.putAll(param.consumerProperties);
     properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, param.kafkaInputBroker);
     properties.setProperty(KAFKA_INPUT_TOPIC, param.topicName);
     properties.setProperty(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, param.keySchema);
     this.sourceTopicName = param.topicName;
-    properties.putAll(param.sslProperties);
     properties.setProperty(COMPRESSION_DICTIONARY_SIZE_LIMIT, Integer.toString(param.compressionDictSize));
     properties.setProperty(COMPRESSION_DICTIONARY_SAMPLE_SIZE, Integer.toString(param.dictSampleSize));
     properties
@@ -242,8 +242,6 @@ public class KafkaInputDictTrainer {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;
         long sampledRecordCnt = 0;
-        // Reset Kafka consumer before using it
-        reusedConsumer.batchUnsubscribe(reusedConsumer.getAssignment());
         RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> recordReader =
             kafkaInputFormat.getRecordReader(split, jobConf, Reporter.NULL, reusedConsumer);
         try {

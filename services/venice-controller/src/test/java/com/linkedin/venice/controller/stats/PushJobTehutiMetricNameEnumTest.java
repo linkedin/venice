@@ -20,6 +20,11 @@ public class PushJobTehutiMetricNameEnumTest {
     map.put(
         PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_NON_USER_ERROR,
         "incremental_push_job_failed_non_user_error");
+    map.put(PushJobTehutiMetricNameEnum.PUSH_JOB_EXTERNAL_STORAGE_WRITE_TIME, "push_job_external_storage_write_time");
+    map.put(PushJobTehutiMetricNameEnum.PUSH_JOB_VENICE_WRITE_TIME, "push_job_venice_write_time");
+    map.put(
+        PushJobTehutiMetricNameEnum.PUSH_JOB_EXTERNAL_STORAGE_WRITE_FAILURE,
+        "push_job_external_storage_write_failure");
     return map;
   }
 

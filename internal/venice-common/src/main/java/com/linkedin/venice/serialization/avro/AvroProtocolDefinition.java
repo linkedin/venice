@@ -50,7 +50,7 @@ public enum AvroProtocolDefinition {
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 23, PartitionState.class),
+  PARTITION_STATE(24, 24, PartitionState.class),
 
   /**
    * Used to persist state related to a store-version, including Start of Buffer Replay
@@ -60,8 +60,16 @@ public enum AvroProtocolDefinition {
 
   /**
    * Used to encode push job details records to be written to the PushJobDetails system store.
+   *
+   * <p><b>Deployment ordering.</b> This is a system-store value schema, so controllers must have registered
+   * v6 (which they do on startup, from the resources of the venice-common they were built with) <em>before</em>
+   * any push job serializes a v6 payload. Rolling out a VPJ built from this commit against a controller fleet
+   * still on v5 would make the controller reject the write. The safe order is: deploy controllers first, then
+   * the push job. v6 only appends one nullable {@code map<string, long>} field ({@code additionalPushMetrics})
+   * defaulting to {@code null}, so a v5 reader can still read a v6 record (it drops the map) and a v6 reader
+   * resolves a v5 record's missing map to {@code null}.
    */
-  PUSH_JOB_DETAILS(26, 5, PushJobDetails.class),
+  PUSH_JOB_DETAILS(26, 6, PushJobDetails.class),
 
   /**
    * Used to encode metadata changes about the system as a whole. Records of this type
@@ -71,7 +79,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(100, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(103, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -111,7 +119,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(45, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(47, StoreMetaValue.class),
 
   /*
     Value Schema for Parent Controller Metadata system store
@@ -141,7 +149,7 @@ public enum AvroProtocolDefinition {
   /**
    * Response record for metadata fetch request.
    */
-  SERVER_METADATA_RESPONSE(3, MetadataResponseRecord.class),
+  SERVER_METADATA_RESPONSE(4, MetadataResponseRecord.class),
 
   /**
    * Response record for metadata by client fetch request.

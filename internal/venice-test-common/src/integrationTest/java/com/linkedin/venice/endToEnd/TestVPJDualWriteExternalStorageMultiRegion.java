@@ -5,8 +5,13 @@ import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -17,21 +22,31 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageRecord;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -64,11 +79,23 @@ import org.testng.annotations.Test;
  *       reaches {@code configure()} on the executor.</li>
  *   <li><b>Batching:</b> {@code batchSize=1} flushes one record per {@code batchPut}; {@code batchSize=25}
  *       flushes a full 25-record batch (the store is pinned to a single partition for determinism).</li>
+ *   <li><b>Throttling:</b> a generous per-region record/byte write quota is configured so the dual-write
+ *       throttler is constructed and exercised on the write path end-to-end, without slowing the push or
+ *       dropping records.</li>
  *   <li><b>Ingestion unaffected:</b> Venice still serves every record in the {@code DUAL_WRITE} region.</li>
  * </ul>
+ *
+ * <p>{@link #dualWritePushSucceedsWhenOneRegionExhaustsExternalWriteRetries} additionally covers the fail-open
+ * path over both data writer engines (Spark and MapReduce): one region's external writes exhaust their retries,
+ * the push still succeeds, only that region's version is downgraded to {@code INTERNAL}, and the affected
+ * region's controller emits {@code push_job.external_storage_write_failure.count} exactly once with that region
+ * as its dimension while the healthy region emits nothing.
  */
 public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiRegionTest {
   private static final int READ_VERIFICATION_TIMEOUT_SEC = 60;
+  /** Matches {@code PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_EXTERNAL_STORAGE_WRITE_FAILURE_COUNT}. */
+  private static final String EXTERNAL_STORAGE_WRITE_FAILURE_METRIC_NAME =
+      "push_job.external_storage_write_failure.count";
 
   @AfterMethod(alwaysRun = true)
   public void resetSink() {
@@ -78,6 +105,11 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
   @DataProvider(name = "batchSize")
   public Object[][] batchSize() {
     return new Object[][] { { 1 }, { 25 } };
+  }
+
+  @DataProvider(name = "dataWriterComputeJobClass")
+  public Object[][] dataWriterComputeJobClass() {
+    return new Object[][] { { DataWriterSparkJob.class }, { DataWriterMRJob.class } };
   }
 
   @Test(timeOut = 240 * Time.MS_PER_SECOND, dataProvider = "batchSize")
@@ -96,6 +128,11 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
     props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
     props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, InMemoryExternalStorageWriter.class.getName());
     props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE, String.valueOf(batchSize));
+    // Enable per-region external-write throttling end-to-end. The store is pinned to a single partition, so the
+    // per-task rate equals the global rate; both quotas are deliberately generous so the throttler is built and
+    // exercised on the write path without measurably slowing the push or ever dropping a record.
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND, "100000");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND, "100000000");
     // Probe an arbitrary push.job.external.storage.* key to verify driver->executor prefix forwarding reaches
     // configure(). Read back via forwardedConfigObservedFor().
     String expectedProbeValue = "probe-value-for-b" + batchSize;
@@ -240,5 +277,188 @@ public class TestVPJDualWriteExternalStorageMultiRegion extends AbstractMultiReg
         });
       }
     }
+  }
+
+  @Test(timeOut = 240 * Time.MS_PER_SECOND, dataProvider = "dataWriterComputeJobClass")
+  public void dualWritePushSucceedsWhenOneRegionExhaustsExternalWriteRetries(Class<?> dataWriterComputeJobClass)
+      throws Exception {
+    String storeName =
+        Utils.getUniqueString("dual_write_fail_open_multi_region_" + dataWriterComputeJobClass.getSimpleName());
+    String healthyRegion = multiRegionMultiClusterWrapper.getChildRegionNames().get(0);
+    String failedRegion = multiRegionMultiClusterWrapper.getChildRegionNames().get(1);
+
+    File inputDir = Utils.getTempDataDirectory();
+    writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    Schema stringSchema = Schema.parse("\"string\"");
+
+    Properties props = IntegrationTestPushUtils
+        .defaultVPJProps(multiRegionMultiClusterWrapper, "file://" + inputDir.getAbsolutePath(), storeName);
+    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterComputeJobClass.getCanonicalName());
+    if (dataWriterComputeJobClass == DataWriterSparkJob.class) {
+      props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+    }
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, InMemoryExternalStorageWriter.class.getName());
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE, "1");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES, "2");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS, "0");
+    props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE, "true");
+    props.setProperty(InMemoryExternalStorageWriter.FAIL_ALWAYS_IN_REGION_KEY, failedRegion);
+
+    try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl());
+        ControllerClient healthyRegionControllerClient =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient failedRegionControllerClient =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
+      assertCommand(parentClient.createNewStore(storeName, "owner", stringSchema.toString(), stringSchema.toString()));
+      assertCommand(
+          parentClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setPartitionCount(1)
+                  .setStorageMode(StorageMode.DUAL_WRITE)));
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        assertEquals(
+            assertCommand(healthyRegionControllerClient.getStore(storeName)).getStore().getStorageMode(),
+            StorageMode.DUAL_WRITE);
+        assertEquals(
+            assertCommand(failedRegionControllerClient.getStore(storeName)).getStore().getStorageMode(),
+            StorageMode.DUAL_WRITE);
+      });
+
+      IntegrationTestPushUtils.runVPJ(props);
+
+      String topic = Version.composeKafkaTopic(storeName, 1);
+      assertEquals(
+          InMemoryExternalStorageWriter.batchPutAttemptsForRegionAndTopic(failedRegion, topic),
+          3,
+          "Failed region should exhaust the configured initial attempt plus 2 retries exactly once");
+      assertEquals(
+          InMemoryExternalStorageWriter.regionsWithDataForTopic(topic),
+          Collections.singleton(healthyRegion),
+          "Only the healthy region should retain external-storage data after fail-open disables the failed region");
+      assertEquals(
+          InMemoryExternalStorageWriter.snapshotForRegionAndTopic(healthyRegion, topic).size(),
+          DEFAULT_USER_DATA_RECORD_COUNT);
+      assertTrue(
+          InMemoryExternalStorageWriter.snapshotForRegionAndTopic(failedRegion, topic).isEmpty(),
+          "The failed region should never persist external-storage records after every batchPut throws");
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        StoreInfo healthyRegionStoreInfo = assertCommand(healthyRegionControllerClient.getStore(storeName)).getStore();
+        StoreInfo failedRegionStoreInfo = assertCommand(failedRegionControllerClient.getStore(storeName)).getStore();
+
+        assertEquals(healthyRegionStoreInfo.getCurrentVersion(), 1);
+        assertEquals(failedRegionStoreInfo.getCurrentVersion(), 1);
+        assertEquals(healthyRegionStoreInfo.getStorageMode(), StorageMode.DUAL_WRITE);
+        assertEquals(failedRegionStoreInfo.getStorageMode(), StorageMode.DUAL_WRITE);
+        assertEquals(
+            healthyRegionStoreInfo.getVersion(1).get().getStorageMode(),
+            StorageMode.DUAL_WRITE,
+            "Healthy region should keep the version in DUAL_WRITE mode");
+        assertEquals(
+            failedRegionStoreInfo.getVersion(1).get().getStorageMode(),
+            StorageMode.INTERNAL,
+            "Failed region should downgrade only that version to INTERNAL before the swap");
+      });
+
+      // The fail-open is otherwise silent — the push succeeded — so the alertable counter is the only signal
+      // that this fabric's copy of v1 exists in Venice alone. It must be attributed to the region that actually
+      // lost its external-storage copy, and the healthy region must stay clean.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        assertEquals(
+            externalStorageWriteFailureCount(1, storeName, failedRegion),
+            1L,
+            "The failed region's controller must count exactly one external-storage write failure");
+        assertEquals(
+            externalStorageWriteFailureCount(0, storeName, healthyRegion),
+            0L,
+            "The healthy region never failed open and must not contribute to the alert");
+      });
+      // Cross-region attribution: the failed region's controller must not attribute the failure to any region
+      // other than its own, which is what makes a per-fabric alert meaningful.
+      assertEquals(
+          externalStorageWriteFailureCount(1, storeName, healthyRegion),
+          0L,
+          "The failed region's controller must not attribute its failure to the healthy region");
+
+      // Idempotent replay through the parent: the push job retries this request, so the same downgrade can be
+      // delivered more than once. The version is already INTERNAL, so nothing transitions and the counter must
+      // not move. This also re-exercises parent -> child reason propagation on its own, outside the push.
+      assertCommand(
+          parentClient.updateStoreVersionStorageMode(
+              storeName,
+              1,
+              StorageMode.INTERNAL,
+              failedRegion,
+              VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE));
+      assertEquals(
+          assertCommand(failedRegionControllerClient.getStore(storeName)).getStore()
+              .getVersion(1)
+              .get()
+              .getStorageMode(),
+          StorageMode.INTERNAL,
+          "The replayed downgrade must leave the version INTERNAL");
+      // Give the child controller room to have (incorrectly) re-emitted before asserting the count held.
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, true, () -> {
+        assertEquals(
+            externalStorageWriteFailureCount(1, storeName, failedRegion),
+            1L,
+            "An idempotent replay of the same downgrade must not double count the alert");
+      });
+
+      VeniceClusterWrapper failedCluster = getCluster(1);
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(failedCluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(READ_VERIFICATION_TIMEOUT_SEC, TimeUnit.SECONDS, true, true, () -> {
+          failedCluster.refreshAllRouterMetaData();
+          Object value = client.get("1").get();
+          assertNotNull(value, "Failed region should still serve the new current version");
+          assertEquals(value.toString(), DEFAULT_USER_DATA_VALUE_PREFIX + 1);
+        });
+      }
+    }
+  }
+
+  /**
+   * Sum {@code push_job.external_storage_write_failure.count} across the controllers of one child region,
+   * for the given store and {@code venice.region.name} dimension.
+   *
+   * <p>Reads the controllers' own {@link InMemoryMetricReader}s, so this asserts on what the affected region's
+   * controller actually emitted rather than on anything the test computed. Returns 0 when the counter has never
+   * been recorded, since an OTel instrument that was never observed does not materialize at all.
+   */
+  private long externalStorageWriteFailureCount(int dcIndex, String storeName, String regionName) {
+    AttributeKey<String> clusterKey = AttributeKey.stringKey("venice.cluster.name");
+    AttributeKey<String> storeKey = AttributeKey.stringKey("venice.store.name");
+    AttributeKey<String> regionKey = AttributeKey.stringKey("venice.region.name");
+    VeniceMultiClusterWrapper childDatacenter = childDatacenters.get(dcIndex);
+    long total = 0L;
+    for (VeniceControllerWrapper controller: childDatacenter.getControllers().values()) {
+      MetricsRepository repository = controller.getMetricRepository();
+      if (!(repository instanceof VeniceMetricsRepository)) {
+        continue;
+      }
+      InMemoryMetricReader reader =
+          (InMemoryMetricReader) ((VeniceMetricsRepository) repository).getVeniceMetricsConfig()
+              .getOtelAdditionalMetricsReader();
+      if (reader == null) {
+        continue;
+      }
+      for (MetricData metricData: reader.collectAllMetrics()) {
+        if (!metricData.getName().endsWith(EXTERNAL_STORAGE_WRITE_FAILURE_METRIC_NAME)) {
+          continue;
+        }
+        total += metricData.getLongSumData()
+            .getPoints()
+            .stream()
+            .filter(
+                point -> CLUSTER_NAME.equals(point.getAttributes().get(clusterKey))
+                    && storeName.equals(point.getAttributes().get(storeKey))
+                    && regionName.equals(point.getAttributes().get(regionKey)))
+            .mapToLong(LongPointData::getValue)
+            .sum();
+      }
+    }
+    return total;
   }
 }

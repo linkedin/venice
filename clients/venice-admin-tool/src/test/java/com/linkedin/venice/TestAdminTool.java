@@ -112,7 +112,8 @@ public class TestAdminTool {
         "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true",
         "--blob-transfer-in-server-enabled", "ENABLED", "--target-region-swap", "prod",
         "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--regular-version-etl-enabled",
-        "true", "--venice-etl-strategy", "EXTERNAL_WITH_VENICE_TRIGGER", "--partitioner-params",
+        "true", "--ttl-repush-enabled", "true", "--venice-etl-strategy", "EXTERNAL_WITH_VENICE_TRIGGER",
+        "--partitioner-params",
         "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}",
         "--store-lifecycle-hooks-list",
         "[{\"storeLifecycleHooksClassName\":\"com.example.MyHook1\",\"storeLifecycleHooksParams\":{\"paramA\":\"valueA\",\"paramB\":\"valueB\"}},{\"storeLifecycleHooksClassName\":\"com.example.MyHook2\",\"storeLifecycleHooksParams\":{\"foo\":\"bar\"}}]",
@@ -132,6 +133,7 @@ public class TestAdminTool {
     assertEquals(params.getTargetRegionSwapWaitTime(), Optional.of(100));
     Assert.assertTrue(params.isGlobalRtDivEnabled().isPresent());
     Assert.assertTrue(params.isGlobalRtDivEnabled().get());
+    Assert.assertEquals(params.isTTLRepushEnabled(), Optional.of(true));
     Assert.assertTrue(params.getRegularVersionETLEnabled().isPresent());
     Assert.assertTrue(params.getRegularVersionETLEnabled().get());
     Assert.assertTrue(params.getETLStrategy().isPresent());
@@ -147,6 +149,61 @@ public class TestAdminTool {
     assertEquals(lifecycleHooksRecords.size(), 2);
     assertTrue(params.getFlinkVeniceViewsEnabled().isPresent());
     assertTrue(params.getFlinkVeniceViewsEnabled().get());
+  }
+
+  @Test
+  public void testAdminUpdateStoreRejectsEncryptionArgument() {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--enable-encryption", "true" };
+
+    expectThrows(ParseException.class, () -> AdminTool.getCommandLine(args));
+  }
+
+  @Test
+  public void testAdminUpdateStoreAcceptsPubSubEncryptionKeyUrn() throws ParseException, IOException {
+    String pubSubEncryptionKeyUrn = "keyUrn:abc";
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--pub-sub-encryption-key-urn", pubSubEncryptionKeyUrn };
+
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(args));
+
+    assertEquals(params.getPubSubEncryptionKeyUrn(), Optional.of(pubSubEncryptionKeyUrn));
+  }
+
+  @Test
+  public void testAdminUpdateStoreArgThroughputQuota() throws ParseException, IOException {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--throughput-quota-in-bytes", "123456", "--throughput-quota-in-records", "789" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    assertEquals(params.getThroughputQuotaInBytes(), Optional.of(123456L));
+    assertEquals(params.getThroughputQuotaInRecords(), Optional.of(789L));
+  }
+
+  @Test
+  public void testAdminUpdateStoreArgThroughputQuotaNoLimit() throws ParseException, IOException {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--throughput-quota-in-bytes", "-1", "--throughput-quota-in-records", "-1" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    assertEquals(params.getThroughputQuotaInBytes(), Optional.of(-1L));
+    assertEquals(params.getThroughputQuotaInRecords(), Optional.of(-1L));
+  }
+
+  @Test
+  public void testAdminUpdateStoreArgThroughputQuotaUnset() throws ParseException, IOException {
+    String[] args =
+        { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store", "testStore" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    Assert.assertFalse(params.getThroughputQuotaInBytes().isPresent());
+    Assert.assertFalse(params.getThroughputQuotaInRecords().isPresent());
   }
 
   @Test

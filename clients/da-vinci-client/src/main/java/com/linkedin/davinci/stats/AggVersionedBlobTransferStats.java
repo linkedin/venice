@@ -2,6 +2,8 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -153,6 +155,42 @@ public class AggVersionedBlobTransferStats
     getBlobTransferOtelStats(storeName).recordResponseCount(
         version,
         isBlobTransferSuccess ? VeniceResponseStatusCategory.SUCCESS : VeniceResponseStatusCategory.FAIL);
+  }
+
+  /**
+   * Records an attempted blob transfer, attributed to its source (Tehuti and OTel).
+   *
+   * @param storeName the store name
+   * @param version the version of the store
+   * @param source the peer type that served the transfer attempt
+   * @param status SUCCESS if the blob was fetched, FAIL otherwise
+   */
+  public void recordBlobTransferRequest(
+      String storeName,
+      int version,
+      VeniceBlobTransferSource source,
+      VeniceResponseStatusCategory status) {
+    // Tehuti metrics
+    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferRequest(source, status));
+    // OTel metrics
+    getBlobTransferOtelStats(storeName).recordRequestCount(version, source, status);
+  }
+
+  /**
+   * Records that a replica bootstrapped from the version topic instead of blob transfer (Tehuti and OTel).
+   *
+   * @param storeName the store name
+   * @param version the version of the store
+   * @param reason why blob transfer was not used
+   */
+  public void recordBlobTransferVersionTopicFallback(
+      String storeName,
+      int version,
+      VeniceBlobTransferFallbackReason reason) {
+    // Tehuti metrics
+    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferVersionTopicFallback(reason));
+    // OTel metrics
+    getBlobTransferOtelStats(storeName).recordVersionTopicFallback(version, reason);
   }
 
   /**

@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICATION_MODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -44,7 +45,8 @@ public class RecordLevelDelayOtelMetricEntityTest {
                 VENICE_REPLICA_TYPE,
                 VENICE_REPLICA_STATE,
                 VENICE_STORE_WRITE_TYPE,
-                VENICE_CHUNKING_STATUS)));
+                VENICE_CHUNKING_STATUS,
+                VENICE_REPLICATION_MODE)));
     return map;
   }
 }

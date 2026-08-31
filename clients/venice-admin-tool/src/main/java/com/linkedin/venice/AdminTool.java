@@ -1431,10 +1431,13 @@ public class AdminTool {
     integerParam(cmd, Arg.LATEST_SUPERSET_SCHEMA_ID, p -> params.setLatestSupersetSchemaId(p), argSet);
     booleanParam(cmd, Arg.ENABLE_COMPACTION, p -> params.setCompactionEnabled(p), argSet);
     longParam(cmd, Arg.COMPACTION_THRESHOLD_MILLISECONDS, p -> params.setCompactionThresholdMilliseconds(p), argSet);
+    genericParam(cmd, Arg.PUB_SUB_ENCRYPTION_KEY_URN, s -> s, params::setPubSubEncryptionKeyUrn, argSet);
     longParam(cmd, Arg.MIN_COMPACTION_LAG_SECONDS, p -> params.setMinCompactionLagSeconds(p), argSet);
     longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);
     integerParam(cmd, Arg.MAX_RECORD_SIZE_BYTES, params::setMaxRecordSizeBytes, argSet);
     integerParam(cmd, Arg.MAX_NEARLINE_RECORD_SIZE_BYTES, params::setMaxNearlineRecordSizeBytes, argSet);
+    longParam(cmd, Arg.THROUGHPUT_QUOTA_IN_BYTES, params::setThroughputQuotaInBytes, argSet);
+    longParam(cmd, Arg.THROUGHPUT_QUOTA_IN_RECORDS, params::setThroughputQuotaInRecords, argSet);
     booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);
     booleanParam(cmd, Arg.BLOB_TRANSFER_ENABLED, p -> params.setBlobTransferEnabled(p), argSet);
     genericParam(
@@ -1459,6 +1462,7 @@ public class AdminTool {
     integerParam(cmd, Arg.TARGET_SWAP_REGION_WAIT_TIME, p -> params.setTargetRegionSwapWaitTime(p), argSet);
     booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
     booleanParam(cmd, Arg.GLOBAL_RT_DIV_ENABLED, params::setGlobalRtDivEnabled, argSet);
+    booleanParam(cmd, Arg.TTL_REPUSH_ENABLED, params::setTTLRepushEnabled, argSet);
     booleanParam(cmd, Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED, params::setEnumSchemaEvolutionAllowed, argSet);
 
     String storeLifecycleHooksStr = getOptionalArgument(cmd, Arg.STORE_LIFECYCLE_HOOKS_LIST);

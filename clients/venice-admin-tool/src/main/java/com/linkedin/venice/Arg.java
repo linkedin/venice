@@ -303,6 +303,9 @@ public enum Arg {
   COMPACTION_THRESHOLD_MILLISECONDS(
       "compaction-threshold-milliseconds", "ctms", true, "Set compaction threshold in milliseconds"
   ),
+  PUB_SUB_ENCRYPTION_KEY_URN(
+      "pub-sub-encryption-key-urn", "psekurn", true, "Set the PubSub encryption key URN for an encryption-enabled store"
+  ),
   MIN_COMPACTION_LAG_SECONDS(
       "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
   ),
@@ -316,6 +319,14 @@ public enum Arg {
   MAX_NEARLINE_RECORD_SIZE_BYTES(
       "max-nearline-record-size-bytes", "mnrsb", true,
       "Store-level max record size for VeniceWriter to determine whether to pause consumption on nearline jobs with partial updates."
+  ),
+  THROUGHPUT_QUOTA_IN_BYTES(
+      "throughput-quota-in-bytes", "tqib", true,
+      "Store-level nearline write quota: maximum throughput in bytes clients can produce into the store. -1 means no limit."
+  ),
+  THROUGHPUT_QUOTA_IN_RECORDS(
+      "throughput-quota-in-records", "tqir", true,
+      "Store-level nearline write quota: maximum throughput in records clients can produce into the store. -1 means no limit."
   ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(
@@ -365,6 +376,7 @@ public enum Arg {
       "stores-to-replicate", "str", true,
       "Comma separated list of stores to be replicated to dark cluster, eg. store1,store2,..."
   ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
+  TTL_REPUSH_ENABLED("ttl-repush-enabled", "ttlr", true, "Enable TTL repush for a store"),
   ENUM_SCHEMA_EVOLUTION_ALLOWED(
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),

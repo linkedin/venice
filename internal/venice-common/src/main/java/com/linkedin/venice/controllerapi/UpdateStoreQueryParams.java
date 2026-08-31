@@ -58,6 +58,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -82,6 +83,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
@@ -138,6 +141,7 @@ public class UpdateStoreQueryParams extends QueryParams {
    * @param srcStore The original store
    */
   public UpdateStoreQueryParams(StoreInfo srcStore, boolean storeMigrating) {
+    String pubSubEncryptionKeyUrn = srcStore.getPubSubEncryptionKeyUrn();
     // Copy everything except for currentVersion, daVinciPushStatusStoreEnabled, latestSuperSetValueSchemaId,
     // storeMetaSystemStoreEnabled, storeMetadataSystemStoreEnabled
     UpdateStoreQueryParams updateStoreQueryParams =
@@ -178,6 +182,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobDbEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
+            .setThroughputQuotaInBytes(srcStore.getThroughputQuotaInBytes())
+            .setThroughputQuotaInRecords(srcStore.getThroughputQuotaInRecords())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
@@ -196,6 +202,10 @@ public class UpdateStoreQueryParams extends QueryParams {
                     .stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())))
             .setFlinkVeniceViewsEnabled(srcStore.isFlinkVeniceViewsEnabled());
+
+    if (pubSubEncryptionKeyUrn != null && !pubSubEncryptionKeyUrn.trim().isEmpty()) {
+      updateStoreQueryParams.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    }
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -809,6 +819,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getLong(MIN_COMPACTION_LAG_SECONDS);
   }
 
+  public UpdateStoreQueryParams setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    return putString(PUB_SUB_ENCRYPTION_KEY_URN, pubSubEncryptionKeyUrn);
+  }
+
+  public Optional<String> getPubSubEncryptionKeyUrn() {
+    return getString(PUB_SUB_ENCRYPTION_KEY_URN);
+  }
+
   public Optional<String> getViewName() {
     return getString(STORE_VIEW_NAME);
   }
@@ -879,6 +897,22 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getMaxNearlineRecordSizeBytes() {
     return getInteger(MAX_NEARLINE_RECORD_SIZE_BYTES);
+  }
+
+  public UpdateStoreQueryParams setThroughputQuotaInBytes(long throughputQuotaInBytes) {
+    return putLong(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
+  }
+
+  public Optional<Long> getThroughputQuotaInBytes() {
+    return getLong(THROUGHPUT_QUOTA_IN_BYTES);
+  }
+
+  public UpdateStoreQueryParams setThroughputQuotaInRecords(long throughputQuotaInRecords) {
+    return putLong(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
+  }
+
+  public Optional<Long> getThroughputQuotaInRecords() {
+    return getLong(THROUGHPUT_QUOTA_IN_RECORDS);
   }
 
   public UpdateStoreQueryParams setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {

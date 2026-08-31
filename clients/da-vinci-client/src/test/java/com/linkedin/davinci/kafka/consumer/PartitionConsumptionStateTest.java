@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -18,7 +19,10 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
@@ -56,6 +60,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -121,6 +126,7 @@ public class PartitionConsumptionStateTest {
         false,
         false,
         false,
+        false,
         null);
     assertEquals(pcs.getPubSubContext(), pubSubContext);
     PubSubPosition consumedPosition1Mock = mock(PubSubPosition.class);
@@ -178,6 +184,7 @@ public class PartitionConsumptionStateTest {
         false,
         false,
         false,
+        false,
         null);
     // default is LEADER_NOT_COMPLETED
     assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_NOT_COMPLETED);
@@ -189,12 +196,31 @@ public class PartitionConsumptionStateTest {
   }
 
   @Test
+  public void testReadyToServeViaDeadLeaderFallback() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        false,
+        null);
+    assertFalse(pcs.isReadyToServeViaDeadLeaderFallback());
+    assertTrue(pcs.toString().contains("readyToServeViaDeadLeaderFallback=false"));
+
+    pcs.setReadyToServeViaDeadLeaderFallback(true);
+    assertTrue(pcs.isReadyToServeViaDeadLeaderFallback());
+    assertTrue(pcs.toString().contains("readyToServeViaDeadLeaderFallback=true"));
+  }
+
+  @Test
   public void testAddIncPushVersionToPendingReportList() {
     List<String> pendingReportIncrementalPush = new ArrayList<>();
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pendingReportIncrementalPush).when(offsetRecord).getPendingReportIncPushVersionList();
     PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, false, null);
     pcs.addIncPushVersionToPendingReportList("a");
     Assert.assertEquals(pcs.getPendingReportIncPushVersionList().size(), 1);
     for (int i = 0; i < 50; i++) {
@@ -210,6 +236,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -240,6 +267,7 @@ public class PartitionConsumptionStateTest {
         false,
         false,
         false,
+        false,
         null);
 
     // Initially, highest leadership term should be -1 (default uninitialized value)
@@ -264,6 +292,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -326,7 +355,7 @@ public class PartitionConsumptionStateTest {
     doReturn(ByteBuffer.wrap(serialized)).when(restoredRecord).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(restoredRecord).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, restoredRecord, pubSubContext, false, false, false, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, restoredRecord, pubSubContext, false, false, false, false, null);
     restoredPcs.restoreUniqueKeyCountHll();
     assertTrue(restoredPcs.hasUniqueIngestedKeyCountHll());
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), 2);
@@ -336,6 +365,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -476,7 +506,7 @@ public class PartitionConsumptionStateTest {
     doReturn(restored.getUniqueIngestedKeyCountHllSketch()).when(restoredForPcs).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(restoredForPcs).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false, false, false, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false, false, false, false, null);
     restoredPcs.restoreUniqueKeyCountHll();
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
 
@@ -485,6 +515,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -503,7 +534,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetRecord).getLeaderTopic();
     PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, false, null);
     pcs.initializeUniqueKeyCountHll(lgK);
     return pcs;
   }
@@ -517,6 +548,7 @@ public class PartitionConsumptionStateTest {
         false,
         false,
         false,
+        false,
         null);
     assertFalse(pcs.isStoreLevelPaused());
   }
@@ -527,6 +559,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -547,6 +580,7 @@ public class PartitionConsumptionStateTest {
         false,
         true,
         true,
+        false,
         "us-west");
 
     HeartbeatKey local = pcs.getOrCreateCachedHeartbeatKey("us-west");
@@ -576,6 +610,7 @@ public class PartitionConsumptionStateTest {
         false,
         false,
         false,
+        false,
         "");
     HeartbeatKey k1 = empty.getOrCreateCachedHeartbeatKey("us-west");
     assertNull(k1.getLocality(), "Empty localRegionName must leave locality null, not REMOTE");
@@ -584,6 +619,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -599,6 +635,7 @@ public class PartitionConsumptionStateTest {
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
+        false,
         false,
         false,
         false,
@@ -628,10 +665,78 @@ public class PartitionConsumptionStateTest {
       offsetRecord.setBatchPushRecordCount(priorCountInOffsetRecord);
     }
     PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, false, null);
     for (int i = 0; i < incrementsAfterConstruction; i++) {
       pcs.incrementBatchPushRecordCount();
     }
     assertEquals(pcs.getBatchPushRecordCount(), expectedFinalCount, description);
+  }
+
+  // The version topic the F->L prepare path resolves as the leader topic.
+  private PubSubTopic versionLeaderTopic() {
+    return TOPIC_REPOSITORY.getTopic("topic1_v1");
+  }
+
+  /**
+   * F->L transition (useCheckpointedDivRtPosition=true), remote source-VT leader (consumeRemotely=true):
+   * even when the in-memory processed-remote-VT position has raced ahead (offset 9677) of the durable remote
+   * LCVP (offset 2) during a post-wipe DoL re-consume, the resolved leader start must be the durable remote LCVP
+   * (2), never the in-memory 9677 that outruns the persisted VT DIV.
+   */
+  @Test
+  public void testGetLeaderPositionRemoteVtTransitionUsesRemoteLcvpNotInMemory() {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(versionLeaderTopic()).when(offsetRecord).getLeaderTopic(any());
+    PubSubPosition remoteLcvp = InMemoryPubSubPosition.of(2L);
+    doReturn(remoteLcvp).when(offsetRecord).getLatestConsumedRemoteVtPosition();
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, true, false, false, false, null);
+    pcs.setConsumeRemotely(true);
+    // In-memory processed-remote-VT raced ahead during DoL re-consume of the local VT.
+    pcs.setLatestProcessedRemoteVtPosition(InMemoryPubSubPosition.of(9677L));
+
+    // F->L transition path: resolve to the durable remote LCVP, not the in-memory position.
+    assertEquals(pcs.getLeaderPosition("broker", true), remoteLcvp);
+    // Steady-state path is unchanged: still returns the in-memory processed position.
+    assertEquals(pcs.getLeaderPosition("broker", false), InMemoryPubSubPosition.of(9677L));
+  }
+
+  /**
+   * F->L transition with no durable remote LCVP (e.g. first leader / never checkpointed) must fall back to
+   * EARLIEST rather than the in-memory position.
+   */
+  @Test
+  public void testGetLeaderPositionRemoteVtTransitionFallsBackToEarliestWhenNoLcvp() {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(versionLeaderTopic()).when(offsetRecord).getLeaderTopic(any());
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getLatestConsumedRemoteVtPosition();
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, true, false, false, false, null);
+    pcs.setConsumeRemotely(true);
+    pcs.setLatestProcessedRemoteVtPosition(InMemoryPubSubPosition.of(9677L));
+
+    assertEquals(pcs.getLeaderPosition("broker", true), PubSubSymbolicPosition.EARLIEST);
+  }
+
+  /**
+   * Symmetric local-VT case (consumeRemotely=false): F->L transition resolves to the durable local LCVP, not the
+   * in-memory processed local VT position which can likewise outrun the VT DIV.
+   */
+  @Test
+  public void testGetLeaderPositionLocalVtTransitionUsesLocalLcvpNotInMemory() {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(versionLeaderTopic()).when(offsetRecord).getLeaderTopic(any());
+    PubSubPosition localLcvp = InMemoryPubSubPosition.of(2L);
+    doReturn(localLcvp).when(offsetRecord).getLatestConsumedVtPosition();
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, false, null);
+    // consumeRemotely defaults to false.
+    pcs.setLatestProcessedVtPosition(InMemoryPubSubPosition.of(9677L));
+
+    assertEquals(pcs.getLeaderPosition("broker", true), localLcvp);
+    assertEquals(pcs.getLeaderPosition("broker", false), InMemoryPubSubPosition.of(9677L));
   }
 }

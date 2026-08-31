@@ -44,7 +44,8 @@ The process works in the following way:
 2. The author(s) submit this file as a PR named "VIP-xxx: {short description}" in **DRAFT**/**DISCUSSION** stage.
 3. People discuss using PR comments, each is its own threaded comment. General comments can be made as general comment
    in the PR. There are two other ways for an interactive discussion.
-   1. Venice Community [Slack Channel](http://slack.venicedb.org/), Create a slack channel with #VIP-xxx
+   1. Venice community [Discord server](https://discord.gg/6aZZfwswDt), where authors can create a channel named
+      #VIP-xxx
    2. Venice Contributor Sync Meeting, see details [here](../contributing.md#community-syncup-meeting) at Contributor
       Sync Meeting
 4. Depending on the outcome of the discussion, the status could move to **ACCEPTED** or **REJECTED**, or it could stay

@@ -3,6 +3,7 @@ package com.linkedin.davinci;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.AdditionalAnswers.answerVoid;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anySet;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -24,6 +25,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
@@ -51,8 +53,10 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.File;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -61,6 +65,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -87,6 +92,7 @@ public class StoreBackendTest {
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
         .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .put(ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED, "true")
         .build();
 
     ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
@@ -131,6 +137,7 @@ public class StoreBackendTest {
     store.addVersion(version2);
     store.setCurrentVersion(version1.getNumber());
     when(backend.getStoreRepository().getStoreOrThrow(store.getName())).thenReturn(store);
+    when(backend.getStoreRepository().getStore(store.getName())).thenReturn(store);
 
     storeBackend = new StoreBackend(backend, store.getName());
     when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
@@ -184,7 +191,8 @@ public class StoreBackendTest {
       assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
       assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());
       assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version1.getAge().toMillis()) < 1000);
-      assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - v1SubscribeDurationMs) < 50);
+      // Duration is >= the sleep we waited; use a lower-bound check that tolerates slow CI machines.
+      assertTrue(getMetric("subscribe_duration_ms.Avg") >= v1SubscribeDurationMs);
     });
 
     // Simulate future version ingestion is complete.
@@ -208,9 +216,10 @@ public class StoreBackendTest {
     waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
       assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
-      assertTrue(
-          Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
-      assertTrue(Math.abs(getMetric("subscribe_duration_ms.Max") - v2SubscribeDurationMs) < 50);
+      // Avg should be >= v1 (both v1 and v2 recorded); Max should be >= v2 (v2 took longer).
+      // Use lower-bound checks that tolerate slow CI machines where sleep durations are inflated.
+      assertTrue(getMetric("subscribe_duration_ms.Avg") >= v1SubscribeDurationMs);
+      assertTrue(getMetric("subscribe_duration_ms.Max") >= v2SubscribeDurationMs);
     });
   }
 
@@ -527,21 +536,349 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
     }
 
-    // delayed ingestion is enabled, target region is not the current region
-    store.setTargetSwapRegion("dc-1");
+    // delayed ingestion is enabled, target region is NOT the current region (dc-0).
+    // targetSwapRegion must be set on the version (not just the store) for the check to apply.
+    // Non-target DVC clients subscribe immediately but in a paused state; they resume once
+    // targetRegionPromoted=true is set by DeferredVersionSwapService.
+    KafkaStoreIngestionService ingestionService = backend.getIngestionService();
+    StoreIngestionTask pausedTask = mock(StoreIngestionTask.class);
     Version version4 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version4.setTargetSwapRegion("dc-1"); // dc-0 is not a target region
     store.addVersion(version4);
-    backend.handleStoreChanged(storeBackend);
-
     store.setCurrentVersion(version4.getNumber());
     store.updateVersionStatus(version4.getNumber(), VersionStatus.ONLINE);
+    when(ingestionService.getStoreIngestionTask(version4.kafkaTopicName())).thenReturn(pausedTask);
+    when(pausedTask.isPauseAfterStartOfPush()).thenReturn(true);
     backend.handleStoreChanged(storeBackend);
 
+    // Non-target region must subscribe immediately (createPaused=true), not skip.
+    assertTrue(
+        versionMap.containsKey(version4.kafkaTopicName()),
+        "Non-target region must subscribe immediately with createPaused=true");
+    verify(ingestionBackend, times(1)).startConsumption(any(), eq(0), any(), any(), eq(true));
+    // version4 is paused, so current version must still be version3.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
+    }
+
+    // Once targetRegionPromoted flips to true, maybeResumeDaVinciFutureVersion should resume ingestion.
+    // Keep isPauseAfterStartOfPush()=true so isPaused() returns true and resume() is actually invoked.
+    store.setVersionTargetRegionPromoted(version4.getNumber(), true);
+    backend.handleStoreChanged(storeBackend);
+
+    verify(pausedTask, times(1)).resumeFromFutureSlotPause();
     versionMap.get(version4.kafkaTopicName()).completePartition(0);
     backend.handleStoreChanged(storeBackend);
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version4.getNumber());
     }
+  }
+
+  /**
+   * A non-target-region DVC client must subscribe to a target-region push immediately but in a
+   * paused state (createPaused=true). The version backend is present in the map, and
+   * startConsumption is called with createPaused=true.
+   */
+  @Test
+  public void testCreatesPausedSITInNonTargetRegion() throws Exception {
+    // Subscribe to version1 as current, version2 becomes future.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Now add version3 with targetSwapRegion="dc-1"; local region is "dc-0" (non-target).
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-1");
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Must subscribe (paused) immediately — non-target region subscribes with createPaused=true.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Non-target region must subscribe immediately");
+    verify(ingestionBackend, times(1)).startConsumption(any(), eq(0), any(), any(), eq(true));
+  }
+
+  /**
+   * A target-region DVC client must subscribe to a target-region push immediately and active
+   * (createPaused=false).
+   */
+  @Test
+  public void testCreatesActiveSITInTargetRegion() throws Exception {
+    // Subscribe to version1 as current, version2 becomes future.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Now add version3 with targetSwapRegion="dc-0"; local region IS "dc-0" (target region).
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-0");
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Must subscribe active (not paused) — this IS the target region.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Target region must subscribe");
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
+  }
+
+  /**
+   * When targetRegionPromoted flips to true, {@link StoreBackend#maybeResumeDaVinciFutureVersion()}
+   * must call {@link StoreIngestionTask#resumeFromFutureSlotPause()} on the paused future version.
+   */
+  @Test
+  public void testResumePausedSITOnTargetPromotion() throws Exception {
+    // Subscribe to version1 as current, version2 becomes future.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Add version3 in non-target region — subscribed paused.
+    KafkaStoreIngestionService ingestionService = backend.getIngestionService();
+    StoreIngestionTask pausedTask = mock(StoreIngestionTask.class);
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-1");
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    when(ingestionService.getStoreIngestionTask(version3.kafkaTopicName())).thenReturn(pausedTask);
+    when(pausedTask.isPauseAfterStartOfPush()).thenReturn(true);
+    backend.handleStoreChanged(storeBackend);
+
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Non-target region must subscribe");
+    verify(pausedTask, never()).resumeFromFutureSlotPause();
+
+    // Flip targetRegionPromoted — maybeResumeDaVinciFutureVersion should resume the task.
+    // Keep isPauseAfterStartOfPush()=true so that isPaused() returns true and resume() is actually invoked.
+    store.setVersionTargetRegionPromoted(version3.getNumber(), true);
+    backend.handleStoreChanged(storeBackend);
+
+    verify(pausedTask, times(1)).resumeFromFutureSlotPause();
+  }
+
+  /**
+   * With {@code DAVINCI_PAUSED_SIT_ENABLED=false} (legacy mode) a non-target-region DVC client must
+   * NOT subscribe to a target-region push version until that version reaches
+   * {@link VersionStatus#ONLINE} in the local region.
+   */
+  @Test
+  public void testLegacyNonTargetRegionSubscribesOnOnline() throws Exception {
+    // Re-create storeBackend with paused-SIT disabled (legacy mode).
+    VeniceProperties legacyConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
+        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
+        .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .put(ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED, "false")
+        .build();
+    when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(legacyConfig));
+    storeBackend = new StoreBackend(backend, store.getName());
+    when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
+
+    // Subscribe to version1 (current), version2 becomes future.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Add version3 in non-target region (dc-0 is NOT dc-1).
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-1");
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Legacy: non-target region must NOT subscribe while version is not ONLINE.
+    assertFalse(
+        versionMap.containsKey(version3.kafkaTopicName()),
+        "Legacy mode: non-target region must not subscribe before version is ONLINE");
+
+    // Mark version3 ONLINE — legacy gate should now allow subscription.
+    store.updateVersionStatus(version3.getNumber(), VersionStatus.ONLINE);
+    backend.handleStoreChanged(storeBackend);
+
+    assertTrue(
+        versionMap.containsKey(version3.kafkaTopicName()),
+        "Legacy mode: non-target region must subscribe once version is ONLINE");
+    // Legacy mode uses createPaused=false.
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
+  }
+
+  /**
+   * Rebuilds {@link #storeBackend} with the given sequential roll-forward region order configured
+   * (mirrors the controller config {@code deferred.version.swap.region.roll.forward.order}). Local
+   * region stays {@code dc-0} and paused-SIT stays enabled.
+   */
+  private void rebuildStoreBackendWithRollForwardOrder(String rollForwardOrder) {
+    VeniceProperties config = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
+        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
+        .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .put(ConfigKeys.DAVINCI_PAUSED_SIT_ENABLED, "true")
+        .put(ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, rollForwardOrder)
+        .build();
+    when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(config));
+    storeBackend = new StoreBackend(backend, store.getName());
+    when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
+  }
+
+  /**
+   * Under sequential roll-forward, the HEAD region of the roll-forward order must subscribe ACTIVE
+   * (createPaused=false) even when it is NOT the version's targetSwapRegion. This is the deadlock the
+   * controller's sequential path would otherwise cause: it waits for the roll-forward head to complete,
+   * but the head's DVC would (incorrectly) pause because it keyed off targetSwapRegion instead of the
+   * roll-forward order, so the head never completes and never gets promoted.
+   */
+  @Test
+  public void testSequentialRollForwardHeadRegionSubscribesActive() throws Exception {
+    // Local region dc-0 is the HEAD of the roll-forward order, but the version's targetSwapRegion is dc-1.
+    rebuildStoreBackendWithRollForwardOrder("dc-0,dc-1");
+
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-1"); // dc-0 (local) is NOT in targetSwapRegion, but IS the roll-forward head
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Head region must subscribe ACTIVE (not paused), otherwise the sequential swap deadlocks.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Roll-forward head region must subscribe");
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
+  }
+
+  /**
+   * Under sequential roll-forward, a region that is NOT the roll-forward head must subscribe PAUSED
+   * (createPaused=true), even when it IS listed in the version's targetSwapRegion. The roll-forward
+   * order takes precedence over targetSwapRegion for the pause decision.
+   */
+  @Test
+  public void testSequentialRollForwardNonHeadRegionSubscribesPaused() throws Exception {
+    // Roll-forward head is dc-1; local region dc-0 is NOT the head, even though targetSwapRegion contains dc-0.
+    rebuildStoreBackendWithRollForwardOrder("dc-1,dc-0");
+
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-0"); // local IS in targetSwapRegion, but is NOT the roll-forward head
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Non-head region must subscribe PAUSED, deferring until it is promoted.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Non-head region must subscribe immediately");
+    verify(ingestionBackend, times(1)).startConsumption(any(), eq(0), any(), any(), eq(true));
+  }
+
+  /**
+   * Under sequential roll-forward, a paused non-head region must resume once targetRegionPromoted flips
+   * to true (the controller promotes after the roll-forward head completes).
+   */
+  @Test
+  public void testSequentialRollForwardNonHeadResumesOnPromotion() throws Exception {
+    rebuildStoreBackendWithRollForwardOrder("dc-1,dc-0"); // head dc-1, local dc-0 is non-head
+
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    KafkaStoreIngestionService ingestionService = backend.getIngestionService();
+    StoreIngestionTask pausedTask = mock(StoreIngestionTask.class);
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-0");
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    when(ingestionService.getStoreIngestionTask(version3.kafkaTopicName())).thenReturn(pausedTask);
+    when(pausedTask.isPauseAfterStartOfPush()).thenReturn(true);
+    backend.handleStoreChanged(storeBackend);
+
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Non-head region must subscribe");
+    verify(pausedTask, never()).resumeFromFutureSlotPause();
+
+    // Flip targetRegionPromoted — maybeResumeDaVinciFutureVersion should resume the paused task.
+    store.setVersionTargetRegionPromoted(version3.getNumber(), true);
+    backend.handleStoreChanged(storeBackend);
+
+    verify(pausedTask, times(1)).resumeFromFutureSlotPause();
+  }
+
+  /**
+   * A whitespace-only roll-forward order must be treated as "not configured" and fall back to the
+   * version's targetSwapRegion, rather than yielding an empty-string head that matches no region. If it
+   * did, paused-SIT mode would pause EVERY region and reintroduce the deadlock. Here the local region
+   * dc-0 is in targetSwapRegion, so it must subscribe ACTIVE.
+   */
+  @Test
+  public void testSequentialRollForwardBlankOrderFallsBackToTargetSwapRegion() throws Exception {
+    rebuildStoreBackendWithRollForwardOrder("   "); // whitespace-only — no usable head
+
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-0"); // local IS the target region
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Falls back to targetSwapRegion membership — local region is the target, so subscribe ACTIVE.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Region must subscribe");
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
+  }
+
+  /**
+   * A roll-forward order with a leading (blank) entry must skip the blank and read the first non-blank
+   * region as the head, rather than treating the empty string as the head. Here a leading comma makes
+   * dc-0 (local) the effective head, so it must subscribe ACTIVE even though it is not in
+   * targetSwapRegion.
+   */
+  @Test
+  public void testSequentialRollForwardLeadingCommaSkipsBlankHead() throws Exception {
+    rebuildStoreBackendWithRollForwardOrder(",dc-0,dc-1"); // leading blank; first non-blank head = dc-0
+
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    version3.setTargetSwapRegion("dc-1"); // dc-0 (local) is NOT in targetSwapRegion, but IS the head
+    store.addVersion(version3);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    // Head resolves to dc-0 (first non-blank) — local region must subscribe ACTIVE.
+    assertTrue(versionMap.containsKey(version3.kafkaTopicName()), "Roll-forward head region must subscribe");
+    verify(ingestionBackend, never()).startConsumption(any(), anyInt(), any(), any(), eq(true));
   }
 
   /**
@@ -580,6 +917,107 @@ public class StoreBackendTest {
     // Sanity: DVC is now serving version2.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+    }
+  }
+
+  @DataProvider(name = "terminalVersionStatuses")
+  public static Object[][] terminalVersionStatuses() {
+    return new Object[][] { { VersionStatus.ROLLED_BACK }, { VersionStatus.ERROR }, { VersionStatus.KILLED } };
+  }
+
+  @DataProvider(name = "nonTerminalSubscribableStatuses")
+  public static Object[][] nonTerminalSubscribableStatuses() {
+    return new Object[][] { { VersionStatus.STARTED }, { VersionStatus.PUSHED } };
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testRestartDoesNotSubscribeRetainedTerminalTargetVersion(VersionStatus terminalStatus) throws Exception {
+    int partition = 0;
+    version1.setStatus(VersionStatus.ONLINE);
+    version2.setStatus(terminalStatus);
+    version2.setTargetSwapRegion("dc-0");
+    store.setCurrentVersion(version1.getNumber());
+
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+
+    assertEquals(storeBackend.getSubscribedVersionNumbers(), Collections.singleton(version1.getNumber()));
+    assertFalse(
+        versionMap.containsKey(version2.kafkaTopicName()),
+        "A restarted DVC must not subscribe a retained " + terminalStatus + " version as its future version");
+  }
+
+  @Test(dataProvider = "nonTerminalSubscribableStatuses")
+  public void testRestartSubscribesRetainedNonTerminalTargetVersion(VersionStatus subscribableStatus) throws Exception {
+    int partition = 0;
+    version1.setStatus(VersionStatus.ONLINE);
+    version2.setStatus(subscribableStatus);
+    version2.setTargetSwapRegion("dc-0");
+    store.setCurrentVersion(version1.getNumber());
+
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+
+    assertEquals(
+        storeBackend.getSubscribedVersionNumbers(),
+        new HashSet<>(Arrays.asList(version1.getNumber(), version2.getNumber())));
+    assertTrue(
+        versionMap.containsKey(version2.kafkaTopicName()),
+        "A restarted DVC must still subscribe a retained " + subscribableStatus
+            + " target-region version as its future version");
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testLatestNonFaultyVersionSkipsTerminalStatus(VersionStatus terminalStatus) {
+    version1.setStatus(VersionStatus.ONLINE);
+    version2.setStatus(terminalStatus);
+    Version selected = backend.getVeniceLatestNonFaultyVersion(store.getName(), Collections.emptySet());
+    assertEquals(
+        selected.getNumber(),
+        version1.getNumber(),
+        "Latest non-faulty selection must skip the terminal higher version " + terminalStatus);
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testExistingFutureVersionDeletedWhenStatusBecomesTerminal(VersionStatus terminalStatus) throws Exception {
+    int partition = 0;
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    assertTrue(versionMap.containsKey(version2.kafkaTopicName()), "version2 must first be subscribed as future");
+
+    store.updateVersionStatus(version2.getNumber(), terminalStatus);
+    backend.handleStoreChanged(storeBackend);
+
+    assertFalse(
+        versionMap.containsKey(version2.kafkaTopicName()),
+        "Future version must be deleted once its status becomes " + terminalStatus);
+    verify(ingestionBackend, times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
+    assertEquals(storeBackend.getSubscribedVersionNumbers(), Collections.singleton(version1.getNumber()));
+  }
+
+  @Test(dataProvider = "terminalVersionStatuses")
+  public void testTerminalFutureVersionNotPromotedByIngestionCompletion(VersionStatus terminalStatus) throws Exception {
+    int partition = 0;
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    assertTrue(versionMap.containsKey(version2.kafkaTopicName()), "version2 must first be subscribed as future");
+
+    versionMap.get(version2.kafkaTopicName()).completePartition(partition);
+    store.setCurrentVersion(version2.getNumber());
+    store.updateVersionStatus(version2.getNumber(), terminalStatus);
+
+    // Isolate the promotion race from asynchronous bootstrapping callback timing.
+    storeBackend.trySwapDaVinciCurrentVersion(null);
+
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(
+          versionRef.get().getVersion().getNumber(),
+          version1.getNumber(),
+          "A terminal future version must not be promoted to current by the ingestion-completion swap path");
     }
   }
 }

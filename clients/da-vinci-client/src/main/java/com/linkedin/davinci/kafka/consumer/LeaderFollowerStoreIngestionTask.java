@@ -896,6 +896,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * The PCS pause flag is set to its target value <em>before</em> the long-running unsubscribe /
    * resubscribe so the disk-quota no-op guard covers the entire transition window. Each PCS is
    * processed inside a try/catch so a failure on one partition does not abandon the others.
+   * <p>
+   * After the store-level transition, each PCS is passed through {@link #reconcileFutureSlotPause}
+   * so the DaVinci future-slot pause shares the same level-triggered owner — promotion,
+   * restarts/host-swaps, and store-level-pause overlap are all handled here.
    */
   void maybeTransitionPauseState() throws InterruptedException {
     Store store;
@@ -921,9 +925,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean anySubscriptionForSit = shouldPause && consumerHasAnySubscription();
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
       PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, anySubscriptionForSit);
-      if (transition == PauseStateTransition.NO_CHANGE) {
-        continue;
-      }
       try {
         if (transition == PauseStateTransition.ENTER_PAUSE) {
           // Flip the flag BEFORE the long-running unsubscribe so concurrent disk-quota callbacks
@@ -933,23 +934,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           LOGGER.info(
               "Store-level pause activated for replica: {} — unsubscribed from Kafka",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+          transitioned = true;
         } else if (transition == PauseStateTransition.RECONCILE_FORCE_UNSUBSCRIBE) {
           consumerUnSubscribeAllTopics(pcs);
           LOGGER.info(
               "Store-level pause re-applied for replica: {} — subscription was reattached, unsubscribed again",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
-        } else { // EXIT_PAUSE
+          transitioned = true;
+        } else if (transition == PauseStateTransition.EXIT_PAUSE) {
           // Resubscribe BEFORE clearing the flag so quota callbacks stay no-op until the consumer
           // is back online; if resubscribe throws we leave the flag set so the next iteration
-          // retries instead of leaving the partition dark.
+          // retries. Any future-slot pause that still applies is re-asserted by the
+          // reconcileFutureSlotPause call below.
           resubscribe(pcs);
           pcs.setStoreLevelPaused(false);
           pcs.resetConsumptionStartTimeInMs();
           LOGGER.info(
               "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+          transitioned = true;
         }
-        transitioned = true;
+        // Level-triggered reconcile of the future-slot pause, every tick for every PCS (including
+        // store-level NO_CHANGE), so this single owner handles promotion, restarts/host-swaps, and
+        // store-level-pause overlap.
+        reconcileFutureSlotPause(pcs);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw e;
@@ -1908,7 +1916,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * metadata after successfully produce a corresponding message.
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
-      updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
+      // Advance the processed VT position only on the post-persist pass. Advancing it on the pre-persist (dry-run) pass
+      // would leave the position pointing at a record that has not been durably written yet; if the write then fails,
+      // a shutdown checkpoint could persist that position and the record would be skipped on restart (data loss).
+      if (!dryRun) {
+        /*
+         * This record may have been leader-produced to the local VT while the partition was still consuming remotely,
+         * but then drained after consumeRemotely was flipped to false. Use the immutable LeaderProducedRecordContext
+         * so the local VT slot only ever advances with a local-VT produced position.
+         */
+        if (leaderProducedRecordContext == null) {
+          updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
+        } else if (leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
+          updateVersionTopicOffsetFunction.apply(leaderProducedRecordContext.getProducedPosition());
+        }
+      }
 
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
@@ -2396,7 +2418,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     PartitionTracker vtDiv =
         getConsumerDiv().cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
-    sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture);
+    sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture, pcs);
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
   }
 
@@ -2411,7 +2433,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderProducerCallback callback,
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDiv,
-      CompletableFuture<Void> persistedToDBFuture) {
+      CompletableFuture<Void> persistedToDBFuture,
+      PartitionConsumptionState pcs) {
     // Relay future the leader graceful-shutdown path awaits. It completes when the drainer-side VT DIV sync node has
     // run. The leader-produce callback only fires on produce success, so also fail the relay if the produce/persist
     // fails — otherwise the shutdown await would hang until its timeout instead of completing promptly.
@@ -2424,6 +2447,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     callback.setOnCompletionCallback(produceResult -> {
       try {
         vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition());
+        // Stamp the consumed upstream position onto the snapshot as the remote LCVP, mirroring the local LCVP set from
+        // the produced position above. It uses the same offset the OffsetRecord checkpoint uses
+        // (LeaderProducedRecordContext#getConsumedPosition, see updateOffsetsAsRemoteConsumeLeader): advanced for any
+        // leader whose upstream is a non-RT topic, and skipped when there is no corresponding upstream message (e.g.
+        // leader-generated chunks or TopicSwitch) or on the RT-source path (whose position is checkpointed as the
+        // LCRP).
+        // The domain is gated on the leader's upstream topic (leaderTopic), NOT the source consumer record's topic:
+        // the graceful-shutdown flush (sendGlobalRtDivMessage) synthesizes a local-VT source record while
+        // getConsumedPosition() carries the RT-domain LCRP, so gating on the source record would cross-write an RT
+        // position into the remote-VT LCVP field. leaderTopic is the same predicate updateOffsetsAsRemoteConsumeLeader
+        // uses to route getConsumedPosition() to the RT vs remote-VT domain, so it stays correct on the flush path
+        // (leaderTopic == RT there) and preserves the steady-state VT-source behavior (leaderTopic == VT).
+        // The sync runs only after persistedToDBFuture completes, so the persisted remote LCVP never leads the
+        // persisted data; an F->L resume (PartitionConsumptionState#getCheckpointedVtLeaderPosition) then
+        // re-subscribes the remote VT at a position that is durable by construction.
+        LeaderProducedRecordContext leaderProducedRecordContext = callback.getLeaderProducedRecordContext();
+        PubSubTopic upstreamTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+        if (upstreamTopic == null) {
+          upstreamTopic = versionTopic;
+        }
+        if (!upstreamTopic.isRealTime() && leaderProducedRecordContext != null
+            && leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
+          vtDiv.updateLatestConsumedRemoteVtPosition(leaderProducedRecordContext.getConsumedPosition());
+        }
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, persistedToDBFuture, this)
             .whenComplete((ignored, throwable) -> {
               if (throwable != null) {
@@ -2995,6 +3042,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * 2. leaderCompleteStatus has the leader state=completed and <br>
    * 3. the last update time was within the configured time interval to not use the stale leader state: check
    *    {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}
+   * <p>
+   * If the leader stops emitting heartbeats it is presumed dead after
+   * {@link com.linkedin.venice.ConfigKeys#SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS} of silence
+   * and readiness falls back to offset catch-up alone (see {@link #isLeaderPresumedDead},
+   * {@link #isOffsetCaughtUpForDeadLeaderFallback}).
    */
   @Override
   protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
@@ -3005,14 +3057,35 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LagType lagType) {
     boolean isLagAcceptable = lag <= threshold;
     boolean isHybridFollower = isHybridFollower(pcs);
+    boolean leaderPresumedDead = false;
 
-    // if lag is acceptable and is a hybrid standby or DaVinciClient: check and
-    // override it based on leader follower state
-    if (isLagAcceptable && isHybridFollower) {
-      isLagAcceptable = pcs.isLeaderCompleted()
-          && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
-              .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
+    // Hybrid standbys and DaVinci replicas also require a fresh leader-complete signal. When the leader is presumed
+    // dead, fall back to offset catch-up alone.
+    if (isHybridFollower && !isLeaderCompleteSignalRecent(pcs)) {
+      if (isLeaderPresumedDead(pcs)) {
+        isLagAcceptable = isOffsetCaughtUpForDeadLeaderFallback(pcs, lag, threshold, lagType);
+        leaderPresumedDead = isLagAcceptable;
+      } else {
+        isLagAcceptable = false;
+      }
     }
+
+    if (leaderPresumedDead && !pcs.isReadyToServeViaDeadLeaderFallback()) {
+      pcs.setReadyToServeViaDeadLeaderFallback(true);
+      LOGGER.warn(
+          "[{} lag] replica: {} is being marked ready to serve without a fresh leader-complete signal: the leader has "
+              + "been silent for {} ms, which is past the {} ms dead-leader threshold. Lag: [{}] Threshold [{}]. "
+              + "Leader Complete State: {}, Last update In Ms: {}.",
+          lagType.prettyString(),
+          pcs.getReplicaId(),
+          getLeaderSilentDurationMs(pcs),
+          getServerConfig().getDeadLeaderReadyToServeFallbackThresholdMs(),
+          lag,
+          threshold,
+          pcs.getLeaderCompleteState(),
+          pcs.getLastLeaderCompleteStateUpdateInMs());
+    }
+
     if (shouldLogLag) {
       StringBuilder leaderCompleteHeaderDetails = new StringBuilder();
       if (isHybridFollower) {
@@ -3020,6 +3093,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .append(pcs.getLeaderCompleteState().toString())
             .append("}, Last update In Ms: {")
             .append(pcs.getLastLeaderCompleteStateUpdateInMs())
+            .append("}, Leader silent for In Ms: {")
+            .append(getLeaderSilentDurationMs(pcs))
             .append("}.");
       }
       LOGGER.info(
@@ -3034,6 +3109,40 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     return isLagAcceptable;
+  }
+
+  /**
+   * Returns true if the replica has caught up on offset lag, used as the fallback ready-to-serve criterion when the
+   * leader is presumed dead. In heartbeat-lag mode the measured lag is the heartbeat delay (inflated by a dead leader),
+   * so offset lag is re-measured directly. A negative offset threshold disables the fallback.
+   */
+  private boolean isOffsetCaughtUpForDeadLeaderFallback(
+      PartitionConsumptionState pcs,
+      long lag,
+      long threshold,
+      LagType lagType) {
+    if (lagType == LagType.OFFSET_LAG) {
+      return lag <= threshold;
+    }
+    long offsetThreshold = getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, partitionCount);
+    return offsetThreshold >= 0 && measureHybridOffsetLag(pcs, false) <= offsetThreshold;
+  }
+
+  /**
+   * Milliseconds since the last leader-complete heartbeat, anchored on the later of that timestamp and the consumption
+   * start time to avoid reading as silent-since-epoch when no signal has ever been observed.
+   */
+  private static long getLeaderSilentDurationMs(PartitionConsumptionState pcs) {
+    long lastSignalMs = max(pcs.getLastLeaderCompleteStateUpdateInMs(), pcs.getConsumptionStartTimeInMs());
+    return max(0, System.currentTimeMillis() - lastSignalMs);
+  }
+
+  /**
+   * True if the leader has been silent past the configured threshold. A threshold of zero or less disables the fallback.
+   */
+  private boolean isLeaderPresumedDead(PartitionConsumptionState pcs) {
+    long thresholdMs = getServerConfig().getDeadLeaderReadyToServeFallbackThresholdMs();
+    return thresholdMs > 0 && getLeaderSilentDurationMs(pcs) > thresholdMs;
   }
 
   /**
@@ -4146,14 +4255,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           readerValueSchemaId = supersetSchemaEntry.getId();
           readerUpdateProtocolVersion = update.updateSchemaId;
         }
-        ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+        ChunkedValueManifestContainer valueManifestContainer =
+            new ChunkedValueManifestContainer(getMaxNearlineRecordSizeBytes());
         final GenericRecord currValue = readStoredValueRecord(
             partitionConsumptionState,
             keyBytes,
             readerValueSchemaId,
             consumerRecord.getTopicPartition(),
             valueManifestContainer);
-
+        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
+          // The record size is over the limit, so it was never assembled and the merge is skipped outright.
+          // Producing is skipped, leaving local storage and the transient cache untouched.
+          return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
+        }
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
         final int incomingUpdatePayloadSize = update.updateValue.remaining();
@@ -4519,7 +4633,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         divCallback,
         topicPartition,
         vtDiv,
-        divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture());
+        divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture(),
+        pcs);
 
     // Read the old manifest (if any) so VeniceWriter can delete orphaned old chunks in Kafka.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
@@ -4897,6 +5012,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           .warn("Partial-update amplification report for {}\n{}", partitionConsumptionState.getReplicaId(), ampReport);
       versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
     }
+  }
+
+  /**
+   * Returns whether the stored chunk manifest exceeds the nearline size limit. Once exceeded, subsequent partial
+   * updates are skipped before fetching or assembling chunks, avoiding that cost on every update. The update that
+   * first crosses the limit is allowed through so the manifest can identify the record as oversized. A full PUT or
+   * DELETE resets the record.
+   */
+  protected boolean isRecordTooLargeForPartialUpdate(
+      PartitionConsumptionState pcs,
+      DefaultPubSubMessage consumerRecord,
+      ChunkedValueManifestContainer valueManifestContainer) {
+    if (!valueManifestContainer.isSizeLimitExceeded()) {
+      return false;
+    }
+
+    versionedIngestionStats.recordPartialUpdateLargeRecordSkippedCount(storeName, versionNumber, 1);
+
+    String keyHex = ByteUtils.toHexString(consumerRecord.getKey().getKey());
+    // An oversized key is skipped on every partial update, so this would otherwise log on each one.
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "partialUpdateLargeRecordSkipped-" + keyHex)) {
+      LOGGER.warn(
+          "Skipped a partial update in {} for key 0x{} at position {}: the stored record is {} bytes, over the {} byte "
+              + "limit. Dump the topic at this position to identify the update. A full PUT or DELETE resets the record.",
+          pcs.getReplicaId(),
+          keyHex,
+          consumerRecord.getPosition(),
+          valueManifestContainer.getManifest().getSize(),
+          getMaxNearlineRecordSizeBytes());
+    }
+
+    return true;
   }
 
   /**

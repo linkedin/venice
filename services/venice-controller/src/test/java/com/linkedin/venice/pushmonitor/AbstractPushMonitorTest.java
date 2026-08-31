@@ -143,6 +143,8 @@ public abstract class AbstractPushMonitorTest {
     when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     when(mockControllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
     when(mockControllerConfig.getRegionName()).thenReturn(TARGET_REGION_NAME);
+    when(mockControllerConfig.getProps())
+        .thenReturn(new com.linkedin.venice.utils.VeniceProperties(new java.util.Properties()));
     when(mockVeniceWriterFactory.createVeniceWriter(any())).thenReturn(mockVeniceWriter);
     currentVersionChangeNotifier = mock(AbstractPushMonitor.CurrentVersionChangeNotifier.class);
     monitor = getPushMonitor();
@@ -1344,6 +1346,163 @@ public abstract class AbstractPushMonitorTest {
 
     // Additional verification: Check that store version status was updated
     verify(mockStore, atLeastOnce()).updateVersionStatus(versionNumber, VersionStatus.ONLINE);
+  }
+
+  @Test
+  public void testPostVersionSwapHookCalledOnNormalPush() {
+    String storeName = "hookTestStore_normalPush";
+    String topic = storeName + "_v2";
+    int versionNumber = 2;
+
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    RealTimeTopicSwitcher mockRealTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+
+    when(mockStore.getName()).thenReturn(storeName);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.isEnableWrites()).thenReturn(true);
+    when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
+
+    // Normal push: versionSwapDeferred=false, so isNormalPush=true
+    when(mockVersion.isVersionSwapDeferred()).thenReturn(false);
+    when(mockVersion.getTargetSwapRegion()).thenReturn("");
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.PUSHED);
+
+    // Wire up a counting lifecycle hook
+    com.linkedin.venice.meta.LifecycleHooksRecord hookRecord =
+        mock(com.linkedin.venice.meta.LifecycleHooksRecord.class);
+    when(hookRecord.getStoreLifecycleHooksClassName()).thenReturn(CountingHook.class.getName());
+    when(hookRecord.getStoreLifecycleHooksParams()).thenReturn(new java.util.HashMap<>());
+    when(mockStore.getStoreLifecycleHooks()).thenReturn(java.util.Collections.singletonList(hookRecord));
+
+    when(mockControllerConfig.getDeferredVersionSwapRegionRollforwardOrder()).thenReturn("");
+    when(mockControllerConfig.getRegionName()).thenReturn(TARGET_REGION_NAME);
+    when(mockStoreRepo.getStore(storeName)).thenReturn(mockStore);
+
+    CountingHook.resetCount();
+    AbstractPushMonitor testMonitor = getPushMonitor(mockRealTimeTopicSwitcher);
+    testMonitor.startMonitorOfflinePush(topic, 1, 3, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    testMonitor.handleCompletedPush(topic);
+
+    Assert.assertEquals(CountingHook.getCount(), 1, "postStoreVersionSwap hook should be called once on normal push");
+  }
+
+  @Test
+  public void testPostVersionSwapHookCalledOnSequentialRollForward() {
+    String storeName = "hookTestStore_seqRollForward";
+    String topic = storeName + "_v2";
+    int versionNumber = 2;
+
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    RealTimeTopicSwitcher mockRealTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+
+    when(mockStore.getName()).thenReturn(storeName);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.isEnableWrites()).thenReturn(true);
+    when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
+
+    // Sequential roll-forward conditions: deferred=true, targetSwapRegion non-empty, region=first in rollout order
+    when(mockVersion.isVersionSwapDeferred()).thenReturn(true);
+    when(mockVersion.getTargetSwapRegion()).thenReturn("region1,region2");
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.PUSHED);
+
+    // Wire up a counting lifecycle hook
+    com.linkedin.venice.meta.LifecycleHooksRecord hookRecord =
+        mock(com.linkedin.venice.meta.LifecycleHooksRecord.class);
+    when(hookRecord.getStoreLifecycleHooksClassName()).thenReturn(CountingHook.class.getName());
+    when(hookRecord.getStoreLifecycleHooksParams()).thenReturn(new java.util.HashMap<>());
+    when(mockStore.getStoreLifecycleHooks()).thenReturn(java.util.Collections.singletonList(hookRecord));
+
+    // region1 is the first region, so isSequentialRollForward=true
+    when(mockControllerConfig.getDeferredVersionSwapRegionRollforwardOrder()).thenReturn("region1,region2,region3");
+    when(mockControllerConfig.getRegionName()).thenReturn("region1");
+    when(mockControllerConfig.getProps())
+        .thenReturn(new com.linkedin.venice.utils.VeniceProperties(new java.util.Properties()));
+    when(mockStoreRepo.getStore(storeName)).thenReturn(mockStore);
+
+    CountingHook.resetCount();
+    AbstractPushMonitor testMonitor = getPushMonitor(mockRealTimeTopicSwitcher);
+    testMonitor.startMonitorOfflinePush(topic, 1, 3, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    testMonitor.handleCompletedPush(topic);
+
+    Assert.assertEquals(
+        CountingHook.getCount(),
+        1,
+        "postStoreVersionSwap hook should be called once on sequential roll-forward");
+  }
+
+  @Test
+  public void testPostVersionSwapHookNotCalledOnDeferredSwap() {
+    String storeName = "hookTestStore_deferredSwap";
+    String topic = storeName + "_v2";
+    int versionNumber = 2;
+
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    RealTimeTopicSwitcher mockRealTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+
+    when(mockStore.getName()).thenReturn(storeName);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.isEnableWrites()).thenReturn(true);
+    when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
+
+    // Deferred swap with no target regions: isDeferredSwap=true, no version swap should occur
+    when(mockVersion.isVersionSwapDeferred()).thenReturn(true);
+    when(mockVersion.getTargetSwapRegion()).thenReturn("");
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.PUSHED);
+
+    com.linkedin.venice.meta.LifecycleHooksRecord hookRecord =
+        mock(com.linkedin.venice.meta.LifecycleHooksRecord.class);
+    when(hookRecord.getStoreLifecycleHooksClassName()).thenReturn(CountingHook.class.getName());
+    when(hookRecord.getStoreLifecycleHooksParams()).thenReturn(new java.util.HashMap<>());
+    when(mockStore.getStoreLifecycleHooks()).thenReturn(java.util.Collections.singletonList(hookRecord));
+
+    when(mockControllerConfig.getDeferredVersionSwapRegionRollforwardOrder()).thenReturn("");
+    when(mockControllerConfig.getRegionName()).thenReturn(TARGET_REGION_NAME);
+    when(mockStoreRepo.getStore(storeName)).thenReturn(mockStore);
+
+    CountingHook.resetCount();
+    AbstractPushMonitor testMonitor = getPushMonitor(mockRealTimeTopicSwitcher);
+    testMonitor.startMonitorOfflinePush(topic, 1, 3, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    testMonitor.handleCompletedPush(topic);
+
+    Assert.assertEquals(CountingHook.getCount(), 0, "postStoreVersionSwap hook should NOT be called on deferred swap");
+  }
+
+  /**
+   * A lifecycle hook that counts how many times postStoreVersionSwap is invoked.
+   * Uses a static counter so it can be verified across instances created by reflection.
+   * Must be public and static (inner class of abstract test) for ReflectUtils to instantiate it.
+   */
+  public static class CountingHook extends com.linkedin.venice.hooks.StoreLifecycleHooks {
+    private static final java.util.concurrent.atomic.AtomicInteger COUNT =
+        new java.util.concurrent.atomic.AtomicInteger(0);
+
+    public CountingHook(com.linkedin.venice.utils.VeniceProperties props) {
+      super(props);
+    }
+
+    @Override
+    public com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome postStoreVersionSwap(
+        String clusterName,
+        String storeName,
+        int versionNumber,
+        int previousVersion,
+        String regionName,
+        com.linkedin.venice.utils.lazy.Lazy<com.linkedin.venice.controllerapi.JobStatusQueryResponse> jobStatus,
+        com.linkedin.venice.utils.VeniceProperties storeHooksConfigs) {
+      COUNT.incrementAndGet();
+      return com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome.PROCEED;
+    }
+
+    public static int getCount() {
+      return COUNT.get();
+    }
+
+    public static void resetCount() {
+      COUNT.set(0);
+    }
   }
 
   protected AbstractPushMonitor.CurrentVersionChangeNotifier getCurrentVersionChangeNotifier() {
