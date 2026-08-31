@@ -12,6 +12,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 
 
@@ -295,7 +296,8 @@ public class VeniceMultiRegionClusterCreateOptions {
     }
 
     public Builder additionalBrokerConfiguration(Map<String, String> additionalBrokerConfiguration) {
-      this.additionalBrokerConfiguration = new HashMap<>(additionalBrokerConfiguration);
+      this.additionalBrokerConfiguration =
+          new HashMap<>(Objects.requireNonNull(additionalBrokerConfiguration, "additionalBrokerConfiguration"));
       return this;
     }
 

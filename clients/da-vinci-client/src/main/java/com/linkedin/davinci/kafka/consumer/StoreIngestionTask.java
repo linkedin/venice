@@ -4152,7 +4152,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
    * (default), also increments {@code record_count_mismatch_failure} and throws
    * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
-   * and the throw </p>
+   * and the throw.</p>
    *
    * <p>Skip cases (no-op, no metric):</p>
    * <ul>
