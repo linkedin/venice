@@ -157,8 +157,8 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.LongAccumulator;
-import scala.collection.JavaConverters;
 import org.apache.spark.util.TaskCompletionListener;
+import scala.collection.JavaConverters;
 
 
 /**
