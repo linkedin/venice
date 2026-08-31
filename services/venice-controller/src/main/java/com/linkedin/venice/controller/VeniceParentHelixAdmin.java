@@ -3776,7 +3776,7 @@ public class VeniceParentHelixAdmin implements Admin {
         // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark
         // the
         // push job status as terminal (ERROR) as job was killed
-        if (versionStatus.equals(KILLED)) {
+        if (versionStatus == KILLED) {
           LOGGER.info(
               "Marking execution status as ERROR for store {} because parent version status is KILLED",
               storeName);
