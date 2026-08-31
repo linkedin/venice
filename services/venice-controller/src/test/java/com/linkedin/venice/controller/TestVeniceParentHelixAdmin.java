@@ -2605,6 +2605,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testDeletedVersionExecutionStatus() {
+    // A client can keep polling job status for a version after it was deleted (e.g. a killed system push whose
+    // stranded version was removed). In that case Store#getVersion returns null and Store#getVersionStatus returns
+    // NOT_CREATED. The job status path must not dereference the null version, otherwise the controller returns HTTP
+    // 500 for every poll instead of a valid execution status.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+
+    Map<String, ControllerClient> errorMap = new HashMap<>();
+    errorMap.put("cluster", clientMap.get(ExecutionStatus.ERROR));
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+    errorMap.put("cluster3", clientMap.get(ExecutionStatus.ERROR));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    // Deleted version: getVersion is null and getVersionStatus falls back to NOT_CREATED (see AbstractStore).
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    // No NullPointerException; a valid aggregated child status is returned instead of an HTTP 500.
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+  }
+
+  @Test
   public void testUpdateStore() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
