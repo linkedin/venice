@@ -8,7 +8,9 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.IndexedRecord;
 import org.apache.commons.lang.StringUtils;
 
 
@@ -241,9 +245,43 @@ public class AvroSupersetSchemaUtils {
         .setOrder(field.order());
     // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
     if (field.hasDefaultValue()) {
-      fieldBuilder.setDefault(getFieldDefault(field));
+      fieldBuilder.setDefault(normalizeFieldDefault(getFieldDefault(field)));
     }
     return fieldBuilder;
+  }
+
+  /**
+   * FieldBuilder does not make ByteBuffer defaults Avro-friendly. Normalize them recursively without mutating the
+   * source buffers or exposing their backing arrays.
+   */
+  private static Object normalizeFieldDefault(Object defaultValue) {
+    if (defaultValue instanceof ByteBuffer) {
+      ByteBuffer buffer = ((ByteBuffer) defaultValue).duplicate();
+      byte[] bytes = new byte[buffer.remaining()];
+      buffer.get(bytes);
+      return bytes;
+    }
+    if (defaultValue instanceof List) {
+      List<?> defaultList = (List<?>) defaultValue;
+      List<Object> normalizedList = new ArrayList<>(defaultList.size());
+      defaultList.forEach(value -> normalizedList.add(normalizeFieldDefault(value)));
+      return normalizedList;
+    }
+    if (defaultValue instanceof Map) {
+      Map<?, ?> defaultMap = (Map<?, ?>) defaultValue;
+      Map<Object, Object> normalizedMap = new LinkedHashMap<>(defaultMap.size());
+      defaultMap.forEach((key, value) -> normalizedMap.put(key, normalizeFieldDefault(value)));
+      return normalizedMap;
+    }
+    if (defaultValue instanceof IndexedRecord) {
+      IndexedRecord defaultRecord = (IndexedRecord) defaultValue;
+      GenericData.Record normalizedRecord = new GenericData.Record(defaultRecord.getSchema());
+      for (Schema.Field field: defaultRecord.getSchema().getFields()) {
+        normalizedRecord.put(field.pos(), normalizeFieldDefault(defaultRecord.get(field.pos())));
+      }
+      return normalizedRecord;
+    }
+    return defaultValue;
   }
 
   private static FieldBuilder deepCopySchemaField(Schema.Field field) {
@@ -272,7 +310,7 @@ public class AvroSupersetSchemaUtils {
         fieldBuilder.setSchema(generateSupersetSchema(fieldInExistingSchema.schema(), fieldInNewSchema.schema()))
             .setDoc(fieldInNewSchema.doc() != null ? fieldInNewSchema.doc() : fieldInExistingSchema.doc());
         if (!fieldInNewSchema.hasDefaultValue() && fieldInExistingSchema.hasDefaultValue()) {
-          fieldBuilder.setDefault(getFieldDefault(fieldInExistingSchema));
+          fieldBuilder.setDefault(normalizeFieldDefault(getFieldDefault(fieldInExistingSchema)));
         }
       }
       Schema.Field generatedField = fieldBuilder.build();
