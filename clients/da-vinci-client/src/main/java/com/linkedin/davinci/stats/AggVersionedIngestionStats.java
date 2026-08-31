@@ -586,6 +586,10 @@ public class AggVersionedIngestionStats
     getIngestionOtelStats(storeName).recordPartialUpdateAmplificationAlertCount(version, 1);
   }
 
+  public void recordPartialUpdateLargeRecordSkippedCount(String storeName, int version, long count) {
+    getIngestionOtelStats(storeName).recordPartialUpdateLargeRecordSkippedCount(version, count);
+  }
+
   public void recordActiveKeyCountInvalidation(String storeName, int version) {
     getIngestionOtelStats(storeName).recordActiveKeyCountInvalidation(version);
   }

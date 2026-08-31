@@ -4542,4 +4542,99 @@ public class LeaderFollowerStoreIngestionTaskTest {
         false);
     verify(vtUpdateLocal, times(1)).apply(localVtPosition);
   }
+
+  private static final int NEARLINE_LIMIT_BYTES = 5 * 1024 * 1024;
+
+  private void stubNearlineRecordSizeLimit(int limitBytes) {
+    doReturn(limitBytes).when(leaderFollowerStoreIngestionTask).getMaxNearlineRecordSizeBytes();
+  }
+
+  private static ChunkedValueManifestContainer containerWithAssembledSize(int ceilingBytes, int assembledSizeBytes) {
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer(ceilingBytes);
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.size = assembledSizeBytes;
+    manifest.schemaId = 1;
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    container.setManifest(manifest);
+    return container;
+  }
+
+  private static DefaultPubSubMessage mockUpdateMessage(byte[] keyBytes) {
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.UPDATE, keyBytes);
+    doReturn(kafkaKey).when(message).getKey();
+    return message;
+  }
+
+  /**
+   * The write that first takes a record over the limit is deliberately allowed through; it is the updates after it
+   * that are skipped. Rejecting the offending write would leave the last compliant value in storage, so the manifest
+   * would never report an oversized record and every later update would keep paying the full assemble-and-merge cost.
+   */
+  @Test
+  public void testTheWriteThatCrossesTheLimitIsNotItselfSkipped() throws InterruptedException {
+    setUp();
+    stubNearlineRecordSizeLimit(NEARLINE_LIMIT_BYTES);
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("growing-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, NEARLINE_LIMIT_BYTES)),
+        "The limit is inclusive, so a record exactly at it still accepts the update that will take it over");
+    assertTrue(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("growing-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, NEARLINE_LIMIT_BYTES + 1)),
+        "Once stored oversized, the manifest alone skips every subsequent update, with no server-side state");
+    verify(mockPartitionConsumptionState, never()).setTransientRecord(anyInt(), any(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void testSkippingIsDecidedPerRecordNotPerPartition() throws InterruptedException {
+    setUp();
+    stubNearlineRecordSizeLimit(NEARLINE_LIMIT_BYTES);
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("fat-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, NEARLINE_LIMIT_BYTES + 1)));
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("innocent-key".getBytes()),
+            containerWithAssembledSize(NEARLINE_LIMIT_BYTES, 1024)),
+        "One oversized key must not stall writes for any other key in the partition");
+  }
+
+  @Test
+  public void testUnlimitedStoreLimitLeavesReadsUnbounded() throws InterruptedException {
+    setUp();
+    stubNearlineRecordSizeLimit(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
+    ChunkedValueManifestContainer container =
+        containerWithAssembledSize(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE, Integer.MAX_VALUE);
+
+    assertFalse(container.isSizeLimitExceeded());
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isRecordTooLargeForPartialUpdate(
+            mockPartitionConsumptionState,
+            mockUpdateMessage("k".getBytes()),
+            container),
+        "A store that sets no nearline limit must never have an update skipped");
+  }
+
+  @Test
+  public void testUnlimitedContainerNeverFlagsOversize() {
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.size = Integer.MAX_VALUE;
+    manifest.schemaId = 1;
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    container.setManifest(manifest);
+
+    assertFalse(container.isSizeLimitExceeded(), "Read paths that declare no ceiling must be unaffected");
+    assertEquals(container.getManifest(), manifest);
+  }
 }
