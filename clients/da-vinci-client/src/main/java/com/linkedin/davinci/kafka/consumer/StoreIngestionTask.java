@@ -4146,8 +4146,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of strict-mode state) and logs a tagged error string. On a non-DaVinci
-   * replica, if the server-level config
+   * fires regardless of strict-mode state). Migration duplicate stores log a warning and continue
+   * because compacted version-topic replay can legitimately contain fewer records than the original
+   * push count. Other stores log a tagged error string. On a non-DaVinci replica, if the server-level config
    * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
    * (default), also increments {@code record_count_mismatch_failure} and throws
    * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
@@ -4215,11 +4216,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (!counterOk || !hllOk) {
-      String taggedMsg = "RECORD_COUNT_DEFICIT:counterOk=" + counterOk + ":hllOk=" + hllOk + ":expected="
-          + expectedCount + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold
-          + ":replica=" + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
-      LOGGER.error(taggedMsg);
       versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
+      Store store = storeRepository.getStore(storeName);
+      boolean isMigrationReplay = store != null && store.isMigrationDuplicateStore();
+      String verificationContext = isMigrationReplay ? "MIGRATION_REPLAY" : "FRESH_PUSH";
+      String taggedMsg = "RECORD_COUNT_DEFICIT:verificationContext=" + verificationContext + ":counterOk=" + counterOk
+          + ":hllOk=" + hllOk + ":expected=" + expectedCount + ":actual=" + actualCount + ":hll=" + hllEstimate
+          + ":hllThreshold=" + hllThreshold + ":replica=" + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
+      if (isMigrationReplay) {
+        LOGGER.warn(taggedMsg + ":reason=MIGRATION_DUPLICATE_STORE");
+        return;
+      }
+      LOGGER.error(taggedMsg);
       // Server-side strict-mode is controlled by the cluster-wide config
       // `server.batch.push.record.count.verification.fail.on.mismatch.enabled` (default: true).
       // DaVinci replicas unconditionally skip the throw — DVC failure aggregation is handled

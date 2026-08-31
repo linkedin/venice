@@ -14,11 +14,17 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.logger.TestLogAppender;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.server.VersionRole;
 import java.nio.ByteBuffer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.testng.annotations.Test;
 
 
@@ -48,6 +54,17 @@ public class StoreIngestionTaskRecordCountTest {
       VersionRole versionRole,
       boolean hllEnabled,
       boolean isDaVinciClient) throws Exception {
+    Store store = mock(Store.class);
+    return buildSit(failOnMismatchEnabled, statsMock, versionRole, hllEnabled, isDaVinciClient, store);
+  }
+
+  private static StoreIngestionTask buildSit(
+      boolean failOnMismatchEnabled,
+      AggVersionedIngestionStats statsMock,
+      VersionRole versionRole,
+      boolean hllEnabled,
+      boolean isDaVinciClient,
+      Store store) throws Exception {
     StoreIngestionTask sit = mock(StoreIngestionTask.class);
     setField(sit, "versionedIngestionStats", statsMock);
     setField(sit, "kafkaVersionTopic", TEST_TOPIC);
@@ -60,6 +77,10 @@ public class StoreIngestionTaskRecordCountTest {
     VeniceServerConfig serverConfigMock = mock(VeniceServerConfig.class);
     doReturn(failOnMismatchEnabled).when(serverConfigMock).isBatchPushRecordCountVerificationFailOnMismatchEnabled();
     setField(sit, "serverConfig", serverConfigMock);
+
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(store).when(storeRepository).getStore(TEST_STORE);
+    setField(sit, "storeRepository", storeRepository);
 
     PubSubTopic vt = mock(PubSubTopic.class);
     doReturn(false).when(vt).isViewTopic();
@@ -222,6 +243,7 @@ public class StoreIngestionTaskRecordCountTest {
 
     String msg = ex.getMessage();
     assertTrue(msg.contains("RECORD_COUNT_DEFICIT"), "Tagged error class missing in: " + msg);
+    assertTrue(msg.contains("verificationContext=FRESH_PUSH"), "Verification context missing in: " + msg);
     assertTrue(msg.contains("expected=100"), "expected=N missing in: " + msg);
     assertTrue(msg.contains("actual=50"), "actual=M missing in: " + msg);
     assertTrue(msg.contains("replica=test_replica"), "replica id missing in: " + msg);
@@ -229,6 +251,119 @@ public class StoreIngestionTaskRecordCountTest {
     // Failed-and-throwing mismatches must also increment the dedicated failure sensor — distinct
     // from the informational mismatch sensor, which fires regardless of strict-mode state.
     verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyMigrationReplayDoesNotThrowOnCounterDeficitInStrictMode() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = mock(Store.class);
+    doReturn(true).when(store).isMigrationDuplicateStore();
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+
+    sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L));
+
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyMigrationReplayDoesNotThrowOnHllDeficitInStrictMode() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = mock(Store.class);
+    doReturn(true).when(store).isMigrationDuplicateStore();
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ true,
+        /* isDaVinciClient */ false,
+        store);
+
+    sit.verifyBatchPushRecordCount(pcsWithCountAndHll(100L, 50L), headersWithPrc(100L));
+
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyMigratingSourceStillThrowsOnDeficit() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = mock(Store.class);
+    doReturn(true).when(store).isMigrating();
+    doReturn(false).when(store).isMigrationDuplicateStore();
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"));
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyMissingStoreMetadataFailsClosed() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        null);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().startsWith("RECORD_COUNT_DEFICIT"));
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"));
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyMigrationReplayWarningContainsContextAndReason() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = mock(Store.class);
+    doReturn(true).when(store).isMigrationDuplicateStore();
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+    TestLogAppender appender =
+        new TestLogAppender("MigrationReplayRecordCountAppender", PatternLayout.createDefaultLayout());
+    appender.start();
+    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
+    logger.addAppender(appender);
+    try {
+      sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L));
+
+      String log = appender.getLog();
+      assertTrue(log.contains("verificationContext=MIGRATION_REPLAY"), "Missing migration context in: " + log);
+      assertTrue(log.contains("reason=MIGRATION_DUPLICATE_STORE"), "Missing migration reason in: " + log);
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
   }
 
   /** When server strict-mode is disabled, the dedicated failure sensor must NOT fire. */
