@@ -2,17 +2,22 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.BYTES_RECEIVED;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.BYTES_SENT;
+import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.REQUEST_COUNT;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.RESPONSE_COUNT;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.TIME;
+import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.VERSION_TOPIC_FALLBACK_COUNT;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -32,6 +37,12 @@ public class BlobTransferOtelStats {
   private final boolean emitOtelMetrics;
 
   private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
+
+  /** Attempted transfer count with VersionRole + source + status dimensions. */
+  private final MetricEntityStateThreeEnums<VersionRole, VeniceBlobTransferSource, VeniceResponseStatusCategory> requestCountMetric;
+
+  /** Version-topic fallback count with VersionRole + fallback-reason dimensions. */
+  private final MetricEntityStateTwoEnums<VersionRole, VeniceBlobTransferFallbackReason> versionTopicFallbackCountMetric;
 
   /** Response count with VersionRole + VeniceResponseStatusCategory dimensions. */
   private final MetricEntityStateTwoEnums<VersionRole, VeniceResponseStatusCategory> responseCountMetric;
@@ -66,6 +77,21 @@ public class BlobTransferOtelStats {
     this.emitOtelMetrics = otelSetup.emitOpenTelemetryMetrics();
     VeniceOpenTelemetryMetricsRepository otelRepository = otelSetup.getOtelRepository();
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelSetup.getBaseDimensionsMap();
+
+    requestCountMetric = MetricEntityStateThreeEnums.create(
+        REQUEST_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        VersionRole.class,
+        VeniceBlobTransferSource.class,
+        VeniceResponseStatusCategory.class);
+
+    versionTopicFallbackCountMetric = MetricEntityStateTwoEnums.create(
+        VERSION_TOPIC_FALLBACK_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        VersionRole.class,
+        VeniceBlobTransferFallbackReason.class);
 
     responseCountMetric = MetricEntityStateTwoEnums.create(
         RESPONSE_COUNT.getMetricEntity(),
@@ -103,6 +129,23 @@ public class BlobTransferOtelStats {
    */
   public void recordResponseCount(int version, VeniceResponseStatusCategory status) {
     responseCountMetric.record(1, OtelVersionedStatsUtils.classifyVersion(version, versionInfo), status);
+  }
+
+  /**
+   * Records an attempted blob transfer, attributed to the source that served it.
+   *
+   * <p>Only transfers that were actually attempted are counted; hosts filtered out by the
+   * pre-transfer connectability check never reach this method.
+   */
+  public void recordRequestCount(int version, VeniceBlobTransferSource source, VeniceResponseStatusCategory status) {
+    requestCountMetric.record(1, OtelVersionedStatsUtils.classifyVersion(version, versionInfo), source, status);
+  }
+
+  /**
+   * Records that a replica fell back to version-topic bootstrapping instead of blob transfer.
+   */
+  public void recordVersionTopicFallback(int version, VeniceBlobTransferFallbackReason reason) {
+    versionTopicFallbackCountMetric.record(1, OtelVersionedStatsUtils.classifyVersion(version, versionInfo), reason);
   }
 
   /**

@@ -439,9 +439,6 @@ public abstract class TestRead {
         // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p
         if (!isRouterHttp2ClientEnabled()) {
           if (readComputeEnabled) {
-            Assert.assertTrue(
-                getMaxServerMetricValue(
-                    "." + this.storeName + "--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
             Assert.assertEquals(
                 getAggregateRouterMetricValue("." + this.storeName + "--compute_multiget_fallback.Total"),
                 0.0);

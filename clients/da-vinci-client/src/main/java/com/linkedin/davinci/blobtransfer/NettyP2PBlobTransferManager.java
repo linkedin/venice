@@ -1,6 +1,12 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.NO_CANDIDATES;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.DAVINCI_PEER;
+import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource.VENICE_SERVER;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
@@ -16,6 +22,9 @@ import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
@@ -126,6 +135,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           NO_PEERS_FOUND_ERROR_MSG_FORMAT,
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
       perPartitionTransferFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
+      if (response != null && response.isSourceAware()) {
+        recordVersionTopicFallback(storeName, version, NO_CANDIDATES);
+      }
       return perPartitionTransferFuture;
     }
 
@@ -133,7 +145,15 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     List<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
     // 2. Process the discovered peers sequentially in finder-provided priority order.
-    processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, perPartitionTransferFuture);
+    processPeersSequentially(
+        connectablePeers,
+        response.getServerHostNames(),
+        response.isSourceAware(),
+        storeName,
+        version,
+        partition,
+        tableFormat,
+        perPartitionTransferFuture);
 
     return perPartitionTransferFuture;
   }
@@ -145,7 +165,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * 1. If no peers info are found for the requested blob, a VenicePeersNotFoundException is thrown.
    *    In this case, blob transfer is not used for bootstrapping at all.
    * 2. If all peers fail to connect or have no snapshot, a VenicePeersAllFailedException is thrown,
-   *    and Kafka is used for bootstrapping instead.
+   *    and version-topic consumption is used for bootstrapping instead.
    *
    * - Non-fatal cases, move to the next possible host:
    * 3. If one host connect error, it will throw VenicePeersCannotConnectException then move to the next possible host.
@@ -185,6 +205,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    *
    *
    * @param uniqueConnectablePeers the set of peers to process
+   * @param serverHostNames the discovered hosts that are Venice servers, used to attribute source metrics
+   * @param sourceAware whether the peer finder distinguishes Venice servers from Da Vinci peers
    * @param storeName the name of the store
    * @param version the version of the store
    * @param partition the partition of the store
@@ -193,6 +215,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    */
   private void processPeersSequentially(
       List<String> uniqueConnectablePeers,
+      Set<String> serverHostNames,
+      boolean sourceAware,
       String storeName,
       int version,
       int partition,
@@ -206,6 +230,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
 
     // Iterate through each peer and chain the futures
     for (String chosenHost: uniqueConnectablePeers) {
+      VeniceBlobTransferSource source = serverHostNames.contains(chosenHost) ? VENICE_SERVER : DAVINCI_PEER;
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
@@ -234,9 +259,17 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           long transferTime = Duration.between(startTime, Instant.now()).getSeconds();
           LOGGER.info(FETCHED_BLOB_SUCCESS_MSG, replicaId, chosenHost, transferTime);
           perPartitionTransferFuture.complete(inputStream);
+          if (sourceAware) {
+            recordBlobTransferRequest(storeName, version, source, SUCCESS);
+          }
           // Updating the blob transfer stats with the transfer time and throughput
           updateBlobTransferFileReceiveStats(transferTime, storeName, version, partition);
         }).exceptionally(ex -> {
+          // A cancellation closes the in-flight channel, which surfaces here as a transfer failure. That is a
+          // deliberate abort rather than an unusable source, so it must not count against the source.
+          if (sourceAware && !statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
+            recordBlobTransferRequest(storeName, version, source, FAIL);
+          }
           handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
           return null;
         });
@@ -249,14 +282,17 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         return;
       }
       if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
-        // Receive cancellation request, skip Kafka bootstrapping
+        // Receive cancellation request, skip version-topic bootstrapping
         perPartitionTransferFuture.completeExceptionally(
             new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
         return;
       }
-      // No usable peers available, fall back to Kafka bootstrapping.
+      // No usable peers available, fall back to version-topic bootstrapping.
       perPartitionTransferFuture.completeExceptionally(
           new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
+      if (sourceAware) {
+        recordVersionTopicFallback(storeName, version, ALL_HOSTS_FAILED);
+      }
     });
   }
 
@@ -326,6 +362,37 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       LOGGER.error(
           "Failed to update updateBlobTransferFileReceiveStats for replica {}",
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition),
+          e);
+    }
+  }
+
+  private void recordBlobTransferRequest(
+      String storeName,
+      int version,
+      VeniceBlobTransferSource source,
+      VeniceResponseStatusCategory status) {
+    try {
+      aggVersionedBlobTransferStats.recordBlobTransferRequest(storeName, version, source, status);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to record blob transfer request metric for store {} version {} source {} status {}",
+          storeName,
+          version,
+          source,
+          status,
+          e);
+    }
+  }
+
+  private void recordVersionTopicFallback(String storeName, int version, VeniceBlobTransferFallbackReason reason) {
+    try {
+      aggVersionedBlobTransferStats.recordBlobTransferVersionTopicFallback(storeName, version, reason);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to record blob transfer version-topic fallback metric for store {} version {} reason {}",
+          storeName,
+          version,
+          reason,
           e);
     }
   }

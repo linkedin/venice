@@ -57,8 +57,6 @@ import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.ParallelMultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
-import com.linkedin.venice.listener.response.stats.ComputeResponseStatsWithSizeProfiling;
-import com.linkedin.venice.listener.response.stats.MultiGetResponseStatsWithSizeProfiling;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -137,9 +135,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final KeyPartitionProfilerManager keyPartitionProfilerManager;
 
   /**
-   * The function handles below are used to drive the K/V size profiling, which is enabled (or not) by an immutable
-   * config determined at the time we construct the {@link StorageReadRequestHandler}. This way, we don't need to
-   * evaluate the config flag during every request.
+   * Response providers create independent wrappers and stats for each request or parallel chunk. Handler functions
+   * cache the sequential-versus-parallel dispatch selected when this handler is constructed.
    */
   private final IntFunction<MultiGetResponseWrapper> multiGetResponseProvider;
   private final IntFunction<ComputeResponseWrapper> computeResponseProvider;
@@ -219,12 +216,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         healthCheckService,
         compressorFactory,
         optionalResourceReadUsageTracker,
-        serverConfig.isKeyValueProfilingEnabled()
-            ? s -> new MultiGetResponseWrapper(s, new MultiGetResponseStatsWithSizeProfiling(s))
-            : MultiGetResponseWrapper::new,
-        serverConfig.isKeyValueProfilingEnabled()
-            ? s -> new ComputeResponseWrapper(s, new ComputeResponseStatsWithSizeProfiling(s))
-            : ComputeResponseWrapper::new,
+        MultiGetResponseWrapper::new,
+        ComputeResponseWrapper::new,
         new KeyPartitionProfilerManager(
             storeVersion -> resolvePartitionCount(metadataStoreRepository, storeVersion),
             KeyPartitionProfilerManager.DEFAULT_MAX_CONCURRENT_SESSIONS,
@@ -877,7 +870,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
             .addReadComputeSerializationLatency(LatencyUtils.getElapsedTimeFromNSToMS(serializeStartTimeInNS));
         response.getStats()
             .addReadComputeLatency(LatencyUtils.convertNSToMS(serializeStartTimeInNS - computeStartTimeInNS));
-        response.getStats().addReadComputeOutputSize(record.value.remaining());
 
         response.addRecord(record);
         hits++;

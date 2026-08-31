@@ -343,6 +343,11 @@ public class ChunkingUtils {
     ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
     if (manifestContainer != null) {
       manifestContainer.setManifest(chunkedValueManifest);
+      if (manifestContainer.isSizeLimitExceeded()) {
+        // The caller distinguishes this null from a genuinely missing value via isSizeLimitExceeded(). Serving reads
+        // are unaffected: only the partial-update path passes a size ceiling, so they still assemble oversized records.
+        return null;
+      }
     }
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;

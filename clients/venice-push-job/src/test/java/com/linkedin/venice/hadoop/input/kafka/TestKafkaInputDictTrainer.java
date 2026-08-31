@@ -253,7 +253,8 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer1),
         getParam(1000),
         getCompressorBuilder(new NoopCompressor()));
-    trainer1.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
+    PubSubConsumerAdapter reusedConsumer = mock(PubSubConsumerAdapter.class);
+    trainer1.trainDict(Optional.of(reusedConsumer));
 
     verify(mockTrainer1).addSample(eq("p0_value0".getBytes()));
     verify(mockTrainer1).addSample(eq("p0_value1".getBytes()));
@@ -261,6 +262,7 @@ public class TestKafkaInputDictTrainer {
     verify(mockTrainer1).addSample(eq("p1_value0".getBytes()));
     verify(mockTrainer1).addSample(eq("p1_value1".getBytes()));
     verify(mockTrainer1).addSample(eq("p1_value2".getBytes()));
+    verify(reusedConsumer, never()).batchUnsubscribe(any());
 
     // Small sampling will collect the first several records
     readerForP0.reset();

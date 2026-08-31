@@ -342,6 +342,16 @@ public class ConfigKeys {
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
 
   /**
+   * When true, the controller persists newly added store versions as individual ZK znodes at
+   * {@code /<cluster>/Stores/<name>/versions/<n>} rather than appending them inside the store znode JSON. Existing
+   * embedded versions age out through normal version lifecycle removals, so the active version set gradually shifts to
+   * per-version znodes. The read path understands both layouts, so this flag must only flip after
+   * every reader in the deployment (router, server, da-vinci, fast-client) is running a build that contains the
+   * split-aware read path.
+   */
+  public static final String CONTROLLER_PER_VERSION_ZNODE_ENABLED = "controller.per.version.znode.enabled";
+
+  /**
    * Fallback to remain compatible with the old config spelling.
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
@@ -349,6 +359,11 @@ public class ConfigKeys {
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String CONCURRENT_PUSH_DETECTION_STRATEGY = "concurrent.push.detection.strategy";
+  /**
+   * Minimum interval between admitted user-store version-creation attempts in the leader parent controller. A value of
+   * 0 disables the process-local cooldown.
+   */
+  public static final String CONTROLLER_PUSH_RETRY_COOLDOWN_MS = "controller.push.retry.cooldown.ms";
 
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
@@ -2101,10 +2116,8 @@ public class ConfigKeys {
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
 
   /**
-   * A config that turns the key/value profiling stats on and off. This config can be placed in both Router and SNs and it
-   * is off by default. When switching it on, We will emit a fine grained histogram that reflects the distribution of
-   * key and value size. Since this will be run in the critical read path and it will emit additional ~20 stats, please
-   * be cautious when turning it on.
+   * Router-only config that controls request-key-size metrics. It is off by default because collecting per-key sizes
+   * adds work to the critical read path.
    */
   public static final String KEY_VALUE_PROFILING_ENABLED = "key.value.profiling.enabled";
 
@@ -2530,9 +2543,24 @@ public class ConfigKeys {
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT =
       "controller.pubsub.alternative.backend.hybrid.user.store.rt";
 
+  /** Create batch job heartbeat system store version topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_VT =
+      "controller.pubsub.alternative.backend.batch.job.heartbeat.store.vt";
+
+  /** Create batch job heartbeat system store RT topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_RT =
+      "controller.pubsub.alternative.backend.batch.job.heartbeat.store.rt";
+
   /** Comma-separated store names excluded from alternative pubsub backend. Default: empty */
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST =
       "controller.pubsub.alternative.backend.exclusion.list";
+
+  /**
+   * Comma-separated store names always routed to the alternative pubsub backend, overriding the
+   * per-topic-type flags. The exclusion list takes precedence over this inclusion list. Default: empty
+   */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST =
+      "controller.pubsub.alternative.backend.inclusion.list";
 
   /**
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
@@ -2644,15 +2672,6 @@ public class ConfigKeys {
    * turned off separately without affecting other server/DaVinci OTel metrics.
    */
   public static final String SERVER_INGESTION_OTEL_STATS_ENABLED = "server.ingestion.otel.stats.enabled";
-
-  /**
-   * Whether to emit OTel metrics for server read stats. When enabled (and the global OTel flag is also enabled),
-   * per-store read OTel metrics are recorded. Enabled by default so that turning on OTel for servers
-   * automatically includes read stats. Can be set to {@code false} to disable read OTel stats
-   * independently — useful if read OTel metrics cause issues and need to be turned off separately
-   * without affecting other server/DaVinci OTel metrics.
-   */
-  public static final String SERVER_READ_OTEL_STATS_ENABLED = "server.read.otel.stats.enabled";
 
   /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config
@@ -2787,6 +2806,26 @@ public class ConfigKeys {
    * The max size of buffer in bytes for Venice writer batching feature.
    */
   public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
+
+  /**
+   * Controls when {@link com.linkedin.venice.writer.VeniceWriter} attaches the
+   * {@link com.linkedin.venice.pubsub.api.PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER vtp}
+   * protocol-schema header to outbound messages. The pre-existing emission gate is
+   * {@code segmentNumber == 0 && messageSequenceNumber == 0} on the outgoing producer metadata.
+   * On the data path that gate matches only the first segment-start record produced on a
+   * partition (segment 0, sequence 0); subsequent data SOS records use non-zero
+   * {@code segmentNumber} and are unaffected. Heartbeats pin both coordinates to {@code 0}, so
+   * every heartbeat matches the gate. Accepts one of the
+   * {@link com.linkedin.venice.writer.VtpHeaderEmissionMode} names: {@code SOS_AND_HB} (default,
+   * preserves the pre-existing behavior — emit on both first data SOS and every heartbeat),
+   * {@code SOS_ONLY} (apply the same 0/0 gate but skip heartbeats — i.e., emit on the first
+   * data SOS per partition and on DoL stamps, which also carry 0/0 coordinates but are not
+   * heartbeats), or {@code NONE} (never emit). Use {@code SOS_ONLY} when heartbeat
+   * fan-out dominates the consumer-side per-record memory footprint and consumers can bootstrap
+   * the {@code KafkaMessageEnvelope} schema from the first data SOS or an out-of-band schema
+   * cache.
+   */
+  public static final String VENICE_WRITER_VTP_HEADER_EMISSION_MODE = "venice.writer.vtp.header.emission.mode";
 
   /**
    * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
@@ -2938,6 +2977,16 @@ public class ConfigKeys {
    */
   public static final String SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS =
       "server.require.leader.complete.for.catch.up.vt.rts";
+
+  /**
+   * How long a hybrid follower or DaVinci replica waits without observing a fresh leader-complete heartbeat before
+   * presuming the leader dead and falling back to offset catch-up alone for the ready-to-serve check. The silence
+   * window is anchored on the later of the last observed signal and the consumption start time. Default is 3 hours;
+   * {@code 0} or less disables the fallback. When positive it must be larger than
+   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}, otherwise server startup fails.
+   */
+  public static final String SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS =
+      "server.dead.leader.ready.to.serve.fallback.threshold.ms";
 
   /**
    * Whether to enable stuck consumer repair in Server.
@@ -3244,6 +3293,42 @@ public class ConfigKeys {
    */
   public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT =
       "server.lag.based.replica.auto.resubscribe.max.replica.count";
+
+  /**
+   * Config to enable/disable blocking the OFFLINE-&gt;STANDBY transition for future-version replicas whose push
+   * is still in progress (i.e. not yet PUSHED/ONLINE), until the replica's local version topic consumption lag
+   * drops to or below {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD}. This prevents Helix from electing a
+   * brand-new/lagging replica as leader immediately after it reaches STANDBY. Default is false.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED =
+      "server.future.version.standby.lag.check.enabled";
+
+  /**
+   * Config to control the acceptable local version topic lag (number of records behind the end of the topic)
+   * for a future-version, in-progress-push replica to be allowed to complete the OFFLINE-&gt;STANDBY transition.
+   * Only used when {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 1000 records,
+   * a small buffer to absorb normal producer/consumer jitter rather than requiring an exact catch-up.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD =
+      "server.future.version.standby.lag.threshold";
+
+  /**
+   * Config to control the maximum duration, in minutes, to block the OFFLINE-&gt;STANDBY transition while waiting
+   * for a future-version, in-progress-push replica's lag to become acceptable. This is a best-effort wait: once
+   * the timeout elapses, the transition proceeds regardless of the measured lag, to avoid liveness issues.
+   * Only used when {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 120 min = 2 hours,
+   * to accommodate replicas that are still bootstrapping.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES =
+      "server.future.version.standby.lag.check.timeout.minutes";
+
+  /**
+   * Config to control the interval, in minutes, between successive lag re-measurements while waiting for a
+   * future-version, in-progress-push replica's lag to become acceptable. Only used when
+   * {@link #SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED} is true. Default is 15 min.
+   */
+  public static final String SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES =
+      "server.future.version.standby.lag.check.poll.interval.minutes";
 
   /**
    * Whether to enable producer throughput optimization for realtime workload or not.

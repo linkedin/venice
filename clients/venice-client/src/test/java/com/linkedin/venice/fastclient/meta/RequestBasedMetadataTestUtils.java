@@ -29,12 +29,14 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -151,7 +153,8 @@ public class RequestBasedMetadataTestUtils {
         2,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
         Collections.unmodifiableMap(partitionerParams),
-        1);
+        1,
+        StorageMode.INTERNAL.getValue());
     Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
     routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
     routeMap.put("1", Collections.singletonList(REPLICA2_NAME));
@@ -251,7 +254,8 @@ public class RequestBasedMetadataTestUtils {
         2,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
         Collections.unmodifiableMap(partitionerParams),
-        1);
+        1,
+        StorageMode.INTERNAL.getValue());
     Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
     helixGroupMap.put(REPLICA1_NAME, 0);
     helixGroupMap.put(REPLICA2_NAME, 1);
@@ -291,7 +295,7 @@ public class RequestBasedMetadataTestUtils {
 
   /**
    * Build a {@link TransportClientResponse} that mimics a successful METADATA fetch reporting the supplied current
-   * version, with externalStorageReadMode defaulting to VENICE_ONLY.
+   * version, with externalStorageReadMode defaulting to VENICE_ONLY and storageMode defaulting to INTERNAL.
    */
   public static TransportClientResponse buildMetadataResponse(int currentVersion) {
     return buildMetadataResponse(currentVersion, ExternalStorageReadMode.VENICE_ONLY);
@@ -299,8 +303,8 @@ public class RequestBasedMetadataTestUtils {
 
   /**
    * Build a {@link TransportClientResponse} that mimics a successful METADATA fetch reporting the supplied current
-   * version and {@code externalStorageReadMode}. Used by tests that need to drive a real
-   * {@code (previousVersion, newVersion)} version-switch transition through
+   * version and {@code externalStorageReadMode}, with storageMode defaulting to INTERNAL. Used by tests that need to
+   * drive a real {@code (previousVersion, newVersion)} version-switch transition through
    * {@link RequestBasedMetadata#updateCache(boolean)} and/or to flip externalStorageReadMode across refreshes. The
    * response carries full routing for the supplied version so {@code whetherToSwitchToFetchedCurrentVersion} returns
    * true (single replica per partition is enough; the partition-resources-ready check looks at non-empty routing per
@@ -309,15 +313,38 @@ public class RequestBasedMetadataTestUtils {
   public static TransportClientResponse buildMetadataResponse(
       int currentVersion,
       ExternalStorageReadMode externalStorageReadMode) {
-    return buildMetadataResponse(currentVersion, externalStorageReadMode.getValue());
+    return buildMetadataResponse(currentVersion, externalStorageReadMode.getValue(), StorageMode.INTERNAL.getValue());
   }
 
   /**
-   * Lower-level overload that accepts the raw int for externalStorageReadMode. Used by forward-compat tests that
-   * need to inject a wire value the client's {@link com.linkedin.venice.meta.ExternalStorageReadMode} enum does not
-   * yet recognize.
+   * Build a {@link TransportClientResponse} reporting the supplied current version, {@code externalStorageReadMode},
+   * and current-version {@code storageMode}.
+   */
+  public static TransportClientResponse buildMetadataResponse(
+      int currentVersion,
+      ExternalStorageReadMode externalStorageReadMode,
+      StorageMode storageMode) {
+    return buildMetadataResponse(currentVersion, externalStorageReadMode.getValue(), storageMode.getValue());
+  }
+
+  /**
+   * Lower-level overload that accepts the raw int for externalStorageReadMode, with storageMode defaulting to
+   * INTERNAL. Used by forward-compat tests that need to inject a wire value the client's
+   * {@link com.linkedin.venice.meta.ExternalStorageReadMode} enum does not yet recognize.
    */
   public static TransportClientResponse buildMetadataResponse(int currentVersion, int rawExternalStorageReadMode) {
+    return buildMetadataResponse(currentVersion, rawExternalStorageReadMode, StorageMode.INTERNAL.getValue());
+  }
+
+  /**
+   * Lowest-level overload that accepts raw ints for both externalStorageReadMode and storageMode. Used by
+   * forward-compat tests that need to inject wire values that this client's {@link ExternalStorageReadMode} and/or
+   * {@link StorageMode} enums do not yet recognize.
+   */
+  public static TransportClientResponse buildMetadataResponse(
+      int currentVersion,
+      int rawExternalStorageReadMode,
+      int rawStorageMode) {
     Map<String, String> partitionerParams = new HashMap<>();
     partitionerParams.put("testKey", "testValue");
     VersionProperties versionProperties = new VersionProperties(
@@ -326,7 +353,8 @@ public class RequestBasedMetadataTestUtils {
         2,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
         Collections.unmodifiableMap(partitionerParams),
-        1);
+        1,
+        rawStorageMode);
     Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
     routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
     routeMap.put("1", Collections.singletonList(REPLICA2_NAME));
@@ -345,6 +373,50 @@ public class RequestBasedMetadataTestUtils {
         helixGroupMap,
         150,
         rawExternalStorageReadMode);
+    byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
+        .serialize(metadataResponse);
+    int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
+    return new TransportClientResponse(metadataResponseSchemaId, CompressionStrategy.NO_OP, body);
+  }
+
+  /**
+   * Build a {@link TransportClientResponse} that reports {@code fetchedCurrentVersion} as the server-side current
+   * version while leaving its partition resources incomplete (partition 1 of 2 has no ready replicas), so
+   * {@link RequestBasedMetadata#whetherToSwitchToFetchedCurrentVersion} defers the switch and the client keeps
+   * serving {@code servingVersion}.
+   */
+  public static TransportClientResponse buildDeferredSwitchMetadataResponse(
+      int servingVersion,
+      int fetchedCurrentVersion,
+      StorageMode fetchedCurrentVersionStorageMode) {
+    Map<String, String> partitionerParams = new HashMap<>();
+    partitionerParams.put("testKey", "testValue");
+    VersionProperties versionProperties = new VersionProperties(
+        fetchedCurrentVersion,
+        CompressionStrategy.ZSTD_WITH_DICT.getValue(),
+        2,
+        "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
+        Collections.unmodifiableMap(partitionerParams),
+        1,
+        fetchedCurrentVersionStorageMode.getValue());
+    // Partition 1 is present but empty rather than omitted, so updateCache's routing-info loop does not see a null
+    // while isPartitionResourcesReady() still returns false.
+    Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
+    routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
+    routeMap.put("1", Collections.emptyList());
+    Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
+    helixGroupMap.put(REPLICA1_NAME, 0);
+    // Both versions active, so incomplete partition routing is the only reason the switch is deferred.
+    MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
+        versionProperties,
+        Collections.unmodifiableList(Arrays.asList(servingVersion, fetchedCurrentVersion)),
+        Collections.singletonMap("1", KEY_SCHEMA),
+        Collections.singletonMap("1", VALUE_SCHEMA),
+        1,
+        routeMap,
+        helixGroupMap,
+        150,
+        ExternalStorageReadMode.EXTERNAL_ONLY.getValue());
     byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
     int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();

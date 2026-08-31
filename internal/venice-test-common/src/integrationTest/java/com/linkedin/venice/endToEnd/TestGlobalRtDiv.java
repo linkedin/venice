@@ -1169,17 +1169,21 @@ public class TestGlobalRtDiv {
   }
 
   /**
-   * Verifies that under native replication with Global RT DIV enabled, the remote-DC leader (which
-   * consumes from the source DC's VT) persists the latest consumed VT position (LCVP) to its
-   * OffsetRecord during ingestion, and that the LCVP survives a leader restart so that ingestion
-   * does not rewind to {@link PubSubSymbolicPosition#EARLIEST} on the second startup.
+   * Verifies that for a batch-only store, Global RT DIV is gated off (see the constructor gating in
+   * {@link StoreIngestionTask}), so the remote-DC leader never syncs a latest-consumed-VT position
+   * (LCVP) to its OffsetRecord: LCVP stays at {@link PubSubSymbolicPosition#EARLIEST} before and after
+   * a leader restart. Batch-only ingestion relies on the normal processed-VT offset path instead, so
+   * the leader still restarts cleanly, reaches End-Of-Push, and serves data.
+   *
+   * <p>Note: this test (and {@link #testBatchOnlyNRRemoteVTLeaderKeepsLcvpEarliestWithHighByteThreshold})
+   * now only pins down the batch-only gating behavior for Global RT DIV. It is safe to delete outright
+   * in the future if the batch-only gating is covered elsewhere or the scenario is no longer of interest.
    */
   @Test(timeOut = 240 * Time.MS_PER_SECOND)
-  public void testBatchOnlyNRRemoteVTLeaderRestartDoesNotRewindToEarliest() throws Exception {
+  public void testBatchOnlyNRRemoteVTLeaderRestartKeepsLcvpEarliest() throws Exception {
     int PARTITION = 0;
-    // Lower the deferred-write sync threshold so LCVP is persisted during the small batch push.
-    // Batch ingestion runs in deferred-write mode, so this threshold gates shouldSendGlobalRtDiv()
-    // for the remote-VT leader. (The transactional-mode threshold is already lowered by the helper.)
+    // Aggressive deferred-write sync threshold: even so, a batch-only store must not sync LCVP because
+    // Global RT DIV is gated off for batch-only stores, so shouldSendGlobalRtDiv() short-circuits.
     Properties extraServerProps = new Properties();
     extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "500");
 
@@ -1194,29 +1198,27 @@ public class TestGlobalRtDiv {
       VeniceClusterWrapper remoteDcCluster = env.remoteDcCluster;
       String topicName = env.topicName;
 
-      // Pre-restart: assert LCVP was synced to OffsetRecord while ingesting remote VT.
-      // Without the fix, this remains EARLIEST and the post-restart leader rewinds.
+      // Pre-restart: LCVP must stay EARLIEST because Global RT DIV is gated off for batch-only stores.
       // Re-resolve the current leader inside the retry loop so that leadership drift during the wait
       // does not cause us to read a follower's OffsetRecord.
-      AtomicReference<PubSubPosition> preRestartLcvpRef = new AtomicReference<>();
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
         Instance currentLeader = env.routingDataRepo.getLeaderInstance(topicName, PARTITION);
         assertNotNull(currentLeader, "Leader should be assigned in remote dc for partition " + PARTITION);
         VeniceServerWrapper currentLeaderWrapper = remoteDcCluster.getVeniceServerByPort(currentLeader.getPort());
         assertNotNull(currentLeaderWrapper, "Leader server wrapper not found");
         OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(currentLeaderWrapper, topicName, PARTITION);
+        assertTrue(
+            offsetRecord.isEndOfPushReceived(),
+            "EOP must be processed on dc-1 leader before checking LCVP — otherwise we're racing the push.");
         PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
         LOGGER
             .info("event=globalRtDiv pre-restart LCVP on dc-1 leader {}: {}", currentLeaderWrapper.getAddress(), lcvp);
-        assertNotEquals(
+        assertEquals(
             lcvp,
             PubSubSymbolicPosition.EARLIEST,
-            "LCVP should be persisted (non-EARLIEST) on dc-1 leader after batch push completes. "
-                + "Without the LCVP-sync fix on the remote-VT path, the OffsetRecord's "
-                + "latestConsumedVtPosition stays at EARLIEST and ingestion rewinds on restart.");
-        preRestartLcvpRef.set(lcvp);
+            "LCVP should stay EARLIEST on dc-1 leader for a batch-only store: Global RT DIV is gated "
+                + "off, so no latest-consumed-VT position is synced to the OffsetRecord.");
       });
-      PubSubPosition preRestartLcvp = preRestartLcvpRef.get();
 
       LOGGER.info("Stopping dc-1 leader server: {}", leaderServer.getAddress());
       remoteDcCluster.stopVeniceServer(leaderServer.getPort());
@@ -1248,18 +1250,15 @@ public class TestGlobalRtDiv {
           postRestartLeader.getAddress(),
           leaderServer.getAddress());
 
-      // Post-restart: LCVP must not rewind below the pre-restart value. A strict >= comparison
-      // (rather than just "non-EARLIEST") catches the bug even if the leader rewound to EARLIEST
-      // and quickly re-consumed enough records to advance the LCVP within the retry window.
+      // Post-restart: LCVP must still be EARLIEST — batch-only ingestion never populates it.
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
         OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(postRestartLeader, topicName, PARTITION);
         PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
         LOGGER.info("event=globalRtDiv post-restart LCVP on dc-1 leader {}: {}", postRestartLeader.getAddress(), lcvp);
-        assertTrue(
-            lcvp.getNumericOffset() >= preRestartLcvp.getNumericOffset(),
-            "LCVP must not rewind on restart: post-restart LCVP " + lcvp + " (offset " + lcvp.getNumericOffset()
-                + ") should be >= pre-restart LCVP " + preRestartLcvp + " (offset " + preRestartLcvp.getNumericOffset()
-                + "). A lower post-restart value indicates the leader rewound to EARLIEST and re-synced.");
+        assertEquals(
+            lcvp,
+            PubSubSymbolicPosition.EARLIEST,
+            "LCVP should remain EARLIEST after restart for a batch-only store (Global RT DIV gated off).");
       });
 
       // The previous (restarted) leader's partition must reach a completed state — End-Of-Push received,
@@ -1286,20 +1285,22 @@ public class TestGlobalRtDiv {
   }
 
   /**
-   * Verifies that EOP alone (not byte-threshold syncs) triggers a Global RT DIV OffsetRecord sync on
-   * the remote-VT leader. Both the transactional-mode and deferred-write-mode sync thresholds are
-   * pushed above the dataset size, so {@code shouldSendGlobalRtDiv}'s byte-threshold branch cannot
-   * fire during the small batch push. The only sync trigger remaining is the non-segment-control-
-   * message branch in {@code addVtDivToProducerCallbackIfNeeded} — specifically, the EOP produced to
-   * local VT after the leader consumes EOP from remote VT. If that branch is absent (the pre-fix
-   * behavior), LCVP stays at EARLIEST on the dc-1 leader's OffsetRecord after batch push completes.
+   * Verifies that a batch-only store never syncs a latest-consumed-VT position (LCVP), even with EOP
+   * processed and byte-threshold syncs effectively disabled. Both the transactional-mode and
+   * deferred-write-mode sync thresholds are pushed above the dataset size, and Global RT DIV is gated
+   * off for batch-only stores, so no sync path can fire: LCVP stays at
+   * {@link PubSubSymbolicPosition#EARLIEST} on the remote-DC leader's OffsetRecord after batch push.
+   *
+   * <p>Note: this test (and {@link #testBatchOnlyNRRemoteVTLeaderRestartKeepsLcvpEarliest}) now only
+   * pins down the batch-only gating behavior for Global RT DIV. It is safe to delete outright in the
+   * future if the batch-only gating is covered elsewhere or the scenario is no longer of interest.
    */
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testBatchOnlyNRRemoteVTLeaderEopTriggersLcvpSyncWithHighByteThreshold() throws Exception {
+  public void testBatchOnlyNRRemoteVTLeaderKeepsLcvpEarliestWithHighByteThreshold() throws Exception {
     int PARTITION = 0;
     // 100 MB thresholds for both transactional and deferred-write modes — well above the 100-record
-    // batch push payload — so the byte-threshold branch of shouldSendGlobalRtDiv cannot fire and EOP
-    // becomes the only possible sync trigger for LCVP on the remote-VT leader.
+    // batch push payload. Combined with Global RT DIV being gated off for batch-only stores, no sync
+    // path (byte-threshold or EOP) can populate LCVP on the remote-VT leader.
     Properties extraServerProps = new Properties();
     extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "104857600");
     extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "104857600");
@@ -1324,12 +1325,11 @@ public class TestGlobalRtDiv {
             offsetRecord.isEndOfPushReceived(),
             "EOP must be processed on dc-1 leader before checking LCVP — otherwise we're racing the push.");
         PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
-        assertNotEquals(
+        assertEquals(
             lcvp,
             PubSubSymbolicPosition.EARLIEST,
-            "LCVP should be persisted (non-EARLIEST) on dc-1 leader after batch push with high byte "
-                + "thresholds. Without the EOP-sync trigger on addVtDivToProducerCallbackIfNeeded, "
-                + "the only possible sync path (byte threshold) is disabled and LCVP stays at EARLIEST.");
+            "LCVP should stay EARLIEST on dc-1 leader for a batch-only store: Global RT DIV is gated "
+                + "off, so neither the byte-threshold nor EOP sync path populates the OffsetRecord.");
         LOGGER.info(
             "event=globalRtDiv LCVP on dc-1 leader {} (high-threshold): {}",
             currentLeaderWrapper.getAddress(),

@@ -19,6 +19,7 @@ public class VeniceAdminTehutiMetricNameEnumTest {
     map.put(
         VeniceAdminTehutiMetricNameEnum.SUCCESSFUL_STARTED_USER_INCREMENTAL_PUSH_PARENT_ADMIN_COUNT,
         "successful_started_user_incremental_push_parent_admin_count");
+    map.put(VeniceAdminTehutiMetricNameEnum.PUSH_RETRY_COOLDOWN_REJECTION_COUNT, "push_retry_cooldown_rejection_count");
     map.put(
         VeniceAdminTehutiMetricNameEnum.FAILED_SERIALIZING_ADMIN_OPERATION_MESSAGE_COUNT,
         "failed_serializing_admin_operation_message_count");

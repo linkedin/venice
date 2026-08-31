@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_FALLBACK_REASON;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_BLOB_TRANSFER_SENDER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -17,6 +19,8 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
+import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.opentelemetry.api.common.Attributes;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -75,6 +79,34 @@ class BlobTransferStatsTestUtils {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
         .put(VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(), status.getDimensionValue())
+        .build();
+  }
+
+  static Attributes buildRequestCountAttributes(
+      String storeName,
+      String clusterName,
+      VersionRole role,
+      VeniceBlobTransferSource source,
+      VeniceResponseStatusCategory status) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
+        .put(VENICE_BLOB_TRANSFER_SENDER_SOURCE.getDimensionNameInDefaultFormat(), source.getDimensionValue())
+        .put(VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(), status.getDimensionValue())
+        .build();
+  }
+
+  static Attributes buildFallbackCountAttributes(
+      String storeName,
+      String clusterName,
+      VersionRole role,
+      VeniceBlobTransferFallbackReason reason) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
+        .put(VENICE_BLOB_TRANSFER_FALLBACK_REASON.getDimensionNameInDefaultFormat(), reason.getDimensionValue())
         .build();
   }
 

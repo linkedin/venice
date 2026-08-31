@@ -1,5 +1,9 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.EXTERNAL_STORAGE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.VENICE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.getMetric;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -8,12 +12,15 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OV
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -21,11 +28,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -33,19 +42,25 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceStoreAclException;
+import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.mockito.InOrder;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -314,6 +329,168 @@ public class VenicePushJobLifecycleTest extends VenicePushJobTestBase {
       assertEquals(dataWriterKilledLatch.getCount(), 0, "Data writer job should have been killed");
       verify(dataWriterJob, times(1)).kill();
       verify(client, atLeastOnce()).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+    }
+  }
+
+  @Test
+  public void testFailedExternalStorageRegionsDowngradeBeforeEndOfPush() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    ControllerClient client = getClient();
+    doReturn(mockJobStatusQuery()).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+    ControllerResponse versionUpdateResponse = new ControllerResponse();
+    doReturn(versionUpdateResponse).when(client)
+        .updateStoreVersionStorageMode(
+            TEST_STORE,
+            1,
+            StorageMode.INTERNAL,
+            "dc-1",
+            VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).runJobWithKillDetection();
+
+      DataWriterTaskTracker tracker = mock(DataWriterTaskTracker.class);
+      doReturn(Collections.singleton("dc-1")).when(tracker).getFailedExternalStorageRegions();
+      doReturn(Collections.emptyMap()).when(tracker).getPerPartitionRecordCounts();
+
+      DataWriterComputeJob dataWriterJob = mock(DataWriterComputeJob.class);
+      doReturn(tracker).when(dataWriterJob).getTaskTracker();
+      pushJob.setDataWriterComputeJob(dataWriterJob);
+
+      pushJob.run();
+
+      InOrder inOrder = inOrder(client);
+      inOrder.verify(client)
+          .updateStoreVersionStorageMode(
+              TEST_STORE,
+              1,
+              StorageMode.INTERNAL,
+              "dc-1",
+              VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+      inOrder.verify(client).writeEndOfPush(TEST_STORE, 1, Collections.emptyMap());
+    }
+  }
+
+  @DataProvider(name = "versionStorageModeUpdateFailure")
+  public Object[][] versionStorageModeUpdateFailure() {
+    return new Object[][] { { false, "simulated regional version update failure" },
+        { true, "404 Not Found: /update_store_version_storage_mode" } };
+  }
+
+  @Test(dataProvider = "versionStorageModeUpdateFailure")
+  public void testFailedExternalStorageRegionDowngradeFailureBlocksEndOfPush(
+      boolean throwException,
+      String expectedReason) throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "1");
+    ControllerClient client = getClient();
+    if (throwException) {
+      doThrow(new VeniceException(expectedReason)).when(client)
+          .updateStoreVersionStorageMode(
+              TEST_STORE,
+              1,
+              StorageMode.INTERNAL,
+              "dc-1",
+              VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+    } else {
+      ControllerResponse errorResponse = new ControllerResponse();
+      errorResponse.setError(expectedReason);
+      doReturn(errorResponse).when(client)
+          .updateStoreVersionStorageMode(
+              TEST_STORE,
+              1,
+              StorageMode.INTERNAL,
+              "dc-1",
+              VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+    }
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).runJobWithKillDetection();
+
+      DataWriterTaskTracker tracker = mock(DataWriterTaskTracker.class);
+      doReturn(Collections.singleton("dc-1")).when(tracker).getFailedExternalStorageRegions();
+      DataWriterComputeJob dataWriterJob = mock(DataWriterComputeJob.class);
+      doReturn(tracker).when(dataWriterJob).getTaskTracker();
+      pushJob.setDataWriterComputeJob(dataWriterJob);
+
+      try {
+        pushJob.run();
+        fail("Expected VeniceException when regional version storage-mode downgrade fails");
+      } catch (VeniceException e) {
+        assertTrue(
+            e.getMessage().contains(TEST_STORE) && e.getMessage().contains("v1") && e.getMessage().contains("dc-1")
+                && e.getMessage().contains(expectedReason),
+            "Unexpected error message: " + e.getMessage());
+      }
+
+      verify(client, never()).writeEndOfPush(anyString(), anyInt(), any());
+    }
+  }
+
+  /**
+   * The two durations reported by the data writer are surfaced in PushJobDetails so the controller can turn
+   * them into a metric. They are summed task durations, unrelated to the push's own wall-clock duration.
+   */
+  @Test
+  public void testPushJobDetailsCarriesDataWriterSinkWriteTimes() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    ControllerClient client = getClient();
+    doReturn(mockJobStatusQuery()).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).runJobWithKillDetection();
+
+      DataWriterTaskTracker tracker = mock(DataWriterTaskTracker.class);
+      doReturn(Collections.emptySet()).when(tracker).getFailedExternalStorageRegions();
+      doReturn(Collections.emptyMap()).when(tracker).getPerPartitionRecordCounts();
+      doReturn(12_345L).when(tracker).getExternalStorageWriteTimeMs();
+      doReturn(678L).when(tracker).getVeniceWriteTimeMs();
+
+      DataWriterComputeJob dataWriterJob = mock(DataWriterComputeJob.class);
+      doReturn(tracker).when(dataWriterJob).getTaskTracker();
+      pushJob.setDataWriterComputeJob(dataWriterJob);
+
+      pushJob.run();
+
+      assertEquals(getMetric(pushJob.getPushJobDetails(), EXTERNAL_STORAGE_WRITE_TIME_MS), Long.valueOf(12_345L));
+      assertEquals(getMetric(pushJob.getPushJobDetails(), VENICE_WRITE_TIME_MS), Long.valueOf(678L));
+    }
+  }
+
+  @Test
+  public void testPushJobDetailsWriteTimesStayUnreportedWhenNotTracked() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    ControllerClient client = getClient();
+    doReturn(mockJobStatusQuery()).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).runJobWithKillDetection();
+
+      // A tracker that never saw a dual write reports the interface defaults of 0.
+      DataWriterTaskTracker tracker = new DataWriterTaskTracker() {
+      };
+      DataWriterComputeJob dataWriterJob = mock(DataWriterComputeJob.class);
+      doReturn(tracker).when(dataWriterJob).getTaskTracker();
+      pushJob.setDataWriterComputeJob(dataWriterJob);
+
+      pushJob.run();
+
+      // Those zeros must not be published as real observations; an entirely absent map says "never measured".
+      assertNull(
+          pushJob.getPushJobDetails().getAdditionalPushMetrics(),
+          "A push that never measured a leg must leave additionalPushMetrics null rather than reporting zeros");
     }
   }
 }

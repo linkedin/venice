@@ -120,6 +120,12 @@ public class KafkaInputUtils {
     if (strategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       Properties props = properties.toProperties();
       props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+      // Explicitly set PUBSUB_BROKER_ADDRESS so it takes precedence over any pass-through
+      // pubsub.broker.address already present in `properties` (see PubSubUtil#getPubSubBrokerAddress,
+      // which checks PUBSUB_BROKER_ADDRESS before falling back to KAFKA_BOOTSTRAP_SERVERS), mirroring
+      // getConsumerProperties(). Without this, the dictionary consumer created here could silently
+      // connect to the wrong (destination) broker instead of the intended source broker.
+      props.setProperty(PUBSUB_BROKER_ADDRESS, kafkaUrl);
       ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
       return compressorFactory
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));

@@ -42,11 +42,6 @@ public class NoOpReadResponseStats implements ReadResponseStats {
   }
 
   @Override
-  public void addReadComputeOutputSize(int size) {
-
-  }
-
-  @Override
   public void incrementDotProductCount(int count) {
 
   }

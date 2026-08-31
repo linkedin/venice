@@ -1,9 +1,11 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.PartitionReplicaIngestionContext;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -12,6 +14,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.LogContext;
@@ -405,6 +408,93 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       logger.error(errorMsg, e);
       // Please note, after throwing this exception, this node will become ERROR for this resource.
       throw new VeniceException(errorMsg, e);
+    }
+  }
+
+  /**
+   * Best-effort wait, applicable to a future-version replica whose push is still in progress (i.e. the version's
+   * status is {@link VersionStatus#STARTED}), for the replica's local version topic lag to drop to or below an
+   * acceptable threshold before completing the OFFLINE -> STANDBY transition.
+   *
+   * Callers are expected to only invoke this method when
+   * {@link VeniceServerConfig#isFutureVersionStandbyLagCheckEnabled()} is true.
+   *
+   * Unlike {@link #waitConsumptionCompleted}, this does not wait for ingestion to fully complete: it only waits
+   * until the measured lag is within {@link VeniceServerConfig#getFutureVersionStandbyLagThreshold()}, or until
+   * {@link VeniceServerConfig#getFutureVersionStandbyLagCheckTimeoutMinutes()} elapses, whichever happens first.
+   * If lag cannot be measured, or the ingestion task is not found, this method returns immediately, preserving
+   * the pre-existing (no-wait) behavior for this case.
+   *
+   * The version's status is re-checked on every poll so that a version which transitions away from
+   * {@link VersionStatus#STARTED} while waiting (e.g. to {@link VersionStatus#KILLED} or
+   * {@link VersionStatus#ERROR} due to an asynchronous kill/cleanup racing with this transition) does not
+   * needlessly occupy the state-transition worker thread until the full timeout elapses.
+   */
+  protected void waitUntilFutureVersionLagAcceptable(String resourceName) {
+    VeniceServerConfig serverConfig = storeAndServerConfigs;
+    String replicaId = Utils.getReplicaId(resourceName, partition);
+    StoreIngestionTask ingestionTask = getStoreIngestionService().getStoreIngestionTask(resourceName);
+    if (ingestionTask == null) {
+      logger.warn(
+          "No ingestion task found for replica {} when checking future version standby lag, proceeding to STANDBY without waiting.",
+          replicaId);
+      return;
+    }
+    long lagThreshold = serverConfig.getFutureVersionStandbyLagThreshold();
+    long timeoutMs = TimeUnit.MINUTES.toMillis(serverConfig.getFutureVersionStandbyLagCheckTimeoutMinutes());
+    long pollIntervalMs = TimeUnit.MINUTES.toMillis(serverConfig.getFutureVersionStandbyLagCheckPollIntervalMinutes());
+    long deadlineMs = System.currentTimeMillis() + timeoutMs;
+    while (true) {
+      if (!isVersionStarted(resourceName)) {
+        logger.info(
+            "Future version replica {} is no longer in STARTED status, proceeding to STANDBY without further waiting.",
+            replicaId);
+        return;
+      }
+      long lag = ingestionTask.getLocalVersionTopicLag(partition);
+      if (lag == Long.MAX_VALUE) {
+        logger.warn(
+            "Could not measure local version topic lag for replica {}, proceeding to STANDBY without waiting.",
+            replicaId);
+        return;
+      }
+      if (lag <= lagThreshold) {
+        logger.info(
+            "Future version replica {} local version topic lag {} is within threshold {}, proceeding to STANDBY.",
+            replicaId,
+            lag,
+            lagThreshold);
+        return;
+      }
+      long remainingMs = deadlineMs - System.currentTimeMillis();
+      if (remainingMs <= 0) {
+        logger.warn(
+            "Future version replica {} local version topic lag {} still above threshold {} after {}min timeout, proceeding to STANDBY.",
+            replicaId,
+            lag,
+            lagThreshold,
+            serverConfig.getFutureVersionStandbyLagCheckTimeoutMinutes());
+        return;
+      }
+      Utils.sleep(Math.min(pollIntervalMs, remainingMs));
+    }
+  }
+
+  /**
+   * @return true if the version corresponding to {@code resourceName} currently has status
+   * {@link VersionStatus#STARTED}, false otherwise (including if the store/version can no longer be found).
+   */
+  private boolean isVersionStarted(String resourceName) {
+    try {
+      Store store = getStoreRepo().getStoreOrThrow(getStoreName());
+      Version version = store.getVersion(getVersionNumber());
+      return version != null && version.getStatus() == VersionStatus.STARTED;
+    } catch (VeniceException e) {
+      logger.warn(
+          "Could not determine version status for resource {} while checking future version lag.",
+          resourceName,
+          e);
+      return false;
     }
   }
 

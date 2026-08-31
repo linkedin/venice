@@ -1125,6 +1125,7 @@ public class AdminConsumptionTaskTest {
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
     setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     setStore.ingestionPausedRegions = Collections.emptyList();
+    setStore.pubSubEncryptionKeyUrn = "";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;

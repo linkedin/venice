@@ -31,6 +31,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -94,6 +95,7 @@ import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
@@ -147,6 +149,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   static final int NUM_REGIONS = 3;
   static final long LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+  private static final String PUB_SUB_ENCRYPTION_KEY_URN = "keyUrn:abc";
+  private static final String PUB_SUB_ENCRYPTION_PUSH_JOB_ID = "pub-sub-encryption-push";
+  private static final long PUSH_RETRY_COOLDOWN_MS = TimeUnit.MINUTES.toMillis(10);
+  private static final long PUSH_ATTEMPT_TIME_MS = 1_000_000;
 
   @BeforeMethod
   public void setupTestCase() {
@@ -154,9 +160,149 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     initializeParentAdmin(Optional.empty(), Optional.empty());
   }
 
+  private TestMockTime enablePushRetryCooldown() {
+    TestMockTime mockTime = new TestMockTime(PUSH_ATTEMPT_TIME_MS);
+    parentAdmin.setTimer(mockTime);
+    doReturn(PUSH_RETRY_COOLDOWN_MS).when(config).getPushRetryCooldownMs();
+    return mockTime;
+  }
+
   @AfterMethod
   public void cleanupTestCase() {
     super.cleanupTestCase();
+  }
+
+  @DataProvider(name = "validPubSubEncryptionKeyConfigurations")
+  public Object[][] validPubSubEncryptionKeyConfigurations() {
+    return new Object[][] { { storeName, false, "" }, { storeName, true, PUB_SUB_ENCRYPTION_KEY_URN },
+        { VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), true, "" } };
+  }
+
+  @Test(dataProvider = "validPubSubEncryptionKeyConfigurations")
+  public void testAddVersionAndTopicOnlyAcceptsValidPubSubEncryptionKeyConfiguration(
+      String testStoreName,
+      boolean encryptionEnabled,
+      String keyUrn) {
+    Store testStore = createPubSubEncryptionTestStore(testStoreName, encryptionEnabled, keyUrn);
+    doReturn(testStore).when(internalAdmin).getStore(clusterName, testStoreName);
+    Version newVersion = new VersionImpl(testStoreName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
+    doReturn(new Pair<>(false, newVersion)).when(internalAdmin)
+        .addVersionAndTopicOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            any(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean());
+
+    Version result = parentAdmin.addVersionAndTopicOnly(
+        clusterName,
+        testStoreName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        VERSION_ID_UNSET,
+        1,
+        1,
+        Version.PushType.BATCH,
+        true,
+        false,
+        null,
+        Optional.empty(),
+        -1,
+        Optional.empty(),
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER,
+        -1,
+        false);
+
+    assertSame(result, newVersion);
+  }
+
+  @Test
+  public void testIncrementalPushAcceptsEncryptedStoreWithoutKeyUrn() {
+    Store testStore = createPubSubEncryptionTestStore(storeName, true, "");
+    doReturn(testStore).when(internalAdmin).getStore(clusterName, storeName);
+    Version version = new VersionImpl(storeName, 1, PUB_SUB_ENCRYPTION_PUSH_JOB_ID);
+    doReturn(version).when(internalAdmin)
+        .addVersionOnly(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            1,
+            1,
+            Version.PushType.INCREMENTAL,
+            "remote-kafka-bootstrap-server",
+            -1,
+            1,
+            testStore.getLargestUsedRTVersionNumber());
+
+    VeniceParentHelixAdmin admin = spy(parentAdmin);
+    doReturn(1).when(admin).getRmdVersionID(storeName, clusterName);
+    doNothing().when(admin).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin).releaseAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin)
+        .sendAddVersionAdminMessage(
+            clusterName,
+            storeName,
+            PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+            version,
+            1,
+            Version.PushType.INCREMENTAL,
+            null,
+            -1,
+            testStore.getLargestUsedRTVersionNumber());
+
+    admin.addVersionAndStartIngestion(
+        clusterName,
+        storeName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        1,
+        1,
+        Version.PushType.INCREMENTAL,
+        "remote-kafka-bootstrap-server",
+        -1,
+        -1,
+        false,
+        -1,
+        -1);
+
+    verify(internalAdmin).addVersionOnly(
+        clusterName,
+        storeName,
+        PUB_SUB_ENCRYPTION_PUSH_JOB_ID,
+        1,
+        1,
+        Version.PushType.INCREMENTAL,
+        "remote-kafka-bootstrap-server",
+        -1,
+        1,
+        testStore.getLargestUsedRTVersionNumber());
+  }
+
+  private Store createPubSubEncryptionTestStore(
+      String testStoreName,
+      boolean encryptionEnabled,
+      String pubSubEncryptionKeyUrn) {
+    Store testStore = TestUtils.createTestStore(testStoreName, "test_owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(encryptionEnabled);
+    testStore.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    return testStore;
   }
 
   @Test
@@ -939,6 +1085,173 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
+  @DataProvider(name = "version-creation-push-types")
+  public Object[][] versionCreationPushTypes() {
+    return new Object[][] { { Version.PushType.BATCH }, { Version.PushType.STREAM_REPROCESSING } };
+  }
+
+  @Test(dataProvider = "version-creation-push-types")
+  public void testPushRetryCooldownRecordsFirstAttemptAndRejectsDifferentPushId(Version.PushType pushType) {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", pushType);
+    mockTime.addMilliseconds(1);
+
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "second-push", pushType));
+
+    assertEquals(exception.getHttpStatusCode(), HttpStatus.SC_TOO_MANY_REQUESTS);
+    assertTrue(exception.getMessage().contains("Retry in " + (PUSH_RETRY_COOLDOWN_MS - 1) + " ms"));
+    verify(adminStats).recordPushRetryCooldownRejection(pushType);
+  }
+
+  @Test
+  public void testPushRetryCooldownSamePushIdDoesNotSlideTimestamp() {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(PUSH_RETRY_COOLDOWN_MS / 2);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(PUSH_RETRY_COOLDOWN_MS / 2);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "second-push", Version.PushType.BATCH);
+
+    verify(adminStats, never()).recordPushRetryCooldownRejection(Version.PushType.BATCH);
+  }
+
+  @Test
+  public void testPushRetryCooldownRejectionDoesNotSlideWindow() {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(PUSH_RETRY_COOLDOWN_MS / 2);
+    expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "rejected-push", Version.PushType.BATCH));
+    mockTime.addMilliseconds(PUSH_RETRY_COOLDOWN_MS / 2);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "next-push", Version.PushType.BATCH);
+
+    verify(adminStats).recordPushRetryCooldownRejection(Version.PushType.BATCH);
+  }
+
+  @Test
+  public void testPushRetryCooldownExpiryBoundaryReplacesAttempt() {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(PUSH_RETRY_COOLDOWN_MS);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "second-push", Version.PushType.BATCH);
+
+    verify(adminStats, never()).recordPushRetryCooldownRejection(Version.PushType.BATCH);
+  }
+
+  @DataProvider(name = "non-version-creation-push-types")
+  public Object[][] nonVersionCreationPushTypes() {
+    return new Object[][] { { Version.PushType.STREAM }, { Version.PushType.INCREMENTAL } };
+  }
+
+  @Test(dataProvider = "non-version-creation-push-types")
+  public void testPushRetryCooldownBypassesNonVersionCreationPushTypes(Version.PushType pushType) {
+    String storeName = Utils.getUniqueString("test_store");
+    enablePushRetryCooldown();
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "bypassed-push", pushType);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "batch-push", Version.PushType.BATCH);
+
+    verify(adminStats, never()).recordPushRetryCooldownRejection(any());
+  }
+
+  @Test
+  public void testPushRetryCooldownBypassesSystemStores() {
+    enablePushRetryCooldown();
+    String systemStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, systemStoreName, "first-push", Version.PushType.BATCH);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, systemStoreName, "second-push", Version.PushType.BATCH);
+
+    verify(adminStats, never()).recordPushRetryCooldownRejection(any());
+  }
+
+  @Test
+  public void testZeroPushRetryCooldownDoesNotRecordAttempt() {
+    String storeName = Utils.getUniqueString("test_store");
+    parentAdmin.setTimer(new TestMockTime(PUSH_ATTEMPT_TIME_MS));
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "bypassed-push", Version.PushType.BATCH);
+    doReturn(PUSH_RETRY_COOLDOWN_MS).when(config).getPushRetryCooldownMs();
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-recorded-push", Version.PushType.BATCH);
+
+    verify(adminStats, never()).recordPushRetryCooldownRejection(any());
+  }
+
+  @Test
+  public void testPushRetryCooldownClearedOnSuccessfulJobCompletion() {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(1);
+
+    // Simulate the first push job reaching a terminal COMPLETED status.
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(VersionStatus.STARTED).when(store).getVersionStatus(anyInt());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(1);
+    doReturn(VersionStatus.CREATED).when(version).getStatus();
+    doReturn(Version.PushType.BATCH).when(version).getPushType();
+    doReturn("first-push").when(version).getPushJobId();
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> completeMap = new HashMap<>();
+    completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    parentAdmin.getOffLineJobStatus(clusterName, kafkaTopic, completeMap);
+
+    // The successfully-completed push should release the cooldown slot immediately, so a different push ID is
+    // admitted right away instead of waiting out the remainder of the 10-minute cooldown window.
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "second-push", Version.PushType.BATCH);
+    verify(adminStats, never()).recordPushRetryCooldownRejection(Version.PushType.BATCH);
+  }
+
+  @Test
+  public void testPushRetryCooldownNotClearedByStaleSuccessNotification() {
+    String storeName = Utils.getUniqueString("test_store");
+    TestMockTime mockTime = enablePushRetryCooldown();
+
+    // A later push is admitted first...
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "first-push", Version.PushType.BATCH);
+    mockTime.addMilliseconds(PUSH_RETRY_COOLDOWN_MS);
+    parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "second-push", Version.PushType.BATCH);
+
+    // ...then a stale COMPLETED notification for the earlier, already-superseded push ID arrives. It must not clear
+    // the cooldown slot that is now tracking "second-push".
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(VersionStatus.STARTED).when(store).getVersionStatus(anyInt());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(1);
+    doReturn(VersionStatus.CREATED).when(version).getStatus();
+    doReturn(Version.PushType.BATCH).when(version).getPushType();
+    doReturn("first-push").when(version).getPushJobId();
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> completeMap = new HashMap<>();
+    completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    parentAdmin.getOffLineJobStatus(clusterName, kafkaTopic, completeMap);
+
+    mockTime.addMilliseconds(1);
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin.checkAndRecordPushAttempt(clusterName, storeName, "third-push", Version.PushType.BATCH));
+    assertEquals(exception.getHttpStatusCode(), HttpStatus.SC_TOO_MANY_REQUESTS);
+  }
+
   /**
    * Idempotent increment version should work because existing topic uses the same push ID as the request
    */
@@ -1143,6 +1456,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version version = new VersionImpl(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(TimeUnit.MINUTES.toMillis(10)).when(config).getPushRetryCooldownMs();
     doReturn(new Pair<>(false, version)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -1168,6 +1482,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
+      partialMockParentAdmin.setTimer(new TestMockTime(PUSH_ATTEMPT_TIME_MS));
+      partialMockParentAdmin
+          .checkAndRecordPushAttempt(clusterName, storeName, "different-push", Version.PushType.BATCH);
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
           clusterName,
           storeName,
@@ -1197,6 +1514,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1,
           DEFAULT_RT_VERSION_NUMBER);
       assertEquals(newVersion.getNumber(), version.getNumber());
+      verify(adminStats, never()).recordPushRetryCooldownRejection(Version.PushType.BATCH);
     }
   }
 
@@ -2899,6 +3217,122 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertThrows(VeniceException.class, () -> parentAdmin.getStorageModePerRegion(clusterName, storeName));
   }
 
+  /**
+   * The parent resolves the regions filter into one call per target region, so only the targeted region's child
+   * controller — the one that knows it is the affected region — is asked to downgrade and to count the failure.
+   */
+  @Test
+  public void testUpdateStoreVersionStorageModeTargetsOnlyRequestedRegions() {
+    String storeName = "test_store_version_storage_mode_targeted";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient dc0Client = mock(ControllerClient.class);
+    ControllerClient dc1Client = mock(ControllerClient.class);
+    controllerClientMap.put("dc-0", dc0Client);
+    controllerClientMap.put("dc-1", dc1Client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    ControllerResponse response = new ControllerResponse();
+    doReturn(response).when(dc1Client)
+        .updateStoreVersionStorageMode(
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            null,
+            VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    parentAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-1",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    verify(dc0Client, never()).updateStoreVersionStorageMode(anyString(), anyInt(), any(), any(), any());
+    verify(dc1Client).updateStoreVersionStorageMode(
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        null,
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+  }
+
+  /** A caller that supplies no reason must reach the children unchanged, as UNSPECIFIED. */
+  @Test
+  public void testUpdateStoreVersionStorageModeWithoutReasonForwardsUnspecified() {
+    String storeName = "test_store_version_storage_mode_no_reason";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient dc0Client = mock(ControllerClient.class);
+    controllerClientMap.put("dc-0", dc0Client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    doReturn(new ControllerResponse()).when(dc0Client)
+        .updateStoreVersionStorageMode(
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            null,
+            VersionStorageModeUpdateReason.UNSPECIFIED);
+
+    parentAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    verify(dc0Client).updateStoreVersionStorageMode(
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        null,
+        VersionStorageModeUpdateReason.UNSPECIFIED);
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeThrowsOnChildError() {
+    String storeName = "test_store_version_storage_mode_error";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient dc0Client = mock(ControllerClient.class);
+    controllerClientMap.put("dc-0", dc0Client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    ControllerResponse errorResponse = new ControllerResponse();
+    errorResponse.setError("simulated child failure");
+    doReturn(errorResponse).when(dc0Client)
+        .updateStoreVersionStorageMode(
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            null,
+            VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    assertThrows(
+        VeniceException.class,
+        () -> parentAdmin.updateStoreVersionStorageMode(
+            clusterName,
+            storeName,
+            1,
+            StorageMode.INTERNAL,
+            "dc-0",
+            VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE));
+  }
+
+  @Test
+  public void testDeferredRollbackSkipsParentStatusPolling() {
+    String rollbackStoreName = "test-deferred-rollback-status";
+    doReturn(2).when(store).getCurrentVersion();
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doReturn(store).when(adminSpy).getStore(clusterName, rollbackStoreName);
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(rollbackStoreName), any(AdminOperation.class));
+
+    ControllerClient childControllerClient = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap(regionName, childControllerClient)).when(internalAdmin)
+        .getControllerClientMap(clusterName);
+
+    adminSpy.rollbackToBackupVersionForDeferredVersionSwap(clusterName, rollbackStoreName, regionName);
+
+    verify(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(rollbackStoreName), any(AdminOperation.class));
+    verify(childControllerClient, never()).getStore(eq(rollbackStoreName), anyInt());
+  }
+
   @Test
   public void checkNewPushCapacityFromChildrenBlocksWhenChildRolledBackWithinRetention() {
     String store = "npc_from_children_rollback_block";
@@ -3729,6 +4163,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testTargetedRegionValidation() {
+    enablePushRetryCooldown();
     try {
       HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
       doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -3756,6 +4191,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           e.getMessage(),
           "One of the targeted region invalidRegion is not a valid region in cluster test-cluster");
     }
+
+    parentAdmin.checkAndRecordPushAttempt(clusterName, "test", "valid-push", Version.PushType.BATCH);
+    verify(adminStats, never()).recordPushRetryCooldownRejection(any());
   }
 
   @Test

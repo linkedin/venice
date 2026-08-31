@@ -3,6 +3,8 @@ package com.linkedin.venice.spark.datawriter.jobs;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NEWER_KME_SCHEMAS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -20,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.spark.SparkConstants;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -30,6 +33,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.testng.annotations.AfterMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -119,6 +123,49 @@ public class DataWriterSparkJobTest {
       // Expected - key should not exist
       assertTrue(true);
     }
+  }
+
+  @Test(dataProvider = "staleSourceKeySchemas")
+  public void testKafkaInputDataFrameUsesResolvedConfigsOverOriginals(String staleSourceKeySchema) {
+    ConfigTestSparkJob job = new ConfigTestSparkJob();
+    currentTestJob = job;
+
+    String kmeSchemaProperty = NEWER_KME_SCHEMAS_PREFIX + "14";
+    Properties props = createDefaultTestProperties();
+    props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "stale-broker:9092");
+    props.setProperty(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, staleSourceKeySchema);
+    props.setProperty(kmeSchemaProperty, "\"int\"");
+    props.setProperty("custom.pubsub.adapter.property", "custom-value");
+
+    PushJobSetting setting = createKafkaInputSetting();
+    setting.repushSourcePubsubBroker = "resolved-broker:9092";
+    setting.newKmeSchemasFromController = Collections.singletonMap(14, "\"bytes\"");
+
+    job.configure(new VeniceProperties(props), setting);
+    job.getKafkaInputDataFrame();
+
+    SparkSession spark = job.getSparkSession();
+    assertEquals(
+        spark.conf().get(VENICE_REPUSH_SOURCE_PUBSUB_BROKER),
+        "resolved-broker:9092",
+        "The resolved source broker should override a stale original property");
+    assertEquals(
+        spark.conf().get(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP),
+        "\"string\"",
+        "The controller-derived source key schema should override a stale original property");
+    assertEquals(
+        spark.conf().get(kmeSchemaProperty),
+        "\"bytes\"",
+        "The controller-derived KME schema should override a stale original property");
+    assertEquals(
+        spark.conf().get("custom.pubsub.adapter.property"),
+        "custom-value",
+        "Unrelated custom adapter properties should still be forwarded");
+  }
+
+  @DataProvider(name = "staleSourceKeySchemas")
+  public Object[][] staleSourceKeySchemas() {
+    return new Object[][] { { "\"int\"" }, { "" } };
   }
 
   private Properties createDefaultTestProperties() {

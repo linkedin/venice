@@ -3042,6 +3042,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * 2. leaderCompleteStatus has the leader state=completed and <br>
    * 3. the last update time was within the configured time interval to not use the stale leader state: check
    *    {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}
+   * <p>
+   * If the leader stops emitting heartbeats it is presumed dead after
+   * {@link com.linkedin.venice.ConfigKeys#SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS} of silence
+   * and readiness falls back to offset catch-up alone (see {@link #isLeaderPresumedDead},
+   * {@link #isOffsetCaughtUpForDeadLeaderFallback}).
    */
   @Override
   protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
@@ -3052,14 +3057,35 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LagType lagType) {
     boolean isLagAcceptable = lag <= threshold;
     boolean isHybridFollower = isHybridFollower(pcs);
+    boolean leaderPresumedDead = false;
 
-    // if lag is acceptable and is a hybrid standby or DaVinciClient: check and
-    // override it based on leader follower state
-    if (isLagAcceptable && isHybridFollower) {
-      isLagAcceptable = pcs.isLeaderCompleted()
-          && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
-              .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
+    // Hybrid standbys and DaVinci replicas also require a fresh leader-complete signal. When the leader is presumed
+    // dead, fall back to offset catch-up alone.
+    if (isHybridFollower && !isLeaderCompleteSignalRecent(pcs)) {
+      if (isLeaderPresumedDead(pcs)) {
+        isLagAcceptable = isOffsetCaughtUpForDeadLeaderFallback(pcs, lag, threshold, lagType);
+        leaderPresumedDead = isLagAcceptable;
+      } else {
+        isLagAcceptable = false;
+      }
     }
+
+    if (leaderPresumedDead && !pcs.isReadyToServeViaDeadLeaderFallback()) {
+      pcs.setReadyToServeViaDeadLeaderFallback(true);
+      LOGGER.warn(
+          "[{} lag] replica: {} is being marked ready to serve without a fresh leader-complete signal: the leader has "
+              + "been silent for {} ms, which is past the {} ms dead-leader threshold. Lag: [{}] Threshold [{}]. "
+              + "Leader Complete State: {}, Last update In Ms: {}.",
+          lagType.prettyString(),
+          pcs.getReplicaId(),
+          getLeaderSilentDurationMs(pcs),
+          getServerConfig().getDeadLeaderReadyToServeFallbackThresholdMs(),
+          lag,
+          threshold,
+          pcs.getLeaderCompleteState(),
+          pcs.getLastLeaderCompleteStateUpdateInMs());
+    }
+
     if (shouldLogLag) {
       StringBuilder leaderCompleteHeaderDetails = new StringBuilder();
       if (isHybridFollower) {
@@ -3067,6 +3093,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .append(pcs.getLeaderCompleteState().toString())
             .append("}, Last update In Ms: {")
             .append(pcs.getLastLeaderCompleteStateUpdateInMs())
+            .append("}, Leader silent for In Ms: {")
+            .append(getLeaderSilentDurationMs(pcs))
             .append("}.");
       }
       LOGGER.info(
@@ -3081,6 +3109,40 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     return isLagAcceptable;
+  }
+
+  /**
+   * Returns true if the replica has caught up on offset lag, used as the fallback ready-to-serve criterion when the
+   * leader is presumed dead. In heartbeat-lag mode the measured lag is the heartbeat delay (inflated by a dead leader),
+   * so offset lag is re-measured directly. A negative offset threshold disables the fallback.
+   */
+  private boolean isOffsetCaughtUpForDeadLeaderFallback(
+      PartitionConsumptionState pcs,
+      long lag,
+      long threshold,
+      LagType lagType) {
+    if (lagType == LagType.OFFSET_LAG) {
+      return lag <= threshold;
+    }
+    long offsetThreshold = getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, partitionCount);
+    return offsetThreshold >= 0 && measureHybridOffsetLag(pcs, false) <= offsetThreshold;
+  }
+
+  /**
+   * Milliseconds since the last leader-complete heartbeat, anchored on the later of that timestamp and the consumption
+   * start time to avoid reading as silent-since-epoch when no signal has ever been observed.
+   */
+  private static long getLeaderSilentDurationMs(PartitionConsumptionState pcs) {
+    long lastSignalMs = max(pcs.getLastLeaderCompleteStateUpdateInMs(), pcs.getConsumptionStartTimeInMs());
+    return max(0, System.currentTimeMillis() - lastSignalMs);
+  }
+
+  /**
+   * True if the leader has been silent past the configured threshold. A threshold of zero or less disables the fallback.
+   */
+  private boolean isLeaderPresumedDead(PartitionConsumptionState pcs) {
+    long thresholdMs = getServerConfig().getDeadLeaderReadyToServeFallbackThresholdMs();
+    return thresholdMs > 0 && getLeaderSilentDurationMs(pcs) > thresholdMs;
   }
 
   /**
@@ -4193,14 +4255,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           readerValueSchemaId = supersetSchemaEntry.getId();
           readerUpdateProtocolVersion = update.updateSchemaId;
         }
-        ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+        ChunkedValueManifestContainer valueManifestContainer =
+            new ChunkedValueManifestContainer(getMaxNearlineRecordSizeBytes());
         final GenericRecord currValue = readStoredValueRecord(
             partitionConsumptionState,
             keyBytes,
             readerValueSchemaId,
             consumerRecord.getTopicPartition(),
             valueManifestContainer);
-
+        if (isRecordTooLargeForPartialUpdate(partitionConsumptionState, consumerRecord, valueManifestContainer)) {
+          // The record size is over the limit, so it was never assembled and the merge is skipped outright.
+          // Producing is skipped, leaving local storage and the transient cache untouched.
+          return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
+        }
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
         final int incomingUpdatePayloadSize = update.updateValue.remaining();
@@ -4945,6 +5012,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           .warn("Partial-update amplification report for {}\n{}", partitionConsumptionState.getReplicaId(), ampReport);
       versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
     }
+  }
+
+  /**
+   * Returns whether the stored chunk manifest exceeds the nearline size limit. Once exceeded, subsequent partial
+   * updates are skipped before fetching or assembling chunks, avoiding that cost on every update. The update that
+   * first crosses the limit is allowed through so the manifest can identify the record as oversized. A full PUT or
+   * DELETE resets the record.
+   */
+  protected boolean isRecordTooLargeForPartialUpdate(
+      PartitionConsumptionState pcs,
+      DefaultPubSubMessage consumerRecord,
+      ChunkedValueManifestContainer valueManifestContainer) {
+    if (!valueManifestContainer.isSizeLimitExceeded()) {
+      return false;
+    }
+
+    versionedIngestionStats.recordPartialUpdateLargeRecordSkippedCount(storeName, versionNumber, 1);
+
+    String keyHex = ByteUtils.toHexString(consumerRecord.getKey().getKey());
+    // An oversized key is skipped on every partial update, so this would otherwise log on each one.
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "partialUpdateLargeRecordSkipped-" + keyHex)) {
+      LOGGER.warn(
+          "Skipped a partial update in {} for key 0x{} at position {}: the stored record is {} bytes, over the {} byte "
+              + "limit. Dump the topic at this position to identify the update. A full PUT or DELETE resets the record.",
+          pcs.getReplicaId(),
+          keyHex,
+          consumerRecord.getPosition(),
+          valueManifestContainer.getManifest().getSize(),
+          getMaxNearlineRecordSizeBytes());
+    }
+
+    return true;
   }
 
   /**

@@ -4,14 +4,21 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.helix.AccessOption;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -19,10 +26,41 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * <p>
  * This repository does NOT listen the change of store from ZK. Because in Venice, this is the only once place to modify
  * stores.
+ *
+ * <p>Persistence layout (only when {@code perVersionZnodeEnabled} is true):
+ * <ul>
+ *   <li>{@code /<cluster>/Stores/<name>} holds the {@link Store} JSON. Its embedded versions list is the legacy set
+ *       inherited from stores that pre-date the per-version-znode layout. The list is never appended to; it can only
+ *       shrink (when the caller removes a legacy version) or have its entries mutated in place (e.g. via
+ *       {@code updateVersionStatus}, which mutates the shared Avro record).</li>
+ *   <li>{@code /<cluster>/Stores/<name>/versions/<n>} holds each non-legacy {@link Version} as its own JSON znode.
+ *       Every newly added version lands here; mutations to existing znode-versions are propagated by re-writing the
+ *       znode on the next {@code updateStore} call.</li>
+ * </ul>
+ *
+ * <p>When the flag is false, the entire {@link Store} (including its versions list) is persisted to the single store
+ * znode — the layout every Venice cluster used before this work. The read path is unconditionally smart and supports
+ * both layouts so readers can roll out ahead of writers.
+ *
+ * <p>Invariant (split layout only): a given version number lives in exactly one of the two layers. The write path
+ * enforces this by upserting target versions to {@code /versions/<n>} iff their number is NOT in the prior embedded
+ * list, and by deleting any stale per-version znode whose number remains embedded. There is no migration step that
+ * moves a legacy embedded version into a per-version znode.
  */
 public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository implements ReadWriteStoreRepository {
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadWriteStoreRepository.class);
+
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final String clusterName;
+  /**
+   * Enables the per-version-znode persistence layout. When true, newly added versions are persisted under
+   * {@code /<cluster>/Stores/<store>/versions/<n>}; versions already embedded in the prior store znode remain embedded
+   * there for backward compatibility, but that embedded set is never appended to. As new versions are created, the
+   * active version set shifts into per-version znodes and the embedded list eventually clears through normal version
+   * lifecycle removals. When false, updates use the legacy single-znode layout: the store znode contains the full
+   * versions list, and any per-version znodes under {@code /versions/<n>} are removed as cleanup.
+   */
+  private final boolean perVersionZnodeEnabled;
 
   public HelixReadWriteStoreRepository(
       ZkClient zkClient,
@@ -30,9 +68,20 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       String clusterName,
       Optional<MetaStoreWriter> metaStoreWriter,
       ClusterLockManager storeLock) {
+    this(zkClient, compositeSerializer, clusterName, metaStoreWriter, storeLock, false);
+  }
+
+  public HelixReadWriteStoreRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer compositeSerializer,
+      String clusterName,
+      Optional<MetaStoreWriter> metaStoreWriter,
+      ClusterLockManager storeLock,
+      boolean perVersionZnodeEnabled) {
     super(zkClient, clusterName, compositeSerializer, storeLock);
     this.clusterName = clusterName;
     this.metaStoreWriter = metaStoreWriter;
+    this.perVersionZnodeEnabled = perVersionZnodeEnabled;
   }
 
   @Override
@@ -41,7 +90,7 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       if (hasStore(store.getName())) {
         throw new VeniceStoreAlreadyExistsException(store.getName(), clusterName);
       }
-      HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
+      writeStoreToZk(store);
       putStore(store);
     }
   }
@@ -52,10 +101,10 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       if (!hasStore(store.getName())) {
         throw new VeniceNoStoreException(store.getName(), clusterName);
       }
-      HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
+      writeStoreToZk(store);
       putStore(store);
       if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
-        /**
+        /*
          * Write the update to the meta system store RT topic.
          */
         metaStoreWriter.get().writeStoreProperties(clusterName, store);
@@ -69,8 +118,19 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       if (!hasStore(storeName)) {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
+      // Per-version znodes live under the store znode at /Stores/<store>/versions/*, so rely on the existing Helix
+      // store-subtree delete instead of issuing separate non-atomic deletes for the store and version znodes.
       HelixUtils.remove(zkDataAccessor, getStoreZkPath(storeName));
       removeStore(storeName);
+    }
+  }
+
+  private void writeStoreToZk(Store store) {
+    if (perVersionZnodeEnabled) {
+      writeStoreAndSplitVersions(store);
+    } else {
+      HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
+      versionAccessor.removeAllVersionsForStore(store.getName());
     }
   }
 
@@ -99,5 +159,60 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
   @Override
   public Store refreshOneStore(String storeName) {
     return getStore(storeName);
+  }
+
+  /**
+   * Persist {@code store} across the split layout. The frozen embedded set is whatever the current ZK store znode
+   * carries (empty for stores created by this code path; non-empty for legacy stores). Target versions whose number is
+   * NOT in that frozen set are upserted as per-version znodes — this covers both newly added versions and existing
+   * znode-versions that the caller may have mutated in place (e.g. status transitions). Per-version znodes for numbers
+   * absent from the target, or for numbers that still belong to the legacy embedded layer, are removed. The store znode
+   * is rewritten with the legacy-embedded subset of the target, which also drops any legacy versions the caller deleted.
+   */
+  private void writeStoreAndSplitVersions(Store store) {
+    String storeName = store.getName();
+    List<Version> targetVersions = store.getVersions();
+    Set<Integer> targetVersionNumbers =
+        targetVersions.stream().map(Version::getNumber).collect(Collectors.toCollection(HashSet::new));
+
+    Store priorOnZk = zkDataAccessor.get(getStoreZkPath(storeName), null, AccessOption.PERSISTENT);
+    Set<Integer> frozenEmbeddedNumbers = new HashSet<>();
+    if (priorOnZk != null) {
+      for (Version v: priorOnZk.getVersions()) {
+        frozenEmbeddedNumbers.add(v.getNumber());
+      }
+    }
+    Set<Integer> existingZnodeNumbers = new HashSet<>();
+    for (String versionNumberToken: versionAccessor.getVersionNumbersForStore(storeName)) {
+      try {
+        existingZnodeNumbers.add(Integer.parseInt(versionNumberToken));
+      } catch (NumberFormatException e) {
+        LOGGER.warn("Skipping non-numeric version znode child for store {}: {}", storeName, versionNumberToken, e);
+      }
+    }
+
+    List<Version> embeddedKeep = new ArrayList<>();
+    // The per-version znode upserts/removals below are intentionally written before the store znode update, which is
+    // the effective commit point. A crash in this window can temporarily leave new/stale version znodes visible before
+    // the store znode reflects them; the next successful updateStore reconciles the layout, so this is expected/benign.
+    for (Version version: targetVersions) {
+      // ZKStore.getVersions() returns ReadOnlyVersion wrappers; both setVersions on the store znode payload and
+      // VersionJSONSerializer require VersionImpl, so unwrap unconditionally.
+      Version unwrapped = version.cloneVersion();
+      if (frozenEmbeddedNumbers.contains(version.getNumber())) {
+        embeddedKeep.add(unwrapped);
+      } else {
+        versionAccessor.putVersion(storeName, unwrapped);
+      }
+    }
+    for (Integer existing: existingZnodeNumbers) {
+      if (!targetVersionNumbers.contains(existing) || frozenEmbeddedNumbers.contains(existing)) {
+        versionAccessor.removeVersion(storeName, existing);
+      }
+    }
+
+    Store storeForZkPayload = store.cloneStore();
+    storeForZkPayload.setVersions(embeddedKeep);
+    HelixUtils.update(zkDataAccessor, getStoreZkPath(storeName), storeForZkPayload);
   }
 }

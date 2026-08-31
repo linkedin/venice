@@ -1,8 +1,11 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import com.linkedin.venice.spark.SparkConstants;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import org.apache.spark.sql.SparkSession;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -268,6 +271,107 @@ public class SparkDataWriterTaskTrackerTest {
     Assert.assertEquals((long) result.get(0), 100L);
     Assert.assertEquals((long) result.get(1), 200L);
     Assert.assertEquals((long) result.get(2), 50L);
+  }
+
+  @Test
+  public void testFailedExternalStorageRegionsTrackPerTaskTracker() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker1 = new SparkDataWriterTaskTracker(accumulators);
+    SparkDataWriterTaskTracker tracker2 = new SparkDataWriterTaskTracker(accumulators);
+
+    tracker1.trackFailedExternalStorageRegion("dc-0");
+    tracker1.trackFailedExternalStorageRegion("dc-0");
+    tracker1.trackFailedExternalStorageRegion("dc-1");
+    tracker1.trackFailedExternalStorageRegion(null);
+    tracker1.trackFailedExternalStorageRegion("");
+    tracker2.trackFailedExternalStorageRegion("dc-2");
+
+    Set<String> tracker1Expected = new HashSet<>();
+    tracker1Expected.add("dc-0");
+    tracker1Expected.add("dc-1");
+    Assert.assertEquals(tracker1.getFailedExternalStorageRegions(), tracker1Expected);
+    Assert.assertEquals(tracker2.getFailedExternalStorageRegions(), Collections.singleton("dc-2"));
+
+    verifyAllAccumulators(accumulators, new DataWriterAccumulators(spark));
+  }
+
+  @Test
+  public void testSetAndGetFailedExternalStorageRegions() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+
+    tracker.trackFailedExternalStorageRegion("dc-stale");
+
+    Set<String> failedRegions = new HashSet<>();
+    failedRegions.add("dc-0");
+    failedRegions.add("dc-1");
+
+    tracker.setFailedExternalStorageRegions(failedRegions);
+    failedRegions.add("dc-2");
+
+    Set<String> expected = new HashSet<>();
+    expected.add("dc-0");
+    expected.add("dc-1");
+    Assert.assertEquals(tracker.getFailedExternalStorageRegions(), expected);
+  }
+
+  @Test
+  public void testWriteTimesAccumulatePerTaskTrackerWithoutAccumulators() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker1 = new SparkDataWriterTaskTracker(accumulators);
+    SparkDataWriterTaskTracker tracker2 = new SparkDataWriterTaskTracker(accumulators);
+
+    tracker1.trackExternalStorageWriteTime(100);
+    tracker1.trackExternalStorageWriteTime(50);
+    tracker1.trackVeniceWriteTime(7);
+    tracker2.trackExternalStorageWriteTime(1000);
+    tracker2.trackVeniceWriteTime(3);
+
+    Assert.assertEquals(tracker1.getExternalStorageWriteTimeMs(), 150L);
+    Assert.assertEquals(tracker1.getVeniceWriteTimeMs(), 7L);
+    Assert.assertEquals(tracker2.getExternalStorageWriteTimeMs(), 1000L);
+    Assert.assertEquals(tracker2.getVeniceWriteTimeMs(), 3L);
+
+    // Crucially, nothing landed in a shared accumulator: durations travel via task-output rows precisely
+    // because speculative attempts would otherwise both contribute their accumulator updates on the driver.
+    verifyAllAccumulators(accumulators, new DataWriterAccumulators(spark));
+  }
+
+  @Test
+  public void testWriteTimesIgnoreNonPositiveReports() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+
+    tracker.trackExternalStorageWriteTime(0);
+    tracker.trackExternalStorageWriteTime(-5);
+    tracker.trackVeniceWriteTime(0);
+    tracker.trackVeniceWriteTime(-1);
+
+    Assert.assertEquals(tracker.getExternalStorageWriteTimeMs(), 0L);
+    Assert.assertEquals(tracker.getVeniceWriteTimeMs(), 0L);
+  }
+
+  @Test
+  public void testSetAndGetWriteTimes() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+
+    // Executor-side accrual is replaced wholesale by the driver-side sum over task-output rows.
+    tracker.trackExternalStorageWriteTime(999);
+    tracker.setExternalStorageWriteTimeMs(42);
+    tracker.setVeniceWriteTimeMs(21);
+
+    Assert.assertEquals(tracker.getExternalStorageWriteTimeMs(), 42L);
+    Assert.assertEquals(tracker.getVeniceWriteTimeMs(), 21L);
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testFailedExternalStorageRegionsIsUnmodifiable() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+    tracker.setFailedExternalStorageRegions(Collections.singleton("dc-0"));
+
+    tracker.getFailedExternalStorageRegions().add("dc-1");
   }
 
   @Test(expectedExceptions = UnsupportedOperationException.class)

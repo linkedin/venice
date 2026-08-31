@@ -12,12 +12,17 @@ import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_T
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES;
+import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.SERVER_READ_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
@@ -25,15 +30,18 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CU
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.testng.annotations.Test;
@@ -61,6 +69,32 @@ public class VeniceServerConfigTest {
     assertEquals(jvmArgs.size(), 2);
     assertEquals(jvmArgs.get(0), "-Xms256M");
     assertEquals(jvmArgs.get(1), "-Xmx256G");
+  }
+
+  @Test
+  public void testFutureVersionStandbyLagCheckDefaults() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+
+    assertFalse(config.isFutureVersionStandbyLagCheckEnabled());
+    assertEquals(config.getFutureVersionStandbyLagThreshold(), 1000L);
+    assertEquals(config.getFutureVersionStandbyLagCheckTimeoutMinutes(), 2 * 60);
+    assertEquals(config.getFutureVersionStandbyLagCheckPollIntervalMinutes(), 15);
+  }
+
+  @Test
+  public void testFutureVersionStandbyLagCheckOverrides() {
+    Properties props = populatedBasicProperties();
+    props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED, "true");
+    props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD, "2000");
+    props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES, "60");
+    props.setProperty(SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES, "5");
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+
+    assertTrue(config.isFutureVersionStandbyLagCheckEnabled());
+    assertEquals(config.getFutureVersionStandbyLagThreshold(), 2000L);
+    assertEquals(config.getFutureVersionStandbyLagCheckTimeoutMinutes(), 60);
+    assertEquals(config.getFutureVersionStandbyLagCheckPollIntervalMinutes(), 5);
   }
 
   @Test
@@ -176,6 +210,26 @@ public class VeniceServerConfigTest {
     assertEquals(path, "db/path/rocksdb");
   }
 
+  @Test
+  public void testDeadLeaderReadyToServeFallbackThresholdMs() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getDeadLeaderReadyToServeFallbackThresholdMs(), TimeUnit.HOURS.toMillis(3));
+
+    props.put(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, "7200000");
+    VeniceServerConfig overriddenConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(overriddenConfig.getDeadLeaderReadyToServeFallbackThresholdMs(), 7200000L);
+
+    props.put(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, "0");
+    VeniceServerConfig disabledConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(disabledConfig.getDeadLeaderReadyToServeFallbackThresholdMs(), 0L);
+
+    // A positive threshold that is not larger than the leader-complete freshness window is rejected at construction.
+    props.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, "300000");
+    props.put(SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS, "300000");
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+  }
+
   // TODO: Delete this test once we fully delete the HelixMessagingChannel.
   @Test
   public void testParticipantStoreConfigs() {
@@ -267,31 +321,13 @@ public class VeniceServerConfigTest {
   }
 
   @Test
-  public void testOtelStatsEnabledConfigs() {
-    // Both default to true
+  public void testIngestionOtelStatsEnabledConfig() {
     Properties props = populatedBasicProperties();
     VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
-    assertTrue(config.isReadOtelStatsEnabled());
     assertTrue(config.isIngestionOtelStatsEnabled());
 
-    // Explicitly disable read OTel stats
-    props.put(SERVER_READ_OTEL_STATS_ENABLED, "false");
-    config = new VeniceServerConfig(new VeniceProperties(props));
-    assertFalse(config.isReadOtelStatsEnabled());
-    assertTrue(config.isIngestionOtelStatsEnabled());
-
-    // Explicitly disable ingestion OTel stats
-    props.put(SERVER_READ_OTEL_STATS_ENABLED, "true");
     props.put(SERVER_INGESTION_OTEL_STATS_ENABLED, "false");
     config = new VeniceServerConfig(new VeniceProperties(props));
-    assertTrue(config.isReadOtelStatsEnabled());
-    assertFalse(config.isIngestionOtelStatsEnabled());
-
-    // Both disabled
-    props.put(SERVER_READ_OTEL_STATS_ENABLED, "false");
-    props.put(SERVER_INGESTION_OTEL_STATS_ENABLED, "false");
-    config = new VeniceServerConfig(new VeniceProperties(props));
-    assertFalse(config.isReadOtelStatsEnabled());
     assertFalse(config.isIngestionOtelStatsEnabled());
   }
 }

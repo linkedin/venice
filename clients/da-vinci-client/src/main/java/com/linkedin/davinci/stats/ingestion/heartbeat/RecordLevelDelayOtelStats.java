@@ -13,8 +13,9 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
-import com.linkedin.venice.stats.metrics.MetricEntityStateFiveEnums;
+import com.linkedin.venice.stats.metrics.MetricEntityStateSixEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -26,12 +27,13 @@ import java.util.Map;
  * Tracks delays for regular data records (not heartbeat control messages).
  *
  * <p>SLO classification dimensions ({@link VeniceStoreWriteType}, {@link VeniceChunkingStatus},
- * {@link VeniceRegionLocality}) are supplied by the caller on every record so they reflect the
- * version-level configuration the caller resolved (rather than store-level approximations baked
- * in at construction time). Write-type and chunking are emitted as dynamic dimensions; locality
- * stays a base dimension because it is a deterministic function of the source region — caller
- * provides the resolved enum on the first call per region, and it is cached in that region's
- * {@link MetricEntityStateFiveEnums} instance.
+ * {@link VeniceRegionLocality}, {@link VeniceReplicationMode}) are supplied by the caller on every
+ * record so they reflect the version-level configuration the caller resolved (rather than
+ * store-level approximations baked in at construction time). Write-type, chunking, and
+ * replication mode are emitted as dynamic dimensions; locality stays a base dimension because it
+ * is a deterministic function of the source region — caller provides the resolved enum on the
+ * first call per region, and it is cached in that region's {@link MetricEntityStateSixEnums}
+ * instance.
  *
  * <p>Note: Tehuti metrics are managed separately in {@link HeartbeatStatReporter}.
  */
@@ -44,7 +46,7 @@ public class RecordLevelDelayOtelStats {
    * Per-region metric entity states, keyed by region name. Grows lazily via {@code computeIfAbsent} and is bounded
    * by the number of distinct regions in the deployment. Entries are not evicted individually.
    */
-  private final Map<String, MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus>> metricsByRegion;
+  private final Map<String, MetricEntityStateSixEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus, VeniceReplicationMode>> metricsByRegion;
 
   // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
   private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
@@ -95,6 +97,7 @@ public class RecordLevelDelayOtelStats {
    * @param chunkingStatus Pre-resolved chunking label (CHUNKED / UNCHUNKED)
    * @param locality Pre-resolved locality label (LOCAL / REMOTE) — applied to the per-region metric state on first
    *          call per region; subsequent calls reuse the cached state
+   * @param replicationMode Pre-resolved replication-mode label (NON_ACTIVE_ACTIVE / ACTIVE_ACTIVE)
    * @param delayMs The delay in milliseconds
    */
   public void recordRecordDelayOtelMetrics(
@@ -105,6 +108,7 @@ public class RecordLevelDelayOtelStats {
       VeniceStoreWriteType writeType,
       VeniceChunkingStatus chunkingStatus,
       VeniceRegionLocality locality,
+      VeniceReplicationMode replicationMode,
       long delayMs) {
     if (!emitOtelMetrics()) {
       return;
@@ -119,20 +123,20 @@ public class RecordLevelDelayOtelStats {
      */
     VeniceRegionLocality resolvedLocality = locality != null ? locality : VeniceRegionLocality.REMOTE;
 
-    MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus> metricState =
+    MetricEntityStateSixEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus, VeniceReplicationMode> metricState =
         getOrCreateMetricState(region, resolvedLocality);
 
     // Records to OTel metrics only
-    metricState.record(delayMs, versionRole, replicaType, replicaState, writeType, chunkingStatus);
+    metricState.record(delayMs, versionRole, replicaType, replicaState, writeType, chunkingStatus, replicationMode);
   }
 
   /**
    * Gets or creates a metric entity state for a specific region. Region locality is supplied by the
    * caller and baked into the per-region base dimensions on first call — every subsequent record
-   * for the same region reuses the cached {@link MetricEntityStateFiveEnums}. Locality is a
+   * for the same region reuses the cached {@link MetricEntityStateSixEnums}. Locality is a
    * deterministic function of source region for a given server, so once-per-region caching is safe.
    */
-  private MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus> getOrCreateMetricState(
+  private MetricEntityStateSixEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus, VeniceReplicationMode> getOrCreateMetricState(
       String region,
       VeniceRegionLocality locality) {
     return metricsByRegion.computeIfAbsent(region, r -> {
@@ -141,7 +145,7 @@ public class RecordLevelDelayOtelStats {
       regionBaseDimensions.put(VeniceMetricsDimensions.VENICE_REGION_NAME, r);
       regionBaseDimensions.put(VeniceMetricsDimensions.VENICE_REGION_LOCALITY, locality.getDimensionValue());
 
-      return MetricEntityStateFiveEnums.create(
+      return MetricEntityStateSixEnums.create(
           INGESTION_RECORD_DELAY.getMetricEntity(),
           otelRepository,
           regionBaseDimensions,
@@ -149,7 +153,8 @@ public class RecordLevelDelayOtelStats {
           ReplicaType.class,
           ReplicaState.class,
           VeniceStoreWriteType.class,
-          VeniceChunkingStatus.class);
+          VeniceChunkingStatus.class,
+          VeniceReplicationMode.class);
     });
   }
 

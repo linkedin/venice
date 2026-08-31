@@ -2,6 +2,7 @@ package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.ConfigKeys.VENICE_WRITER_VTP_HEADER_EMISSION_MODE;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
@@ -95,6 +96,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private static final ChunkedPayloadAndManifest EMPTY_CHUNKED_PAYLOAD_AND_MANIFEST =
       new ChunkedPayloadAndManifest(null, null);
+  private static final int ASYNC_BROADCAST_THREAD_COUNT = 8;
 
   // use for running async close and to fetch number of partitions with timeout from producer
   private final ThreadPoolExecutor threadPoolExecutor;
@@ -252,6 +254,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   // Immutable state
   private final PubSubMessageHeader protocolSchemaHeader;
+  private final VtpHeaderEmissionMode vtpHeaderEmissionMode;
 
   protected final VeniceKafkaSerializer<K> keySerializer;
   protected final VeniceKafkaSerializer<V> valueSerializer;
@@ -423,11 +426,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.defaultLeaderMetadata = new DefaultLeaderMetadata(this.writerId);
     this.producerGUID = GuidUtils.getGUID(props);
     this.logger = LogManager.getLogger("VeniceWriter [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
-    // Create a thread pool which can have max 2 threads.
+    // Keep broadcast concurrency bounded because each task can synchronously wait for START_OF_SEGMENT.
     // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
     this.threadPoolExecutor = new ThreadPoolExecutor(
-        2,
-        2,
+        ASYNC_BROADCAST_THREAD_COUNT,
+        ASYNC_BROADCAST_THREAD_COUNT,
         5,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
@@ -439,6 +442,29 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         : new PubSubMessageHeader(
             VENICE_TRANSPORT_PROTOCOL_HEADER,
             overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
+    /*
+     * Parse VENICE_WRITER_VTP_HEADER_EMISSION_MODE. Default is SOS_AND_HB to preserve the
+     * pre-existing emission rule (attach vtp when segmentNumber == 0 && messageSequenceNumber == 0):
+     * on the data path that gate matches only the first segment-start record per partition (segment
+     * 0, sequence 0), and every heartbeat (heartbeats pin both coordinates to 0 via
+     * getHeartbeatKME(...)). Unknown values fall back to the default with a warning.
+     */
+    String vtpHeaderEmissionModeProp =
+        props.getString(VENICE_WRITER_VTP_HEADER_EMISSION_MODE, VtpHeaderEmissionMode.SOS_AND_HB.name());
+    VtpHeaderEmissionMode parsedMode;
+    try {
+      parsedMode = vtpHeaderEmissionModeProp == null
+          ? VtpHeaderEmissionMode.SOS_AND_HB
+          : VtpHeaderEmissionMode.valueOf(vtpHeaderEmissionModeProp.trim());
+    } catch (IllegalArgumentException e) {
+      logger.warn(
+          "Unrecognized {} value '{}'; falling back to {}",
+          VENICE_WRITER_VTP_HEADER_EMISSION_MODE,
+          vtpHeaderEmissionModeProp,
+          VtpHeaderEmissionMode.SOS_AND_HB);
+      parsedMode = VtpHeaderEmissionMode.SOS_AND_HB;
+    }
+    this.vtpHeaderEmissionMode = parsedMode;
 
     try {
       this.producerAdapter = producerAdapter;
@@ -1664,14 +1690,34 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Validate.notEmpty(newServingVersionTopic);
     Validate.notEmpty(sourceRegion);
     Validate.notEmpty(destinationRegion);
-    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
-    controlMessage.controlMessageUnion = generateVersionSwapMessage(
-        oldServingVersionTopic,
-        newServingVersionTopic,
-        sourceRegion,
-        destinationRegion,
-        generationId);
-    return broadcastControlMessage(controlMessage, debugInfo);
+    List<CompletableFuture<PubSubProduceResult>> partitionWriteFutures = new ArrayList<>(numberOfPartitions);
+    for (int partition = 0; partition < numberOfPartitions; partition++) {
+      int destinationPartition = partition;
+      CompletableFuture<PubSubProduceResult> partitionWriteFuture = new CompletableFuture<>();
+      partitionWriteFutures.add(partitionWriteFuture);
+      threadPoolExecutor.execute(() -> {
+        try {
+          ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+          controlMessage.controlMessageUnion = generateVersionSwapMessage(
+              oldServingVersionTopic,
+              newServingVersionTopic,
+              sourceRegion,
+              destinationRegion,
+              generationId);
+          sendControlMessage(controlMessage, destinationPartition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER)
+              .whenComplete((result, throwable) -> {
+                if (throwable == null) {
+                  partitionWriteFuture.complete(result);
+                } else {
+                  partitionWriteFuture.completeExceptionally(throwable);
+                }
+              });
+        } catch (Exception e) {
+          partitionWriteFuture.completeExceptionally(e);
+        }
+      });
+    }
+    return partitionWriteFutures;
   }
 
   private VersionSwap generateVersionSwapMessage(
@@ -1882,6 +1928,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback outputCallback = setInternalCallback(callback, internalCallback);
       PubSubMessageHeaders finalPubSubMessageHeaders = getHeaders(
           kafkaValue.getProducerMetadata(),
+          false /* isHeartbeat */,
           false,
           LeaderCompleteState.LEADER_NOT_COMPLETED,
           pubSubMessageHeaders);
@@ -1913,8 +1960,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link EmptyPubSubMessageHeaders} is used for
-   * all messages to a partition based on {@link VeniceWriter} param overrideProtocolSchema and whether it's a first message.
+   * Builds the {@link PubSubMessageHeaders} for an outbound message. The vtp protocol-schema header
+   * ({@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER}) is attached when all of: (1) overrideProtocolSchema
+   * is non-null, (2) the message is segment 0 / sequence 0, and (3) {@link VtpHeaderEmissionMode} permits emission for
+   * this message type (heartbeat vs non-heartbeat). Under {@code SOS_ONLY} heartbeat SOS records are skipped; under
+   * {@code NONE} no message gets the header regardless.
    * {@link PubSubMessageHeaders#VENICE_LEADER_COMPLETION_STATE_HEADER} is added to the above headers for HB SOS message.
    * {@link PubSubMessageHeaders#VENICE_VIEW_PARTITIONS_MAP_HEADER} is added to the headers for chunked messages
    * of materialized
@@ -1931,13 +1981,36 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private PubSubMessageHeaders getHeaders(
       ProducerMetadata producerMetadata,
+      boolean isHeartbeat,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
       PubSubMessageHeaders headers) {
     PubSubMessageHeader viewPartitionHeader = headers.get(VENICE_VIEW_PARTITIONS_MAP_HEADER);
-    // If the message is the first message in a segment, we need to add the protocol schema headers.
-    boolean needVtpHeader =
+    /*
+     * Decide whether to attach the vtp protocol-schema header on this outbound message.
+     *
+     * Pre-existing rule: attach on the first message of the first segment, i.e. SOS records
+     * (segmentNumber == 0 && messageSequenceNumber == 0). Heartbeats are encoded as
+     * START_OF_SEGMENT with both numbers zero, so under SOS_AND_HB every heartbeat picks up
+     * the ~16 KB vtp blob — that dominates the per-record memory footprint on busy ingestion
+     * paths and is the lever VtpHeaderEmissionMode lets writers tune. See
+     * VtpHeaderEmissionMode for the per-mode semantics.
+     */
+    boolean isFirstMessageOfFirstSegment =
         producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0;
+    boolean needVtpHeader;
+    switch (vtpHeaderEmissionMode) {
+      case NONE:
+        needVtpHeader = false;
+        break;
+      case SOS_ONLY:
+        needVtpHeader = isFirstMessageOfFirstSegment && !isHeartbeat;
+        break;
+      case SOS_AND_HB:
+      default:
+        needVtpHeader = isFirstMessageOfFirstSegment;
+        break;
+    }
 
     // construct PubSubMessageHeaders only if it is needed
     PubSubMessageHeaders returnPubSubMessageHeaders = (headers instanceof EmptyPubSubMessageHeaders)
@@ -2547,7 +2620,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
            * lands on the wire with empty headers, and a forward-compat consumer that hits it as
            * the first record on a fresh VT has no way to bootstrap an unknown KME schema.
            */
-          getHeaders(kafkaMessageEnvelope.getProducerMetadata(), false, null, EmptyPubSubMessageHeaders.SINGLETON),
+          getHeaders(
+              kafkaMessageEnvelope.getProducerMetadata(),
+              false /* isHeartbeat */,
+              false,
+              null,
+              EmptyPubSubMessageHeaders.SINGLETON),
           callback);
     }
   }
@@ -2601,6 +2679,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         kafkaMessageEnvelope,
         getHeaders(
             kafkaMessageEnvelope.getProducerMetadata(),
+            true /* isHeartbeat */,
             addLeaderCompleteState,
             leaderCompleteState,
             EmptyPubSubMessageHeaders.SINGLETON),
@@ -2624,6 +2703,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         kafkaMessageEnvelope,
         getHeaders(
             kafkaMessageEnvelope.getProducerMetadata(),
+            true /* isHeartbeat */,
             addLeaderCompleteState,
             leaderCompleteState,
             EmptyPubSubMessageHeaders.SINGLETON),

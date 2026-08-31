@@ -46,21 +46,29 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
+import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
+import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.fs.Path;
+import org.apache.spark.TaskContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
@@ -77,6 +85,7 @@ import org.apache.spark.sql.types.StructType;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import scala.collection.JavaConverters;
 
 
 public class AbstractDataWriterSparkJobTest {
@@ -125,6 +134,61 @@ public class AbstractDataWriterSparkJobTest {
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
       Assert.assertTrue(jobConf.getOption(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS).isEmpty());
       Assert.assertTrue(jobConf.getOption(writerHookSetting).isEmpty());
+    }
+  }
+
+  /**
+   * {@code spark.data.writer.conf.*} is documented as the mechanism for passing custom configuration into VPJ's
+   * Spark custom input format (the {@code VeniceHdfsSource}/{@code VeniceHdfsInputTable}/
+   * {@code VeniceHdfsInputScanBuilder} DataSource V2 chain), analogous to MR's {@code hadoop-conf.*} mechanism
+   * (which strips its prefix directly into the {@code JobConf} that MR's InputFormat and tasks read from).
+   *
+   * {@link #testConfigure} only proves the stripped key lands in {@code SparkSession.conf()}, which is visible on
+   * the driver. It does NOT prove the value reaches the DataSource V2 table/scan (i.e. what
+   * {@code VeniceHdfsSource#getTable} actually receives as its {@code configs} map) or executor partition readers.
+   *
+   * This test forces the real production custom-input-format path to run and records what
+   * {@link VeniceHdfsSource#getTable} actually received, proving the custom option reaches the DataFrameReader
+   * options that DataSource V2 threads through to the table/scan, not just the driver-side SparkSession runtime
+   * config.
+   */
+  @Test
+  public void testCustomDataWriterConfigForwardedToHdfsDataSource() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    String customOptionKey = "custom.reader.option";
+    String customOptionValue = "custom-reader-value";
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + customOptionKey, customOptionValue);
+
+    VeniceHdfsSource.recordLastReceivedConfigs(null);
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
+
+      // The custom option does reach SparkSession runtime config (driver-visible)...
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertEquals(jobConf.get(customOptionKey), customOptionValue);
+
+      // ...force the real custom-input-format DataSource V2 resolution to run...
+      Dataset<Row> dataFrame = dataWriterSparkJob.getUserInputDataFrame();
+      dataFrame.count();
+
+      // ...and confirm VeniceHdfsSource#getTable was invoked and its `configs` map (the DataFrameReader/reader
+      // options DataSource V2 actually threads through to the table/scan/executors) received the custom option
+      // too: SparkSession.conf() alone is a driver-only channel that this DataSource cannot see.
+      Assert.assertNotNull(
+          VeniceHdfsSource.lastReceivedConfigs,
+          "Expected VeniceHdfsSource#getTable to have been invoked while resolving the custom input format");
+      Assert.assertEquals(
+          VeniceHdfsSource.lastReceivedConfigs.get(customOptionKey),
+          customOptionValue,
+          "spark.data.writer.conf.* options must be forwarded as DataFrameReader options as well as SparkSession "
+              + "runtime config, so they reach the custom DataSource and executor partition readers");
+    } finally {
+      VeniceHdfsSource.recordLastReceivedConfigs(null);
     }
   }
 
@@ -499,8 +563,60 @@ public class AbstractDataWriterSparkJobTest {
     }
   }
 
+  @Test
+  public void testRunComputeJobAggregatesFailedExternalStorageRegionsFromTaskOutput() throws IOException {
+    PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
+    setting.partitionCount = 2;
+
+    try (TaskOutputTestingDataWriterSparkJob job = new TaskOutputTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      job.runComputeJob();
+
+      Map<Integer, Long> expectedCounts = new HashMap<>();
+      expectedCounts.put(0, 3L);
+      expectedCounts.put(1, 5L);
+      Assert.assertEquals(job.getTaskTracker().getPerPartitionRecordCounts(), expectedCounts);
+
+      Set<String> expectedFailedRegions = new HashSet<>();
+      expectedFailedRegions.add("dc-0");
+      expectedFailedRegions.add("dc-1");
+      Assert.assertEquals(job.getTaskTracker().getFailedExternalStorageRegions(), expectedFailedRegions);
+
+      // Durations are summed over one successful row per partition, never via accumulators.
+      Assert.assertEquals(job.getTaskTracker().getExternalStorageWriteTimeMs(), 1000L);
+      Assert.assertEquals(job.getTaskTracker().getVeniceWriteTimeMs(), 42L);
+    }
+  }
+
+  @Test
+  public void testRunComputeJobDoesNotUseAccumulatorsForWriteTimes() throws IOException {
+    PushJobSetting setting = getDefaultKafkaInputPushJobSetting();
+    setting.partitionCount = 2;
+
+    try (TaskOutputTestingDataWriterSparkJob job = new TaskOutputTestingDataWriterSparkJob()) {
+      job.configure(new VeniceProperties(new Properties()), setting);
+      job.runComputeJob();
+
+      /*
+       * The task-output rows above are the only source of the two totals. A tracker built on the very same
+       * accumulator set, but never fed the collected rows, must therefore report nothing: proof that no
+       * LongAccumulator is carrying these durations, which is what makes them safe under speculative
+       * execution.
+       */
+      SparkDataWriterTaskTracker accumulatorOnlyView =
+          new SparkDataWriterTaskTracker(job.getAccumulatorsForDataWriterJob());
+      Assert.assertEquals(accumulatorOnlyView.getExternalStorageWriteTimeMs(), 0L);
+      Assert.assertEquals(accumulatorOnlyView.getVeniceWriteTimeMs(), 0L);
+      Assert.assertEquals(job.getTaskTracker().getExternalStorageWriteTimeMs(), 1000L);
+    }
+  }
+
   private static long getTotalInputDataSize(QuotaTestingDataWriterSparkJob job) {
     return job.getTaskTracker().getTotalKeySize() + job.getTaskTracker().getTotalValueSize();
+  }
+
+  private static scala.collection.Seq<String> toScalaSeq(String... values) {
+    return JavaConverters.asScalaBuffer(new ArrayList<>(Arrays.asList(values))).toSeq();
   }
 
   private PushJobSetting getDefaultKafkaInputPushJobSetting() {
@@ -731,7 +847,45 @@ public class AbstractDataWriterSparkJobTest {
           accumulators.outputRecordCounter.add(1);
         }
         accumulators.partitionWriterCloseCounter.add(1);
-        return Collections.singletonList(RowFactory.create(partitionId, recordCount)).iterator();
+        return Collections.singletonList(RowFactory.create(partitionId, recordCount, toScalaSeq(), 0L, 0L)).iterator();
+      };
+    }
+  }
+
+  private static class TaskOutputTestingDataWriterSparkJob extends DataWriterSparkJob {
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      List<Row> rows = Arrays.asList(
+          new GenericRowWithSchema(
+              new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "test-key-1".getBytes(),
+                  "test-value-1".getBytes(), 1, "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA),
+          new GenericRowWithSchema(
+              new Object[] { "region1", 1, 101L, MessageType.PUT.getValue(), 1, "test-key-2".getBytes(),
+                  "test-value-2".getBytes(), 1, "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA));
+      return getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    }
+
+    @Override
+    protected MapPartitionsFunction<Row, Row> createPartitionWriterFactory(
+        Broadcast<Properties> broadcastProperties,
+        DataWriterAccumulators accumulators) {
+      return iterator -> {
+        while (iterator.hasNext()) {
+          iterator.next();
+        }
+
+        int partitionId = TaskContext.get().partitionId();
+        switch (partitionId) {
+          case 0:
+            return Collections.singletonList(RowFactory.create(0, 3L, toScalaSeq("dc-1", "dc-0"), 700L, 40L))
+                .iterator();
+          case 1:
+            return Collections.singletonList(RowFactory.create(1, 5L, toScalaSeq("dc-1"), 300L, 2L)).iterator();
+          default:
+            return Collections.singletonList(RowFactory.create(partitionId, 0L, toScalaSeq(), 0L, 0L)).iterator();
+        }
       };
     }
   }
