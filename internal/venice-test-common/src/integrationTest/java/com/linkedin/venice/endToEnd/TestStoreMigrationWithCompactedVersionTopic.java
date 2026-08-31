@@ -44,6 +44,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
@@ -52,7 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Random;
+import java.util.SplittableRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
@@ -67,6 +69,7 @@ public class TestStoreMigrationWithCompactedVersionTopic {
   private static final int PRODUCED_RECORD_COUNT = 200;
   private static final int UNIQUE_KEY_COUNT = 10;
   private static final int VALUE_PAYLOAD_SIZE = 12 * 1024;
+  private static final List<String> INCOMPRESSIBLE_VALUES = createIncompressibleValues();
   private static final String FABRIC = "dc-0";
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VALUE_SCHEMA = "\"string\"";
@@ -172,7 +175,7 @@ public class TestStoreMigrationWithCompactedVersionTopic {
           writer
               .put(
                   "key_" + index % UNIQUE_KEY_COUNT,
-                  getIncompressibleValue(index),
+                  INCOMPRESSIBLE_VALUES.get(index),
                   HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID)
               .get();
         }
@@ -239,17 +242,25 @@ public class TestStoreMigrationWithCompactedVersionTopic {
         int lastRecordIndex = PRODUCED_RECORD_COUNT - UNIQUE_KEY_COUNT + keyIndex;
         assertEquals(
             client.get("key_" + keyIndex).get().toString(),
-            getIncompressibleValue(lastRecordIndex),
+            INCOMPRESSIBLE_VALUES.get(lastRecordIndex),
             "Unexpected value after migrating compacted topic for key_" + keyIndex);
       }
     }
   }
 
-  private static String getIncompressibleValue(int index) {
+  private static List<String> createIncompressibleValues() {
     // Deterministic high-entropy values force Kafka log segments to roll even when producer compression is enabled.
-    byte[] payload = new byte[VALUE_PAYLOAD_SIZE];
-    new Random(index).nextBytes(payload);
-    return "value_" + index + "_" + Base64.getEncoder().encodeToString(payload);
+    List<String> values = new ArrayList<>(PRODUCED_RECORD_COUNT);
+    SplittableRandom random = new SplittableRandom(0);
+    for (int index = 0; index < PRODUCED_RECORD_COUNT; index++) {
+      byte[] payload = new byte[VALUE_PAYLOAD_SIZE];
+      ByteBuffer payloadBuffer = ByteBuffer.wrap(payload);
+      while (payloadBuffer.hasRemaining()) {
+        payloadBuffer.putLong(random.nextLong());
+      }
+      values.add("value_" + index + "_" + Base64.getEncoder().encodeToString(payload));
+    }
+    return Collections.unmodifiableList(values);
   }
 
   private int getUserRecordCountBeforeEop(PubSubBrokerWrapper broker, PubSubTopic topic) {
