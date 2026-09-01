@@ -419,6 +419,8 @@ public class TopicCleanupService extends AbstractVeniceService {
    * every parent fabric's Kafka cluster, where the same version topic name exists in each cluster; keying the
    * shared countdown by name alone would decrement it once per fabric per cycle and delete topics earlier than
    * the configured delay intends. Including {@code pubSubClusterAddress} keeps a separate countdown per cluster.
+   * An empty {@code pubSubClusterAddress} preserves the original name-only countdown key, so the single-cluster
+   * behavior of the {@link #extractVersionTopicsToCleanup(Admin, Map, int, int)} overload is unchanged.
    */
   public static List<PubSubTopic> extractVersionTopicsToCleanup(
       Admin admin,
@@ -477,7 +479,7 @@ public class TopicCleanupService extends AbstractVeniceService {
           // delay VT topic deletion as there could be a race condition where the resource is already deleted by venice
           // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang
           // in kafka.
-          String countdownKey = t.getName() + "_" + pubSubClusterAddress;
+          String countdownKey = pubSubClusterAddress.isEmpty() ? t.getName() : t.getName() + "_" + pubSubClusterAddress;
           int remainingFactor =
               storeToCountdownForDeletion.merge(countdownKey, delayFactor, (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
