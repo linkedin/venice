@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -15,8 +16,16 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.logger.TestLogAppender;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -32,6 +41,9 @@ public class StoreIngestionTaskRecordCountTest {
   private static final String TEST_TOPIC = "test_store_v1";
   private static final String TEST_STORE = "test_store";
   private static final int TEST_VERSION = 1;
+  private static final long PRE_MIGRATION_VERSION_CREATED_TIME_MS = 1_000L;
+  private static final long MIGRATION_STORE_CREATED_TIME_MS = 2_000L;
+  private static final long DURING_MIGRATION_VERSION_CREATED_TIME_MS = 3_000L;
 
   private static StoreIngestionTask buildSit(boolean failOnMismatchEnabled, AggVersionedIngestionStats statsMock)
       throws Exception {
@@ -87,6 +99,9 @@ public class StoreIngestionTaskRecordCountTest {
     setField(sit, "versionTopic", vt);
 
     doCallRealMethod().when(sit).verifyBatchPushRecordCount(any(), any());
+    // verifyBatchPushRecordCount calls this helper on `this`; that self-invocation is intercepted by
+    // the mock, so it must also be wired to the real implementation for the per-version gate to run.
+    doCallRealMethod().when(sit).isPreExistingMigrationCloneReplay(any());
     return sit;
   }
 
@@ -96,6 +111,27 @@ public class StoreIngestionTaskRecordCountTest {
     doReturn(true).when(vt).isViewTopic();
     setField(sit, "versionTopic", vt);
     return sit;
+  }
+
+  private static Version mockVersion(long createdTimeMs) {
+    Version version = mock(Version.class);
+    doReturn(createdTimeMs).when(version).getCreatedTime();
+    return version;
+  }
+
+  private static Store storeWithVersionMetadata(
+      boolean migrationDuplicateStore,
+      long storeCreatedTimeMs,
+      long versionCreatedTimeMs) {
+    Store store = mock(Store.class);
+    doReturn(migrationDuplicateStore).when(store).isMigrationDuplicateStore();
+    doReturn(storeCreatedTimeMs).when(store).getCreatedTime();
+    doReturn(mockVersion(versionCreatedTimeMs)).when(store).getVersion(TEST_VERSION);
+    return store;
+  }
+
+  private static Store migrationDuplicateStore(long storeCreatedTimeMs, long versionCreatedTimeMs) {
+    return storeWithVersionMetadata(true, storeCreatedTimeMs, versionCreatedTimeMs);
   }
 
   private static PartitionConsumptionState pcsWithCount(long count) {
@@ -256,8 +292,7 @@ public class StoreIngestionTaskRecordCountTest {
   @Test
   public void testVerifyMigrationReplayDoesNotThrowOnCounterDeficitInStrictMode() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    Store store = mock(Store.class);
-    doReturn(true).when(store).isMigrationDuplicateStore();
+    Store store = migrationDuplicateStore(MIGRATION_STORE_CREATED_TIME_MS, PRE_MIGRATION_VERSION_CREATED_TIME_MS);
     StoreIngestionTask sit = buildSit(
         /* failOnMismatchEnabled */ true,
         stats,
@@ -276,8 +311,7 @@ public class StoreIngestionTaskRecordCountTest {
   @Test
   public void testVerifyMigrationReplayDoesNotThrowOnHllDeficitInStrictMode() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    Store store = mock(Store.class);
-    doReturn(true).when(store).isMigrationDuplicateStore();
+    Store store = migrationDuplicateStore(MIGRATION_STORE_CREATED_TIME_MS, PRE_MIGRATION_VERSION_CREATED_TIME_MS);
     StoreIngestionTask sit = buildSit(
         /* failOnMismatchEnabled */ true,
         stats,
@@ -340,8 +374,7 @@ public class StoreIngestionTaskRecordCountTest {
   @Test
   public void testVerifyMigrationReplayWarningContainsContextAndReason() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    Store store = mock(Store.class);
-    doReturn(true).when(store).isMigrationDuplicateStore();
+    Store store = migrationDuplicateStore(MIGRATION_STORE_CREATED_TIME_MS, PRE_MIGRATION_VERSION_CREATED_TIME_MS);
     StoreIngestionTask sit = buildSit(
         /* failOnMismatchEnabled */ true,
         stats,
@@ -359,11 +392,144 @@ public class StoreIngestionTaskRecordCountTest {
 
       String log = appender.getLog();
       assertTrue(log.contains("verificationContext=MIGRATION_REPLAY"), "Missing migration context in: " + log);
-      assertTrue(log.contains("reason=MIGRATION_DUPLICATE_STORE"), "Missing migration reason in: " + log);
+      assertTrue(log.contains("reason=PRE_EXISTING_MIGRATION_CLONE"), "Missing migration reason in: " + log);
     } finally {
       logger.removeAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  public void testVerifyFreshPushDuringMigrationThrowsAndRecordsFailure() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = migrationDuplicateStore(MIGRATION_STORE_CREATED_TIME_MS, DURING_MIGRATION_VERSION_CREATED_TIME_MS);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    String message = exception.getMessage();
+    assertTrue(message.contains("verificationContext=FRESH_PUSH"), message);
+    assertTrue(message.contains("migrationDuplicateStore=true"), message);
+    assertTrue(message.contains("storeCreatedTimeMs=" + MIGRATION_STORE_CREATED_TIME_MS), message);
+    assertTrue(message.contains("versionCreatedTimeMs=" + DURING_MIGRATION_VERSION_CREATED_TIME_MS), message);
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
+  }
+
+  /**
+   * Same new-push scoping applies to the HLL leg: an HLL deficit on a push begun during migration is
+   * fatal, confirming the per-version gate is independent of which leg detected the deficit.
+   */
+  @Test
+  public void testVerifyFreshPushDuringMigrationHllDeficitThrowsAndRecordsFailure() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = migrationDuplicateStore(MIGRATION_STORE_CREATED_TIME_MS, DURING_MIGRATION_VERSION_CREATED_TIME_MS);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ true,
+        /* isDaVinciClient */ false,
+        store);
+
+    // counter=100 >= 100 (passes); hll=50, |50-100|=50 > 5 (fails) -> deficit via HLL leg.
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCountAndHll(100L, 50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"), exception.getMessage());
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyVersionCreatedAtStoreBoundaryThrows() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = migrationDuplicateStore(MIGRATION_STORE_CREATED_TIME_MS, MIGRATION_STORE_CREATED_TIME_MS);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"), exception.getMessage());
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyNonMigrationStoreWithOlderVersionRemainsStrict() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store =
+        storeWithVersionMetadata(false, MIGRATION_STORE_CREATED_TIME_MS, PRE_MIGRATION_VERSION_CREATED_TIME_MS);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"), exception.getMessage());
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyMigrationDuplicateStoreWithUnsetVersionCreatedTimeFailsClosed() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = migrationDuplicateStore(MIGRATION_STORE_CREATED_TIME_MS, 0L);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"), exception.getMessage());
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testVerifyMigrationDuplicateStoreWithUnsetStoreCreatedTimeFailsClosed() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    Store store = migrationDuplicateStore(0L, PRE_MIGRATION_VERSION_CREATED_TIME_MS);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        store);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"), exception.getMessage());
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
   /** When server strict-mode is disabled, the dedicated failure sensor must NOT fire. */
@@ -577,4 +743,83 @@ public class StoreIngestionTaskRecordCountTest {
     verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
+  private static ZKStore migrationDuplicateZkStore(long createdTimeMs) {
+    ZKStore store = new ZKStore(
+        TEST_STORE,
+        "owner",
+        createdTimeMs,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    store.setMigrationDuplicateStore(true);
+    return store;
+  }
+
+  private static Version versionWithCreatedTime(long createdTimeMs, String pushJobId) {
+    return new VersionImpl(TEST_STORE, TEST_VERSION, createdTimeMs, pushJobId, 1, new PartitionerConfigImpl(), null);
+  }
+
+  /**
+   * Realistic-metadata proof (real {@link ZKStore} / {@link VersionImpl}, no mock store): a
+   * pre-existing source version cloned onto the destination keeps its original createdTime via
+   * {@link Version#cloneVersion()}, so it precedes the destination store's createdTime and its
+   * compacted-replay deficit is nonfatal.
+   */
+  @Test
+  public void testRealMetadataMigrationCloneReplayIsNonfatal() throws Exception {
+    long migrationStart = 100_000L;
+    Version sourceVersion = versionWithCreatedTime(migrationStart - 50_000L, "push-src");
+    Version clonedVersion = sourceVersion.cloneVersion();
+    // Sanity: the clone preserves the source's pre-migration createdTime (the invariant this fix relies on).
+    assertEquals(clonedVersion.getCreatedTime(), migrationStart - 50_000L);
+
+    ZKStore destinationStore = migrationDuplicateZkStore(migrationStart);
+    destinationStore.forceAddVersion(clonedVersion, true);
+
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        destinationStore);
+
+    sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L));
+
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  /**
+   * Realistic-metadata proof (real {@link ZKStore} / {@link VersionImpl}, no mock store): a push
+   * started while migration is active is a fresh version created AFTER the destination store, so its
+   * createdTime does not precede the store's and the deficit stays fatal with the failure sensor.
+   */
+  @Test
+  public void testRealMetadataFreshPushDuringMigrationIsFatal() throws Exception {
+    long migrationStart = 100_000L;
+    ZKStore destinationStore = migrationDuplicateZkStore(migrationStart);
+    Version newPushVersion = versionWithCreatedTime(migrationStart + 50_000L, "push-new");
+    destinationStore.forceAddVersion(newPushVersion, false);
+
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(
+        /* failOnMismatchEnabled */ true,
+        stats,
+        VersionRole.FUTURE,
+        /* hllEnabled */ false,
+        /* isDaVinciClient */ false,
+        destinationStore);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
+
+    assertTrue(exception.getMessage().contains("verificationContext=FRESH_PUSH"), exception.getMessage());
+    verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
 }
