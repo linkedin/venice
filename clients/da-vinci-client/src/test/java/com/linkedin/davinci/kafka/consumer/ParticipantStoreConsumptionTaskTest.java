@@ -3,8 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.stats.OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -12,9 +10,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.util.clock.Time;
@@ -25,22 +20,14 @@ import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
-import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.SleepStallingMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import java.lang.invoke.WrongMethodTypeException;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.core.LoggerContext;
-import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.testng.annotations.Test;
 
 
@@ -249,129 +236,6 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(stats, never()).recordKilledPushJobs(any());
     verify(stats, never()).recordFailedKillPushJob(any());
     verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
-  }
-
-  @Test
-  public void testMetricFailureDoesNotInterruptControlLoop() throws InterruptedException {
-    StoreIngestionService storeIngestionService = mock(StoreIngestionService.class);
-    ClusterInfoProvider clusterInfoProvider = mock(ClusterInfoProvider.class);
-    ParticipantStoreConsumptionStats stats = mock(ParticipantStoreConsumptionStats.class);
-    ClientConfig<ParticipantMessageValue> clientConfig = mock(ClientConfig.class);
-    Function<ClientConfig<ParticipantMessageValue>, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientConstructor =
-        mock(Function.class);
-    AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> client =
-        mock(AvroSpecificStoreClient.class);
-    SleepStallingMockTime time = new SleepStallingMockTime();
-
-    String storeName = Utils.getUniqueString("participantStoreTest");
-    String topic = storeName + "_v1";
-    String clusterName = "venice-0";
-    ParticipantMessageKey key = new ParticipantMessageKey();
-    key.setMessageType(ParticipantMessageType.KILL_PUSH_JOB.getValue());
-    key.setResourceName(topic);
-    KillPushJob killPushJobMessage = new KillPushJob();
-    killPushJobMessage.setTimestamp(time.getMilliseconds() - EXPECTED_LAG);
-    ParticipantMessageValue value = new ParticipantMessageValue();
-    value.setMessageType(ParticipantMessageType.KILL_PUSH_JOB.getValue());
-    value.setMessageUnion(killPushJobMessage);
-
-    doReturn(Collections.singleton(topic)).when(storeIngestionService).getIngestingTopicsWithVersionStatusNotOnline();
-    doReturn(clusterName).when(clusterInfoProvider).getVeniceCluster(storeName);
-    doReturn(client).when(clientConstructor).apply(any());
-    doReturn(CompletableFuture.completedFuture(value)).when(client).get(key);
-    doReturn(true).when(storeIngestionService).killConsumptionTask(topic);
-    doThrow(new WrongMethodTypeException("injected metric failure")).when(stats).recordKilledPushJobs(storeName);
-
-    ParticipantStoreConsumptionTask task = new ParticipantStoreConsumptionTask(
-        storeIngestionService,
-        clusterInfoProvider,
-        stats,
-        clientConfig,
-        participantMessageConsumptionDelayMs,
-        null,
-        clientConstructor,
-        time);
-    Thread taskThread = new Thread(task);
-    taskThread.start();
-
-    try {
-      verify(stats, timeout(WAIT).atLeastOnce()).recordHeartbeat();
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-        time.advanceTime(participantMessageConsumptionDelayMs);
-        verify(stats, atLeast(2)).recordKillPushJobLatency(eq(storeName), anyDouble());
-      });
-
-      verify(stats, atLeast(2)).recordKilledPushJobs(storeName);
-      verify(stats, atLeast(2)).recordKillPushJobLatency(eq(storeName), anyDouble());
-      verify(stats, never()).recordFailedKillPushJob(any());
-      verify(stats, never()).recordKillPushJobFailedConsumption(any());
-    } finally {
-      taskThread.interrupt();
-      taskThread.join(WAIT);
-    }
-
-    assertFalse(taskThread.isAlive(), "The task should terminate after interruption");
-  }
-
-  @Test
-  public void testMetricFailureLoggingIsRateLimitedByMetricAndExceptionType() {
-    ParticipantStoreConsumptionTask task = new ParticipantStoreConsumptionTask(
-        mock(StoreIngestionService.class),
-        mock(ClusterInfoProvider.class),
-        mock(ParticipantStoreConsumptionStats.class),
-        mock(ClientConfig.class),
-        participantMessageConsumptionDelayMs,
-        null,
-        mock(Function.class),
-        mockTime);
-    String metricName = Utils.getUniqueString("test_metric");
-    String otherMetricName = Utils.getUniqueString("other_test_metric");
-    String firstTopic = Utils.getUniqueString("first_topic");
-    String secondTopic = Utils.getUniqueString("second_topic");
-    String distinctExceptionTopic = Utils.getUniqueString("distinct_exception_topic");
-    String otherMetricTopic = Utils.getUniqueString("other_metric_topic");
-
-    InMemoryLogAppender inMemoryLogAppender = new InMemoryLogAppender.Builder().build();
-    inMemoryLogAppender.start();
-    LoggerContext context = (LoggerContext) LogManager.getContext(false);
-    Configuration configuration = context.getConfiguration();
-
-    try {
-      configuration.addLoggerAppender(
-          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(ParticipantStoreConsumptionTask.class),
-          inMemoryLogAppender);
-
-      task.recordMetricSafely(metricName, firstTopic, () -> {
-        throw new IllegalStateException("first failure");
-      });
-      task.recordMetricSafely(metricName, secondTopic, () -> {
-        throw new IllegalStateException("second failure");
-      });
-      task.recordMetricSafely(metricName, distinctExceptionTopic, () -> {
-        throw new IllegalArgumentException("distinct failure");
-      });
-      task.recordMetricSafely(otherMetricName, otherMetricTopic, () -> {
-        throw new IllegalStateException("other metric failure");
-      });
-
-      List<String> metricFailureLogs = inMemoryLogAppender.getLogs();
-      long matchingLogCount = metricFailureLogs.stream()
-          .filter(log -> log.contains("Failed to record metric"))
-          .filter(log -> log.contains(metricName) || log.contains(otherMetricName))
-          .count();
-      assertEquals(matchingLogCount, 3);
-      assertTrue(metricFailureLogs.stream().anyMatch(log -> log.contains(firstTopic)));
-      assertFalse(metricFailureLogs.stream().anyMatch(log -> log.contains(secondTopic)));
-      assertTrue(metricFailureLogs.stream().anyMatch(log -> log.contains(distinctExceptionTopic)));
-      assertTrue(metricFailureLogs.stream().anyMatch(log -> log.contains(otherMetricTopic)));
-    } finally {
-      LoggerConfig loggerConfig = configuration.getLoggerConfig(ParticipantStoreConsumptionTask.class.getName());
-      if (loggerConfig.getName().equals(ParticipantStoreConsumptionTask.class.getCanonicalName())) {
-        loggerConfig.removeAppender(inMemoryLogAppender.getName());
-      }
-      context.updateLoggers();
-      inMemoryLogAppender.stop();
-    }
   }
 
   private void iterate() {

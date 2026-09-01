@@ -98,7 +98,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
   public void run() {
     LOGGER.info("Started running {}", getClass().getSimpleName());
     while (!isClosing.get() && !Thread.currentThread().isInterrupted()) {
-      recordMetricSafely("heartbeat", getClass().getSimpleName(), stats::recordHeartbeat);
+      stats.recordHeartbeat();
       try {
         this.time.sleep(participantMessageConsumptionDelayMs);
 
@@ -106,8 +106,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
           String storeName = null;
           try {
             String rawStoreName = Version.parseStoreFromKafkaTopicName(topic);
-            String sanitizedStoreName = sanitizeStoreName(rawStoreName);
-            storeName = sanitizedStoreName;
+            storeName = sanitizeStoreName(rawStoreName);
             ParticipantMessageKey key = new ParticipantMessageKey();
             key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
             key.resourceName = topic;
@@ -151,19 +150,10 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
                 lag);
             if (storeIngestionService.killConsumptionTask(topic)) {
               // record success metrics: kill count and latency
-              recordMetricSafely(
-                  "killed_push_jobs",
-                  "topic " + topic,
-                  () -> stats.recordKilledPushJobs(sanitizedStoreName));
-              recordMetricSafely(
-                  "kill_push_job_latency",
-                  "topic " + topic,
-                  () -> stats.recordKillPushJobLatency(sanitizedStoreName, Long.max(0, lag)));
+              stats.recordKilledPushJobs(storeName);
+              stats.recordKillPushJobLatency(storeName, Long.max(0, lag));
             } else {
-              recordMetricSafely(
-                  "failed_kill_push_job",
-                  "topic " + topic,
-                  () -> stats.recordFailedKillPushJob(sanitizedStoreName));
+              stats.recordFailedKillPushJob(storeName);
               LOGGER.warn(
                   "Failed to kill Consumption for topic: {}, timestamp: {}",
                   topic,
@@ -180,11 +170,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
               LOGGER.error(msg, e);
             }
             // storeName is null if the exception was thrown before its assignment
-            String sanitizedStoreName = sanitizeStoreName(storeName);
-            recordMetricSafely(
-                "kill_push_job_failed_consumption",
-                "topic " + topic,
-                () -> stats.recordKillPushJobFailedConsumption(sanitizedStoreName));
+            stats.recordKillPushJobFailedConsumption(sanitizeStoreName(storeName));
           }
         }
       } catch (InterruptedException e) {
@@ -198,10 +184,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
         if (!EXCEPTION_FILTER.isRedundantException(msg)) {
           LOGGER.error(msg, e);
         }
-        recordMetricSafely(
-            "kill_push_job_failed_consumption",
-            getClass().getSimpleName(),
-            () -> stats.recordKillPushJobFailedConsumption(UNKNOWN_STORE_NAME));
+        stats.recordKillPushJobFailedConsumption(UNKNOWN_STORE_NAME);
       } catch (Throwable t) {
         LOGGER.error("Throwable thrown while running {} thread", getClass().getSimpleName(), t);
         break;
@@ -209,17 +192,6 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     }
 
     LOGGER.info("Stopped running {}", getClass().getSimpleName());
-  }
-
-  @VisibleForTesting
-  void recordMetricSafely(String metricName, String context, Runnable recorder) {
-    try {
-      recorder.run();
-    } catch (RuntimeException e) {
-      if (!EXCEPTION_FILTER.isRedundantException(metricName, e)) {
-        LOGGER.error("Failed to record metric {} for {}", metricName, context, e);
-      }
-    }
   }
 
   private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
@@ -235,7 +207,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       });
       return Objects.requireNonNull(client, "Got a null client out of the constructor function!");
     } catch (Exception e) {
-      recordMetricSafely("failed_initialization", "cluster " + clusterName, stats::recordFailedInitialization);
+      stats.recordFailedInitialization();
       LOGGER.error("Failed to get participant client for cluster: {}", clusterName, e);
       throw e;
     }
