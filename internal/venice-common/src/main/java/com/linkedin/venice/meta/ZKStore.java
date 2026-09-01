@@ -238,6 +238,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setCompactionEnabled(store.isCompactionEnabled());
     setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
     setEncryptionEnabled(store.isEncryptionEnabled());
+    setPubSubEncryptionKeyUrn(store.getPubSubEncryptionKeyUrn());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
@@ -996,6 +997,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isEncryptionEnabled() {
     return this.storeProperties.encryptionEnabled;
+  }
+
+  @Override
+  public String getPubSubEncryptionKeyUrn() {
+    return this.storeProperties.pubSubEncryptionKeyUrn.toString();
+  }
+
+  @Override
+  public void setPubSubEncryptionKeyUrn(String pubSubEncryptionKeyUrn) {
+    this.storeProperties.pubSubEncryptionKeyUrn = pubSubEncryptionKeyUrn;
   }
 
   @Override

@@ -30,8 +30,6 @@ public interface ReadResponseStats {
 
   void addValueSize(int size);
 
-  void addReadComputeOutputSize(int size);
-
   void incrementDotProductCount(int count);
 
   void incrementCountOperatorCount(int count);

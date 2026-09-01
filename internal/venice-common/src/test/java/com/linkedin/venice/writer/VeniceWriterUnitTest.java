@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.ConfigKeys.VENICE_WRITER_VTP_HEADER_EMISSION_MODE;
 import static com.linkedin.venice.message.KafkaKey.DOL_STAMP;
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.EXECUTION_ID_KEY;
@@ -57,6 +58,7 @@ import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -87,7 +89,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -102,6 +107,47 @@ public class VeniceWriterUnitTest {
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+
+  @Test(timeOut = TIMEOUT)
+  public void testVersionSwapBroadcastsPartitionsConcurrentlyAndInOrder() throws Exception {
+    int partitionCount = 4;
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CountDownLatch allPartitionsStarted = new CountDownLatch(partitionCount);
+    Map<Integer, List<ControlMessageType>> controlMessageTypesByPartition = new ConcurrentHashMap<>();
+    when(mockedProducer.sendMessage(anyString(), anyInt(), any(), any(), any(), any())).thenAnswer(invocation -> {
+      int partition = invocation.getArgument(1);
+      KafkaMessageEnvelope envelope = invocation.getArgument(3);
+      ControlMessage controlMessage = (ControlMessage) envelope.payloadUnion;
+      ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+      controlMessageTypesByPartition.computeIfAbsent(partition, ignored -> new ArrayList<>()).add(controlMessageType);
+      if (controlMessageType == ControlMessageType.START_OF_SEGMENT) {
+        allPartitionsStarted.countDown();
+        assertTrue(
+            allPartitionsStarted.await(2, TimeUnit.SECONDS),
+            "START_OF_SEGMENT sends should run concurrently across partitions");
+      }
+      return CompletableFuture.completedFuture(mock(PubSubProduceResult.class));
+    });
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder("test_rt").setPartitionCount(partitionCount).build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, VeniceProperties.empty(), mockedProducer);
+
+    List<CompletableFuture<PubSubProduceResult>> futures = writer.nonBlockingBroadcastVersionSwapWithRegionInfo(
+        "test_v1",
+        "test_v2",
+        "source-region",
+        "destination-region",
+        1L,
+        Collections.emptyMap());
+    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
+
+    assertEquals(controlMessageTypesByPartition.size(), partitionCount);
+    for (int partition = 0; partition < partitionCount; partition++) {
+      assertEquals(
+          controlMessageTypesByPartition.get(partition),
+          Arrays.asList(ControlMessageType.START_OF_SEGMENT, ControlMessageType.VERSION_SWAP));
+    }
+    writer.close(false);
+  }
 
   @Test(dataProvider = "Chunking-And-Partition-Counts", dataProviderClass = DataProviderUtils.class)
   public void testTargetPartitionIsSameForAllOperationsWithTheSameKey(boolean isChunkingEnabled, int partitionCount) {
@@ -1842,6 +1888,116 @@ public class VeniceWriterUnitTest {
         }
       }
       assertTrue(found, description);
+    }
+  }
+
+  @DataProvider(name = "VtpHeaderEmissionMode-HeartbeatExpectsVtp")
+  public static Object[][] vtpHeaderEmissionModeHeartbeatExpectsVtp() {
+    return new Object[][] { { VtpHeaderEmissionMode.SOS_AND_HB, true }, { VtpHeaderEmissionMode.SOS_ONLY, false },
+        { VtpHeaderEmissionMode.NONE, false } };
+  }
+
+  /**
+   * Verifies that {@link VeniceWriter#sendHeartbeat} respects {@link VtpHeaderEmissionMode}: the
+   * {@code vtp} protocol-schema header is attached only when the configured mode is
+   * {@link VtpHeaderEmissionMode#SOS_AND_HB}. Default is {@code SOS_AND_HB} so existing callers
+   * are unaffected; {@code SOS_ONLY} and {@code NONE} both drop the header on heartbeats.
+   */
+  @Test(dataProvider = "VtpHeaderEmissionMode-HeartbeatExpectsVtp")
+  public void testHeartbeatVtpEmissionMode(VtpHeaderEmissionMode mode, boolean expectVtpHeader) {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+
+    Properties writerProperties = new Properties();
+    writerProperties.setProperty(VENICE_WRITER_VTP_HEADER_EMISSION_MODE, mode.name());
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_rt_vtp_mode";
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(opts, new VeniceProperties(writerProperties), mockedProducer);
+
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn(testTopic);
+    when(topicPartition.getPubSubTopic()).thenReturn(topic);
+    when(topicPartition.getPartitionNumber()).thenReturn(0);
+
+    writer.sendHeartbeat(
+        topicPartition,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        false /* addLeaderCompleteState */,
+        LEADER_NOT_COMPLETED,
+        System.currentTimeMillis());
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    ArgumentCaptor<KafkaKey> keyCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    verify(mockedProducer, times(1))
+        .sendMessage(eq(testTopic), eq(0), keyCaptor.capture(), any(), headersCaptor.capture(), any());
+
+    /* Sanity-check that the message we captured really is a heartbeat — uses the HEART_BEAT key. */
+    assertTrue(Arrays.equals(HEART_BEAT.getKey(), keyCaptor.getValue().getKey()));
+
+    PubSubMessageHeaders capturedHeaders = headersCaptor.getValue();
+    boolean vtpAttached = capturedHeaders.get(VENICE_TRANSPORT_PROTOCOL_HEADER) != null;
+    assertEquals(
+        vtpAttached,
+        expectVtpHeader,
+        "VtpHeaderEmissionMode=" + mode + ": vtp header on heartbeat should be "
+            + (expectVtpHeader ? "present" : "absent") + " but was " + (vtpAttached ? "present" : "absent"));
+  }
+
+  /**
+   * Sanity-checks that {@link VtpHeaderEmissionMode#NONE} also drops the {@code vtp} header on
+   * regular data segment-start records (not just heartbeats). The first {@link VeniceWriter#put}
+   * call on a fresh writer produces the segment-start message, which is where {@code vtp} would
+   * be attached under {@code SOS_AND_HB} or {@code SOS_ONLY}.
+   */
+  @Test
+  public void testDataSosWithVtpEmissionModeNone() throws ExecutionException, InterruptedException {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture<PubSubProduceResult> done = CompletableFuture.completedFuture(null);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(done);
+
+    Properties writerProperties = new Properties();
+    writerProperties.setProperty(VENICE_WRITER_VTP_HEADER_EMISSION_MODE, VtpHeaderEmissionMode.NONE.name());
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_data_vtp_none";
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(opts, new VeniceProperties(writerProperties), mockedProducer);
+    writer.put("k0", "v0", 1, null);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(1))
+        .sendMessage(eq(testTopic), anyInt(), any(), any(), headersCaptor.capture(), any());
+
+    /*
+     * Under NONE the vtp header must be absent on every emitted message, including the first
+     * data record (which under SOS_AND_HB would carry it because it is the first message of the
+     * first segment).
+     */
+    for (PubSubMessageHeaders headers: headersCaptor.getAllValues()) {
+      assertNull(
+          headers.get(VENICE_TRANSPORT_PROTOCOL_HEADER),
+          "VtpHeaderEmissionMode=NONE must not attach a vtp header to any emitted message");
     }
   }
 

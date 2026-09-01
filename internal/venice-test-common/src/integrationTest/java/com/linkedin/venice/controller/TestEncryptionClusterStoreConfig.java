@@ -1,19 +1,28 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -23,7 +32,7 @@ import org.testng.annotations.Test;
 /**
  * Verifies encryption-cluster ({@code cluster.encryption.enabled=true}) store behavior: a newly
  * created store defaults to {@code encryptionEnabled=true} (via {@code configureNewStore}), and
- * update-store preserves the encryption metadata.
+ * update-store accepts and preserves its externally provisioned PubSub encryption key URN.
  */
 public class TestEncryptionClusterStoreConfig {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
@@ -69,7 +78,6 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertTrue(
           storeResponse.getStore().isEncryptionEnabled(),
           "A newly created store in an encryption cluster must default to encryptionEnabled=true");
-
       ControllerResponse omittedUpdate =
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
       Assert.assertFalse(omittedUpdate.isError(), "Updates that omit encryptionEnabled must succeed");
@@ -79,7 +87,6 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertTrue(
           storeAfterUpdate.getStore().isEncryptionEnabled(),
           "Omitting encryptionEnabled must not make metadata inconsistent with cluster policy");
-
       ControllerResponse replicateAllUpdate = controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setOwner("replicated-owner").setReplicateAllConfigs(true));
@@ -87,7 +94,6 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertTrue(
           controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
           "Replicate-all updates must preserve encryption metadata");
-
       venice.getLeaderVeniceController()
           .getVeniceHelixAdmin()
           .storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -104,7 +110,90 @@ public class TestEncryptionClusterStoreConfig {
       Assert.assertFalse(
           controllerClient.getStore(storeName).getStore().isEncryptionEnabled(),
           "An omitted encryption value must leave existing metadata unchanged");
+    }
+  }
 
+  @Test(timeOut = 4 * TEST_TIMEOUT)
+  public void testParentRequiresPubSubEncryptionKeyBeforeCreatingVersion() {
+    String keyUrn = "keyUrn:abc";
+    Properties parentControllerProperties = new Properties();
+    parentControllerProperties.setProperty(CLUSTER_ENCRYPTION_ENABLED, "true");
+    parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
+    parentControllerProperties
+        .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
+
+    VeniceMultiRegionClusterCreateOptions options =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(1)
+            .parentControllerProperties(parentControllerProperties)
+            .build();
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionVenice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(options)) {
+      String testClusterName = multiRegionVenice.getClusterNames()[0];
+      String parentControllerUrl = multiRegionVenice.getControllerConnectString();
+      String childControllerUrl = multiRegionVenice.getChildRegions().get(0).getControllerConnectString();
+      try (ControllerClient parentControllerClient = new ControllerClient(testClusterName, parentControllerUrl);
+          ControllerClient childControllerClient = new ControllerClient(testClusterName, childControllerUrl)) {
+        String storeName = Utils.getUniqueString("key-required-store");
+        NewStoreResponse newStoreResponse =
+            parentControllerClient.createNewStore(storeName, "test-owner", "\"string\"", "\"string\"");
+        Assert.assertFalse(newStoreResponse.isError(), "Store creation should succeed: " + newStoreResponse.getError());
+        Assert.assertEquals(parentControllerClient.getStore(storeName).getStore().getPubSubEncryptionKeyUrn(), "");
+
+        VersionCreationResponse missingKeyResponse = parentControllerClient.requestTopicForWrites(
+            storeName,
+            1,
+            Version.PushType.BATCH,
+            Version.numberBasedDummyPushId(1),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1);
+
+        Assert.assertTrue(missingKeyResponse.isError(), "Version creation must fail before the key URN is configured");
+        Assert.assertTrue(missingKeyResponse.getError().contains("pubSubEncryptionKeyUrn"));
+        Assert.assertFalse(parentControllerClient.getStore(storeName).getStore().getVersion(1).isPresent());
+
+        ControllerResponse keyUpdate = parentControllerClient
+            .updateStore(storeName, new UpdateStoreQueryParams().setPubSubEncryptionKeyUrn(keyUrn));
+        Assert.assertFalse(keyUpdate.isError(), "Updating the key URN should succeed: " + keyUpdate.getError());
+
+        VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
+            storeName,
+            1,
+            Version.PushType.BATCH,
+            Version.numberBasedDummyPushId(1),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1);
+
+        Assert.assertFalse(
+            versionCreationResponse.isError(),
+            "Version creation should succeed: " + versionCreationResponse.getError());
+        StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
+        Assert.assertEquals(parentStoreResponse.getStore().getPubSubEncryptionKeyUrn(), keyUrn);
+        Assert.assertTrue(parentStoreResponse.getStore().getVersion(1).isPresent());
+        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+          Assert.assertFalse(childStoreResponse.isError());
+          Assert.assertEquals(childStoreResponse.getStore().getPubSubEncryptionKeyUrn(), keyUrn);
+          Assert.assertTrue(childStoreResponse.getStore().getVersion(1).isPresent());
+        });
+      }
     }
   }
 }

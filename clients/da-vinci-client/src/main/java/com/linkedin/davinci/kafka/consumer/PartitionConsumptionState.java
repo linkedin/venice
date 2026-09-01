@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ArrayUtils;
@@ -325,6 +326,12 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
+  /**
+   * Set when this replica became ready to serve via the dead-leader fallback rather than a fresh leader-complete signal.
+   * Guards the one-time WARN log and annotates the completion notification.
+   */
+  private boolean readyToServeViaDeadLeaderFallback;
+
   private List<String> pendingReportIncPushVersionList;
 
   // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
@@ -389,6 +396,7 @@ public class PartitionConsumptionState {
    */
   private final VeniceStoreWriteType writeType;
   private final VeniceChunkingStatus chunkingStatus;
+  private final VeniceReplicationMode replicationMode;
   private final String localRegionName;
 
   /**
@@ -415,6 +423,7 @@ public class PartitionConsumptionState {
       boolean hybrid,
       boolean isWriteComputationEnabled,
       boolean isChunked,
+      boolean isActiveActiveReplicationEnabled,
       String localRegionName) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
@@ -466,6 +475,9 @@ public class PartitionConsumptionState {
     cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
     this.writeType = isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
     this.chunkingStatus = isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
+    this.replicationMode = isActiveActiveReplicationEnabled
+        ? VeniceReplicationMode.ACTIVE_ACTIVE
+        : VeniceReplicationMode.NON_ACTIVE_ACTIVE;
     this.localRegionName = localRegionName;
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
@@ -476,6 +488,7 @@ public class PartitionConsumptionState {
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
+    this.readyToServeViaDeadLeaderFallback = false;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
     this.activeKeyCount.set(offsetRecord.getActiveKeyCount());
@@ -844,6 +857,8 @@ public class PartitionConsumptionState {
         .append(leaderCompleteState)
         .append(", lastLeaderCompleteStateUpdateInMs=")
         .append(lastLeaderCompleteStateUpdateInMs)
+        .append(", readyToServeViaDeadLeaderFallback=")
+        .append(readyToServeViaDeadLeaderFallback)
         .append(", consumeRemotely=")
         .append(consumeRemotely)
         .append(", latestMessageConsumedTimestampInMs=")
@@ -1505,6 +1520,14 @@ public class PartitionConsumptionState {
     this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
   }
 
+  public boolean isReadyToServeViaDeadLeaderFallback() {
+    return readyToServeViaDeadLeaderFallback;
+  }
+
+  public void setReadyToServeViaDeadLeaderFallback(boolean readyToServeViaDeadLeaderFallback) {
+    this.readyToServeViaDeadLeaderFallback = readyToServeViaDeadLeaderFallback;
+  }
+
   public String getReplicaId() {
     return getReplicaTopicPartition().toString();
   }
@@ -1615,7 +1638,15 @@ public class PartitionConsumptionState {
       if (localRegionName != null && !localRegionName.isEmpty()) {
         locality = r.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
       }
-      return new HeartbeatKey(storeName, version, getPartition(), r, writeType, chunkingStatus, locality);
+      return new HeartbeatKey(
+          storeName,
+          version,
+          getPartition(),
+          r,
+          writeType,
+          chunkingStatus,
+          locality,
+          replicationMode);
     });
   }
 

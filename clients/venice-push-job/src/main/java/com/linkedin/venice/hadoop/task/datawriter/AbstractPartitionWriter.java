@@ -11,6 +11,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICAT
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
@@ -21,6 +22,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
@@ -628,6 +630,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         throw new VeniceException(
             PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS + " must be >= 0, got " + batchPutRetryBackoffMs);
       }
+      boolean failOpenOnRegionFailure = props.getBoolean(
+          PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE,
+          DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE);
       String writerClassName = props.getString(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS);
       int partitionId = getEngineTaskConfigProvider().getTaskId();
       // One external writer per DUAL_WRITE region; each is configured with its region name so the impl
@@ -650,23 +655,28 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           buildExternalStorageThrottlers(externalRecordRate, externalByteRate, dualWriteRegions.size());
       LOGGER.info(
           "Dual-write to external storage enabled for replica {} via impl {} for regions {} "
-              + "(batchSize={}, batchPutRetries={}, batchPutRetryBackoffMs={}, recordThrottle={}, byteThrottle={})",
+              + "(batchSize={}, batchPutRetries={}, batchPutRetryBackoffMs={}, failOpenOnRegionFailure={}, "
+              + "recordThrottle={}, byteThrottle={})",
           Utils.getReplicaId(topicName, partitionId),
           writerClassName,
           dualWriteRegions,
           batchSize,
           batchPutRetries,
           batchPutRetryBackoffMs,
+          failOpenOnRegionFailure,
           describeThrottle(externalRecordRate, "records/sec"),
           describeThrottle(externalByteRate, "bytes/sec"));
       return new DualWriteVeniceWriter(
           topicName,
           baseWriter,
           externalWriters,
+          dualWriteRegions,
           throttlers,
           batchSize,
           batchPutRetries,
-          batchPutRetryBackoffMs);
+          batchPutRetryBackoffMs,
+          failOpenOnRegionFailure,
+          getDataWriterTaskTracker());
     } catch (RuntimeException t) {
       for (ExternalStorageWriter externalWriter: externalWriters) {
         Utils.closeQuietlyWithErrorLogged(externalWriter);

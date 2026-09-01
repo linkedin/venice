@@ -136,6 +136,7 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
@@ -207,6 +208,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -238,6 +240,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int ROLLBACK_STATUS_POLL_MAX_ATTEMPTS = 15;
+  private static final Duration ROLLBACK_STATUS_POLL_MAX_DURATION = Duration.ofMinutes(2);
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -248,6 +252,11 @@ public class VeniceParentHelixAdmin implements Admin {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Map<String, Map<String, ReentrantLock>> perStoreAdminLocks = new ConcurrentHashMap<>();
   private final Map<String, ReentrantLock> perClusterAdminLocks = new ConcurrentHashMap<>();
+  /**
+   * Best-effort abuse protection for version creation. This state is intentionally process-local and starts empty after
+   * a parent-controller restart or leadership handoff.
+   */
+  private final ConcurrentHashMap<String, VersionCreationAttempt> pushRetryCooldownAttempts = new ConcurrentHashMap<>();
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
   // Only used for setup work which are intended to be short lived and is bounded by the number of venice clusters.
@@ -1122,6 +1131,7 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = deleteStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      pushRetryCooldownAttempts.remove(getPushRetryCooldownKey(clusterName, storeName));
     } catch (AdminMessageConsumptionTimeoutException timeoutException) {
       LOGGER.info(
           "Timed out while waiting for delete store admin message to be consumed for store: {} in cluster: {}",
@@ -1154,9 +1164,14 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       int repushSourceVersion,
       int repushTtlSeconds) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
-    int largestUsedRTVersionNumber = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
+    int largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
     Version version = getVeniceHelixAdmin().addVersionOnly(
         clusterName,
         storeName,
@@ -1967,6 +1982,20 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
+    store = getStore(clusterName, storeName);
+    if (store != null) {
+      for (Version existingVersion: store.getVersions()) {
+        if (existingVersion.getPushJobId().equals(pushJobId)) {
+          LOGGER.info(
+              "Version request for pushId {} and store {}. pushId already exists, so returning existing version {}",
+              pushJobId,
+              storeName,
+              existingVersion.getNumber());
+          return existingVersion;
+        }
+      }
+    }
+
     // Block all incremental pushes when any DC is degraded, regardless of AA status.
     // Gate behind isDegradedModeEnabled to avoid the read when the feature is off.
     if (isDegradedModeEnabled(clusterName) && pushType.isIncremental()) {
@@ -2048,6 +2077,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       validateTargetedRegions(effectiveTargetedRegions, clusterName);
 
+      checkAndRecordPushAttempt(clusterName, storeName, pushJobId, pushType);
       newVersion = addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -2082,6 +2112,90 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  @VisibleForTesting
+  void checkAndRecordPushAttempt(String clusterName, String storeName, String pushJobId, Version.PushType pushType) {
+    long cooldownMs = getMultiClusterConfigs().getControllerConfig(clusterName).getPushRetryCooldownMs();
+    if (cooldownMs <= 0 || !pushType.isBatchOrStreamReprocessing() || VeniceSystemStoreUtils.isSystemStore(storeName)) {
+      return;
+    }
+
+    long attemptTimestampMs = getTimer().getMilliseconds();
+    AtomicReference<VersionCreationAttempt> rejectedByAttempt = new AtomicReference<>();
+    pushRetryCooldownAttempts.compute(getPushRetryCooldownKey(clusterName, storeName), (key, previousAttempt) -> {
+      if (previousAttempt == null) {
+        return new VersionCreationAttempt(pushJobId, attemptTimestampMs);
+      }
+      if (previousAttempt.pushJobId.equals(pushJobId)) {
+        return previousAttempt;
+      }
+
+      long elapsedMs = Math.max(0, attemptTimestampMs - previousAttempt.attemptTimestampMs);
+      if (elapsedMs >= cooldownMs) {
+        return new VersionCreationAttempt(pushJobId, attemptTimestampMs);
+      }
+
+      rejectedByAttempt.set(previousAttempt);
+      return previousAttempt;
+    });
+
+    VersionCreationAttempt previousAttempt = rejectedByAttempt.get();
+    if (previousAttempt == null) {
+      return;
+    }
+
+    long elapsedMs = Math.max(0, attemptTimestampMs - previousAttempt.attemptTimestampMs);
+    long remainingCooldownMs = cooldownMs - elapsedMs;
+    getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+        .getVeniceAdminStats()
+        .recordPushRetryCooldownRejection(pushType);
+    VeniceHttpException exception = new VeniceHttpException(
+        HttpStatus.SC_TOO_MANY_REQUESTS,
+        "Cannot start " + pushType + " version-creation attempt with pushJobId " + pushJobId + " for store " + storeName
+            + " in cluster " + clusterName + ": pushJobId " + previousAttempt.pushJobId + " was admitted within the "
+            + cooldownMs + " ms cooldown. Retry in " + remainingCooldownMs + " ms.",
+        ErrorType.BAD_REQUEST);
+    exception.setStackTrace(EMPTY_STACK_TRACE);
+    throw exception;
+  }
+
+  /**
+   * Allow the next distinct push to be admitted immediately once this push job has been observed to complete
+   * successfully, instead of waiting out the remainder of the cooldown window. This keeps the cooldown scoped to
+   * blocking retries of a failing/stuck push rather than throttling legitimate back-to-back successful pushes.
+   * Only clears the entry if it still corresponds to this push job ID, so a newer, already-admitted push attempt
+   * isn't inadvertently un-throttled.
+   */
+  private void clearPushRetryCooldownAttemptIfSucceeded(
+      String clusterName,
+      String storeName,
+      Version version,
+      ExecutionStatus currentReturnStatus) {
+    if (version == null || !currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+      return;
+    }
+    String completedPushJobId = version.getPushJobId();
+    if (completedPushJobId == null) {
+      return;
+    }
+    pushRetryCooldownAttempts.computeIfPresent(
+        getPushRetryCooldownKey(clusterName, storeName),
+        (key, recordedAttempt) -> completedPushJobId.equals(recordedAttempt.pushJobId) ? null : recordedAttempt);
+  }
+
+  private static String getPushRetryCooldownKey(String clusterName, String storeName) {
+    return clusterName + "/" + storeName;
+  }
+
+  private static class VersionCreationAttempt {
+    private final String pushJobId;
+    private final long attemptTimestampMs;
+
+    private VersionCreationAttempt(String pushJobId, long attemptTimestampMs) {
+      this.pushJobId = pushJobId;
+      this.attemptTimestampMs = attemptTimestampMs;
+    }
   }
 
   /**
@@ -2123,6 +2237,11 @@ public class VeniceParentHelixAdmin implements Admin {
       int largestUsedRTVersionNumber,
       int repushTtlSeconds,
       boolean isDegradedPush) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -2511,6 +2630,23 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    rollbackToBackupVersion(clusterName, storeName, regionFilter, true);
+  }
+
+  /**
+   * Deferred swaps leave the parent's current version on the backup while rolling back promoted child regions.
+   * {@link DeferredVersionSwapService} finalizes the target version status, so parent rollback aggregation is both
+   * redundant and harmful here because its two-minute poll would block the service's single worker.
+   */
+  void rollbackToBackupVersionForDeferredVersionSwap(String clusterName, String storeName, String regionFilter) {
+    rollbackToBackupVersion(clusterName, storeName, regionFilter, false);
+  }
+
+  private void rollbackToBackupVersion(
+      String clusterName,
+      String storeName,
+      String regionFilter,
+      boolean updateParentStatus) {
     int rolledBackVersionNum;
     acquireAdminMessageLock(clusterName, storeName);
     try {
@@ -2535,7 +2671,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     // Update parent version status outside of admin message lock to avoid blocking concurrent
     // admin operations during the exponential-backoff polling of child regions.
-    if (rolledBackVersionNum != NON_EXISTING_VERSION) {
+    if (updateParentStatus && rolledBackVersionNum != NON_EXISTING_VERSION) {
       updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
     }
   }
@@ -2670,7 +2806,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // a positive signal — treat those regions as not-confirmed so we don't inflate the count.
     Set<String> assumeRolledBackIfUnreachable = filterProvided ? targetedRegions : Collections.emptySet();
 
-    // Poll child regions with exponential backoff to allow for ZK propagation lag after admin message consumption.
+    // Poll beyond the multi-region Version Swap broadcast deadline so child metadata has time to become visible.
     int rolledBackRegionCount = 0;
     try {
       rolledBackRegionCount = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
@@ -2691,10 +2827,10 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         return count;
       },
-          5,
+          ROLLBACK_STATUS_POLL_MAX_ATTEMPTS,
           Duration.ofSeconds(1),
           Duration.ofSeconds(10),
-          Duration.ofSeconds(30),
+          ROLLBACK_STATUS_POLL_MAX_DURATION,
           Collections.singletonList(VeniceException.class));
     } catch (Exception e) {
       // Retries exhausted — do a final poll to get the latest count
@@ -3167,6 +3303,52 @@ public class VeniceParentHelixAdmin implements Admin {
     parentVersionOrchestrator.updateStoreVersionStatus(clusterName, storeName, version, status);
   }
 
+  @Override
+  public void updateStoreVersionStorageMode(
+      String clusterName,
+      String storeName,
+      int version,
+      StorageMode storageMode,
+      String regionFilter,
+      VersionStorageModeUpdateReason reason) {
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClientMap.isEmpty()) {
+      throw new VeniceException("No child controller clients found for cluster " + clusterName);
+    }
+
+    Set<String> targetRegions = StringUtils.isEmpty(regionFilter)
+        ? new TreeSet<>(controllerClientMap.keySet())
+        : new TreeSet<>(parseRegionsFilterList(regionFilter));
+    Set<String> unknownRegions = new HashSet<>(targetRegions);
+    unknownRegions.removeAll(controllerClientMap.keySet());
+    if (!unknownRegions.isEmpty()) {
+      throw new VeniceException(
+          "Unknown regions " + unknownRegions + " requested for store " + storeName + " in cluster " + clusterName);
+    }
+
+    for (String region: targetRegions) {
+      ControllerClient childControllerClient = controllerClientMap.get(region);
+      ControllerResponse response;
+      try {
+        /**
+         * The region filter is already resolved into one request per target region, so the child call carries no
+         * filter of its own. The reason is forwarded so the child — which is the affected region — is the one that
+         * emits the fail-open metric.
+         */
+        response = childControllerClient.updateStoreVersionStorageMode(storeName, version, storageMode, null, reason);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Failed to update version storage mode for store " + storeName + " v" + version + " in region " + region,
+            e);
+      }
+      if (response.isError()) {
+        throw new VeniceException(
+            "Failed to update version storage mode for store " + storeName + " v" + version + " in region " + region
+                + ": " + response.getError());
+      }
+    }
+  }
+
   public void validateActiveActiveReplicationEnableConfigs(
       Optional<Boolean> activeActiveReplicationEnabledOptional,
       Optional<Boolean> nativeReplicationEnabledOptional,
@@ -3551,6 +3733,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       if (currentReturnStatus.isTerminal()) {
         LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
+        clearPushRetryCooldownAttemptIfSucceeded(clusterName, storeName, version, currentReturnStatus);
 
         // Do not truncate the parent version topic if it is a push w/ deferred swap to prevent concurrent pushes
         // Otherwise, truncate the parent version topic and update the version status

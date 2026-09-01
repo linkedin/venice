@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -122,13 +123,15 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       Version currentVersion = store.getVersionOrThrow(currentVersionNumber);
       Map<CharSequence, CharSequence> partitionerParams =
           new HashMap<>(currentVersion.getPartitionerConfig().getPartitionerParams());
+      StorageMode currentVersionStorageMode = currentVersion.getStorageMode();
       VersionProperties versionProperties = new VersionProperties(
           currentVersionNumber,
           currentVersion.getCompressionStrategy().getValue(),
           currentVersion.getPartitionCount(),
           currentVersion.getPartitionerConfig().getPartitionerClass(),
           partitionerParams,
-          currentVersion.getPartitionerConfig().getAmplificationFactor());
+          currentVersion.getPartitionerConfig().getAmplificationFactor(),
+          currentVersionStorageMode == null ? StorageMode.INTERNAL.getValue() : currentVersionStorageMode.getValue());
 
       // Versions
       List<Integer> versions = new ArrayList<>();

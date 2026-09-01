@@ -61,6 +61,7 @@ public class VeniceIngestionMonitorServiceImplTest {
         true,
         false,
         false,
+        false,
         null);
 
     when(mockIngestionService.getStoreIngestionTask(VERSION_TOPIC)).thenReturn(mockIngestionTask);

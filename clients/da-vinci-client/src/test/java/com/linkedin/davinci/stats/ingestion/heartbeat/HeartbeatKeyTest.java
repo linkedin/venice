@@ -9,6 +9,7 @@ import static org.testng.Assert.assertSame;
 
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import java.util.HashMap;
 import java.util.Map;
@@ -49,6 +50,27 @@ public class HeartbeatKeyTest {
     assertEquals(key.writeType, VeniceStoreWriteType.WRITE_COMPUTE);
     assertEquals(key.chunkingStatus, VeniceChunkingStatus.CHUNKED);
     assertEquals(key.locality, VeniceRegionLocality.LOCAL);
+  }
+
+  @Test
+  public void test7ArgConstructorDefaultsReplicationModeToActiveActiveInsteadOfNull() {
+    // Regression test: this deprecated 7-arg constructor is retained for source/binary
+    // compatibility with callers of the previously-canonical constructor, and keys built here can
+    // still reach per-record OTel emission (recordLeaderRecordTimestamp/recordFollowerRecordTimestamp).
+    // A null replicationMode reaching MetricEntityStateSixEnums fails dimension validation with an
+    // IllegalArgumentException, so it must default to ACTIVE_ACTIVE rather than being left null.
+    HeartbeatKey key = new HeartbeatKey(
+        STORE,
+        VERSION,
+        PARTITION,
+        REGION,
+        VeniceStoreWriteType.WRITE_COMPUTE,
+        VeniceChunkingStatus.CHUNKED,
+        VeniceRegionLocality.LOCAL);
+    assertEquals(
+        key.replicationMode,
+        VeniceReplicationMode.ACTIVE_ACTIVE,
+        "replicationMode should default to ACTIVE_ACTIVE on the deprecated 7-arg constructor");
   }
 
   @Test

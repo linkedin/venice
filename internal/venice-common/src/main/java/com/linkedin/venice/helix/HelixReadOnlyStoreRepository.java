@@ -80,9 +80,13 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
   }
 
   protected void onStoreChanged(Store newStore) {
-    Store oldStore = putStore(newStore);
-    if (oldStore == null) {
-      LOGGER.warn("Out of order store change notification, storeName={}.", newStore.getName());
+    // The watch payload is the raw store znode (versions=[] post-migration). Re-read through getStoreFromZk so
+    // hydrateVersionsFromZk pulls the per-version znodes into the cached copy.
+    String storeName = newStore.getName();
+    boolean wasCached = storeMap.containsKey(storeName);
+    refreshOneStore(storeName);
+    if (!wasCached) {
+      LOGGER.warn("Out of order store change notification, storeName={}.", storeName);
     }
   }
 

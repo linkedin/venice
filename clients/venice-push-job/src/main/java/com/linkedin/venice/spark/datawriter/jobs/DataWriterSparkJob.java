@@ -3,6 +3,7 @@ package com.linkedin.venice.spark.datawriter.jobs;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
+import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
@@ -118,6 +119,21 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       setInputConf(sparkSession, dataFrameReader, FILE_KEY_SCHEMA, pushJobSetting.vsonInputKeySchemaString);
       setInputConf(sparkSession, dataFrameReader, FILE_VALUE_SCHEMA, pushJobSetting.vsonInputValueSchemaString);
     }
+
+    // Forward custom `spark.data.writer.conf.*` properties (with the prefix stripped) as DataFrameReader options
+    // too, not just SparkSession runtime config. Custom Spark DataSource V2 implementations (VeniceHdfsSource and
+    // its scan/table classes) only ever see options passed through the DataFrameReader/`configs` map at
+    // table/scan resolution time -- they cannot see SparkSession.conf() -- so without this, the documented
+    // `spark.data.writer.conf.*` passthrough would silently never reach the custom DataSource or executor
+    // partition readers.
+    VeniceProperties allJobProps = getJobProperties();
+    for (String key: allJobProps.keySet()) {
+      String lowerCaseKey = key.toLowerCase();
+      if (lowerCaseKey.startsWith(SPARK_DATA_WRITER_CONF_PREFIX)) {
+        String strippedKey = key.substring(SPARK_DATA_WRITER_CONF_PREFIX.length());
+        setInputConf(sparkSession, dataFrameReader, strippedKey, allJobProps.getString(key));
+      }
+    }
     return dataFrameReader.load();
   }
 
@@ -194,23 +210,8 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     setInputConf(
         sparkSession,
         dataFrameReader,
-        VENICE_REPUSH_SOURCE_PUBSUB_BROKER,
-        pushJobSetting.repushSourcePubsubBroker);
-    dataFrameReader.option(PUBSUB_BROKER_ADDRESS, pushJobSetting.repushSourcePubsubBroker);
-    setInputConf(
-        sparkSession,
-        dataFrameReader,
-        KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
-        AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
-    setInputConf(
-        sparkSession,
-        dataFrameReader,
         KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED,
         String.valueOf(pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()));
-
-    // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
-    KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)
-        .forEach((key, value) -> setInputConf(sparkSession, dataFrameReader, key, value));
 
     // SSL defaults: set SSL configurator class (with default) and security protocol.
     // These may not be in the job props, so set them explicitly before the bulk forwarding.
@@ -228,6 +229,22 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     for (String key: allJobProps.keySet()) {
       setInputConf(sparkSession, dataFrameReader, key, allJobProps.getString(key));
     }
+
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        VENICE_REPUSH_SOURCE_PUBSUB_BROKER,
+        pushJobSetting.repushSourcePubsubBroker);
+    dataFrameReader.option(PUBSUB_BROKER_ADDRESS, pushJobSetting.repushSourcePubsubBroker);
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
+        AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
+
+    // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
+    KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)
+        .forEach((key, value) -> setInputConf(sparkSession, dataFrameReader, key, value));
 
     return dataFrameReader.load();
   }

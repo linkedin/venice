@@ -3,6 +3,7 @@ package com.linkedin.davinci;
 import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -119,6 +120,18 @@ public class StoreBackend {
 
   public ReferenceCounted<VersionBackend> getDaVinciCurrentVersion() {
     return daVinciCurrentVersionRef.get();
+  }
+
+  @VisibleForTesting
+  synchronized Set<Integer> getSubscribedVersionNumbers() {
+    Set<Integer> versionNumbers = new HashSet<>(2);
+    if (daVinciCurrentVersion != null) {
+      versionNumbers.add(daVinciCurrentVersion.getVersion().getNumber());
+    }
+    if (daVinciFutureVersion != null) {
+      versionNumbers.add(daVinciFutureVersion.getVersion().getNumber());
+    }
+    return versionNumbers;
   }
 
   private synchronized void setDaVinciCurrentVersion(VersionBackend version) {
@@ -441,14 +454,17 @@ public class StoreBackend {
     if (daVinciFutureVersion != null) {
       Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
       int versionNumber = daVinciFutureVersion.getVersion().getNumber();
-      if (store.getVersion(versionNumber) == null) {
+      Version futureVersion = store.getVersion(versionNumber);
+      if (futureVersion == null) {
         LOGGER.info(
             "Deleting obsolete future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
+        return;
       }
-      if (faultyVersionSet.contains(versionNumber)) {
+      if (DaVinciBackend.isDaVinciVersionIneligible(futureVersion, faultyVersionSet)) {
         LOGGER.info(
-            "Deleting faulty future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
+            "Deleting ineligible future version " + daVinciFutureVersion + " (status=" + futureVersion.getStatus()
+                + "), currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
       }
     }
@@ -469,12 +485,11 @@ public class StoreBackend {
       }
       int veniceCurrentVersionNumber = veniceCurrentVersion.getNumber();
       int daVinciFutureVersionNumber = daVinciFutureVersion.getVersion().getNumber();
+      // Re-read authoritative metadata before promotion to catch a concurrent terminal transition.
+      Version futureVersion =
+          backend.getStoreRepository().getStoreOrThrow(storeName).getVersion(daVinciFutureVersionNumber);
       boolean isDaVinciFutureVersionInvalid =
-          faultyVersionSet.contains(daVinciFutureVersionNumber) || backend.getStoreRepository()
-              .getStoreOrThrow(storeName)
-              .getVersions()
-              .stream()
-              .noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
+          DaVinciBackend.isDaVinciVersionIneligible(futureVersion, faultyVersionSet);
       /**
        * We will only swap it to current version slot when it is fully pushed and the version number is (or was) the
        * current version in store config.

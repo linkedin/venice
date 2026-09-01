@@ -539,6 +539,16 @@ public class IngestionOtelMetricEntityTest {
             "Count of reporting windows where partial-update amplification was detected (large result values)",
             storeClusterVersion));
 
+    map.put(
+        IngestionOtelMetricEntity.PARTIAL_UPDATE_LARGE_RECORD_SKIPPED_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.partial_update.large_record_skipped_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of partial updates rejected because the nearline record size limit was exceeded. "
+                + "The pubsub topic positions of the offending keys are named in the server logs.",
+            storeClusterVersion));
+
     // Active key count invalidation counter
     map.put(
         IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION,

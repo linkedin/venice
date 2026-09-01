@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
 import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionGrpcWireFormat;
@@ -65,7 +66,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -87,6 +90,7 @@ import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
@@ -102,6 +106,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -118,6 +123,66 @@ public class TestVeniceHelixAdmin {
 
   private static final String clusterName = "test-cluster";
   private static final String storeName = "test-store";
+
+  @Test
+  public void testValidatePubSubEncryptionKeyUrnForVersionCreation() {
+    Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(true);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> VeniceHelixAdmin
+            .validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.BATCH));
+    assertTrue(exception.getMessage().contains("set pubSubEncryptionKeyUrn through update-store"));
+
+    testStore.setPubSubEncryptionKeyUrn("keyUrn:abc");
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.BATCH);
+
+    testStore.setPubSubEncryptionKeyUrn("");
+    VeniceHelixAdmin.validatePubSubEncryptionKeyUrnForVersionCreation(clusterName, testStore, PushType.INCREMENTAL);
+  }
+
+  @Test
+  public void testAddVersionOnlyValidatesEncryptionKeyUrnAfterIdempotencyCheck() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    testStore.setEncryptionEnabled(true);
+
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(testStore).when(repository).getStore(storeName);
+    doCallRealMethod().when(admin)
+        .addVersionOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            anyInt());
+    Supplier<Version> addVersion = () -> admin.addVersionOnly(
+        clusterName,
+        storeName,
+        "push-id",
+        1,
+        1,
+        PushType.BATCH,
+        "remote-kafka-bootstrap-server",
+        -1,
+        -1,
+        Version.DEFAULT_RT_VERSION_NUMBER);
+
+    expectThrows(VeniceException.class, addVersion::get);
+
+    testStore.addVersion(new VersionImpl(storeName, 1, "push-id"));
+    addVersion.get();
+    verify(repository, never()).updateStore(testStore);
+  }
 
   @Test
   public void testDropResources() {
@@ -176,6 +241,175 @@ public class TestVeniceHelixAdmin {
     assertThrows(
         VeniceNoStoreException.class,
         () -> veniceHelixAdmin.getStorageModePerRegion(clusterName, missingStoreName));
+  }
+
+  /**
+   * Wire a mocked admin so the real storage-mode update runs against {@code store} in region {@code regionName},
+   * with the metric hook left mocked so tests can assert on it.
+   */
+  private static VeniceHelixAdmin mockAdminForVersionStorageModeUpdate(
+      String clusterName,
+      Store store,
+      String regionName) {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(regionName).when(veniceHelixAdmin).getRegionName();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(veniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(store.getName()), any());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(anyString(), anyString(), anyInt(), any(), any(), any());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(anyString(), anyString(), anyInt(), any(), any());
+    return veniceHelixAdmin;
+  }
+
+  private static Store dualWriteStoreWithVersion(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    VersionImpl version = new VersionImpl(storeName, 1, "test-push");
+    version.setStorageMode(StorageMode.DUAL_WRITE);
+    store.addVersion(version);
+    return store;
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeMutatesOnlyTheVersion() {
+    String storeName = "store_version_storage_mode_update";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-0",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    assertEquals(store.getStorageMode(), StorageMode.DUAL_WRITE);
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeSkipsWhenRegionFilterDoesNotMatch() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStoreVersionStorageMode(anyString(), anyString(), anyInt(), any(), any(), any());
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        "store",
+        1,
+        StorageMode.INTERNAL,
+        "dc-1",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    verify(veniceHelixAdmin, never()).storeMetadataUpdate(anyString(), anyString(), any());
+    // A region the push never touched must not contribute to the fail-open alert.
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
+  }
+
+  /**
+   * The affected region is the one whose controller applies the downgrade, so the metric must carry that
+   * controller's own region rather than anything derived from the original request.
+   */
+  @Test
+  public void testUpdateStoreVersionStorageModeRecordsExternalWriteFailureForMatchingRegion() {
+    String storeName = "store_version_storage_mode_external_write_failure";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-1");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-0,dc-1",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    verify(veniceHelixAdmin).recordExternalStorageWriteFailure(clusterName, storeName, "dc-1");
+  }
+
+  @Test
+  public void testUpdateStoreVersionStorageModeDoesNotRecordForUnrelatedReason() {
+    String storeName = "store_version_storage_mode_manual_downgrade";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.INTERNAL,
+        "dc-0",
+        VersionStorageModeUpdateReason.UNSPECIFIED);
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    // A manual or operational downgrade is not an external write failure and must not page anyone.
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
+  }
+
+  /** Callers still on the overload without a reason must behave exactly as they did before. */
+  @Test
+  public void testUpdateStoreVersionStorageModeWithoutReasonDoesNotRecord() {
+    String storeName = "store_version_storage_mode_no_reason";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(clusterName, storeName, 1, StorageMode.INTERNAL, "dc-0");
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
+  }
+
+  /**
+   * The push job retries the fail-open request, so the same downgrade can arrive several times. Only the
+   * transition itself counts: a repeat finds the version already INTERNAL and must not inflate the alert.
+   */
+  @Test
+  public void testUpdateStoreVersionStorageModeDoesNotDoubleCountIdempotentRetry() {
+    String storeName = "store_version_storage_mode_idempotent_retry";
+    Store store = dualWriteStoreWithVersion(storeName);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    for (int attempt = 0; attempt < 3; attempt++) {
+      veniceHelixAdmin.updateStoreVersionStorageMode(
+          clusterName,
+          storeName,
+          1,
+          StorageMode.INTERNAL,
+          "dc-0",
+          VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+    }
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.INTERNAL);
+    verify(veniceHelixAdmin, times(1)).recordExternalStorageWriteFailure(clusterName, storeName, "dc-0");
+  }
+
+  /** Failing open is a downgrade to INTERNAL; re-enabling dual write is not a failure. */
+  @Test
+  public void testUpdateStoreVersionStorageModeDoesNotRecordOnUpgradeToDualWrite() {
+    String storeName = "store_version_storage_mode_upgrade";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    VersionImpl version = new VersionImpl(storeName, 1, "test-push");
+    version.setStorageMode(StorageMode.INTERNAL);
+    store.addVersion(version);
+    VeniceHelixAdmin veniceHelixAdmin = mockAdminForVersionStorageModeUpdate(clusterName, store, "dc-0");
+
+    veniceHelixAdmin.updateStoreVersionStorageMode(
+        clusterName,
+        storeName,
+        1,
+        StorageMode.DUAL_WRITE,
+        "dc-0",
+        VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE);
+
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+    verify(veniceHelixAdmin, never()).recordExternalStorageWriteFailure(anyString(), anyString(), anyString());
   }
 
   /**
@@ -344,6 +578,77 @@ public class TestVeniceHelixAdmin {
         anyBoolean(),
         anyBoolean(),
         eq(Optional.empty()));
+  }
+
+  @Test
+  public void testCreateBatchTopicsUsesStoreHybridStatusNotVersion() {
+    // Regression (NG routing): createBatchTopics must resolve the alternative-backend decision from the store's hybrid
+    // status, not from the freshly constructed Version (whose isHybrid() is not yet populated in the version-supplied
+    // addVersion path). With only batch.user.store.vt enabled, a hybrid store's VT must STAY on the primary backend,
+    // while a batch store's VT moves to the alternative backend.
+    int partitionCount = 10;
+    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    String configCluster = clusterConfig.getClusterName();
+
+    TopicManager topicManager = mock(TopicManager.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceHelixAdmin.getPubSubTopicRepository()).thenReturn(PUB_SUB_TOPIC_REPOSITORY);
+    doCallRealMethod().when(veniceHelixAdmin)
+        .createBatchTopics(
+            any(Version.class),
+            any(PushType.class),
+            eq(topicManager),
+            anyInt(),
+            eq(clusterConfig),
+            anyBoolean());
+
+    // Case 1: hybrid store, fresh version reports non-hybrid (mock default) -> HYBRID_USER_STORE_VT (disabled) ->
+    // primary.
+    Version hybridVersion = mock(Version.class);
+    when(hybridVersion.getStoreName()).thenReturn(storeName);
+    when(hybridVersion.kafkaTopicName()).thenReturn(storeName + "_v1");
+    PubSubTopic hybridVt = PUB_SUB_TOPIC_REPOSITORY.getTopic(storeName + "_v1");
+    Store hybridStore = mock(Store.class);
+    when(hybridStore.isHybrid()).thenReturn(true);
+    doReturn(hybridStore).when(veniceHelixAdmin).getStore(configCluster, storeName);
+
+    veniceHelixAdmin
+        .createBatchTopics(hybridVersion, PushType.BATCH, topicManager, partitionCount, clusterConfig, false);
+    verify(topicManager).createTopic(
+        eq(hybridVt),
+        eq(partitionCount),
+        anyInt(),
+        anyBoolean(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        eq(false));
+
+    // Case 2 (positive control): a non-hybrid store under the same config -> BATCH_USER_STORE_VT (enabled) ->
+    // alternative.
+    reset(topicManager);
+    String batchStoreName = "batch-store";
+    Version batchVersion = mock(Version.class);
+    when(batchVersion.getStoreName()).thenReturn(batchStoreName);
+    when(batchVersion.kafkaTopicName()).thenReturn(batchStoreName + "_v1");
+    PubSubTopic batchVt = PUB_SUB_TOPIC_REPOSITORY.getTopic(batchStoreName + "_v1");
+    Store batchStore = mock(Store.class);
+    when(batchStore.isHybrid()).thenReturn(false);
+    doReturn(batchStore).when(veniceHelixAdmin).getStore(configCluster, batchStoreName);
+
+    veniceHelixAdmin
+        .createBatchTopics(batchVersion, PushType.BATCH, topicManager, partitionCount, clusterConfig, false);
+    verify(topicManager).createTopic(
+        eq(batchVt),
+        eq(partitionCount),
+        anyInt(),
+        anyBoolean(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        eq(true));
   }
 
   @Test

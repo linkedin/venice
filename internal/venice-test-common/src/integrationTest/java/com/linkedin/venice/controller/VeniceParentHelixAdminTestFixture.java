@@ -5,6 +5,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.utils.Utils;
+import java.util.Properties;
 
 
 /**
@@ -17,6 +18,10 @@ public class VeniceParentHelixAdminTestFixture implements AutoCloseable {
   private final String clusterName;
 
   public VeniceParentHelixAdminTestFixture() {
+    this(null);
+  }
+
+  public VeniceParentHelixAdminTestFixture(Properties parentControllerProperties) {
     Utils.thisIsLocalhost();
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
@@ -25,6 +30,9 @@ public class VeniceParentHelixAdminTestFixture implements AutoCloseable {
             .numberOfChildControllers(1)
             .numberOfServers(1)
             .numberOfRouters(1);
+    if (parentControllerProperties != null) {
+      optionsBuilder.parentControllerProperties(parentControllerProperties);
+    }
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];

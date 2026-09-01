@@ -5,6 +5,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
@@ -49,6 +50,7 @@ public class ReadOnlyStoreTest {
     List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
     storeLifecycleHooks.add(new LifecycleHooksRecordImpl("testLifecycleHooksClassName", Collections.emptyMap()));
     store.setStoreLifecycleHooks(storeLifecycleHooks);
+    store.setPubSubEncryptionKeyUrn("keyUrn:abc");
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
 
@@ -111,6 +113,7 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getVersions().size(), store.getVersions().size());
     assertEqualsSystemStores(storeProperties.getSystemStores(), store.getSystemStores());
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
+    assertEquals(storeProperties.getPubSubEncryptionKeyUrn(), store.getPubSubEncryptionKeyUrn());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
@@ -429,5 +432,32 @@ public class ReadOnlyStoreTest {
     }
     // Backing store is unchanged
     assertTrue(store.getVersion(1).isTargetRegionPromoted());
+  }
+
+  @Test
+  public void testSetVersionStorageMode() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("testStore", "testOwner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(store.getName(), 1, "push1"));
+    store.addVersion(new VersionImpl(store.getName(), 2, "push2"));
+
+    store.setVersionStorageMode(1, StorageMode.DUAL_WRITE);
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+    assertEquals(store.getVersion(2).getStorageMode(), StorageMode.INTERNAL);
+
+    try {
+      store.setVersionStorageMode(99, StorageMode.DUAL_WRITE);
+      throw new AssertionError("Expected VeniceException");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("Version:99 does not exist"));
+    }
+
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    try {
+      readOnlyStore.setVersionStorageMode(1, StorageMode.INTERNAL);
+      throw new AssertionError("Expected UnsupportedOperationException");
+    } catch (UnsupportedOperationException e) {
+      // expected
+    }
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
   }
 }

@@ -74,6 +74,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
 
 
@@ -647,6 +648,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
         .setTargetRegionPromoted(message.targetRegionPromoted)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
+        .setTTLRepushEnabled(message.ttlRepushEnabled)
         .setFlinkVeniceViewsEnabled(message.flinkVeniceViewsEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
         .setPreviousCurrentVersion(message.previousCurrentVersion);
@@ -719,6 +721,10 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
     params.setCompactionEnabled(message.compactionEnabled);
     params.setCompactionThresholdMilliseconds(message.compactionThresholdMilliseconds);
+    if (message.encryptionEnabled && message.pubSubEncryptionKeyUrn != null
+        && StringUtils.isNotBlank(message.pubSubEncryptionKeyUrn.toString())) {
+      params.setPubSubEncryptionKeyUrn(message.pubSubEncryptionKeyUrn.toString());
+    }
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
     params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);

@@ -10,6 +10,10 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.EXTERNAL_STORAGE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.VENICE_WRITE_TIME_MS;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.getMetric;
+import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.putMetric;
 import static com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER;
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchemaForProjection;
@@ -152,6 +156,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -947,6 +952,7 @@ public class VenicePushJob implements AutoCloseable {
            */
         }
         runJobWithKillDetection();
+        downgradeFailedExternalStorageRegionsToInternalBeforeEndOfPush();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
@@ -1806,6 +1812,10 @@ public class VenicePushJob implements AutoCloseable {
     pushJobDetails.totalKeyBytes = -1;
     pushJobDetails.totalRawValueBytes = -1;
     pushJobDetails.totalCompressedValueBytes = -1;
+    // Left null on purpose, matching the v6 schema default: "this push reported no additional metrics".
+    // Only pushes that actually run the dual-write path populate any key, and leaving the map null keeps the
+    // controller from recording a meaningless zero-millisecond observation for every non-dual-write push.
+    pushJobDetails.additionalPushMetrics = null;
     pushJobDetails.failureDetails = "";
     pushJobDetails.pushJobLatestCheckpoint = PushJobCheckpoints.INITIALIZE_PUSH_JOB.getValue();
     pushJobDetails.pushJobConfigs = Collections.singletonMap(
@@ -1825,6 +1835,63 @@ public class VenicePushJob implements AutoCloseable {
       return Collections.emptyMap();
     }
     return dataWriterComputeJob.getTaskTracker().getPerPartitionRecordCounts();
+  }
+
+  private Set<String> getFailedExternalStorageRegions() {
+    String topicName = Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version);
+    if (dataWriterComputeJob == null || dataWriterComputeJob.getTaskTracker() == null) {
+      LOGGER
+          .warn("Cannot retrieve failed external-storage regions for topic: {}: no task tracker available", topicName);
+      return Collections.emptySet();
+    }
+    Set<String> failedRegions = dataWriterComputeJob.getTaskTracker().getFailedExternalStorageRegions();
+    return failedRegions == null ? Collections.emptySet() : failedRegions;
+  }
+
+  private void downgradeFailedExternalStorageRegionsToInternalBeforeEndOfPush() {
+    Set<String> failedRegions = getFailedExternalStorageRegions();
+    if (failedRegions.isEmpty()) {
+      return;
+    }
+    List<String> sortedFailedRegions = new ArrayList<>(failedRegions);
+    Collections.sort(sortedFailedRegions);
+    String regionsFilter = String.join(",", sortedFailedRegions);
+    LOGGER.warn(
+        "External-storage dual-write exhausted retries in regions {} for store {} v{}. "
+            + "Downgrading those version storage modes to INTERNAL before EOP.",
+        sortedFailedRegions,
+        pushJobSetting.storeName,
+        pushJobSetting.version);
+    String failureContext = "Failed to downgrade version storage mode to INTERNAL for store " + pushJobSetting.storeName
+        + " v" + pushJobSetting.version + " in regions " + sortedFailedRegions;
+    ControllerResponse response;
+    try {
+      response = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          client -> client.updateStoreVersionStorageMode(
+              pushJobSetting.storeName,
+              pushJobSetting.version,
+              StorageMode.INTERNAL,
+              regionsFilter,
+              VersionStorageModeUpdateReason.EXTERNAL_WRITE_FAILURE));
+    } catch (Exception e) {
+      throw new VeniceException(
+          failureContext + ". The controller API may be unavailable or not deployed. Root cause: "
+              + getRootCauseMessage(e),
+          e);
+    }
+    if (response.isError()) {
+      throw new VeniceException(failureContext + ". Controller error: " + response.getError());
+    }
+  }
+
+  private static String getRootCauseMessage(Throwable throwable) {
+    Throwable rootCause = throwable;
+    while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+      rootCause = rootCause.getCause();
+    }
+    return rootCause.getMessage() == null ? rootCause.toString() : rootCause.getMessage();
   }
 
   private void updatePushJobDetailsWithDataWriterTracker() {
@@ -1853,6 +1920,27 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
       // size of largest uncompressed value
       pushJobDetails.largestUncompressedValueSizeBytes = taskTracker.getLargestUncompressedValueSize();
+      /*
+       * Summed data-writer task durations for the two write legs, reported through the additionalPushMetrics
+       * map. These are NOT the push job's wall-clock duration (that is pushJobDetails.jobDurationInMs): every
+       * successful task contributes its own elapsed time, so with N parallel tasks the totals can be up to N
+       * times the push duration. Only the dual-write path measures them, so a push that never wrote to
+       * external storage leaves the key absent rather than reporting a zero — which is also how a controller
+       * reading an older v5 record sees it, since v5 resolves the whole map to null.
+       *
+       * Caveat: the ">0" gate below conflates "never measured" with "measured, took under a millisecond" —
+       * both currently report as absent. The tracker interface has no explicit "was this leg tracked" signal
+       * (its defaults are 0, same as a genuine sub-millisecond duration), so a real fix needs that signal
+       * threaded through before this can safely become ">=0".
+       */
+      long externalStorageWriteTimeMs = taskTracker.getExternalStorageWriteTimeMs();
+      if (externalStorageWriteTimeMs > 0) {
+        putMetric(pushJobDetails, EXTERNAL_STORAGE_WRITE_TIME_MS, externalStorageWriteTimeMs);
+      }
+      long veniceWriteTimeMs = taskTracker.getVeniceWriteTimeMs();
+      if (veniceWriteTimeMs > 0) {
+        putMetric(pushJobDetails, VENICE_WRITE_TIME_MS, veniceWriteTimeMs);
+      }
       List<String> summaryLogLines = new ArrayList<>();
       summaryLogLines.add("Total number of records: " + pushJobDetails.totalNumberOfRecords);
       summaryLogLines
@@ -1893,6 +1981,15 @@ public class VenicePushJob implements AutoCloseable {
       long taskIncrementalPushThrottledTimeMs = taskTracker.getIncrementalPushThrottledTimeMs();
       if (taskIncrementalPushThrottledTimeMs > 0) {
         summaryLogLines.add("Incremental push total throttle time: " + taskIncrementalPushThrottledTimeMs + " ms");
+      }
+      Long reportedExternalStorageWriteTimeMs = getMetric(pushJobDetails, EXTERNAL_STORAGE_WRITE_TIME_MS);
+      if (reportedExternalStorageWriteTimeMs != null) {
+        summaryLogLines
+            .add("External storage write time (summed across tasks): " + reportedExternalStorageWriteTimeMs + " ms");
+      }
+      Long reportedVeniceWriteTimeMs = getMetric(pushJobDetails, VENICE_WRITE_TIME_MS);
+      if (reportedVeniceWriteTimeMs != null) {
+        summaryLogLines.add("Venice write time (summed across tasks): " + reportedVeniceWriteTimeMs + " ms");
       }
 
       LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));
