@@ -37,11 +37,18 @@ import spark.Route;
 
 public class JobRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(JobRoutes.class);
-  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
-      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
 
   public JobRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this(sslEnabled, accessController, AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer());
+  }
+
+  JobRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer) {
     super(sslEnabled, accessController);
+    this.pushJobDetailsSerializer = pushJobDetailsSerializer;
   }
 
   /**
@@ -171,7 +178,7 @@ public class JobRoutes extends AbstractRoute {
         PushJobStatusRecordKey key = new PushJobStatusRecordKey();
         key.storeName = storeName;
         key.versionNumber = versionNumber;
-        PushJobDetails pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
+        PushJobDetails pushJobDetails = deserializePushJobDetails(request.bodyAsBytes());
         admin.sendPushJobDetails(key, pushJobDetails);
 
         if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
@@ -190,6 +197,10 @@ public class JobRoutes extends AbstractRoute {
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     });
+  }
+
+  PushJobDetails deserializePushJobDetails(byte[] bytes) {
+    return pushJobDetailsSerializer.deserialize(null, bytes);
   }
 
   // TODO: remove the below API after the same version of codes is released to Venice Push Job.
