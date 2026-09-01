@@ -807,6 +807,36 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   }
 
   /**
+   * Regression guard for the incident where an unrelated child-side update_store (here, one that
+   * also flips {@code storageMode}) carried the serialized empty-list default for lifecycle hooks
+   * and wiped a store's configured hooks. The child apply path must preserve the store's existing
+   * hooks rather than clear them.
+   */
+  @Test
+  public void testApplyOnChild_EmptyLifecycleHooks_DoesNotWipeExistingHooks() {
+    String storeName = Utils.getUniqueString("child-lifecycle-hooks-preserve");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    LifecycleHooksRecord existingHook = new LifecycleHooksRecordImpl("com.example.SomeHooks", Collections.emptyMap());
+    store.setStoreLifecycleHooks(Collections.singletonList(existingHook));
+
+    // Mirrors the incident: storage_mode change + serialized empty-list default for hooks.
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageMode(StorageMode.DUAL_WRITE)
+        .setStoreLifecycleHooks(Collections.emptyList());
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    ArgumentCaptor<List<LifecycleHooksRecord>> captor = ArgumentCaptor.forClass(List.class);
+    verify(admin, times(1)).setStoreLifecycleHooks(eq(clusterName), eq(storeName), captor.capture());
+    List<LifecycleHooksRecord> applied = captor.getValue();
+    assertEquals(applied.size(), 1, "The existing hook must be preserved, not cleared");
+    assertEquals(
+        applied.get(0).getStoreLifecycleHooksClassName(),
+        "com.example.SomeHooks",
+        "An empty lifecycle-hooks list must preserve the store's existing hook, not clear it");
+  }
+
+  /**
    * Covers the child-side ingestion-pause branch: when {@code ingestionPauseMode} is set with a
    * regions list, the non-parent path computes {@code appliesToThisRegion} and writes through
    * {@code storeMetadataUpdate}. We don't assert the resolved persisted state here because the
