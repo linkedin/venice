@@ -681,6 +681,12 @@ public class ConfigKeys {
       "controller.helix.participant.deregistration.timeout.ms";
 
   /**
+   * Timeout for a controller's STANDBY to LEADER state transition in milliseconds.
+   */
+  public static final String CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS =
+      "controller.standby.to.leader.transition.timeout.ms";
+
+  /**
    * Base URL for customized health checks triggered by Helix. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL =

@@ -35,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
@@ -631,6 +632,17 @@ public class TestVeniceControllerClusterConfig {
 
     VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
     assertEquals(clusterConfig.getControllerHelixParticipantDeregistrationTimeoutMs(), 60000L);
+  }
+
+  @Test
+  public void testControllerStandbyToLeaderTransitionTimeoutMs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs(), TimeUnit.MINUTES.toMillis(10));
+
+    baseProps.setProperty(CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS, "12345");
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs(), 12345L);
   }
 
   @Test

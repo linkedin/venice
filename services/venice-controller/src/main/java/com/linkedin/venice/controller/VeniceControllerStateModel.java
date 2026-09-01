@@ -44,7 +44,6 @@ import org.apache.logging.log4j.Logger;
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = { HelixState.LEADER_STATE, HelixState.STANDBY_STATE })
 public class VeniceControllerStateModel extends StateModel {
   private static final String PARTITION_SUFFIX = "_0";
-  private static final int DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN = 5;
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerStateModel.class);
 
   private final ZkClient zkClient;
@@ -65,9 +64,6 @@ public class VeniceControllerStateModel extends StateModel {
   private final ExecutorService workerService;
   private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
   private final Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners;
-
-  // Configurable timeout for testing purposes
-  private long stateTransitionTimeoutMs = TimeUnit.MINUTES.toMillis(DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN);
 
   public VeniceControllerStateModel(
       String clusterName,
@@ -193,25 +189,18 @@ public class VeniceControllerStateModel extends StateModel {
      * state transition actions from previous round (e.g. LEADER -> FOLLOWER) for the same controller, it will be
      * blocked until the previous transition is finished.
      *
-     * We give a timeout of 5 minutes for this state transition based on the statistics today. The idea is that we
-     * want to give other good controller a chance to be able to become the leader, if current one was stuck somewhere.
-     * If the timeout is reached, we will throw an exception to indicate that the state transition failed.
+     * The transition timeout gives another healthy controller a chance to become leader if the current one is stuck.
      */
     Future<?> stateTransitionFuture = null;
     try {
       stateTransitionFuture = executeStateTransitionAsync(message, () -> {
         if (helixManagerInitialized()) {
-          // TODO: It seems like this should throw an exception. Otherwise the case would be you'd have an instance be
-          // leader
-          // in Helix that hadn't subscribed to any resource. This could happen if a state transition thread timed out
-          // and
-          // ERROR'd
-          // and the partition was 'reset' instead of bouncing the process.
-          LOGGER.error(
-              "Helix manager already exists for instance {} on cluster {} and received controller name {}",
-              helixManager.getInstanceName(),
-              clusterName,
-              controllerName);
+          throw new VeniceException(
+              String.format(
+                  "Helix manager already exists for instance %s on cluster %s and received controller name %s",
+                  helixManager.getInstanceName(),
+                  clusterName,
+                  controllerName));
         } else {
           try {
             initHelixManager(controllerName);
@@ -226,8 +215,15 @@ public class VeniceControllerStateModel extends StateModel {
               clusterName);
         }
       });
-      stateTransitionFuture.get(stateTransitionTimeoutMs, TimeUnit.MILLISECONDS);
-    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      stateTransitionFuture.get(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOGGER.error("Failed to execute the controller state transition from STANDBY to LEADER for {}", clusterName, e);
+      if (stateTransitionFuture != null && !stateTransitionFuture.isDone()) {
+        stateTransitionFuture.cancel(true);
+      }
+      throw new VeniceException(e);
+    } catch (ExecutionException | TimeoutException e) {
       LOGGER.error("Failed to execute the controller state transition from STANDBY to LEADER for {}", clusterName, e);
       if (stateTransitionFuture != null && !stateTransitionFuture.isDone()) {
         stateTransitionFuture.cancel(true);
@@ -384,9 +380,9 @@ public class VeniceControllerStateModel extends StateModel {
     if (clusterResources != null) {
       try (AutoCloseableLock ignore = clusterResources.lockForShutdown()) {
         clearResources();
-        closeHelixManager();
       }
     }
+    closeHelixManager();
   }
 
   /** synchronized because concurrent calls could cause a NPE */
@@ -479,8 +475,4 @@ public class VeniceControllerStateModel extends StateModel {
     return workerService;
   }
 
-  @VisibleForTesting
-  void setStateTransitionTimeout(long timeoutMs) {
-    this.stateTransitionTimeoutMs = timeoutMs;
-  }
 }

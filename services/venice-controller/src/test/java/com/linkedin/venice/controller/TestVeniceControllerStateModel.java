@@ -2,8 +2,11 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.utils.LatencyUtils.getElapsedTimeFromMsToMs;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -16,7 +19,6 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -68,7 +70,7 @@ public class TestVeniceControllerStateModel {
   }
 
   @Test
-  public void testOnLeaderStateTransitionBehaviour() {
+  public void testOnLeaderStateTransitionBehaviour() throws Exception {
     final long DELAY = 3000; // 3 seconds delay
     // Mock message behavior
     when(mockMessage.getTgtName()).thenReturn("test-controller");
@@ -94,15 +96,18 @@ public class TestVeniceControllerStateModel {
         String.format(
             "Controller Leader -> Standby ST is executed asynchronously. Expected a delay of less than %d seconds",
             DELAY / 1000));
-    stateModel.setClusterConfig(mock(VeniceControllerClusterConfig.class));
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenReturn(TimeUnit.SECONDS.toMillis(10));
+    stateModel.setClusterConfig(clusterConfig);
 
-    // This is a workaround for the test.
-    // We need to mock the HelixManager from the Executor thread so that the next state transition to be executed
-    // successfully.
+    stateModel = spy(stateModel);
     when(mockHelixManager.isConnected()).thenReturn(true);
-    stateModel.executeStateTransitionAsync(mockMessage, () -> {
+    when(mockHelixManager.getInstanceName()).thenReturn("test-instance");
+    doAnswer(invocation -> {
       stateModel.setHelixManager(mockHelixManager);
-    });
+      return null;
+    }).when(stateModel).initHelixManager("test-controller");
+    doNothing().when(stateModel).initClusterResources();
 
     // 2nd state transition. It runs synchronously and should block the main thread.
     // We expect the main thread to take more than DELAY milliseconds to finish it as it has to wait for the 1st
@@ -140,286 +145,223 @@ public class TestVeniceControllerStateModel {
     assertTrue(factory.getModel(resourceName).getWorkService().isShutdown());
   }
 
-  /**
-   * Test that when STANDBY->LEADER state transition times out, the catch block cancels the background task.
-   * This validates the TimeoutException catch block in onBecomeLeaderFromStandby().
-   */
   @Test(timeOut = 10000)
   public void testStateTransitionTimeoutCancelsBackgroundTask() throws Exception {
-    CountDownLatch taskStarted = new CountDownLatch(1);
-    AtomicBoolean taskWasCancelled = new AtomicBoolean(false);
-    AtomicBoolean taskCompleted = new AtomicBoolean(false);
+    CountDownLatch initializationStarted = new CountDownLatch(1);
+    CountDownLatch initializationInterrupted = new CountDownLatch(1);
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenAnswer(invocation -> {
+      assertTrue(initializationStarted.await(5, TimeUnit.SECONDS));
+      return 100L;
+    });
+    stateModel.setClusterConfig(clusterConfig);
+    configureLeaderTransitionMessage();
 
-    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
-    when(mockClusterConfig.isVeniceClusterLeaderHAAS()).thenReturn(false);
-
-    VeniceControllerStateModel testStateModel = new VeniceControllerStateModel(
-        "test-cluster",
-        mock(ZkClient.class),
-        mock(HelixAdapterSerializer.class),
-        mockMultiClusterConfig,
-        mock(VeniceHelixAdmin.class),
-        mock(MetricsRepository.class),
-        mock(ClusterLeaderInitializationRoutine.class),
-        mock(RealTimeTopicSwitcher.class),
-        Optional.empty(),
-        mock(HelixAdminClient.class),
-        Optional.empty(),
-        Optional.empty());
-
-    testStateModel.setClusterConfig(mockClusterConfig);
-    // Set a very short timeout (100ms) so the test doesn't take long
-    testStateModel.setStateTransitionTimeout(100);
-
-    // Use spy to override initClusterResources()
-    VeniceControllerStateModel spyStateModel = spy(testStateModel);
-
-    // Mock initHelixManager to set a mock helix manager (avoid real Helix connection)
-    SafeHelixManager mockHelixManager = mock(SafeHelixManager.class);
-    when(mockHelixManager.isConnected()).thenReturn(true);
-    when(mockHelixManager.getInstanceName()).thenReturn("test-instance");
+    stateModel = spy(stateModel);
+    SafeHelixManager initializedManager = mockConnectedHelixManager("test-instance");
     doAnswer(invocation -> {
-      spyStateModel.setHelixManager(mockHelixManager);
+      stateModel.setHelixManager(initializedManager);
       return null;
-    }).when(spyStateModel).initHelixManager("test-controller");
-
-    // Mock initClusterResources to take longer than timeout
+    }).when(stateModel).initHelixManager("test-controller");
     doAnswer(invocation -> {
-      taskStarted.countDown();
+      initializationStarted.countDown();
       try {
-        // Sleep longer than timeout to trigger TimeoutException
-        for (int i = 0; i < 100; i++) {
-          if (Thread.currentThread().isInterrupted()) {
-            taskWasCancelled.set(true);
-            LOGGER.info("Background task was cancelled by timeout catch block");
-            return null;
-          }
-          Thread.sleep(100);
-        }
-        taskCompleted.set(true);
+        new CountDownLatch(1).await();
       } catch (InterruptedException e) {
-        taskWasCancelled.set(true);
-        LOGGER.info("Background task was interrupted by timeout catch block");
-        Thread.currentThread().interrupt();
-      }
-      return null;
-    }).when(spyStateModel).initClusterResources();
-
-    Message message = mock(Message.class);
-    when(message.getTgtName()).thenReturn("test-controller");
-    when(message.getFromState()).thenReturn("STANDBY");
-    when(message.getToState()).thenReturn("LEADER");
-    when(message.getResourceName()).thenReturn("test-cluster_0");
-
-    // This should throw VeniceException due to timeout, and the catch block should cancel the future
-    assertThrows(
-        VeniceException.class,
-        () -> spyStateModel.onBecomeLeaderFromStandby(message, mock(NotificationContext.class)));
-
-    // Wait for task to start
-    assertTrue(taskStarted.await(5, TimeUnit.SECONDS), "Task should have started");
-
-    // Wait for cancellation to propagate (poll with timeout)
-    long deadline = System.currentTimeMillis() + 2000;
-    while (!taskWasCancelled.get() && System.currentTimeMillis() < deadline) {
-      Utils.sleep(10);
-    }
-
-    // Verify the task was cancelled by the catch block
-    assertTrue(taskWasCancelled.get(), "Background task should have been cancelled by timeout catch block");
-    assertFalse(taskCompleted.get(), "Background task should not have completed");
-
-    LOGGER.info("Test verified: TimeoutException catch block cancelled background task");
-  }
-
-  /**
-   * Test that when state transition fails with ExecutionException, the catch block cancels the background task.
-   * This validates the ExecutionException catch block in onBecomeLeaderFromStandby().
-   */
-  @Test(timeOut = 10000)
-  public void testStateTransitionExecutionExceptionCancelsBackgroundTask() throws Exception {
-    CountDownLatch taskStarted = new CountDownLatch(1);
-    AtomicBoolean taskWasInterrupted = new AtomicBoolean(false);
-    AtomicBoolean exceptionThrown = new AtomicBoolean(false);
-
-    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
-    when(mockClusterConfig.isVeniceClusterLeaderHAAS()).thenReturn(false);
-
-    VeniceControllerStateModel testStateModel = new VeniceControllerStateModel(
-        "test-cluster",
-        mock(ZkClient.class),
-        mock(HelixAdapterSerializer.class),
-        mockMultiClusterConfig,
-        mock(VeniceHelixAdmin.class),
-        mock(MetricsRepository.class),
-        mock(ClusterLeaderInitializationRoutine.class),
-        mock(RealTimeTopicSwitcher.class),
-        Optional.empty(),
-        mock(HelixAdminClient.class),
-        Optional.empty(),
-        Optional.empty());
-
-    testStateModel.setClusterConfig(mockClusterConfig);
-
-    // Use spy to override initClusterResources()
-    VeniceControllerStateModel spyStateModel = spy(testStateModel);
-
-    // Mock initHelixManager to set a mock helix manager (avoid real Helix connection)
-    SafeHelixManager mockHelixManager = mock(SafeHelixManager.class);
-    when(mockHelixManager.isConnected()).thenReturn(true);
-    when(mockHelixManager.getInstanceName()).thenReturn("test-instance");
-    doAnswer(invocation -> {
-      spyStateModel.setHelixManager(mockHelixManager);
-      return null;
-    }).when(spyStateModel).initHelixManager("test-controller");
-
-    // Mock initClusterResources to throw an exception, but be interruptible
-    doAnswer(invocation -> {
-      taskStarted.countDown();
-      try {
-        // Sleep a bit before throwing exception - gives catch block time to cancel
-        Thread.sleep(100);
-        exceptionThrown.set(true);
-        throw new RuntimeException("Simulated initialization failure");
-      } catch (InterruptedException e) {
-        taskWasInterrupted.set(true);
-        LOGGER.info("Background task was interrupted by ExecutionException catch block");
-        Thread.currentThread().interrupt();
-        throw e;
-      }
-    }).when(spyStateModel).initClusterResources();
-
-    Message message = mock(Message.class);
-    when(message.getTgtName()).thenReturn("test-controller");
-    when(message.getFromState()).thenReturn("STANDBY");
-    when(message.getToState()).thenReturn("LEADER");
-    when(message.getResourceName()).thenReturn("test-cluster_0");
-
-    // This should throw VeniceException due to ExecutionException, and the catch block should cancel the future
-    assertThrows(
-        VeniceException.class,
-        () -> spyStateModel.onBecomeLeaderFromStandby(message, mock(NotificationContext.class)));
-
-    // Wait for task to start
-    assertTrue(taskStarted.await(5, TimeUnit.SECONDS), "Task should have started");
-
-    // Wait for either exception to be thrown or interruption (poll with timeout)
-    long deadline = System.currentTimeMillis() + 2000;
-    while (!exceptionThrown.get() && !taskWasInterrupted.get() && System.currentTimeMillis() < deadline) {
-      Utils.sleep(10);
-    }
-
-    // Verify either the exception was thrown OR the task was interrupted by the catch block
-    // (race condition: exception might be thrown before cancellation takes effect)
-    assertTrue(
-        exceptionThrown.get() || taskWasInterrupted.get(),
-        "Either exception should be thrown or task should be interrupted");
-
-    LOGGER.info("Test verified: ExecutionException catch block cancelled background task");
-  }
-
-  /**
-   * Test that when the calling thread is interrupted, the catch block cancels the background task.
-   * This validates the InterruptedException catch block in onBecomeLeaderFromStandby().
-   */
-  @Test(timeOut = 10000)
-  public void testStateTransitionInterruptedExceptionCancelsBackgroundTask() throws Exception {
-    CountDownLatch taskStarted = new CountDownLatch(1);
-    AtomicBoolean taskWasCancelled = new AtomicBoolean(false);
-    AtomicBoolean taskCompleted = new AtomicBoolean(false);
-
-    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
-    when(mockClusterConfig.isVeniceClusterLeaderHAAS()).thenReturn(false);
-
-    VeniceControllerStateModel testStateModel = new VeniceControllerStateModel(
-        "test-cluster",
-        mock(ZkClient.class),
-        mock(HelixAdapterSerializer.class),
-        mockMultiClusterConfig,
-        mock(VeniceHelixAdmin.class),
-        mock(MetricsRepository.class),
-        mock(ClusterLeaderInitializationRoutine.class),
-        mock(RealTimeTopicSwitcher.class),
-        Optional.empty(),
-        mock(HelixAdminClient.class),
-        Optional.empty(),
-        Optional.empty());
-
-    testStateModel.setClusterConfig(mockClusterConfig);
-
-    // Use spy to override initClusterResources()
-    VeniceControllerStateModel spyStateModel = spy(testStateModel);
-
-    // Mock initHelixManager to set a mock helix manager (avoid real Helix connection)
-    SafeHelixManager mockHelixManager = mock(SafeHelixManager.class);
-    when(mockHelixManager.isConnected()).thenReturn(true);
-    when(mockHelixManager.getInstanceName()).thenReturn("test-instance");
-    doAnswer(invocation -> {
-      spyStateModel.setHelixManager(mockHelixManager);
-      return null;
-    }).when(spyStateModel).initHelixManager("test-controller");
-
-    // Mock initClusterResources to run long enough for us to interrupt
-    doAnswer(invocation -> {
-      taskStarted.countDown();
-      try {
-        // Sleep long enough to allow interruption
-        for (int i = 0; i < 100; i++) {
-          if (Thread.currentThread().isInterrupted()) {
-            taskWasCancelled.set(true);
-            LOGGER.info("Background task was cancelled by InterruptedException catch block");
-            return null;
-          }
-          Thread.sleep(100);
-        }
-        taskCompleted.set(true);
-      } catch (InterruptedException e) {
-        taskWasCancelled.set(true);
-        LOGGER.info("Background task was interrupted by InterruptedException catch block");
+        initializationInterrupted.countDown();
         Thread.currentThread().interrupt();
         throw e;
       }
       return null;
-    }).when(spyStateModel).initClusterResources();
+    }).when(stateModel).initClusterResources();
 
-    Message message = mock(Message.class);
-    when(message.getTgtName()).thenReturn("test-controller");
-    when(message.getFromState()).thenReturn("STANDBY");
-    when(message.getToState()).thenReturn("LEADER");
-    when(message.getResourceName()).thenReturn("test-cluster_0");
+    assertThrows(VeniceException.class, () -> stateModel.onBecomeLeaderFromStandby(mockMessage, mockContext));
 
-    // Start the transition in a separate thread so we can interrupt it
-    Thread testThread = new Thread(() -> {
+    assertTrue(initializationInterrupted.await(5, TimeUnit.SECONDS));
+    verify(clusterConfig).getControllerStandbyToLeaderTransitionTimeoutMs();
+    stateModel.reset();
+  }
+
+  @Test(timeOut = 10000)
+  public void testStateTransitionExecutionException() throws Exception {
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenReturn(TimeUnit.SECONDS.toMillis(5));
+    stateModel.setClusterConfig(clusterConfig);
+    configureLeaderTransitionMessage();
+
+    stateModel = spy(stateModel);
+    SafeHelixManager initializedManager = mockConnectedHelixManager("test-instance");
+    doAnswer(invocation -> {
+      stateModel.setHelixManager(initializedManager);
+      return null;
+    }).when(stateModel).initHelixManager("test-controller");
+    doAnswer(invocation -> {
+      throw new VeniceException("Resource initialization failed");
+    }).when(stateModel).initClusterResources();
+
+    assertThrows(VeniceException.class, () -> stateModel.onBecomeLeaderFromStandby(mockMessage, mockContext));
+    stateModel.reset();
+  }
+
+  @Test(timeOut = 10000)
+  public void testInterruptedTransitionPreservesInterruptStatus() throws Exception {
+    CountDownLatch initializationStarted = new CountDownLatch(1);
+    CountDownLatch initializationInterrupted = new CountDownLatch(1);
+    CountDownLatch transitionFinished = new CountDownLatch(1);
+    AtomicBoolean transitionFailed = new AtomicBoolean(false);
+    AtomicBoolean interruptStatusPreserved = new AtomicBoolean(false);
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenReturn(TimeUnit.SECONDS.toMillis(30));
+    stateModel.setClusterConfig(clusterConfig);
+    configureLeaderTransitionMessage();
+
+    stateModel = spy(stateModel);
+    SafeHelixManager initializedManager = mockConnectedHelixManager("test-instance");
+    doAnswer(invocation -> {
+      stateModel.setHelixManager(initializedManager);
+      return null;
+    }).when(stateModel).initHelixManager("test-controller");
+    doAnswer(invocation -> {
+      initializationStarted.countDown();
       try {
-        spyStateModel.onBecomeLeaderFromStandby(message, mock(NotificationContext.class));
-      } catch (Exception e) {
-        // Expected - InterruptedException will be wrapped in VeniceException
-        LOGGER.info("Expected exception during interrupted state transition", e);
+        new CountDownLatch(1).await();
+      } catch (InterruptedException e) {
+        initializationInterrupted.countDown();
+        Thread.currentThread().interrupt();
+        throw e;
+      }
+      return null;
+    }).when(stateModel).initClusterResources();
+
+    Thread transitionThread = new Thread(() -> {
+      try {
+        stateModel.onBecomeLeaderFromStandby(mockMessage, mockContext);
+      } catch (VeniceException e) {
+        transitionFailed.set(true);
+        interruptStatusPreserved.set(Thread.currentThread().isInterrupted());
+      } finally {
+        transitionFinished.countDown();
       }
     });
-    testThread.start();
+    transitionThread.start();
 
-    // Wait for task to start
-    assertTrue(taskStarted.await(5, TimeUnit.SECONDS), "Task should have started");
+    assertTrue(initializationStarted.await(5, TimeUnit.SECONDS));
+    transitionThread.interrupt();
+    assertTrue(transitionFinished.await(5, TimeUnit.SECONDS));
+    assertTrue(initializationInterrupted.await(5, TimeUnit.SECONDS));
+    assertTrue(transitionFailed.get());
+    assertTrue(interruptStatusPreserved.get());
+    stateModel.reset();
+  }
 
-    // Interrupt the thread to trigger InterruptedException in future.get()
-    testThread.interrupt();
+  @Test
+  public void testResetDisconnectsManagerWithoutClusterResources() {
+    SafeHelixManager manager = mockConnectedHelixManager("test-instance");
+    stateModel.setHelixManager(manager);
 
-    // Wait for thread to finish
-    testThread.join(2000);
+    stateModel.reset();
 
-    // Wait for cancellation to propagate (poll with timeout)
-    long deadline = System.currentTimeMillis() + 2000;
-    while (!taskWasCancelled.get() && System.currentTimeMillis() < deadline) {
-      Utils.sleep(10);
+    verify(manager).disconnect();
+  }
+
+  @Test(timeOut = 10000)
+  public void testResetWaitsForInitializationIgnoringInterruption() throws Exception {
+    CountDownLatch initializationStarted = new CountDownLatch(1);
+    CountDownLatch initializationInterrupted = new CountDownLatch(1);
+    CountDownLatch allowInitializationToFinish = new CountDownLatch(1);
+    CountDownLatch resetStarted = new CountDownLatch(1);
+    CountDownLatch resetFinished = new CountDownLatch(1);
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenAnswer(invocation -> {
+      assertTrue(initializationStarted.await(5, TimeUnit.SECONDS));
+      return 100L;
+    });
+    stateModel.setClusterConfig(clusterConfig);
+    configureLeaderTransitionMessage();
+
+    SafeHelixManager manager = mockConnectedHelixManager("test-instance");
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    stateModel = spy(stateModel);
+    doAnswer(invocation -> {
+      stateModel.setHelixManager(manager);
+      return null;
+    }).when(stateModel).initHelixManager("test-controller");
+    doAnswer(invocation -> {
+      stateModel.setClusterResources(resources);
+      initializationStarted.countDown();
+      awaitIgnoringInterrupt(allowInitializationToFinish, initializationInterrupted);
+      return null;
+    }).when(stateModel).initClusterResources();
+
+    assertThrows(VeniceException.class, () -> stateModel.onBecomeLeaderFromStandby(mockMessage, mockContext));
+    assertTrue(initializationInterrupted.await(5, TimeUnit.SECONDS));
+
+    Thread resetThread = new Thread(() -> {
+      resetStarted.countDown();
+      stateModel.reset();
+      resetFinished.countDown();
+    });
+    resetThread.start();
+    assertTrue(resetStarted.await(5, TimeUnit.SECONDS));
+    assertFalse(resetFinished.await(200, TimeUnit.MILLISECONDS));
+    verify(manager, never()).disconnect();
+
+    allowInitializationToFinish.countDown();
+    assertTrue(resetFinished.await(5, TimeUnit.SECONDS));
+    verify(resources).clear();
+    verify(manager).disconnect();
+  }
+
+  @Test(timeOut = 10000)
+  public void testStaleManagerFailsTransitionUntilReset() throws Exception {
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenReturn(TimeUnit.SECONDS.toMillis(5));
+    stateModel.setClusterConfig(clusterConfig);
+    configureLeaderTransitionMessage();
+
+    SafeHelixManager staleManager = mockConnectedHelixManager("stale-instance");
+    SafeHelixManager newManager = mockConnectedHelixManager("new-instance");
+    stateModel.setHelixManager(staleManager);
+    stateModel = spy(stateModel);
+    doAnswer(invocation -> {
+      stateModel.setHelixManager(newManager);
+      return null;
+    }).when(stateModel).initHelixManager("test-controller");
+    doNothing().when(stateModel).initClusterResources();
+
+    assertThrows(VeniceException.class, () -> stateModel.onBecomeLeaderFromStandby(mockMessage, mockContext));
+    verify(stateModel, never()).initHelixManager("test-controller");
+
+    stateModel.reset();
+    stateModel.onBecomeLeaderFromStandby(mockMessage, mockContext);
+
+    verify(staleManager).disconnect();
+    verify(stateModel).initHelixManager("test-controller");
+    stateModel.reset();
+  }
+
+  private void configureLeaderTransitionMessage() {
+    when(mockMessage.getTgtName()).thenReturn("test-controller");
+    when(mockMessage.getFromState()).thenReturn("STANDBY");
+    when(mockMessage.getToState()).thenReturn("LEADER");
+    when(mockMessage.getResourceName()).thenReturn("test-cluster_0");
+  }
+
+  private SafeHelixManager mockConnectedHelixManager(String instanceName) {
+    SafeHelixManager helixManager = mock(SafeHelixManager.class);
+    when(helixManager.isConnected()).thenReturn(true);
+    when(helixManager.getInstanceName()).thenReturn(instanceName);
+    return helixManager;
+  }
+
+  private void awaitIgnoringInterrupt(CountDownLatch latch, CountDownLatch interrupted) {
+    while (true) {
+      try {
+        latch.await();
+        return;
+      } catch (InterruptedException e) {
+        interrupted.countDown();
+      }
     }
-
-    // Verify the background task was cancelled by the catch block
-    assertTrue(
-        taskWasCancelled.get(),
-        "Background task should have been cancelled by InterruptedException catch block");
-    assertFalse(taskCompleted.get(), "Background task should not have completed");
-
-    LOGGER.info("Test verified: InterruptedException catch block cancelled background task");
   }
 }
