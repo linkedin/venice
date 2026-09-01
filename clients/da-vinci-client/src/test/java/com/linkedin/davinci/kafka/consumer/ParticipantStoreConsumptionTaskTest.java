@@ -290,7 +290,7 @@ public class ParticipantStoreConsumptionTaskTest {
       verify(stats, timeout(WAIT).atLeastOnce()).recordHeartbeat();
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
         time.advanceTime(participantMessageConsumptionDelayMs);
-        verify(storeIngestionService, atLeast(2)).killConsumptionTask(topic);
+        verify(stats, atLeast(2)).recordKillPushJobLatency(eq(storeName), anyDouble());
       });
 
       verify(stats, atLeast(2)).recordKilledPushJobs(storeName);
