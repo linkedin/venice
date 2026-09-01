@@ -1412,7 +1412,8 @@ public class VeniceParentHelixAdmin implements Admin {
     // - ONLINE: push already completed; any pending deferred-swap roll-forward is orchestrated by
     // DeferredVersionSwapService and a subsequent push simply supersedes it. Keys off ZK version
     // status alone (not the parent VT, which may never exist under PARENT_VERSION_STATUS_ONLY).
-    // Every remaining (non-terminal) status blocks the next push outright.
+    // CREATED/PUSHED block the next push outright. STARTED can still represent a normal push whose
+    // current-version promotion has already completed but whose parent version status has not caught up.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
@@ -1430,14 +1431,34 @@ public class VeniceParentHelixAdmin implements Admin {
         break;
     }
 
+    if (lastVersion.getStatus() == STARTED && !lastVersion.isVersionSwapDeferred()) {
+      Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
+      boolean allFabricsServingLastVersion = currentVersions != null && !currentVersions.isEmpty()
+          && currentVersions.values()
+              .stream()
+              .allMatch(currentVersion -> Objects.equals(currentVersion, lastVersionNum));
+      if (store.getCurrentVersion() == lastVersionNum || allFabricsServingLastVersion) {
+        LOGGER.info(
+            "Store {} version {} is already current while its status is still STARTED; allowing the next push to proceed",
+            storeName,
+            lastVersionNum);
+        return Optional.empty();
+      }
+      LOGGER.info(
+          "Store {} version {} is still STARTED and is not current in all fabrics: {}",
+          storeName,
+          lastVersionNum,
+          currentVersions);
+    }
+
     // The only statuses left after the terminal cases above are non-terminal: CREATED (version exists
     // but its push has not begun), STARTED (push in flight), and PUSHED (a deferred-swap version whose
     // push completed in its target region but whose swap is still pending). In all of these the version
     // is not yet done from the user's perspective, so the next push must wait. STARTED is treated the
-    // same as CREATED/PUSHED rather than polling the child job status: a job-status poll only observes
-    // ingestion completion, which for a deferred-swap version does not imply the version swap has
-    // finished, so unblocking on a terminal poll would let a concurrent push slip in during the
-    // STARTED -> PUSHED transition.
+    // same as CREATED/PUSHED for deferred-swap versions, or when the version is not current yet, rather
+    // than polling the child job status: a job-status poll only observes ingestion completion, which for
+    // a deferred-swap version does not imply the version swap has finished, so unblocking on a terminal
+    // poll would let a concurrent push slip in during the STARTED -> PUSHED transition.
     LOGGER.info(
         "The push for version {} (pushJobId {}) of store {} is not completed (status {}); the next push must wait.",
         lastVersionNum,

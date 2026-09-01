@@ -3742,12 +3742,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testGetTopicForCurrentPushJobBlocksInProgressVersion() {
     // Regression coverage for the in-progress branch of getTopicForCurrentPushJob. Terminal statuses
-    // early-exit (see testGetTopicForCurrentPushJob); a non-terminal latest version (CREATED, STARTED,
-    // or PUSHED) must instead block the next push immediately and return the in-flight topic, without
-    // polling getOffLinePushStatus. STARTED is not polled because a terminal job-status poll only
-    // reflects ingestion completion, not deferred version-swap completion, so polling could let a
-    // concurrent push slip in during the STARTED -> PUSHED transition. This guards the stuck-push
-    // prevention behavior.
+    // early-exit (see testGetTopicForCurrentPushJob); a non-terminal latest version must instead block
+    // the next push immediately and return the in-flight topic, without polling getOffLinePushStatus.
+    // STARTED is not polled because a terminal job-status poll only reflects ingestion completion, not
+    // deferred version-swap completion, so polling could let a concurrent push slip in during the
+    // STARTED -> PUSHED transition. This guards the stuck-push prevention behavior.
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
@@ -3764,14 +3763,41 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     String latestTopic = storeName + "_v1";
 
-    // Every non-terminal status blocks the next push immediately and returns the in-flight topic,
-    // without polling offline push status.
-    for (VersionStatus status: Arrays.asList(VersionStatus.CREATED, VersionStatus.STARTED, VersionStatus.PUSHED)) {
+    // CREATED and PUSHED always block the next push immediately and return the in-flight topic, without
+    // polling offline push status.
+    for (VersionStatus status: Arrays.asList(VersionStatus.CREATED, VersionStatus.PUSHED)) {
       doReturn(inProgressStore(storeName, status)).when(mockParentAdmin).getStore(clusterName, storeName);
       Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
       Assert.assertTrue(currentPush.isPresent(), "Expected status " + status + " to block the next push");
       assertEquals(currentPush.get(), latestTopic);
     }
+
+    doReturn(inProgressStore(storeName, VersionStatus.STARTED)).when(mockParentAdmin).getStore(clusterName, storeName);
+    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(currentPush.isPresent(), "Expected non-current STARTED version to block the next push");
+    assertEquals(currentPush.get(), latestTopic);
+
+    Store currentStartedStore = inProgressStore(storeName, VersionStatus.STARTED);
+    currentStartedStore.setCurrentVersion(1);
+    doReturn(currentStartedStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertFalse(
+        currentPush.isPresent(),
+        "A non-deferred STARTED version that is already current should not block the next push");
+
+    Store deferredCurrentStartedStore = inProgressStore(storeName, VersionStatus.STARTED);
+    deferredCurrentStartedStore.setCurrentVersion(1);
+    deferredCurrentStartedStore.deleteVersion(1);
+    VersionImpl deferredVersion = new VersionImpl(storeName, 1, "test_push_id");
+    deferredVersion.setStatus(VersionStatus.STARTED);
+    deferredVersion.setVersionSwapDeferred(true);
+    deferredCurrentStartedStore.addVersion(deferredVersion);
+    doReturn(deferredCurrentStartedStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(
+        currentPush.isPresent(),
+        "A deferred-swap STARTED version should block even if it is already current");
+    assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
   }
 
