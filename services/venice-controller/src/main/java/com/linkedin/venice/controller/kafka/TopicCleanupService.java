@@ -229,8 +229,33 @@ public class TopicCleanupService extends AbstractVeniceService {
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
   void cleanupVeniceTopics() {
+    for (TopicManager topicManager: getTopicManagersForCleanup()) {
+      cleanupVeniceTopics(topicManager);
+    }
+  }
+
+  /**
+   * The topic managers whose Kafka clusters should be scanned for deprecated topics. A parent controller
+   * truncates topics across every parent fabric (see {@code VeniceHelixAdmin#truncateKafkaTopicInParentFabrics}),
+   * so cleanup must also run against each parent fabric's Kafka cluster; otherwise topics truncated in the
+   * non-default fabrics would never be deleted. Every other deployment cleans up its single default cluster.
+   */
+  List<TopicManager> getTopicManagersForCleanup() {
+    Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
+    if (admin.isParent() && !parentFabrics.isEmpty()) {
+      List<TopicManager> topicManagers = new ArrayList<>(parentFabrics.size());
+      for (String parentFabric: parentFabrics) {
+        String kafkaBootstrapServers = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(parentFabric);
+        topicManagers.add(getTopicManager(kafkaBootstrapServers));
+      }
+      return topicManagers;
+    }
+    return Collections.singletonList(getTopicManager());
+  }
+
+  void cleanupVeniceTopics(TopicManager topicManager) {
     PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>(topicPriorityComparator);
-    populateDeprecatedTopicQueue(allTopics);
+    populateDeprecatedTopicQueue(allTopics, topicManager);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();
 
@@ -246,13 +271,13 @@ public class TopicCleanupService extends AbstractVeniceService {
             storeName,
             topic.getName(),
             e.toString());
-        deleteTopic(topic);
+        deleteTopic(topic, topicManager);
         continue;
       }
 
       if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, topic.getName())) {
         // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
-        deleteTopic(topic);
+        deleteTopic(topic, topicManager);
       } else {
         LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
       }
@@ -262,7 +287,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         // delete. Some new RT topics might have become eligible for deletion in this period.
         if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
           allTopics.clear();
-          populateDeprecatedTopicQueue(allTopics);
+          populateDeprecatedTopicQueue(allTopics, topicManager);
           if (allTopics.isEmpty()) {
             break;
           }
@@ -272,9 +297,9 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
   }
 
-  private void deleteTopic(PubSubTopic topic) {
+  private void deleteTopic(PubSubTopic topic, TopicManager topicManager) {
     try {
-      getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+      topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
       topicCleanupServiceStats.recordTopicDeleted();
     } catch (VeniceException e) {
       LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
@@ -283,8 +308,8 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
   }
 
-  private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics) {
-    Map<PubSubTopic, Long> topicsWithRetention = getTopicManager().getAllTopicRetentions();
+  private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics, TopicManager topicManager) {
+    Map<PubSubTopic, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
     Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicsWithRetention);
     allStoreTopics.forEach((storeName, topicRetentions) -> {
       int minNumOfUnusedVersionTopicsOverride = minNumberOfUnusedKafkaTopicsToPreserve;
