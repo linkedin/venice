@@ -211,13 +211,13 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     LOGGER.info("Stopped running {}", getClass().getSimpleName());
   }
 
-  private void recordMetricSafely(String metricName, String context, Runnable recorder) {
+  @VisibleForTesting
+  void recordMetricSafely(String metricName, String context, Runnable recorder) {
     try {
       recorder.run();
     } catch (RuntimeException e) {
-      String msg = "Failed to record metric " + metricName + " for " + context;
-      if (!EXCEPTION_FILTER.isRedundantException(msg)) {
-        LOGGER.error(msg, e);
+      if (!EXCEPTION_FILTER.isRedundantException(metricName, e)) {
+        LOGGER.error("Failed to record metric {} for {}", metricName, context, e);
       }
     }
   }

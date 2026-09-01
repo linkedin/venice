@@ -12,7 +12,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.util.clock.Time;
@@ -23,16 +25,22 @@ import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
+import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.SleepStallingMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.lang.invoke.WrongMethodTypeException;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.testng.annotations.Test;
 
 
@@ -303,6 +311,67 @@ public class ParticipantStoreConsumptionTaskTest {
     }
 
     assertFalse(taskThread.isAlive(), "The task should terminate after interruption");
+  }
+
+  @Test
+  public void testMetricFailureLoggingIsRateLimitedByMetricAndExceptionType() {
+    ParticipantStoreConsumptionTask task = new ParticipantStoreConsumptionTask(
+        mock(StoreIngestionService.class),
+        mock(ClusterInfoProvider.class),
+        mock(ParticipantStoreConsumptionStats.class),
+        mock(ClientConfig.class),
+        participantMessageConsumptionDelayMs,
+        null,
+        mock(Function.class),
+        mockTime);
+    String metricName = Utils.getUniqueString("test_metric");
+    String otherMetricName = Utils.getUniqueString("other_test_metric");
+    String firstTopic = Utils.getUniqueString("first_topic");
+    String secondTopic = Utils.getUniqueString("second_topic");
+    String distinctExceptionTopic = Utils.getUniqueString("distinct_exception_topic");
+    String otherMetricTopic = Utils.getUniqueString("other_metric_topic");
+
+    InMemoryLogAppender inMemoryLogAppender = new InMemoryLogAppender.Builder().build();
+    inMemoryLogAppender.start();
+    LoggerContext context = (LoggerContext) LogManager.getContext(false);
+    Configuration configuration = context.getConfiguration();
+
+    try {
+      configuration.addLoggerAppender(
+          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(ParticipantStoreConsumptionTask.class),
+          inMemoryLogAppender);
+
+      task.recordMetricSafely(metricName, firstTopic, () -> {
+        throw new IllegalStateException("first failure");
+      });
+      task.recordMetricSafely(metricName, secondTopic, () -> {
+        throw new IllegalStateException("second failure");
+      });
+      task.recordMetricSafely(metricName, distinctExceptionTopic, () -> {
+        throw new IllegalArgumentException("distinct failure");
+      });
+      task.recordMetricSafely(otherMetricName, otherMetricTopic, () -> {
+        throw new IllegalStateException("other metric failure");
+      });
+
+      List<String> metricFailureLogs = inMemoryLogAppender.getLogs();
+      long matchingLogCount = metricFailureLogs.stream()
+          .filter(log -> log.contains("Failed to record metric"))
+          .filter(log -> log.contains(metricName) || log.contains(otherMetricName))
+          .count();
+      assertEquals(matchingLogCount, 3);
+      assertTrue(metricFailureLogs.stream().anyMatch(log -> log.contains(firstTopic)));
+      assertFalse(metricFailureLogs.stream().anyMatch(log -> log.contains(secondTopic)));
+      assertTrue(metricFailureLogs.stream().anyMatch(log -> log.contains(distinctExceptionTopic)));
+      assertTrue(metricFailureLogs.stream().anyMatch(log -> log.contains(otherMetricTopic)));
+    } finally {
+      LoggerConfig loggerConfig = configuration.getLoggerConfig(ParticipantStoreConsumptionTask.class.getName());
+      if (loggerConfig.getName().equals(ParticipantStoreConsumptionTask.class.getCanonicalName())) {
+        loggerConfig.removeAppender(inMemoryLogAppender.getName());
+      }
+      context.updateLoggers();
+      inMemoryLogAppender.stop();
+    }
   }
 
   private void iterate() {
