@@ -10,6 +10,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
@@ -27,7 +28,8 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
    */
   enum TehutiMetricName implements TehutiMetricNameEnum {
     HEARTBEAT_MONITOR_SERVICE_EXCEPTION_COUNT("heartbeat-monitor-service-exception-count"),
-    HEARTBEAT_REPORTER("heartbeat-reporter"), HEARTBEAT_LOGGER("heartbeat-logger");
+    HEARTBEAT_REPORTER("heartbeat-reporter"), HEARTBEAT_LOGGER("heartbeat-logger"),
+    SUBSCRIBED_REPLICA_MISSING_HEARTBEAT_ENTRY_COUNT("subscribed-replica-missing-heartbeat-entry-count");
 
     private final String metricName;
 
@@ -51,6 +53,12 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceHeartbeatComponent> exceptionCountMetrics;
   private final MetricEntityStateOneEnum<VeniceHeartbeatComponent> reporterHeartbeatMetrics;
   private final MetricEntityStateOneEnum<VeniceHeartbeatComponent> loggerHeartbeatMetrics;
+  /**
+   * Counts subscribed replicas found missing a heartbeat-lag monitoring entry during the periodic
+   * reconciliation pass. A sustained non-zero value indicates the lifecycle race that leaves an
+   * actively-ingesting replica's ready-to-serve gate stuck.
+   */
+  private final Sensor subscribedReplicaMissingHeartbeatEntrySensor;
 
   public HeartbeatMonitoringServiceStats(
       MetricsRepository metricsRepository,
@@ -88,6 +96,14 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
         VeniceHeartbeatComponent.class);
+
+    this.subscribedReplicaMissingHeartbeatEntrySensor = registerSensorIfAbsent(
+        TehutiMetricName.SUBSCRIBED_REPLICA_MISSING_HEARTBEAT_ENTRY_COUNT.getMetricName(),
+        new Count());
+  }
+
+  public void recordSubscribedReplicaMissingHeartbeatEntry(long count) {
+    subscribedReplicaMissingHeartbeatEntrySensor.record(count);
   }
 
   public void recordHeartbeatExceptionCount(VeniceHeartbeatComponent component) {
