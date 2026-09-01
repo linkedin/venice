@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api.routing.helix;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
-import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -27,7 +26,7 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
   private final int[] counters = new int[MAX_ALLOWED_GROUP];
   private final TimeoutProcessor timeoutProcessor;
   private final long timeoutInMS;
-  private final Map<Long, Pair<Integer, TimeoutProcessor.TimeoutFuture>> requestTimeoutFutureMap = new HashMap<>();
+  private final Map<Long, RequestGroupAssignment> requestTimeoutFutureMap = new HashMap<>();
   private final HelixGroupStats helixGroupStats;
 
   public HelixGroupLeastLoadedStrategy(
@@ -40,11 +39,18 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
   }
 
   @Override
-  public int selectGroup(long requestId, int groupCount) {
+  public int selectGroup(long requestId, int groupCount, int weight) {
     if (groupCount > MAX_ALLOWED_GROUP || groupCount <= 0) {
       throw new VeniceException(
           "The valid group num must fail into this range: [1, " + MAX_ALLOWED_GROUP + "], but received: " + groupCount);
     }
+    /**
+     * Each request contributes at least 1 unit of load to the assigned group's counter, so a burst of
+     * zero/negative-weight requests cannot all pile onto a single group. A larger weight (e.g. the request's
+     * key count / estimated RCU) makes the request contribute proportionally more load, so variable-size
+     * multi-key requests are balanced by keys rather than by raw request count.
+     */
+    int effectiveWeight = Math.max(1, weight);
     int smallestCounter = Integer.MAX_VALUE;
     double lowestAvgLatency = Double.MAX_VALUE;
     int leastLoadedGroup = 0;
@@ -85,14 +91,15 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
        */
       requestTimeoutFutureMap.put(
           requestId,
-          new Pair<>(
+          new RequestGroupAssignment(
               leastLoadedGroup,
+              effectiveWeight,
               timeoutProcessor.schedule(
                   () -> timeoutRequest(requestId, finalLeastLoadedGroup, false),
                   timeoutInMS,
                   TimeUnit.MILLISECONDS)));
 
-      ++counters[leastLoadedGroup];
+      counters[leastLoadedGroup] += effectiveWeight;
     }
     helixGroupStats.recordGroupPendingRequest(leastLoadedGroup, counters[leastLoadedGroup]);
 
@@ -118,26 +125,27 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
       helixGroupStats.recordGroupResponseWaitingTime(groupId, timeoutInMS);
     }
     synchronized (this) {
-      Pair<Integer, TimeoutProcessor.TimeoutFuture> timeoutFuturePair = requestTimeoutFutureMap.get(requestId);
-      if (timeoutFuturePair == null) {
+      RequestGroupAssignment assignment = requestTimeoutFutureMap.get(requestId);
+      if (assignment == null) {
         /**
          * Request has already timed out or already finished.
          */
         return;
       }
-      if (groupId != timeoutFuturePair.getFirst()) {
+      if (groupId != assignment.groupId) {
         throw new VeniceException(
-            "Group id for request with id: " + requestId + " should be: " + timeoutFuturePair.getFirst()
-                + ", but received: " + groupId);
+            "Group id for request with id: " + requestId + " should be: " + assignment.groupId + ", but received: "
+                + groupId);
       }
-      if (--counters[groupId] < 0) {
+      counters[groupId] -= assignment.weight;
+      if (counters[groupId] < 0) {
         counters[groupId] = 0;
         throw new VeniceException(
             "The counter for group: " + groupId + " became negative, something wrong happened, will reset it to be 0.");
       }
       if (cancelTimeoutFuture) {
         // Cancel the timeout future
-        timeoutFuturePair.getSecond().cancel();
+        assignment.timeoutFuture.cancel();
       } else {
         LOGGER.info(
             "Request with id: {} has timed out with threshold: {}ms, and the counter of group: {} will be reset for this request",
@@ -153,5 +161,21 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
   public void finishRequest(long requestId, int groupId, double latency) {
     timeoutRequest(requestId, groupId, true);
     helixGroupStats.recordGroupResponseWaitingTime(groupId, latency);
+  }
+
+  /**
+   * Holds the per-request group assignment: the selected group, the load {@code weight} that was added to that
+   * group's counter (so the same amount can be subtracted on completion/timeout), and the leak-guard timeout future.
+   */
+  private static class RequestGroupAssignment {
+    final int groupId;
+    final int weight;
+    final TimeoutProcessor.TimeoutFuture timeoutFuture;
+
+    RequestGroupAssignment(int groupId, int weight, TimeoutProcessor.TimeoutFuture timeoutFuture) {
+      this.groupId = groupId;
+      this.weight = weight;
+      this.timeoutFuture = timeoutFuture;
+    }
   }
 }

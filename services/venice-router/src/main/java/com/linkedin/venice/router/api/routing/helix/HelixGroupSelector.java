@@ -54,9 +54,9 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
   }
 
   @Override
-  public int selectGroup(long requestId, int groupNum) {
+  public int selectGroup(long requestId, int groupNum, int weight) {
     helixGroupStats.recordGroupNum(groupNum);
-    int assignedGroupId = selectionStrategy.selectGroup(requestId, groupNum);
+    int assignedGroupId = selectionStrategy.selectGroup(requestId, groupNum, weight);
     helixGroupStats.recordGroupRequest(assignedGroupId);
     return assignedGroupId;
   }

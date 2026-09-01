@@ -1480,6 +1480,21 @@ public class ConfigKeys {
   public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY =
       "router.helix.assisted.routing.group.selection.strategy";
 
+  /**
+   * Whether the Helix-assisted-routing group selection should weight each request by its key count
+   * (estimated RCU) instead of counting every request as 1 when picking the least-loaded group.
+   *
+   * When enabled, a 500-key multi-get contributes proportionally more load to the assigned group than a
+   * 1-key request, so variable-size multi-get traffic is balanced by keys/RCU across Helix groups rather
+   * than by raw request count. This prevents one group from absorbing disproportionate RCU (and getting
+   * throttled with HTTP 429) while other groups retain capacity and the store-wide quota still has headroom.
+   *
+   * Only affects {@literal HelixGroupLeastLoadedStrategy}. Default: false (each request weighted as 1,
+   * preserving the legacy request-count behavior).
+   */
+  public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_WEIGHT_AWARE_ENABLED =
+      "router.helix.assisted.routing.group.selection.weight.aware.enabled";
+
   public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
   /**
