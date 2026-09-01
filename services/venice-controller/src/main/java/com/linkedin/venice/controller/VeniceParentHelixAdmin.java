@@ -1412,6 +1412,8 @@ public class VeniceParentHelixAdmin implements Admin {
     // - ONLINE: push already completed; any pending deferred-swap roll-forward is orchestrated by
     // DeferredVersionSwapService and a subsequent push simply supersedes it. Keys off ZK version
     // status alone (not the parent VT, which may never exist under PARENT_VERSION_STATUS_ONLY).
+    // - NOT_CREATED: no real version (also the rolling-deployment fallback for an unrecognized status
+    // id, see VersionStatus#getVersionStatusFromInt); documented to be inert and non-blocking.
     // CREATED/PUSHED block the next push outright. STARTED can still represent a normal push whose
     // current-version promotion has already completed but whose parent version status has not caught up.
     switch (lastVersion.getStatus()) {
@@ -1420,6 +1422,7 @@ public class VeniceParentHelixAdmin implements Admin {
       case ROLLED_BACK:
       case PARTIALLY_ONLINE:
       case ONLINE:
+      case NOT_CREATED:
         LOGGER.info(
             "Store {} version {} is in status {} (no ongoing push); allowing the next push to proceed",
             storeName,

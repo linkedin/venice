@@ -3737,6 +3737,24 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     partiallyOnlineStore.addVersion(partiallyOnlineVersion);
     doReturn(partiallyOnlineStore).when(mockParentAdmin).getStore(clusterName, storeName);
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
+
+    // Latest version in NOT_CREATED status (e.g. the rolling-deployment fallback for an unrecognized
+    // status id, see VersionStatus#getVersionStatusFromInt): documented to be inert and non-blocking,
+    // so the parent returns empty and lets a new push proceed.
+    Store notCreatedStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl notCreatedVersion = new VersionImpl(storeName, 1, "test_push_id");
+    notCreatedVersion.setStatus(VersionStatus.NOT_CREATED);
+    notCreatedStore.addVersion(notCreatedVersion);
+    doReturn(notCreatedStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
   @Test
