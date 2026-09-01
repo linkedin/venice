@@ -5,16 +5,20 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -27,10 +31,13 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.EncoderFactory;
+import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+import spark.Request;
+import spark.Response;
 
 
 public class JobRoutesTest {
@@ -101,5 +108,35 @@ public class JobRoutesTest {
     PushJobDetails deserializedPushJobDetails = jobRoutes.deserializePushJobDetails(output.toByteArray());
     Assert.assertEquals(deserializedPushJobDetails.clusterName.toString(), pushJobDetails.clusterName);
     verify(schemaReader).getValueSchema(unknownProtocolVersion);
+  }
+
+  @Test
+  public void testSendPushJobDetailsProtocolFailureIsBestEffort() throws Exception {
+    String clusterName = "test-cluster";
+    String storeName = "test-store";
+    int storeVersion = 1;
+    int unknownProtocolVersion = AvroProtocolDefinition.PUSH_JOB_DETAILS.getCurrentProtocolVersion() + 1;
+    byte[] payload = {
+        AvroProtocolDefinition.PUSH_JOB_DETAILS.getMagicByte().get(),
+        (byte) unknownProtocolVersion };
+
+    Admin admin = mock(Admin.class);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+    Request request = mock(Request.class);
+    doReturn(clusterName).when(request).queryParams(ControllerApiConstants.CLUSTER);
+    doReturn(storeName).when(request).queryParams(ControllerApiConstants.NAME);
+    doReturn(Integer.toString(storeVersion)).when(request).queryParams(ControllerApiConstants.VERSION);
+    doReturn(payload).when(request).bodyAsBytes();
+    Response response = mock(Response.class);
+
+    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
+    String responseBody = jobRoutes.sendPushJobDetails(admin).handle(request, response).toString();
+    ControllerResponse controllerResponse =
+        AdminSparkServer.OBJECT_MAPPER.readValue(responseBody, ControllerResponse.class);
+
+    Assert.assertTrue(controllerResponse.isError());
+    Assert.assertTrue(controllerResponse.getError().contains("Received Protocol Version"));
+    verify(response).status(HttpStatus.SC_OK);
+    verify(admin, never()).sendPushJobDetails(any(PushJobStatusRecordKey.class), any(PushJobDetails.class));
   }
 }

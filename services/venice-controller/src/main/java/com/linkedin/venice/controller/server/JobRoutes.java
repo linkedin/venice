@@ -191,9 +191,14 @@ public class JobRoutes extends AbstractRoute {
               pushJobDetails.pushId.toString());
         }
 
-      } catch (Throwable e) {
+      } catch (Exception e) {
         controllerResponse.setError(e);
-        AdminSparkServer.handleError(e, request, response);
+        LOGGER.warn(
+            "Failed to send best-effort push job details for store {} with version {}",
+            request.queryParams(NAME),
+            request.queryParams(VERSION),
+            e);
+        response.status(HttpStatus.SC_OK);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     });
