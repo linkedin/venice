@@ -1086,7 +1086,7 @@ public class HeartbeatMonitoringServiceTest {
 
   @Test
   public void testCleanupPreservesActivelyIngestingReplicaWhenReconciliationEnabled() {
-    // Fix A: an actively-subscribed, ingesting follower must never be removed by cleanup even when the
+    // An actively-subscribed, ingesting follower must never be removed by cleanup even when the
     // customized view reports it as no longer assigned to this node. The live ingestion state is the
     // authoritative cross-check; once the replica genuinely stops consuming, cleanup proceeds as before.
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
@@ -1171,12 +1171,12 @@ public class HeartbeatMonitoringServiceTest {
 
   @Test
   public void testUnconvergedViewDoesNotRemoveNeverObservedReplica() {
-    // Incident regression (lifecycle race): a follower entry is initialized on the OFFLINE->STANDBY
-    // transition BEFORE the new resource propagates into ExternalView. Cleanup runs repeatedly while the
-    // customized view still throws VeniceNoHelixResourceException. The entry must survive (treated as
-    // UNKNOWN, not unassigned) until the view converges. Only after the view has been observed as
-    // assigned at least once, and the resource is then genuinely deleted, may cleanup remove it.
-    // No ingestion service is wired here, isolating the unconverged-view protection (Fix B) from Fix A.
+    // A follower entry is initialized on the OFFLINE->STANDBY transition BEFORE the new resource
+    // propagates into ExternalView. Cleanup runs repeatedly while the customized view still throws
+    // VeniceNoHelixResourceException. The entry must survive (treated as UNKNOWN, not unassigned) until
+    // the view converges. Only after the view has been observed as assigned at least once, and the
+    // resource is then genuinely deleted, may cleanup remove it. No ingestion service is wired here,
+    // isolating the unconverged-view protection from the live-ingestion cross-check.
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
     Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
     currentVersion.setHybridStoreConfig(hybridStoreConfig);
@@ -1262,9 +1262,8 @@ public class HeartbeatMonitoringServiceTest {
 
   @Test
   public void testReconciliationRecreatesMissingSubscribedFollowerEntry() {
-    // Fix C: reconciliation self-heals a missing heartbeat entry for a still-subscribed follower (the
-    // durable consequence of the lifecycle race). It is idempotent and records the missing-entry metric
-    // exactly once per pass that finds a gap.
+    // Reconciliation recreates a missing heartbeat entry for a still-subscribed follower. It is
+    // idempotent and records the missing-entry metric exactly once per pass that finds a gap.
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
     Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
     currentVersion.setHybridStoreConfig(hybridStoreConfig);
@@ -1298,7 +1297,7 @@ public class HeartbeatMonitoringServiceTest {
     HeartbeatMonitoringService heartbeatMonitoringService =
         new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, serverConfig, stats, cvFuture);
 
-    // A subscribed STANDBY follower for p0 whose heartbeat entry was removed by the race (none exists).
+    // A subscribed STANDBY follower for p0 whose heartbeat entry is missing (none exists).
     StoreIngestionTask sit = mock(StoreIngestionTask.class);
     doReturn(true).when(sit).isRunning();
     doReturn(true).when(sit).isHybridMode();

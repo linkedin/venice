@@ -965,14 +965,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             }
           }
           if (lingerReplica && heartbeatLagMonitorReconciliationEnabled) {
-            // Fix A: never remove an actively-subscribed, ingesting replica — the customized view can lag
+            // Never remove an actively-subscribed, ingesting replica — the customized view can lag
             // behind the local ingestion state. Reset the lingering counter and skip removal.
             KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();
             if (ingestionService != null && ingestionService.isPartitionConsuming(topic, partition)) {
               cleanupHeartbeatMap.remove(replicaId);
               continue;
             }
-            // Fix B: an unconverged view for a replica we have never observed as assigned is UNKNOWN, not
+            // An unconverged view for a replica we have never observed as assigned is UNKNOWN, not
             // unassigned. Do not count it toward the lingering threshold until the view converges at least once.
             if (viewUnconverged && !observedAssignedReplicas.contains(replicaId)) {
               continue;
@@ -1003,14 +1003,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   /**
-   * Reconciliation pass (idempotent): walks every locally-subscribed hybrid replica and recreates a
-   * heartbeat monitoring entry for any that is missing one. This is the self-healing counterpart to
-   * {@link #checkAndMaybeCleanupLagMonitor()} — without it, a replica whose entry was removed by the
-   * lifecycle race (cleanup fired while the resource was still absent from ExternalView) would never
-   * get its entry back, since entry creation otherwise happens only once on the OFFLINE->STANDBY
-   * transition. Its readiness gate ({@code getReplicaFollowerHeartbeatLag}) would then return
-   * {@link #INVALID_HEARTBEAT_LAG} forever. Heartbeat monitoring is hybrid-only, so non-hybrid tasks
-   * are skipped.
+   * Idempotent reconciliation pass: walks every locally-subscribed hybrid replica and recreates a
+   * heartbeat monitoring entry for any that is missing one. Complements
+   * {@link #checkAndMaybeCleanupLagMonitor()}: because an entry is otherwise created only once on the
+   * OFFLINE->STANDBY transition, a subscribed replica whose entry was removed would never regain it and
+   * its readiness gate ({@code getReplicaFollowerHeartbeatLag}) would return
+   * {@link #INVALID_HEARTBEAT_LAG} indefinitely. Heartbeat monitoring is hybrid-only, so non-hybrid
+   * tasks are skipped.
    */
   void reconcileMissingHeartbeatEntries() {
     KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();

@@ -55,8 +55,7 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceHeartbeatComponent> loggerHeartbeatMetrics;
   /**
    * Counts subscribed replicas found missing a heartbeat-lag monitoring entry during the periodic
-   * reconciliation pass. A sustained non-zero value indicates the lifecycle race that leaves an
-   * actively-ingesting replica's ready-to-serve gate stuck.
+   * reconciliation pass.
    */
   private final Sensor subscribedReplicaMissingHeartbeatEntrySensor;
 

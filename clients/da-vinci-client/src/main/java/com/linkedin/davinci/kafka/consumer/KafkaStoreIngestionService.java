@@ -1461,8 +1461,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   /**
    * Returns a snapshot of the version-topic names for which this node currently has an ingestion
-   * task registered. Used by {@link com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService}
-   * reconciliation to find subscribed replicas that are missing a heartbeat-lag monitoring entry.
+   * task registered.
    */
   public Set<String> getIngestingTopics() {
     return new HashSet<>(topicNameToIngestionTaskMap.keySet());
