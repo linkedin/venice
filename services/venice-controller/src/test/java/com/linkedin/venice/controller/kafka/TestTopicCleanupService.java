@@ -373,6 +373,18 @@ public class TestTopicCleanupService {
     assertEquals(parentTopicManagers.size(), 2);
     assertTrue(parentTopicManagers.contains(localTopicManager));
     assertTrue(parentTopicManagers.contains(remoteTopicManager));
+
+    // A parent fabric without a configured Kafka URL is skipped instead of crashing the cleanup loop.
+    Map<String, String> partialKafkaUrlMap = new HashMap<>();
+    partialKafkaUrlMap.put("local", "local");
+    doReturn(partialKafkaUrlMap).when(veniceControllerMultiClusterConfig).getChildDataCenterKafkaUrlMap();
+    List<TopicManager> configuredOnly = topicCleanupService.getTopicManagersForCleanup();
+    assertEquals(configuredOnly, Collections.singletonList(localTopicManager));
+
+    // When no parent fabric is configured with a Kafka URL, fall back to the default topic manager.
+    doReturn(new HashMap<>()).when(veniceControllerMultiClusterConfig).getChildDataCenterKafkaUrlMap();
+    List<TopicManager> fallback = topicCleanupService.getTopicManagersForCleanup();
+    assertEquals(fallback, Collections.singletonList(topicManager));
   }
 
   @Test

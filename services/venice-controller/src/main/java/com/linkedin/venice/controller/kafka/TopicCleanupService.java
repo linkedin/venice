@@ -243,12 +243,23 @@ public class TopicCleanupService extends AbstractVeniceService {
   List<TopicManager> getTopicManagersForCleanup() {
     Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
     if (admin.isParent() && !parentFabrics.isEmpty()) {
+      Map<String, String> childDataCenterKafkaUrlMap = multiClusterConfigs.getChildDataCenterKafkaUrlMap();
       List<TopicManager> topicManagers = new ArrayList<>(parentFabrics.size());
       for (String parentFabric: parentFabrics) {
-        String kafkaBootstrapServers = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(parentFabric);
+        String kafkaBootstrapServers = childDataCenterKafkaUrlMap.get(parentFabric);
+        if (kafkaBootstrapServers == null) {
+          // A misconfigured fabric without a Kafka URL must not crash the whole cleanup loop and stall topic
+          // deletion for every fabric; skip it and keep cleaning up the fabrics that are configured correctly.
+          LOGGER.warn(
+              "No Kafka bootstrap servers configured for parent fabric: {}. Skipping topic cleanup for it.",
+              parentFabric);
+          continue;
+        }
         topicManagers.add(getTopicManager(kafkaBootstrapServers));
       }
-      return topicManagers;
+      if (!topicManagers.isEmpty()) {
+        return topicManagers;
+      }
     }
     return Collections.singletonList(getTopicManager());
   }
@@ -310,6 +321,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics, TopicManager topicManager) {
     Map<PubSubTopic, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
+    String pubSubClusterAddress = topicManager.getPubSubClusterAddress();
     Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicsWithRetention);
     allStoreTopics.forEach((storeName, topicRetentions) -> {
       int minNumOfUnusedVersionTopicsOverride = minNumberOfUnusedKafkaTopicsToPreserve;
@@ -327,8 +339,12 @@ public class TopicCleanupService extends AbstractVeniceService {
           topicRetentions.remove(realTimeTopic);
         }
       }
-      List<PubSubTopic> oldTopicsToDelete =
-          extractVersionTopicsToCleanup(admin, topicRetentions, minNumOfUnusedVersionTopicsOverride, delayFactor);
+      List<PubSubTopic> oldTopicsToDelete = extractVersionTopicsToCleanup(
+          admin,
+          topicRetentions,
+          minNumOfUnusedVersionTopicsOverride,
+          delayFactor,
+          pubSubClusterAddress);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
@@ -389,6 +405,27 @@ public class TopicCleanupService extends AbstractVeniceService {
       Map<PubSubTopic, Long> topicRetentions,
       int minNumberOfUnusedKafkaTopicsToPreserve,
       int delayFactor) {
+    return extractVersionTopicsToCleanup(
+        admin,
+        topicRetentions,
+        minNumberOfUnusedKafkaTopicsToPreserve,
+        delayFactor,
+        "");
+  }
+
+  /**
+   * Same as {@link #extractVersionTopicsToCleanup(Admin, Map, int, int)}, but disambiguates the version-topic
+   * deletion delay countdown by the Kafka cluster the topic lives in. A parent controller runs cleanup against
+   * every parent fabric's Kafka cluster, where the same version topic name exists in each cluster; keying the
+   * shared countdown by name alone would decrement it once per fabric per cycle and delete topics earlier than
+   * the configured delay intends. Including {@code pubSubClusterAddress} keeps a separate countdown per cluster.
+   */
+  public static List<PubSubTopic> extractVersionTopicsToCleanup(
+      Admin admin,
+      Map<PubSubTopic, Long> topicRetentions,
+      int minNumberOfUnusedKafkaTopicsToPreserve,
+      int delayFactor,
+      String pubSubClusterAddress) {
     if (topicRetentions.isEmpty()) {
       return Collections.emptyList();
     }
@@ -440,12 +477,13 @@ public class TopicCleanupService extends AbstractVeniceService {
           // delay VT topic deletion as there could be a race condition where the resource is already deleted by venice
           // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang
           // in kafka.
+          String countdownKey = t.getName() + "_" + pubSubClusterAddress;
           int remainingFactor =
-              storeToCountdownForDeletion.merge(t.getName(), delayFactor, (oldVal, givenVal) -> oldVal - 1);
+              storeToCountdownForDeletion.merge(countdownKey, delayFactor, (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
             return false;
           }
-          storeToCountdownForDeletion.remove(t);
+          storeToCountdownForDeletion.remove(countdownKey);
           return true;
         })
         .collect(Collectors.toList());
