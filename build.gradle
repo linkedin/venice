@@ -333,7 +333,16 @@ subprojects {
           // the current active version so the generated classes stay on v47 and no code path can serialize v48 yet.
           // The override is removed and METADATA_SYSTEM_SCHEMA_STORE is bumped to v48 in the follow-up PR that reads
           // and snapshots the per-version limit, which is also what makes the controllers register v48.
+          //
+          // StoreMetaValue v49 stages the store-level veniceUnits/clusterType fields (capacity-forecast metadata).
+          // Pinned to the current active version for the same reason as v48 above -- this override is removed and
+          // METADATA_SYSTEM_SCHEMA_STORE is bumped to v49 in a follow-up PR.
           project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v47', PathValidation.DIRECTORY),
+          // AdminOperation v104 stages the veniceUnits/clusterType fields on UpdateStore (capacity-forecast
+          // metadata). Pinned to the current active version so the generated classes stay
+          // on v103 and no code path can serialize v104 yet. The override is removed and ADMIN_OPERATION is bumped
+          // to v104 in a follow-up PR.
+          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v103', PathValidation.DIRECTORY),
       ]
 
       def schemaDirs = [sourceDir]
