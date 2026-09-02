@@ -1085,7 +1085,7 @@ public class HeartbeatMonitoringServiceTest {
   }
 
   @Test
-  public void testCleanupPreservesActivelyIngestingReplicaWhenReconciliationEnabled() {
+  public void testCleanupPreservesActivelyIngestingReplicaWhenCrossCheckEnabled() {
     // An actively-subscribed, ingesting follower must never be removed by cleanup even when the
     // customized view reports it as no longer assigned to this node. The live ingestion state is the
     // authoritative cross-check; once the replica genuinely stops consuming, cleanup proceeds as before.
@@ -1115,7 +1115,7 @@ public class HeartbeatMonitoringServiceTest {
     doReturn(hostname).when(serverConfig).getListenerHostname();
     doReturn(port).when(serverConfig).getListenerPort();
     doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
-    doReturn(true).when(serverConfig).isHeartbeatLagMonitorReconciliationEnabled();
+    doReturn(true).when(serverConfig).isHeartbeatLagMonitorIngestionCrossCheckEnabled();
     String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
 
     // Converged customized view reports p0 assigned to a different node -> replica looks unassigned here.
@@ -1167,168 +1167,6 @@ public class HeartbeatMonitoringServiceTest {
         countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1),
         0,
         "Replica that stopped consuming should be cleaned up");
-  }
-
-  @Test
-  public void testUnconvergedViewDoesNotRemoveNeverObservedReplica() {
-    // A follower entry is initialized on the OFFLINE->STANDBY transition BEFORE the new resource
-    // propagates into ExternalView. Cleanup runs repeatedly while the customized view still throws
-    // VeniceNoHelixResourceException. The entry must survive (treated as UNKNOWN, not unassigned) until
-    // the view converges. Only after the view has been observed as assigned at least once, and the
-    // resource is then genuinely deleted, may cleanup remove it. No ingestion service is wired here,
-    // isolating the unconverged-view protection from the live-ingestion cross-check.
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
-    Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
-    currentVersion.setHybridStoreConfig(hybridStoreConfig);
-    Store mockStore = mock(Store.class);
-    when(mockStore.getName()).thenReturn(TEST_STORE);
-    when(mockStore.getCurrentVersion()).thenReturn(currentVersion.getNumber());
-    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-    when(mockStore.getVersion(1)).thenReturn(currentVersion);
-
-    MetricsRepository mockMetricsRepository = new MetricsRepository();
-    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
-    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
-    doReturn(new StoreVersionInfo(mockStore, currentVersion)).when(mockReadOnlyRepository)
-        .waitVersion(eq(TEST_STORE), eq(1), any(), anyLong());
-
-    Set<String> regions = new HashSet<>();
-    regions.add(LOCAL_FABRIC);
-    String hostname = "localhost";
-    int port = 123;
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    doReturn(regions).when(serverConfig).getRegionNames();
-    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
-    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
-    doReturn(hostname).when(serverConfig).getListenerHostname();
-    doReturn(port).when(serverConfig).getListenerPort();
-    doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
-    doReturn(true).when(serverConfig).isHeartbeatLagMonitorReconciliationEnabled();
-    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
-
-    HelixCustomizedViewOfflinePushRepository mockCV = mock(HelixCustomizedViewOfflinePushRepository.class);
-    // Phase 1: resource absent from ExternalView (unconverged) -> getPartitionAssignments throws.
-    doThrow(new VeniceNoHelixResourceException("resource not yet in EV")).when(mockCV)
-        .getPartitionAssignments(versionTopic);
-    CompletableFuture<HelixCustomizedViewOfflinePushRepository> cvFuture = CompletableFuture.completedFuture(mockCV);
-
-    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
-        mockMetricsRepository,
-        mockReadOnlyRepository,
-        serverConfig,
-        mock(HeartbeatMonitoringServiceStats.class),
-        cvFuture);
-
-    heartbeatMonitoringService.updateLagMonitor(
-        versionTopic,
-        0,
-        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
-        Utils.getReplicaId(versionTopic, 0));
-    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 1);
-
-    // Cleanup runs far more than lagMonitorCleanupCycle times while EV is still unconverged: entry survives.
-    for (int i = 0; i < 20; i++) {
-      heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
-    }
-    Assert.assertTrue(heartbeatMonitoringService.getCleanupHeartbeatMap().isEmpty());
-    Assert.assertEquals(
-        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1),
-        1,
-        "Never-observed replica under an unconverged view must survive cleanup");
-
-    // Phase 2: EV converges with p0 assigned to this node -> replica observed as assigned at least once.
-    Instance thisInstance = Instance.fromNodeId(hostname + "_" + port);
-    Set<Instance> instancesWithThisNode = new HashSet<>();
-    instancesWithThisNode.add(thisInstance);
-    Partition mockPartition0 = mock(Partition.class);
-    doReturn(instancesWithThisNode).when(mockPartition0).getAllInstancesSet();
-    PartitionAssignment mockPartitionAssignment = mock(PartitionAssignment.class);
-    doReturn(mockPartition0).when(mockPartitionAssignment).getPartition(0);
-    doReturn(mockPartitionAssignment).when(mockCV).getPartitionAssignments(versionTopic);
-    heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
-    Assert.assertTrue(heartbeatMonitoringService.getCleanupHeartbeatMap().isEmpty());
-    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 1);
-
-    // Phase 3: resource genuinely deleted AFTER being observed -> now eligible for removal.
-    doThrow(new VeniceNoHelixResourceException("resource deleted")).when(mockCV).getPartitionAssignments(versionTopic);
-    for (int i = 0; i < 5; i++) {
-      heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
-    }
-    Assert.assertEquals(
-        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1),
-        0,
-        "Genuinely deleted, previously-observed replica should be removed");
-  }
-
-  @Test
-  public void testReconciliationRecreatesMissingSubscribedFollowerEntry() {
-    // Reconciliation recreates a missing heartbeat entry for a still-subscribed follower, and is
-    // idempotent: a second pass over an already-present entry recreates nothing.
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
-    Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
-    currentVersion.setHybridStoreConfig(hybridStoreConfig);
-    Store mockStore = mock(Store.class);
-    when(mockStore.getName()).thenReturn(TEST_STORE);
-    when(mockStore.getCurrentVersion()).thenReturn(currentVersion.getNumber());
-    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-    when(mockStore.getVersion(1)).thenReturn(currentVersion);
-
-    MetricsRepository mockMetricsRepository = new MetricsRepository();
-    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
-    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
-    doReturn(new StoreVersionInfo(mockStore, currentVersion)).when(mockReadOnlyRepository)
-        .waitVersion(eq(TEST_STORE), eq(1), any(), anyLong());
-
-    Set<String> regions = new HashSet<>();
-    regions.add(LOCAL_FABRIC);
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    doReturn(regions).when(serverConfig).getRegionNames();
-    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
-    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
-    doReturn("localhost").when(serverConfig).getListenerHostname();
-    doReturn(123).when(serverConfig).getListenerPort();
-    doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
-    doReturn(true).when(serverConfig).isHeartbeatLagMonitorReconciliationEnabled();
-    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
-
-    HelixCustomizedViewOfflinePushRepository mockCV = mock(HelixCustomizedViewOfflinePushRepository.class);
-    CompletableFuture<HelixCustomizedViewOfflinePushRepository> cvFuture = CompletableFuture.completedFuture(mockCV);
-    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
-        mockMetricsRepository,
-        mockReadOnlyRepository,
-        serverConfig,
-        mock(HeartbeatMonitoringServiceStats.class),
-        cvFuture);
-
-    // A subscribed STANDBY follower for p0 whose heartbeat entry is missing (none exists).
-    StoreIngestionTask sit = mock(StoreIngestionTask.class);
-    doReturn(true).when(sit).isRunning();
-    doReturn(true).when(sit).isHybridMode();
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    doReturn(true).when(pcs).isSubscribed();
-    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
-    doReturn(0).when(pcs).getPartition();
-    doReturn(Utils.getReplicaId(versionTopic, 0)).when(pcs).getReplicaId();
-    doReturn(Collections.singletonList(pcs)).when(sit).getPartitionConsumptionStates();
-
-    KafkaStoreIngestionService ingestionService = mock(KafkaStoreIngestionService.class);
-    doReturn(Collections.singleton(versionTopic)).when(ingestionService).getIngestingTopics();
-    doReturn(sit).when(ingestionService).getStoreIngestionTask(versionTopic);
-    heartbeatMonitoringService.setKafkaStoreIngestionService(ingestionService);
-
-    // Precondition: no follower entry exists.
-    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 0);
-
-    // First reconcile recreates the entry.
-    heartbeatMonitoringService.reconcileMissingHeartbeatEntries();
-    Assert.assertEquals(
-        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1),
-        1,
-        "Reconciliation should recreate the missing follower entry");
-
-    // Idempotent: a second pass finds the entry present and recreates nothing.
-    heartbeatMonitoringService.reconcileMissingHeartbeatEntries();
-    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 1);
   }
 
   @Test

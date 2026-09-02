@@ -132,7 +132,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_C
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_TIMEOUT_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_HEARTBEAT_LAG_MONITOR_RECONCILIATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_HEARTBEAT_LAG_MONITOR_INGESTION_CROSS_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HELIX_JOIN_AS_UNKNOWN;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
@@ -764,7 +764,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int inactiveTopicPartitionCheckerThresholdInSeconds;
 
   private final boolean lagBasedReplicaAutoResubscribeEnabled;
-  private final boolean heartbeatLagMonitorReconciliationEnabled;
+  private final boolean heartbeatLagMonitorIngestionCrossCheckEnabled;
   private final int lagBasedReplicaAutoResubscribeIntervalInSeconds;
   private final int lagBasedReplicaAutoResubscribeThresholdInSeconds;
   private final int lagBasedReplicaAutoResubscribeMaxReplicaCount;
@@ -1352,8 +1352,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 5);
     this.lagBasedReplicaAutoResubscribeEnabled =
         serverProperties.getBoolean(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_ENABLED, false);
-    this.heartbeatLagMonitorReconciliationEnabled =
-        serverProperties.getBoolean(SERVER_HEARTBEAT_LAG_MONITOR_RECONCILIATION_ENABLED, true);
+    this.heartbeatLagMonitorIngestionCrossCheckEnabled =
+        serverProperties.getBoolean(SERVER_HEARTBEAT_LAG_MONITOR_INGESTION_CROSS_CHECK_ENABLED, true);
     this.lagBasedReplicaAutoResubscribeIntervalInSeconds =
         serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_INTERVAL_IN_SECONDS, 300);
     this.lagBasedReplicaAutoResubscribeThresholdInSeconds =
@@ -2429,8 +2429,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return lagBasedReplicaAutoResubscribeEnabled;
   }
 
-  public boolean isHeartbeatLagMonitorReconciliationEnabled() {
-    return heartbeatLagMonitorReconciliationEnabled;
+  public boolean isHeartbeatLagMonitorIngestionCrossCheckEnabled() {
+    return heartbeatLagMonitorIngestionCrossCheckEnabled;
   }
 
   public int getLagBasedReplicaAutoResubscribeIntervalInSeconds() {

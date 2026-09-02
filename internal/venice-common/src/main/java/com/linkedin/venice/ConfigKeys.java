@@ -3516,13 +3516,14 @@ public class ConfigKeys {
       "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 
   /**
-   * Enables heartbeat lag-monitor self-healing. When enabled, the cleanup path cross-checks live
-   * ingestion before removing a lingering replica and treats an unconverged Helix customized view
-   * as UNKNOWN rather than proof of unassignment, and a periodic reconciliation pass recreates
-   * heartbeat monitoring entries for subscribed replicas that are missing one. Defaults to true.
+   * When enabled, the heartbeat lag-monitor cleanup path cross-checks live ingestion state before
+   * removing a lingering replica: a replica that is still actively consuming is never removed, even
+   * if the locally cached Helix customized view does not (yet) show it assigned to this node. This
+   * guards against a customized view that lags behind local ingestion during a fresh version's
+   * assignment propagation. Defaults to true.
    */
-  public static final String SERVER_HEARTBEAT_LAG_MONITOR_RECONCILIATION_ENABLED =
-      "server.heartbeat.lag.monitor.reconciliation.enabled";
+  public static final String SERVER_HEARTBEAT_LAG_MONITOR_INGESTION_CROSS_CHECK_ENABLED =
+      "server.heartbeat.lag.monitor.ingestion.cross.check.enabled";
 
   /**
    * The amount of threads to perform recovery in the DaVinciRecordTransformer, such as scanning local RocksDB.

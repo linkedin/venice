@@ -1459,14 +1459,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return topicNameToIngestionTaskMap.get(topicName);
   }
 
-  /**
-   * Returns a snapshot of the version-topic names for which this node currently has an ingestion
-   * task registered.
-   */
-  public Set<String> getIngestingTopics() {
-    return new HashSet<>(topicNameToIngestionTaskMap.keySet());
-  }
-
   public boolean isDaVinciClient() {
     return this.isDaVinciClient;
   }

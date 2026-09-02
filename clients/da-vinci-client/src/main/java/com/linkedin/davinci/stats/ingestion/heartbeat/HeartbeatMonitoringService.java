@@ -30,7 +30,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -92,14 +91,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final int lagMonitorCleanupCycle;
   private final boolean recordLevelTimestampEnabled;
   private final boolean perRecordOtelMetricsEnabled;
-  private final boolean heartbeatLagMonitorReconciliationEnabled;
-  /**
-   * Replica ids whose Helix customized-view assignment to this node has been observed at least once.
-   * Used to distinguish an unconverged view (never observed → UNKNOWN, do not count toward lingering)
-   * from a genuinely revoked assignment (observed-then-gone → count and eventually remove). Entries
-   * are dropped when the corresponding lag monitor is removed.
-   */
-  private final Set<String> observedAssignedReplicas = Collections.newSetFromMap(new VeniceConcurrentHashMap<>());
+  private final boolean heartbeatLagMonitorIngestionCrossCheckEnabled;
   private final int heartbeatReporterIntervalSeconds;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
@@ -137,7 +129,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordOtelMetricsEnabled = serverConfig.isPerRecordOtelMetricsEnabled();
-    this.heartbeatLagMonitorReconciliationEnabled = serverConfig.isHeartbeatLagMonitorReconciliationEnabled();
+    this.heartbeatLagMonitorIngestionCrossCheckEnabled = serverConfig.isHeartbeatLagMonitorIngestionCrossCheckEnabled();
     this.heartbeatReporterIntervalSeconds = serverConfig.getHeartbeatReporterIntervalSeconds();
     this.serverConfig = serverConfig;
     LOGGER.info(
@@ -939,9 +931,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         }
         for (int partition: versionEntry.getValue()) {
           boolean lingerReplica = isResourceDeleted;
-          // An unconverged customized view (resource absent, or partition not yet populated) is not
-          // proof that the replica is unassigned to this node — it may simply not have propagated yet.
-          boolean viewUnconverged = isResourceDeleted;
           String topic = Version.composeKafkaTopic(storeName, versionNum);
           String replicaId = Utils.getReplicaId(topic, partition);
           if (!isResourceDeleted) {
@@ -951,30 +940,25 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               // partition has no reported replicas). Treat the same as "not assigned to this node" rather than
               // dereferencing a null partition, which previously threw a NullPointerException here.
               lingerReplica = true;
-              viewUnconverged = true;
             } else {
               Set<String> instanceIdSet =
                   assignedPartition.getAllInstancesSet().stream().map(Instance::getNodeId).collect(Collectors.toSet());
               if (instanceIdSet.contains(nodeId)) {
                 // Replica is still assigned to this node based on locally cached customized view
                 cleanupHeartbeatMap.remove(replicaId);
-                observedAssignedReplicas.add(replicaId);
               } else {
                 lingerReplica = true;
               }
             }
           }
-          if (lingerReplica && heartbeatLagMonitorReconciliationEnabled) {
+          if (lingerReplica && heartbeatLagMonitorIngestionCrossCheckEnabled) {
             // Never remove an actively-subscribed, ingesting replica — the customized view can lag
-            // behind the local ingestion state. Reset the lingering counter and skip removal.
+            // behind the local ingestion state (e.g. a freshly-transitioned resource that has not yet
+            // propagated into the customized view). The local ingestion state is authoritative: a genuine
+            // version deletion or reassignment stops consumption, so real cleanups still proceed below.
             KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();
             if (ingestionService != null && ingestionService.isPartitionConsuming(topic, partition)) {
               cleanupHeartbeatMap.remove(replicaId);
-              continue;
-            }
-            // An unconverged view for a replica we have never observed as assigned is UNKNOWN, not
-            // unassigned. Do not count it toward the lingering threshold until the view converges at least once.
-            if (viewUnconverged && !observedAssignedReplicas.contains(replicaId)) {
               continue;
             }
           }
@@ -986,7 +970,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
                 return 1;
               } else if (v + 1 >= lagMonitorCleanupCycle) {
                 removeLagMonitor(new VersionImpl(storeName, versionNum, ""), partition, replicaId);
-                observedAssignedReplicas.remove(replicaId);
                 LOGGER.warn(
                     "Removing lingering replica: {} from heartbeat monitoring service because it is no longer assigned to this node: {}",
                     replicaId,
@@ -1000,73 +983,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         }
       }
     }
-  }
-
-  /**
-   * Idempotent reconciliation pass: walks every locally-subscribed hybrid replica and recreates a
-   * heartbeat monitoring entry for any that is missing one. Complements
-   * {@link #checkAndMaybeCleanupLagMonitor()}: because an entry is otherwise created only once on the
-   * OFFLINE->STANDBY transition, a subscribed replica whose entry was removed would never regain it and
-   * its readiness gate ({@code getReplicaFollowerHeartbeatLag}) would return
-   * {@link #INVALID_HEARTBEAT_LAG} indefinitely. Heartbeat monitoring is hybrid-only, so non-hybrid
-   * tasks are skipped.
-   */
-  void reconcileMissingHeartbeatEntries() {
-    KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();
-    if (ingestionService == null) {
-      // Service not initialized yet, skip reconciliation
-      return;
-    }
-    Set<String> presentLeaderReplicas = buildPresentReplicaSet(leaderHeartbeatTimeStamps);
-    Set<String> presentFollowerReplicas = buildPresentReplicaSet(followerHeartbeatTimeStamps);
-    for (String topic: ingestionService.getIngestingTopics()) {
-      StoreIngestionTask storeIngestionTask = ingestionService.getStoreIngestionTask(topic);
-      if (storeIngestionTask == null || !storeIngestionTask.isRunning() || !storeIngestionTask.isHybridMode()) {
-        continue;
-      }
-      String storeName = Version.parseStoreFromKafkaTopicName(topic);
-      int versionNum = Version.parseVersionFromKafkaTopicName(topic);
-      for (PartitionConsumptionState pcs: storeIngestionTask.getPartitionConsumptionStates()) {
-        if (pcs == null || !pcs.isSubscribed()) {
-          continue;
-        }
-        LeaderFollowerStateType lfState = pcs.getLeaderFollowerState();
-        boolean isLeader = lfState == LeaderFollowerStateType.LEADER;
-        // Only reconcile settled leader/follower states; leave transitional states to the transition path.
-        if (!isLeader && lfState != LeaderFollowerStateType.STANDBY) {
-          continue;
-        }
-        int partition = pcs.getPartition();
-        String presenceKey = storeName + "_" + versionNum + "_" + partition;
-        boolean present =
-            isLeader ? presentLeaderReplicas.contains(presenceKey) : presentFollowerReplicas.contains(presenceKey);
-        if (!present) {
-          String replicaId = pcs.getReplicaId();
-          LOGGER.warn(
-              "Recreating missing heartbeat monitoring entry for subscribed {} replica: {}",
-              isLeader ? "leader" : "follower",
-              replicaId);
-          updateLagMonitor(
-              topic,
-              partition,
-              isLeader ? HeartbeatLagMonitorAction.SET_LEADER_MONITOR : HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
-              replicaId);
-        }
-      }
-    }
-  }
-
-  /**
-   * Builds a set of {@code storeName_version_partition} tuples present in the given heartbeat map,
-   * for O(1) membership checks during reconciliation. Region is intentionally ignored: an entry
-   * existing for any region means the replica was initialized.
-   */
-  private static Set<String> buildPresentReplicaSet(Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps) {
-    Set<String> present = new HashSet<>();
-    for (HeartbeatKey key: heartbeatTimestamps.keySet()) {
-      present.add(key.storeName + "_" + key.version + "_" + key.partition);
-    }
-    return present;
   }
 
   // For unit testing
@@ -1181,9 +1097,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           }
           heartbeatMonitoringServiceStats.recordLoggerHeartbeat();
           checkAndMaybeCleanupLagMonitor();
-          if (heartbeatLagMonitorReconciliationEnabled) {
-            reconcileMissingHeartbeatEntries();
-          }
           checkAndMaybeLogHeartbeatDelay();
           TimeUnit.SECONDS.sleep(DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS);
           exceptionThrown = false;
