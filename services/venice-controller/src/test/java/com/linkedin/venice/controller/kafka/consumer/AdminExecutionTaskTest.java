@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -22,8 +23,10 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.StoreUpdateCallbackException;
 import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
@@ -34,6 +37,8 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -715,7 +720,7 @@ public class AdminExecutionTaskTest {
     }).when(storeUpdateHandler).handleStoreUpdate(eq(clusterName), any(Store.class), any());
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
-    queue.add(createUpdateStoreWrapper(1L, false));
+    queue.add(createExplicitConfigListUpdateStoreWrapper(1L));
 
     AdminExecutionTask task = new AdminExecutionTask(
         mockLogger,
@@ -750,6 +755,46 @@ public class AdminExecutionTaskTest {
     assertThrows(UnsupportedOperationException.class, () -> callbackStore.setOwner("new-owner"));
     Set<String> updatedConfigs = updatedConfigsCaptor.getValue();
     assertEquals(updatedConfigs, Collections.singleton(READ_QUOTA_IN_CU));
+    assertThrows(UnsupportedOperationException.class, () -> updatedConfigs.add("another-config"));
+    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
+  }
+
+  @Test
+  public void testParentStoreUpdateHandlerReceivesEmptyConfigSetForReplicateAllUpdate() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    Store mutableStore = mock(Store.class);
+    Store finalStoreSnapshot = mock(Store.class);
+    when(mockAdmin.getStore(clusterName, storeName)).thenReturn(mutableStore);
+    when(mutableStore.cloneStore()).thenReturn(finalStoreSnapshot);
+    when(finalStoreSnapshot.getName()).thenReturn(storeName);
+    StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
+
+    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(wrapper);
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        true,
+        mockStats,
+        regionName,
+        inflightThreadsByStore,
+        storeUpdateHandler);
+
+    task.call();
+
+    ArgumentCaptor<Set<String>> updatedConfigsCaptor = ArgumentCaptor.forClass(Set.class);
+    verify(storeUpdateHandler).handleStoreUpdate(eq(clusterName), any(Store.class), updatedConfigsCaptor.capture());
+    // An empty set is the documented signal for "replicate-all"; the final store snapshot is the source of truth.
+    Set<String> updatedConfigs = updatedConfigsCaptor.getValue();
+    assertTrue(updatedConfigs.isEmpty());
     assertThrows(UnsupportedOperationException.class, () -> updatedConfigs.add("another-config"));
     assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
   }
@@ -831,6 +876,53 @@ public class AdminExecutionTaskTest {
     }).when(storeUpdateHandler).handleStoreUpdate(eq(clusterName), any(Store.class), any());
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createExplicitConfigListUpdateStoreWrapper(1L));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        true,
+        mockStats,
+        regionName,
+        inflightThreadsByStore,
+        storeUpdateHandler);
+
+    StoreUpdateCallbackException thrown = expectThrows(StoreUpdateCallbackException.class, task::call);
+    assertTrue(thrown.getCause() instanceof VeniceUnsupportedOperationException);
+
+    verify(mockExecutionIdAccessor, never()).updateLastSucceededExecutionIdMap(anyString(), anyString(), anyLong());
+    assertNull(lastSucceededExecutionIdMap.get(storeName));
+    assertEquals(queue.size(), 1);
+
+    task.call();
+
+    assertEquals(handlerInvocationCount.get(), 2);
+    assertEquals(
+        receivedUpdatedConfigs,
+        Arrays.asList(Collections.singleton(READ_QUOTA_IN_CU), Collections.singleton(READ_QUOTA_IN_CU)));
+    assertThrows(UnsupportedOperationException.class, () -> receivedUpdatedConfigs.get(0).add("another-config"));
+    verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
+    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
+  }
+
+  @Test
+  public void testStoreUpdateHandlerVeniceNoStoreExceptionIsWrapped() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    Store mutableStore = mock(Store.class);
+    Store finalStoreSnapshot = mock(Store.class);
+    when(mockAdmin.getStore(clusterName, storeName)).thenReturn(mutableStore);
+    when(mutableStore.cloneStore()).thenReturn(finalStoreSnapshot);
+    StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
+    doThrow(new VeniceNoStoreException(storeName)).when(storeUpdateHandler)
+        .handleStoreUpdate(eq(clusterName), any(Store.class), any());
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
     queue.add(createUpdateStoreWrapper(1L, false));
 
     AdminExecutionTask task = new AdminExecutionTask(
@@ -848,21 +940,43 @@ public class AdminExecutionTaskTest {
         inflightThreadsByStore,
         storeUpdateHandler);
 
-    assertThrows(VeniceUnsupportedOperationException.class, task::call);
-
+    // A handler throwing VeniceNoStoreException must be wrapped so the admin consumer cannot mistake it for the
+    // UPDATE_STORE target being absent and auto-skip a durable update that actually succeeded.
+    StoreUpdateCallbackException thrown = expectThrows(StoreUpdateCallbackException.class, task::call);
+    assertTrue(thrown.getCause() instanceof VeniceNoStoreException);
     verify(mockExecutionIdAccessor, never()).updateLastSucceededExecutionIdMap(anyString(), anyString(), anyLong());
     assertNull(lastSucceededExecutionIdMap.get(storeName));
-    assertEquals(queue.size(), 1);
+  }
 
-    task.call();
+  @Test
+  public void testStoreUpdateHandlerFailsWhenFinalStoreMissing() {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    when(mockAdmin.getStore(clusterName, storeName)).thenReturn(null);
+    StoreUpdateHandler storeUpdateHandler = mock(StoreUpdateHandler.class);
 
-    assertEquals(handlerInvocationCount.get(), 2);
-    assertEquals(
-        receivedUpdatedConfigs,
-        Arrays.asList(Collections.singleton(READ_QUOTA_IN_CU), Collections.singleton(READ_QUOTA_IN_CU)));
-    assertThrows(UnsupportedOperationException.class, () -> receivedUpdatedConfigs.get(0).add("another-config"));
-    verify(mockExecutionIdAccessor).updateLastSucceededExecutionIdMap(clusterName, storeName, 1L);
-    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createUpdateStoreWrapper(1L, false));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        true,
+        mockStats,
+        regionName,
+        inflightThreadsByStore,
+        storeUpdateHandler);
+
+    // A missing final store must fail explicitly rather than NPE, and must not advance the execution id.
+    assertThrows(VeniceException.class, task::call);
+    verify(storeUpdateHandler, never()).handleStoreUpdate(anyString(), any(Store.class), any());
+    verify(mockExecutionIdAccessor, never()).updateLastSucceededExecutionIdMap(anyString(), anyString(), anyLong());
+    assertNull(lastSucceededExecutionIdMap.get(storeName));
   }
 
   @Test(dataProvider = "pubSubEncryptionKeyUrnCases")
@@ -912,11 +1026,34 @@ public class AdminExecutionTaskTest {
     return createUpdateStoreWrapper(executionId, targetRegionPromoted, -1L, -1L);
   }
 
+  /**
+   * Builds an UPDATE_STORE fixture in the production "explicit config list" shape: replicate-all disabled with a
+   * non-empty {@code updatedConfigsList}. {@code StoreConfigUpdater} clears the list whenever replicate-all is
+   * enabled, so the two shapes are mutually exclusive; config-key assertions must use this one.
+   */
+  private AdminOperationWrapper createExplicitConfigListUpdateStoreWrapper(long executionId) {
+    return createUpdateStoreWrapper(executionId, false, -1L, -1L, false);
+  }
+
   private AdminOperationWrapper createUpdateStoreWrapper(
       long executionId,
       boolean targetRegionPromoted,
       long throughputQuotaInBytes,
       long throughputQuotaInRecords) {
+    return createUpdateStoreWrapper(
+        executionId,
+        targetRegionPromoted,
+        throughputQuotaInBytes,
+        throughputQuotaInRecords,
+        true);
+  }
+
+  private AdminOperationWrapper createUpdateStoreWrapper(
+      long executionId,
+      boolean targetRegionPromoted,
+      long throughputQuotaInBytes,
+      long throughputQuotaInRecords,
+      boolean replicateAllConfigs) {
     AdminOperation adminOperation = new AdminOperation();
     adminOperation.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminOperation.executionId = executionId;
@@ -966,14 +1103,19 @@ public class AdminExecutionTaskTest {
     updateStore.flinkVeniceViewsEnabled = false;
     updateStore.unusedSchemaDeletionEnabled = false;
     updateStore.updatedConfigsList = new java.util.ArrayList<>();
-    updateStore.updatedConfigsList.add(READ_QUOTA_IN_CU);
-    if (throughputQuotaInBytes >= 0) {
-      updateStore.updatedConfigsList.add(THROUGHPUT_QUOTA_IN_BYTES);
+    // Production UPDATE_STORE messages carry an explicit updatedConfigsList only when replicate-all is disabled;
+    // StoreConfigUpdater replaces the list with an empty one whenever replicateAllConfigs is true. Keep the fixture
+    // in that realistic shape so config-key assertions reflect what a handler actually receives.
+    updateStore.replicateAllConfigs = replicateAllConfigs;
+    if (!replicateAllConfigs) {
+      updateStore.updatedConfigsList.add(READ_QUOTA_IN_CU);
+      if (throughputQuotaInBytes >= 0) {
+        updateStore.updatedConfigsList.add(THROUGHPUT_QUOTA_IN_BYTES);
+      }
+      if (throughputQuotaInRecords >= 0) {
+        updateStore.updatedConfigsList.add(THROUGHPUT_QUOTA_IN_RECORDS);
+      }
     }
-    if (throughputQuotaInRecords >= 0) {
-      updateStore.updatedConfigsList.add(THROUGHPUT_QUOTA_IN_RECORDS);
-    }
-    updateStore.replicateAllConfigs = true;
     updateStore.storeLifecycleHooks = new java.util.ArrayList<>();
     updateStore.keyUrnCompressionEnabled = false;
     updateStore.keyUrnFields = new java.util.ArrayList<>();

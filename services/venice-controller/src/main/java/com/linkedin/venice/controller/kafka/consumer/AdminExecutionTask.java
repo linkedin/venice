@@ -7,6 +7,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.StoreUpdateCallbackException;
 import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
@@ -396,9 +397,22 @@ public class AdminExecutionTask implements Callable<Void> {
           e.getMessage());
     }
     if (storeUpdated && isParentController && !storeUpdateHandler.isNoOp()) {
-      Store finalStore = admin.getStore(clusterName, storeName).cloneStore();
+      Store store = admin.getStore(clusterName, storeName);
+      if (store == null) {
+        // Fail with an explicit, retriable reason rather than NPE'ing on a null store snapshot.
+        throw new VeniceException(
+            "Cannot invoke store update handler for cluster: " + clusterName + ", store: " + storeName
+                + " because the store could not be found after a successful UPDATE_STORE admin operation");
+      }
+      Store finalStore = store.cloneStore();
       // Invoke before advancing checkpoints so callback failures leave the admin operation eligible for retry.
-      storeUpdateHandler.handleStoreUpdate(clusterName, new ReadOnlyStore(finalStore), updatedConfigs);
+      try {
+        storeUpdateHandler.handleStoreUpdate(clusterName, new ReadOnlyStore(finalStore), updatedConfigs);
+      } catch (Exception e) {
+        // Wrap so a handler that throws VeniceNoStoreException cannot be misclassified as the UPDATE_STORE target
+        // being absent, which would otherwise trigger the admin consumer's missing-store auto-skip path.
+        throw new StoreUpdateCallbackException(clusterName, storeName, e);
+      }
     }
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
     lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);
