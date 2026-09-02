@@ -4259,14 +4259,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Whether an end-of-push record-count deficit is the expected, nonfatal kind produced by a store
    * migration replaying a pre-existing source version topic that log compaction may have shrunk
    * below the original end-of-push count.
-   *
-   * <p>{@link Store#isMigrationDuplicateStore()} alone is too broad — it covers the whole
-   * destination store while migration is active, including brand-new pushes — so it is paired with a
-   * per-version check: the destination store's {@code createdTime} marks the migration boundary,
-   * cloned source versions keep their older source {@code createdTime}, and a push created on the
-   * destination gets a fresh one. For a source push cloned shortly after migration starts, that
-   * comparison relies on normal bounded controller clock skew. Fails closed: missing or non-positive
-   * metadata on either side keeps the strict (fatal) behavior.
    */
   boolean isPreExistingMigrationCloneReplay(Store store) {
     if (store == null || !store.isMigrationDuplicateStore()) {
