@@ -99,8 +99,7 @@ public class StoreIngestionTaskRecordCountTest {
     setField(sit, "versionTopic", vt);
 
     doCallRealMethod().when(sit).verifyBatchPushRecordCount(any(), any());
-    // verifyBatchPushRecordCount calls this helper on `this`; that self-invocation is intercepted by
-    // the mock, so it must also be wired to the real implementation for the per-version gate to run.
+    // The self-invocation from verifyBatchPushRecordCount is intercepted by the mock, so wire it up too.
     doCallRealMethod().when(sit).isPreExistingMigrationCloneReplay(any());
     return sit;
   }
@@ -425,10 +424,6 @@ public class StoreIngestionTaskRecordCountTest {
     verify(stats, never()).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
   }
 
-  /**
-   * Same new-push scoping applies to the HLL leg: an HLL deficit on a push begun during migration is
-   * fatal, confirming the per-version gate is independent of which leg detected the deficit.
-   */
   @Test
   public void testVerifyFreshPushDuringMigrationHllDeficitThrowsAndRecordsFailure() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
@@ -441,7 +436,6 @@ public class StoreIngestionTaskRecordCountTest {
         /* isDaVinciClient */ false,
         store);
 
-    // counter=100 >= 100 (passes); hll=50, |50-100|=50 > 5 (fails) -> deficit via HLL leg.
     VeniceException exception = expectThrows(
         VeniceException.class,
         () -> sit.verifyBatchPushRecordCount(pcsWithCountAndHll(100L, 50L), headersWithPrc(100L)));
@@ -761,18 +755,13 @@ public class StoreIngestionTaskRecordCountTest {
     return new VersionImpl(TEST_STORE, TEST_VERSION, createdTimeMs, pushJobId, 1, new PartitionerConfigImpl(), null);
   }
 
-  /**
-   * Realistic-metadata proof (real {@link ZKStore} / {@link VersionImpl}, no mock store): a
-   * pre-existing source version cloned onto the destination keeps its original createdTime via
-   * {@link Version#cloneVersion()}, so it precedes the destination store's createdTime and its
-   * compacted-replay deficit is nonfatal.
-   */
+  /** A cloned pre-existing version keeps its older source createdTime, so its replay deficit is nonfatal. */
   @Test
   public void testRealMetadataMigrationCloneReplayIsNonfatal() throws Exception {
     long migrationStart = 100_000L;
     Version sourceVersion = versionWithCreatedTime(migrationStart - 50_000L, "push-src");
     Version clonedVersion = sourceVersion.cloneVersion();
-    // Sanity: the clone preserves the source's pre-migration createdTime (the invariant this fix relies on).
+    // The clone must preserve the source's pre-migration createdTime.
     assertEquals(clonedVersion.getCreatedTime(), migrationStart - 50_000L);
 
     ZKStore destinationStore = migrationDuplicateZkStore(migrationStart);
@@ -793,11 +782,7 @@ public class StoreIngestionTaskRecordCountTest {
     verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
-  /**
-   * Realistic-metadata proof (real {@link ZKStore} / {@link VersionImpl}, no mock store): a push
-   * started while migration is active is a fresh version created AFTER the destination store, so its
-   * createdTime does not precede the store's and the deficit stays fatal with the failure sensor.
-   */
+  /** A push started during migration gets a createdTime after the destination store's, so it stays fatal. */
   @Test
   public void testRealMetadataFreshPushDuringMigrationIsFatal() throws Exception {
     long migrationStart = 100_000L;

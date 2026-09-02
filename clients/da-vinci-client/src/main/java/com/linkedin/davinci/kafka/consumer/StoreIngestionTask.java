@@ -4146,12 +4146,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of strict-mode state). A deficit is treated as nonfatal (warn-and-continue)
-   * ONLY for a pre-existing version that was cloned onto a store-migration destination and is
-   * replaying a source version topic that log compaction may have shrunk below the original
-   * end-of-push count (see {@link #isPreExistingMigrationCloneReplay(Store)}). Every other case —
-   * including a brand-new push started while migration is still active — logs a tagged error string
-   * and, on a non-DaVinci replica, if the server-level config
+   * fires regardless of strict-mode state) and logs a tagged error string. A deficit is nonfatal
+   * (warn-and-continue) only for a migration-clone replay (see
+   * {@link #isPreExistingMigrationCloneReplay(Store)}). Otherwise, on a non-DaVinci replica, if the
+   * server-level config
    * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
    * (default), also increments {@code record_count_mismatch_failure} and throws
    * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
@@ -4258,37 +4256,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Decide whether an end-of-push record-count deficit is the <em>expected</em>, nonfatal kind that
-   * only a store-migration replay of a pre-existing version can produce.
+   * Whether an end-of-push record-count deficit is the expected, nonfatal kind produced by a store
+   * migration replaying a pre-existing source version topic that log compaction may have shrunk
+   * below the original end-of-push count.
    *
-   * <p>During store migration the destination replays each source version topic. Kafka log
-   * compaction can remove superseded records from that topic before the destination finishes
-   * replaying it, so the replica legitimately consumes fewer records than the original push's
-   * end-of-push count carried on the "prc" header. That deficit must NOT fail ingestion. A push that
-   * is started fresh while migration is still active, however, is an ordinary push and must keep the
-   * strict (fail-on-deficit) behavior.
-   *
-   * <p>The store-level {@link Store#isMigrationDuplicateStore()} flag alone cannot separate the two:
-   * it is set for the whole destination store while migration is active, including for new pushes.
-   * We therefore combine it with a per-version lifecycle invariant:
-   * <ul>
-   *   <li>The destination store is created at migration start, so {@link Store#getCreatedTime()}
-   *       marks the migration boundary there.</li>
-   *   <li>Cloned source versions preserve their source {@code createdTime}, so pre-existing versions
-   *       normally predate that boundary. A source push that completes shortly after migration
-   *       begins may also be cloned; because its timestamp comes from the source controller, this
-   *       comparison relies on normal bounded controller clock skew.</li>
-   *   <li>A push created on the destination receives a fresh {@code createdTime} and normally does
-   *       not predate the boundary.</li>
-   * </ul>
-   * This mirrors the controller's own clone-vs-new-push decision when it adds a version during
-   * migration (an existing source version is cloned; a version beyond the source's current version
-   * is handled as an ongoing new push).
-   *
-   * <p>Both timestamps are read from the same freshly-fetched store snapshot to avoid mixing
-   * lifecycle views. Fails closed: a {@code null} store, a non-migration store, a version missing
-   * from the store, or an unset ({@code <= 0}) {@code createdTime} on either side all keep the
-   * strict (fatal) behavior.
+   * <p>{@link Store#isMigrationDuplicateStore()} alone is too broad — it covers the whole
+   * destination store while migration is active, including brand-new pushes — so it is paired with a
+   * per-version check: the destination store's {@code createdTime} marks the migration boundary,
+   * cloned source versions keep their older source {@code createdTime}, and a push created on the
+   * destination gets a fresh one. For a source push cloned shortly after migration starts, that
+   * comparison relies on normal bounded controller clock skew. Fails closed: missing or non-positive
+   * metadata on either side keeps the strict (fatal) behavior.
    */
   boolean isPreExistingMigrationCloneReplay(Store store) {
     if (store == null || !store.isMigrationDuplicateStore()) {
