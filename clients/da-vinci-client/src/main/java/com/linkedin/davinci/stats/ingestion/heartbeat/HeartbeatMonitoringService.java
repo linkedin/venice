@@ -10,7 +10,6 @@ import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -931,21 +930,16 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           boolean lingerReplica = isResourceDeleted;
           String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNum), partition);
           if (!isResourceDeleted) {
-            Partition assignedPartition = partitionAssignment.getPartition(partition);
-            if (assignedPartition == null) {
-              // Partition has not been populated in the customized view yet (e.g. resource exists but this
-              // partition has no reported replicas). Treat the same as "not assigned to this node" rather than
-              // dereferencing a null partition, which previously threw a NullPointerException here.
-              lingerReplica = true;
+            Set<String> instanceIdSet = partitionAssignment.getPartition(partition)
+                .getAllInstancesSet()
+                .stream()
+                .map(Instance::getNodeId)
+                .collect(Collectors.toSet());
+            if (instanceIdSet.contains(nodeId)) {
+              // Replica is still assigned to this node based on locally cached customized view
+              cleanupHeartbeatMap.remove(replicaId);
             } else {
-              Set<String> instanceIdSet =
-                  assignedPartition.getAllInstancesSet().stream().map(Instance::getNodeId).collect(Collectors.toSet());
-              if (instanceIdSet.contains(nodeId)) {
-                // Replica is still assigned to this node based on locally cached customized view
-                cleanupHeartbeatMap.remove(replicaId);
-              } else {
-                lingerReplica = true;
-              }
+              lingerReplica = true;
             }
           }
           if (lingerReplica) {
