@@ -849,9 +849,9 @@
             },
             {
               "name": "veniceUnits",
-              "doc": "The forecasted Venice Units (VU) capacity ask for this store, as computed via the store-needs-estimation process (max of the raw-data-size, read-KPS, and nearline-write-KPS dimensions). Empty string means not yet provided.",
-              "type": "string",
-              "default": ""
+              "doc": "The forecasted Venice Units (VU) capacity ask for this store, as computed via the store-needs-estimation process (max of the raw-data-size, read-KPS, and nearline-write-KPS dimensions). -1 means not yet provided.",
+              "type": "int",
+              "default": -1
             },
             {
               "name": "clusterType",
