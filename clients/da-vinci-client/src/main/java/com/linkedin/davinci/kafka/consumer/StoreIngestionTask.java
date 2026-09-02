@@ -4146,12 +4146,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of strict-mode state) and logs a tagged error string. On a non-DaVinci
-   * replica, if the server-level config
+   * fires regardless of strict-mode state) and logs a tagged error string. A deficit is nonfatal
+   * (warn-and-continue) only for a migration-clone replay (see
+   * {@link #isPreExistingMigrationCloneReplay(Store)}). Otherwise, on a non-DaVinci replica, if the
+   * server-level config
    * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
    * (default), also increments {@code record_count_mismatch_failure} and throws
    * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
-   * and the throw </p>
+   * and the throw.</p>
    *
    * <p>Skip cases (no-op, no metric):</p>
    * <ul>
@@ -4215,11 +4217,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (!counterOk || !hllOk) {
-      String taggedMsg = "RECORD_COUNT_DEFICIT:counterOk=" + counterOk + ":hllOk=" + hllOk + ":expected="
-          + expectedCount + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold
-          + ":replica=" + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
-      LOGGER.error(taggedMsg);
       versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
+      Store store = storeRepository.getStore(storeName);
+      boolean isMigrationReplay = isPreExistingMigrationCloneReplay(store);
+      boolean migrationDuplicateStore = store != null && store.isMigrationDuplicateStore();
+      long storeCreatedTime = store == null ? -1 : store.getCreatedTime();
+      Version storeVersion = store == null ? null : store.getVersion(versionNumber);
+      long versionCreatedTime = storeVersion == null ? -1 : storeVersion.getCreatedTime();
+      String verificationContext = isMigrationReplay ? "MIGRATION_REPLAY" : "FRESH_PUSH";
+      String taggedMsg = "RECORD_COUNT_DEFICIT:verificationContext=" + verificationContext + ":migrationDuplicateStore="
+          + migrationDuplicateStore + ":storeCreatedTimeMs=" + storeCreatedTime + ":versionCreatedTimeMs="
+          + versionCreatedTime + ":counterOk=" + counterOk + ":hllOk=" + hllOk + ":expected=" + expectedCount
+          + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold + ":replica="
+          + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
+      if (isMigrationReplay) {
+        LOGGER.warn(taggedMsg + ":reason=PRE_EXISTING_MIGRATION_CLONE");
+        return;
+      }
+      LOGGER.error(taggedMsg);
       // Server-side strict-mode is controlled by the cluster-wide config
       // `server.batch.push.record.count.verification.fail.on.mismatch.enabled` (default: true).
       // DaVinci replicas unconditionally skip the throw — DVC failure aggregation is handled
@@ -4238,6 +4253,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           actualCount,
           hllEstimate);
     }
+  }
+
+  /**
+   * Whether an end-of-push record-count deficit is the expected, nonfatal kind produced by a store
+   * migration replaying a pre-existing source version topic that log compaction may have shrunk
+   * below the original end-of-push count.
+   */
+  boolean isPreExistingMigrationCloneReplay(Store store) {
+    if (store == null || !store.isMigrationDuplicateStore()) {
+      return false;
+    }
+    Version storeVersion = store.getVersion(versionNumber);
+    if (storeVersion == null) {
+      return false;
+    }
+    long storeCreatedTime = store.getCreatedTime();
+    long versionCreatedTime = storeVersion.getCreatedTime();
+    return storeCreatedTime > 0 && versionCreatedTime > 0 && versionCreatedTime < storeCreatedTime;
   }
 
   protected void processStartOfIncrementalPush(
