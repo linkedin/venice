@@ -1262,8 +1262,8 @@ public class HeartbeatMonitoringServiceTest {
 
   @Test
   public void testReconciliationRecreatesMissingSubscribedFollowerEntry() {
-    // Reconciliation recreates a missing heartbeat entry for a still-subscribed follower. It is
-    // idempotent and records the missing-entry metric exactly once per pass that finds a gap.
+    // Reconciliation recreates a missing heartbeat entry for a still-subscribed follower, and is
+    // idempotent: a second pass over an already-present entry recreates nothing.
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
     Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
     currentVersion.setHybridStoreConfig(hybridStoreConfig);
@@ -1293,9 +1293,12 @@ public class HeartbeatMonitoringServiceTest {
 
     HelixCustomizedViewOfflinePushRepository mockCV = mock(HelixCustomizedViewOfflinePushRepository.class);
     CompletableFuture<HelixCustomizedViewOfflinePushRepository> cvFuture = CompletableFuture.completedFuture(mockCV);
-    HeartbeatMonitoringServiceStats stats = mock(HeartbeatMonitoringServiceStats.class);
-    HeartbeatMonitoringService heartbeatMonitoringService =
-        new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, serverConfig, stats, cvFuture);
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        mock(HeartbeatMonitoringServiceStats.class),
+        cvFuture);
 
     // A subscribed STANDBY follower for p0 whose heartbeat entry is missing (none exists).
     StoreIngestionTask sit = mock(StoreIngestionTask.class);
@@ -1316,18 +1319,16 @@ public class HeartbeatMonitoringServiceTest {
     // Precondition: no follower entry exists.
     Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 0);
 
-    // First reconcile recreates the entry and records the missing-entry metric exactly once.
+    // First reconcile recreates the entry.
     heartbeatMonitoringService.reconcileMissingHeartbeatEntries();
     Assert.assertEquals(
         countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1),
         1,
         "Reconciliation should recreate the missing follower entry");
-    verify(stats, times(1)).recordSubscribedReplicaMissingHeartbeatEntry(1L);
 
-    // Idempotent: a second pass finds the entry present, recreates nothing, records nothing further.
+    // Idempotent: a second pass finds the entry present and recreates nothing.
     heartbeatMonitoringService.reconcileMissingHeartbeatEntries();
     Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 1);
-    verify(stats, times(1)).recordSubscribedReplicaMissingHeartbeatEntry(anyLong());
   }
 
   @Test

@@ -1019,7 +1019,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     }
     Set<String> presentLeaderReplicas = buildPresentReplicaSet(leaderHeartbeatTimeStamps);
     Set<String> presentFollowerReplicas = buildPresentReplicaSet(followerHeartbeatTimeStamps);
-    long missingEntryCount = 0;
     for (String topic: ingestionService.getIngestingTopics()) {
       StoreIngestionTask storeIngestionTask = ingestionService.getStoreIngestionTask(topic);
       if (storeIngestionTask == null || !storeIngestionTask.isRunning() || !storeIngestionTask.isHybridMode()) {
@@ -1042,7 +1041,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         boolean present =
             isLeader ? presentLeaderReplicas.contains(presenceKey) : presentFollowerReplicas.contains(presenceKey);
         if (!present) {
-          missingEntryCount++;
           String replicaId = pcs.getReplicaId();
           LOGGER.warn(
               "Recreating missing heartbeat monitoring entry for subscribed {} replica: {}",
@@ -1055,9 +1053,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               replicaId);
         }
       }
-    }
-    if (missingEntryCount > 0) {
-      heartbeatMonitoringServiceStats.recordSubscribedReplicaMissingHeartbeatEntry(missingEntryCount);
     }
   }
 
