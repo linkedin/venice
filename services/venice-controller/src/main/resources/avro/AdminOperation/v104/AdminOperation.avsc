@@ -849,15 +849,15 @@
             },
             {
               "name": "veniceUnits",
-              "doc": "The forecasted Venice Units (VU) capacity ask for this store, as computed via the store-needs-estimation process (max of the raw-data-size, read-KPS, and nearline-write-KPS dimensions). -1 means not yet provided.",
-              "type": "int",
-              "default": -1
+              "doc": "The forecasted Venice Units (VU) capacity ask for this store, as computed via the store-needs-estimation process (max of the raw-data-size, read-KPS, and nearline-write-KPS dimensions). null means not yet provided.",
+              "type": ["null", "int"],
+              "default": null
             },
             {
-              "name": "clusterType",
-              "doc": "The Venice class-of-service requested for this store: 'GENERIC' (single-gets, up to ~150 keys per query, P99 <= 150ms) or 'LOW_LATENCY' (600-5000 keys per query, P99 <= 50ms multi-get). Empty string means not yet provided.",
-              "type": "string",
-              "default": ""
+              "name": "workloadType",
+              "doc": "The Venice class-of-service requested for this store: 'GENERIC' (single-gets, up to ~150 keys per query, P99 <= 150ms) or 'LOW_LATENCY' (600-5000 keys per query, P99 <= 50ms multi-get). null means not yet provided.",
+              "type": ["null", "string"],
+              "default": null
             }
           ]
         },
