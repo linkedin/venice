@@ -828,6 +828,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return versionNumber;
   }
 
+  /** The {@link Version} snapshot this task was constructed with; source of version-level configs frozen at creation. */
+  protected Version getVersion() {
+    return version;
+  }
+
   protected void throwIfNotRunning() {
     if (!isRunning()) {
       throw new VeniceException(" Topic " + kafkaVersionTopic + " is shutting down, no more messages accepted");

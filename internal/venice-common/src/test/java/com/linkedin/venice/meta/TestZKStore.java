@@ -10,6 +10,8 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -581,6 +583,52 @@ public class TestZKStore {
     // A later store-level change does NOT mutate the already-added version.
     store.setStorageMode(StorageMode.EXTERNAL);
     Assert.assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+  }
+
+  @Test
+  public void testAddVersionCopiesStoreLevelMaxNearlineRecordSizeBytes() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setMaxNearlineRecordSizeBytes(1024);
+    store.addVersion(new VersionImpl(store.getName(), 1, "pushJobId"));
+    // addVersion snapshots the current store-level value onto the new version.
+    Assert.assertEquals(store.getVersion(1).getMaxNearlineRecordSizeBytes(), Integer.valueOf(1024));
+    // A later store-level change does NOT mutate the already-added version.
+    store.setMaxNearlineRecordSizeBytes(2048);
+    Assert.assertEquals(store.getVersion(1).getMaxNearlineRecordSizeBytes(), Integer.valueOf(1024));
+  }
+
+  @Test
+  public void testAddVersionSnapshotsUnsetStoreAsNonNull() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    // An unset store value (-1) is still snapshotted as a concrete non-null value, so the version is distinguishable
+    // from a pre-v48 version that has no snapshot at all (null) and must never track later store-level changes.
+    store.setMaxNearlineRecordSizeBytes(-1);
+    store.addVersion(new VersionImpl(store.getName(), 1, "pushJobId"));
+    Assert.assertEquals(store.getVersion(1).getMaxNearlineRecordSizeBytes(), Integer.valueOf(-1));
+    store.setMaxNearlineRecordSizeBytes(2048);
+    Assert.assertEquals(store.getVersion(1).getMaxNearlineRecordSizeBytes(), Integer.valueOf(-1));
+  }
+
+  @Test
+  public void testVersionLevelMaxNearlineRecordSizeBytes() {
+    Version version = new VersionImpl("testStore", 1, "pushJobId");
+    Assert.assertNull(version.getMaxNearlineRecordSizeBytes()); // no snapshot exists by default
+    version.setMaxNearlineRecordSizeBytes(8192);
+    Assert.assertEquals(version.getMaxNearlineRecordSizeBytes(), Integer.valueOf(8192));
+    Assert.assertEquals(version.cloneVersion().getMaxNearlineRecordSizeBytes(), Integer.valueOf(8192));
+  }
+
+  @Test
+  public void testCloneStorePropertiesPreservesVersionMaxNearlineRecordSizeBytes() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setMaxNearlineRecordSizeBytes(4096);
+    store.addVersion(new VersionImpl(store.getName(), 1, "pushJobId"));
+    // Round-trip through the ReadOnlyStore -> StoreProperties serialization path (cloneStoreProperties ->
+    // convertVersion) that publishes version metadata; the per-version snapshot must survive it, otherwise the
+    // server would silently fall back to the live store setting.
+    StoreProperties storeProperties = new ReadOnlyStore(store).cloneStoreProperties();
+    StoreVersion storeVersion = storeProperties.getVersions().get(0);
+    Assert.assertEquals(storeVersion.getMaxNearlineRecordSizeBytes(), Integer.valueOf(4096));
   }
 
 }
