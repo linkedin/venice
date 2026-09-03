@@ -328,12 +328,7 @@ subprojects {
       // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
-      // StoreMetaValue v49 and AdminOperation v104 are now active: the veniceUnits/workloadType store configs are
-      // wired end to end, so codegen picks up the highest version directory for both. v49 is a superset of the
-      // previously staged v48, so activating it also carries the version-level maxNearlineRecordSizeBytes field
-      // on StoreVersion. That field stays nullable and unwritten until its own follow-up wires the snapshot logic.
-      def versionOverrides = [
-      ]
+      def versionOverrides = []
 
       def schemaDirs = [sourceDir]
       sourceDir.eachDir { typeDir ->

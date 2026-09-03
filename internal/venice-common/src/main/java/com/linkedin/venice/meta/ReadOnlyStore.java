@@ -1117,7 +1117,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStorageMode(getStorageMode().getValue());
     storeProperties.setVeniceUnits(getVeniceUnits());
     storeProperties.setWorkloadType(getWorkloadType());
-    // Set fields to default values - fields exist in schema but not yet exposed via Store interface
+    // transientRecordCacheEnabled and mergedValueRmdColumnFamilyEnabled exist in the schema but are not exposed
+    // via the Store interface, so they are defaulted here.
     storeProperties.setTransientRecordCacheEnabled(false);
     storeProperties.setMergedValueRmdColumnFamilyEnabled(false);
 
