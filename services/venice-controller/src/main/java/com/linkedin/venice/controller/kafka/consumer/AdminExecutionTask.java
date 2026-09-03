@@ -671,12 +671,11 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setMaxNearlineRecordSizeBytes(message.maxNearlineRecordSizeBytes);
     params.setThroughputQuotaInBytes(message.throughputQuotaInBytes);
     params.setThroughputQuotaInRecords(message.throughputQuotaInRecords);
-    if (message.veniceUnits != null) {
-      params.setVeniceUnits(message.veniceUnits);
-    }
-    if (message.workloadType != null) {
-      params.setWorkloadType(message.workloadType.toString());
-    }
+    // Both configs are nullable, so map them unconditionally: a null on the message means the field
+    // should be cleared, and the setters encode that as an explicit clear rather than dropping it.
+    // Whether the clear is actually applied is still gated by updatedConfigsList below.
+    params.setVeniceUnits(message.veniceUnits);
+    params.setWorkloadType(message.workloadType == null ? null : message.workloadType.toString());
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {

@@ -124,6 +124,16 @@ import java.util.stream.Collectors;
 
 
 public class UpdateStoreQueryParams extends QueryParams {
+  /**
+   * Wire representation of an explicit request to clear a nullable store config back to {@code null}.
+   *
+   * Query params are string valued, so a nullable config needs three distinguishable states: the
+   * param is absent (leave the config unchanged), the param carries a value (set the config to it),
+   * or the param is present but empty (clear the config). The empty string is used for the last case
+   * because it is not a legal value for any of the configs that support clearing.
+   */
+  static final String CLEAR_VALUE = "";
+
   public UpdateStoreQueryParams(Map<String, String> initialParams) {
     super(initialParams);
   }
@@ -629,20 +639,58 @@ public class UpdateStoreQueryParams extends QueryParams {
     return Optional.ofNullable(params.get(STORAGE_MODE)).map(StorageMode::valueOf);
   }
 
-  public UpdateStoreQueryParams setVeniceUnits(int veniceUnits) {
-    return putInteger(VENICE_UNITS, veniceUnits);
+  /**
+   * Sets the store's Venice Units. Passing {@code null} records an explicit request to clear the
+   * config back to {@code null}, which is distinct from not calling this method at all (which
+   * leaves the config unchanged). See {@link #CLEAR_VALUE}.
+   */
+  public UpdateStoreQueryParams setVeniceUnits(Integer veniceUnits) {
+    return veniceUnits == null ? putString(VENICE_UNITS, CLEAR_VALUE) : putInteger(VENICE_UNITS, veniceUnits);
   }
 
-  public Optional<Integer> getVeniceUnits() {
-    return getInteger(VENICE_UNITS);
+  /**
+   * @return whether the caller provided a value for this config at all, including an explicit
+   *         request to clear it. When this returns {@code false} the config must be left unchanged.
+   */
+  public boolean isVeniceUnitsSpecified() {
+    return params.containsKey(VENICE_UNITS);
   }
 
+  /**
+   * @return the requested Venice Units, or {@code null} if the caller asked for the config to be
+   *         cleared. Only meaningful when {@link #isVeniceUnitsSpecified()} returns {@code true};
+   *         otherwise this also returns {@code null}.
+   */
+  public Integer getVeniceUnits() {
+    String value = params.get(VENICE_UNITS);
+    return CLEAR_VALUE.equals(value) ? null : Optional.ofNullable(value).map(Integer::valueOf).orElse(null);
+  }
+
+  /**
+   * Sets the store's workload type. Passing {@code null} records an explicit request to clear the
+   * config back to {@code null}, which is distinct from not calling this method at all (which
+   * leaves the config unchanged). See {@link #CLEAR_VALUE}.
+   */
   public UpdateStoreQueryParams setWorkloadType(String workloadType) {
-    return putString(WORKLOAD_TYPE, workloadType);
+    return putString(WORKLOAD_TYPE, workloadType == null ? CLEAR_VALUE : workloadType);
   }
 
-  public Optional<String> getWorkloadType() {
-    return getString(WORKLOAD_TYPE);
+  /**
+   * @return whether the caller provided a value for this config at all, including an explicit
+   *         request to clear it. When this returns {@code false} the config must be left unchanged.
+   */
+  public boolean isWorkloadTypeSpecified() {
+    return params.containsKey(WORKLOAD_TYPE);
+  }
+
+  /**
+   * @return the requested workload type, or {@code null} if the caller asked for the config to be
+   *         cleared. Only meaningful when {@link #isWorkloadTypeSpecified()} returns {@code true};
+   *         otherwise this also returns {@code null}.
+   */
+  public String getWorkloadType() {
+    String value = params.get(WORKLOAD_TYPE);
+    return CLEAR_VALUE.equals(value) ? null : value;
   }
 
   public UpdateStoreQueryParams setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {

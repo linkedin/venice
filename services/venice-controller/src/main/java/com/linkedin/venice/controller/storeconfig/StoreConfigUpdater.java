@@ -332,8 +332,13 @@ public final class StoreConfigUpdater {
     Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
     Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
     Optional<StorageMode> storageMode = params.getStorageMode();
-    Optional<Integer> veniceUnits = params.getVeniceUnits();
-    Optional<String> workloadType = params.getWorkloadType();
+    // These two configs are nullable, so presence of the param and the value it carries are tracked
+    // separately: an absent param means "leave unchanged", while a present param with a null value
+    // means "clear back to null".
+    boolean veniceUnitsSpecified = params.isVeniceUnitsSpecified();
+    Integer veniceUnits = params.getVeniceUnits();
+    boolean workloadTypeSpecified = params.isWorkloadTypeSpecified();
+    String workloadType = params.getWorkloadType();
     Optional<ExternalStorageReadMode> externalStorageReadMode = params.getExternalStorageReadMode();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
@@ -800,15 +805,19 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
-      veniceUnits.ifPresent(aInt -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setVeniceUnits(aInt);
-        return store;
-      }));
+      if (veniceUnitsSpecified) {
+        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          store.setVeniceUnits(veniceUnits);
+          return store;
+        });
+      }
 
-      workloadType.ifPresent(aString -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setWorkloadType(aString);
-        return store;
-      }));
+      if (workloadTypeSpecified) {
+        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          store.setWorkloadType(workloadType);
+          return store;
+        });
+      }
 
       throughputQuotaInBytes
           .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -1001,8 +1010,13 @@ public final class StoreConfigUpdater {
     Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
     Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
     Optional<StorageMode> storageMode = params.getStorageMode();
-    Optional<Integer> veniceUnits = params.getVeniceUnits();
-    Optional<String> workloadType = params.getWorkloadType();
+    // These two configs are nullable, so presence of the param and the value it carries are tracked
+    // separately: an absent param means "leave unchanged", while a present param with a null value
+    // means "clear back to null".
+    boolean veniceUnitsSpecified = params.isVeniceUnitsSpecified();
+    Integer veniceUnits = params.getVeniceUnits();
+    boolean workloadTypeSpecified = params.isWorkloadTypeSpecified();
+    String workloadType = params.getWorkloadType();
     Optional<ExternalStorageReadMode> externalStorageReadMode = params.getExternalStorageReadMode();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
@@ -1445,10 +1459,18 @@ public final class StoreConfigUpdater {
     setStore.maxNearlineRecordSizeBytes =
         maxNearlineRecordSizeBytes.map(admin.addToUpdatedConfigList(updatedConfigsList, MAX_NEARLINE_RECORD_SIZE_BYTES))
             .orElseGet(currStore::getMaxNearlineRecordSizeBytes);
-    setStore.veniceUnits = veniceUnits.map(admin.addToUpdatedConfigList(updatedConfigsList, VENICE_UNITS))
-        .orElseGet(currStore::getVeniceUnits);
-    setStore.workloadType = workloadType.map(admin.addToUpdatedConfigList(updatedConfigsList, WORKLOAD_TYPE))
-        .orElseGet(currStore::getWorkloadType);
+    if (veniceUnitsSpecified) {
+      updatedConfigsList.add(VENICE_UNITS);
+      setStore.veniceUnits = veniceUnits;
+    } else {
+      setStore.veniceUnits = currStore.getVeniceUnits();
+    }
+    if (workloadTypeSpecified) {
+      updatedConfigsList.add(WORKLOAD_TYPE);
+      setStore.workloadType = workloadType;
+    } else {
+      setStore.workloadType = currStore.getWorkloadType();
+    }
     setStore.throughputQuotaInBytes =
         throughputQuotaInBytes.map(admin.addToUpdatedConfigList(updatedConfigsList, THROUGHPUT_QUOTA_IN_BYTES))
             .orElseGet(currStore::getThroughputQuotaInBytes);
