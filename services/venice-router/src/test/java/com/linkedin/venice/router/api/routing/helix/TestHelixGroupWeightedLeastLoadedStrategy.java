@@ -41,6 +41,21 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     return stats;
   }
 
+  /**
+   * A mocked HelixGroupStats that returns the per-group base latency plus fresh Gaussian jitter on every read,
+   * modelling the per-request latency variation a real router observes. The jitter is drawn from the supplied
+   * seeded {@link Random} so the stream is deterministic. Draws are clamped to a small positive floor so an
+   * unlucky sample can never produce a non-positive latency.
+   */
+  private static HelixGroupStats statsWithJitteredLatencies(double[] baseLatencies, Random jitter, double stdDevMs) {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    when(stats.getGroupResponseWaitingTimeAvg(anyInt())).thenAnswer(invocation -> {
+      int group = invocation.getArgument(0);
+      return Math.max(0.1, baseLatencies[group] + jitter.nextGaussian() * stdDevMs);
+    });
+    return stats;
+  }
+
   private static TimeoutProcessor mockTimeoutProcessor() {
     TimeoutProcessor timeoutProcessor = mock(TimeoutProcessor.class);
     doReturn(mock(TimeoutProcessor.TimeoutFuture.class)).when(timeoutProcessor).schedule(any(), anyLong(), any());
@@ -88,85 +103,94 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
    *
    * <p>Both the existing {@link HelixGroupLeastLoadedStrategy} and the new
    * {@link HelixGroupWeightedLeastLoadedStrategy} are driven through the same harness using a <em>real
-   * per-group latency vector observed in production</em> (only a 1.18x spread
-   * between the fastest and slowest group). Little's Law says a 1.18x latency spread should give the fastest
-   * group only a ~22% share of a 5-group cluster.
+   * per-group latency vector observed in production</em> (only a 1.18x spread between the fastest and slowest
+   * group). Little's Law says a 1.18x latency spread should give the fastest group only a ~22% share of a
+   * 5-group cluster.
+   *
+   * <p>The per-group latency the strategies read carries fresh Gaussian jitter on every request, modelling the
+   * real per-request latency variation a router sees (a static latency vector is unrealistic: it would make one
+   * group deterministically fastest forever and collapse the old tiebreak to a degenerate 100% winner-take-all
+   * that is never observed in production). With realistic jitter the <em>momentarily</em> fastest group changes
+   * request to request, and the group with the lowest base latency simply wins that race most often.
    *
    * <p>This test runs in the tiebreak-isolated regime (each request finishes before the next is selected, so
-   * the in-flight counters are always tied at zero and the tiebreak alone decides every request). This is the
-   * exact regime the skew lives in: at low per-router in-flight the least-loaded counters are almost
-   * always tied, so the tiebreak fires on nearly every request. The old strategy resolves every tie with a
-   * deterministic lowest-latency pick, so it collapses to winner-take-all and funnels essentially all traffic
-   * onto the single fastest group, starving read-quota headroom on the others (the mechanism behind the 429s).
-   * In production the residual in-flight dilutes this from 100% to the observed ~40%, but the direction and the
-   * quota-breaching concentration are the same. The new strategy replaces the tiebreak with a continuous
-   * {@code 1/latency} weight, so the fastest group settles right on its ~22% Little's-Law share and every group
-   * keeps a fair, latency-proportional slice.
+   * the in-flight counters are always tied and the tiebreak alone decides every request) -- the low per-router
+   * in-flight regime the skew lives in, where the least-loaded counters are almost always tied and the tiebreak
+   * fires on nearly every request. The old strategy resolves every tie with the momentarily lowest latency, so
+   * it over-concentrates traffic on the fastest group far beyond that group's ~22% Little's-Law share
+   * (reproducing the ~40% production skew) and squeezes read-quota headroom on the others (the mechanism behind
+   * the 429s). The new strategy replaces the tiebreak with a continuous {@code 1/latency} weight, so the fastest
+   * group settles near its ~22% Little's-Law share and every group keeps a fair, latency-proportional slice.
    */
   @Test
   public void testBaselineOldStrategyOverConcentratesVersusNewStrategy() {
     int groupCount = 5;
-    // Real per-group average latency (ms) observed in production; group 4 is fastest.
+    // Real per-group average latency (ms) observed in production; group 4 is fastest, group 2 slowest.
     double[] measured = new double[] { 22.88, 22.13, 23.84, 20.94, 20.25 };
+    // Per-request latency jitter (ms). ~3ms 1-sigma is on the order of the inter-group spread, so the
+    // momentarily fastest group varies request to request as it does in production.
+    double jitterStdDevMs = 3.0;
     int fastGroup = argMin(measured);
     double evenShare = 1.0 / groupCount;
     int requestCount = 50000;
 
-    // --- Baseline: existing least-loaded strategy on the measured latency vector. ---
-    double[] oldLatencies = Arrays.copyOf(measured, groupCount);
+    // --- Baseline: existing least-loaded strategy on the jittered latency vector. ---
+    HelixGroupStats oldStats = statsWithJitteredLatencies(measured, new Random(SEED), jitterStdDevMs);
     HelixGroupLeastLoadedStrategy oldStrategy =
-        new HelixGroupLeastLoadedStrategy(mockTimeoutProcessor(), TIMEOUT_MS, statsWithLatencies(oldLatencies));
-    int[] oldRouted = routeAndFinish(oldStrategy, oldLatencies, groupCount, 0, requestCount);
+        new HelixGroupLeastLoadedStrategy(mockTimeoutProcessor(), TIMEOUT_MS, oldStats);
+    int[] oldRouted = routeAndFinish(oldStrategy, measured, groupCount, 0, requestCount);
 
-    // --- Fix: new weighted strategy on the identical latency vector. ---
-    double[] newLatencies = Arrays.copyOf(measured, groupCount);
+    // --- Fix: new weighted strategy on the identical (independently seeded) jittered latency vector. ---
+    HelixGroupStats newStats = statsWithJitteredLatencies(measured, new Random(SEED + 1), jitterStdDevMs);
     Random random = new Random(SEED);
     HelixGroupWeightedLeastLoadedStrategy newStrategy = new HelixGroupWeightedLeastLoadedStrategy(
         mockTimeoutProcessor(),
         TIMEOUT_MS,
-        statsWithLatencies(newLatencies),
+        newStats,
         HelixGroupWeightedLeastLoadedStrategy.FULL_HEADROOM,
         HelixGroupWeightedLeastLoadedStrategy.DEFAULT_HEADROOM_EXPONENT,
         random::nextDouble);
-    int[] newRouted = routeAndFinish(newStrategy, newLatencies, groupCount, 0, requestCount);
+    int[] newRouted = routeAndFinish(newStrategy, measured, groupCount, 0, requestCount);
 
     double oldFastShare = oldRouted[fastGroup] / (double) requestCount;
     double newFastShare = newRouted[fastGroup] / (double) requestCount;
 
     LOGGER.info(
-        "Baseline reproduction on production-observed latency vector {} (1.18x spread):",
-        Arrays.toString(measured));
+        "Baseline reproduction on production-observed latency vector {} (1.18x spread, {}ms jitter):",
+        Arrays.toString(measured),
+        jitterStdDevMs);
     LOGGER.info(
         "  OLD (least-loaded)  routed={}  fast group {} share={}%",
         Arrays.toString(oldRouted),
         fastGroup,
         String.format("%.1f", 100 * oldFastShare));
     LOGGER.info(
-        "  NEW (weighted)    routed={}  fast group {} share={}%",
+        "  NEW (weighted)      routed={}  fast group {} share={}%",
         Arrays.toString(newRouted),
         fastGroup,
         String.format("%.1f", 100 * newFastShare));
 
-    // The baseline must actually exhibit the undesirable over-concentration: despite only a 1.18x latency
-    // spread, the old strategy collapses to winner-take-all on the fastest group and starves the rest.
+    // The baseline exhibits the undesirable over-concentration: despite only a 1.18x latency spread, the old
+    // strategy pushes the fastest group's share far above its ~22% fair share (reproducing the ~40% skew) --
+    // but, unlike the static-latency case, it is a graded distribution, not a degenerate 100% winner-take-all.
     Assert.assertEquals(argMax(oldRouted), fastGroup, "Baseline should concentrate on the fastest group");
     Assert.assertTrue(
-        oldFastShare > 0.95,
-        "Baseline should over-concentrate (winner-take-all) on the fastest group; share=" + oldFastShare);
-    int starvedUnderOld = 0;
-    for (int g = 0; g < groupCount; g++) {
-      if (oldRouted[g] < 0.01 * requestCount) {
-        starvedUnderOld++;
-      }
-    }
+        oldFastShare > evenShare * 1.5,
+        "Baseline should over-concentrate on the fastest group (>1.5x fair share); share=" + oldFastShare);
     Assert.assertTrue(
-        starvedUnderOld >= groupCount - 1,
-        "Baseline should starve every non-fastest group; routed=" + Arrays.toString(oldRouted));
+        oldFastShare < 0.6,
+        "With realistic jitter the baseline should be a graded skew, not 100% winner-take-all; share=" + oldFastShare);
+    for (int g = 0; g < groupCount; g++) {
+      Assert.assertTrue(
+          oldRouted[g] > 0,
+          "With jitter every group should receive some traffic under the baseline; routed="
+              + Arrays.toString(oldRouted));
+    }
 
     // The fix removes that over-concentration: the fastest group settles near its (fair) Little's-Law share,
-    // materially below the baseline, routing is monotonic in latency, and no group is starved.
+    // materially below the baseline, and no group is starved.
     Assert.assertTrue(
-        newFastShare < oldFastShare - 0.5,
+        newFastShare < oldFastShare - 0.1,
         "New strategy must materially reduce the over-concentration; old=" + oldFastShare + " new=" + newFastShare);
     Assert.assertTrue(
         newFastShare < evenShare * 1.3,
@@ -176,7 +200,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
           newRouted[g] > 0.10 * requestCount,
           "No group should be starved under the new strategy; routed=" + Arrays.toString(newRouted));
     }
-    // Routing under the new strategy is monotonic in latency: the fastest group gets the most traffic, the
+    // Routing under the new strategy is monotonic in base latency: the fastest group gets the most traffic, the
     // slowest the least.
     Assert.assertEquals(
         argMax(newRouted),
