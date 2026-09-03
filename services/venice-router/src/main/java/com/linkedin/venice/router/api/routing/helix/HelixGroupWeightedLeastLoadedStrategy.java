@@ -29,10 +29,13 @@ import java.util.function.IntToDoubleFunction;
  * latency-proportional split as aggregate utilization rises:
  *
  * <pre>
- *   strength(g) = 1 / max(latency(g), MIN_LATENCY_MS)          // fast (low-latency) group => higher strength
- *   u           = clamp01( aggregate read-quota utilization )   // in [0, 1]
- *   share(g)    = (1 - u^m) * (1 / G)  +  u^m * strength(g) / sum(strength)
- *   share(g)    = max(share(g), PROBE_FLOOR_FRACTION * (1 / G)) // never fully starve a group
+ *   strength(g) = 1 / max(latency(g), MIN_LATENCY_MS)                // fast (low-latency) group => higher strength
+ *   u           = clamp01( aggregate read-quota utilization )         // in [0, 1]
+ *   skew        = 0                                        if u &lt;= evenUntilUtilization   // stay-even knob
+ *                 1                                        if u &gt;= fullSkewAtUtilization   // full-skew knob
+ *                 ((u - evenUntil) / (fullSkew - evenUntil))^m   otherwise                   // ramp between knobs
+ *   share(g)    = (1 - skew) * (1 / G)  +  skew * strength(g) / sum(strength)
+ *   share(g)    = max(share(g), PROBE_FLOOR_FRACTION * (1 / G))       // never fully starve a group
  * </pre>
  *
  * <ul>
@@ -51,10 +54,18 @@ import java.util.function.IntToDoubleFunction;
  *   <li><b>1 / G (even split)</b> — the low-utilization target. Spreading evenly while there is headroom keeps
  *       every group's read-quota consumption low, avoids the over-concentration that pushes a single group to
  *       its 429 ceiling, and keeps every group probed so its latency measurement stays fresh.</li>
- *   <li><b>m (interpolation exponent)</b> — controls how late the shift from even to latency-proportional
- *       happens. Because {@code m > 1}, {@code u^m} stays near zero for most of the utilization range and only
- *       climbs sharply as {@code u} approaches 1, so the cluster runs even for most of its life and only skews
- *       toward the faster groups when it is genuinely close to saturation.</li>
+ *   <li><b>evenUntilUtilization (stay-even knob)</b> — the utilization threshold up to which routing stays fully
+ *       even regardless of the latency spread. Below it {@code skew == 0}, so every group gets exactly
+ *       {@code 1 / G}. Raising it lets the cluster run even for longer before it reacts to latency; lowering it
+ *       makes the strategy start protecting the faster groups earlier.</li>
+ *   <li><b>fullSkewAtUtilization (full-skew knob)</b> — the utilization threshold at (and above) which routing
+ *       reaches its full latency-proportional split ({@code skew == 1}). Between the two knobs the skew ramps
+ *       from 0 to 1. Lowering it makes the cluster reach maximum protection before it is fully saturated;
+ *       leaving it at 1 reserves full skew for the saturation point.</li>
+ *   <li><b>m (in-band ramp exponent)</b> — shapes the ramp <em>between</em> the two knobs. {@code m == 1} is a
+ *       straight linear ramp; {@code m > 1} keeps the ramp gentle just past {@code evenUntilUtilization} and
+ *       steepens it near {@code fullSkewAtUtilization}. It only affects the transition band, not the flat
+ *       even / full-skew regions.</li>
  *   <li><b>PROBE_FLOOR_FRACTION</b> — a floor that guarantees every group keeps a small share even at full
  *       utilization, so the slower groups are never fully starved and the router keeps observing their latency.
  *       This is what makes the latency signal self-correcting: routing more traffic to a fast group raises its
@@ -80,11 +91,24 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
   public static final DoubleSupplier NO_UTILIZATION_SIGNAL = () -> 0.0;
 
   /**
-   * Default interpolation exponent {@code m}. Values &gt; 1 keep {@code u^m} near zero for most of the
-   * utilization range and make it climb sharply only as utilization approaches 1, so the cluster stays even for
-   * most of its life and skews toward the faster groups only when close to saturation.
+   * Default stay-even threshold: routing stays fully even (skew {@code == 0}) while aggregate utilization is at
+   * or below this fraction, so the cluster ignores the latency spread while it still has ample headroom.
    */
-  public static final double DEFAULT_INTERPOLATION_EXPONENT = 3.0;
+  public static final double DEFAULT_EVEN_UNTIL_UTILIZATION = 0.7;
+
+  /**
+   * Default full-skew threshold: at (and above) this aggregate utilization the routing reaches its full
+   * latency-proportional split (skew {@code == 1}). Between {@link #DEFAULT_EVEN_UNTIL_UTILIZATION} and this the
+   * skew ramps from 0 to 1.
+   */
+  public static final double DEFAULT_FULL_SKEW_AT_UTILIZATION = 1.0;
+
+  /**
+   * Default in-band ramp exponent {@code m}: shapes the skew ramp between the stay-even and full-skew thresholds.
+   * {@code 1.0} is a linear ramp; values &gt; 1 keep the ramp gentle just past the stay-even threshold and
+   * steepen it near the full-skew threshold. It only affects the transition band.
+   */
+  public static final double DEFAULT_INTERPOLATION_EXPONENT = 1.0;
 
   /**
    * Lower bound applied to a group's measured latency before inverting it into a strength, so a group reporting
@@ -106,6 +130,8 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
   private final HelixGroupStats helixGroupStats;
   private final IntToDoubleFunction latencyProvider;
   private final DoubleSupplier utilizationSupplier;
+  private final double evenUntilUtilization;
+  private final double fullSkewAtUtilization;
   private final double interpolationExponent;
   private final DoubleSupplier randomSupplier;
 
@@ -119,6 +145,8 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
         helixGroupStats,
         helixGroupStats::getGroupResponseWaitingTimeAvg,
         NO_UTILIZATION_SIGNAL,
+        DEFAULT_EVEN_UNTIL_UTILIZATION,
+        DEFAULT_FULL_SKEW_AT_UTILIZATION,
         DEFAULT_INTERPOLATION_EXPONENT,
         () -> ThreadLocalRandom.current().nextDouble());
   }
@@ -127,11 +155,17 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
    * @param latencyProvider       maps a group id to its measured average response time in milliseconds; a
    *                              non-positive value means the group has not been measured yet and is treated as
    *                              neutral (average strength).
-   * @param utilizationSupplier   supplies the aggregate read-quota utilization in {@code [0, 1]}; values are
+   * @param utilizationSupplier    supplies the aggregate read-quota utilization in {@code [0, 1]}; values are
    *                              clamped. This decides only how much to skew, not which group to skew toward.
-   * @param interpolationExponent the {@code m} exponent controlling how late routing shifts from an even split
-   *                              to a latency-proportional split as utilization rises.
-   * @param randomSupplier        supplies a uniform random double in [0, 1); injectable so tests can be
+   * @param evenUntilUtilization   stay-even threshold: routing stays fully even while utilization is at or below
+   *                              this fraction. Must be in {@code [0, 1)} and strictly less than
+   *                              {@code fullSkewAtUtilization}.
+   * @param fullSkewAtUtilization  full-skew threshold: routing reaches its full latency-proportional split at or
+   *                              above this fraction. Must be in {@code (0, 1]} and strictly greater than
+   *                              {@code evenUntilUtilization}.
+   * @param interpolationExponent  the {@code m} exponent shaping the skew ramp between the two thresholds
+   *                              ({@code 1.0} = linear).
+   * @param randomSupplier         supplies a uniform random double in [0, 1); injectable so tests can be
    *                              deterministic.
    */
   public HelixGroupWeightedLeastLoadedStrategy(
@@ -140,13 +174,23 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
       HelixGroupStats helixGroupStats,
       IntToDoubleFunction latencyProvider,
       DoubleSupplier utilizationSupplier,
+      double evenUntilUtilization,
+      double fullSkewAtUtilization,
       double interpolationExponent,
       DoubleSupplier randomSupplier) {
+    if (!(evenUntilUtilization >= 0.0 && evenUntilUtilization < fullSkewAtUtilization
+        && fullSkewAtUtilization <= 1.0)) {
+      throw new VeniceException(
+          "Require 0 <= evenUntilUtilization < fullSkewAtUtilization <= 1, but received evenUntilUtilization="
+              + evenUntilUtilization + ", fullSkewAtUtilization=" + fullSkewAtUtilization);
+    }
     this.timeoutProcessor = timeoutProcessor;
     this.timeoutInMS = timeoutInMS;
     this.helixGroupStats = helixGroupStats;
     this.latencyProvider = latencyProvider;
     this.utilizationSupplier = utilizationSupplier;
+    this.evenUntilUtilization = evenUntilUtilization;
+    this.fullSkewAtUtilization = fullSkewAtUtilization;
     this.interpolationExponent = interpolationExponent;
     this.randomSupplier = randomSupplier;
   }
@@ -192,7 +236,7 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
    * not affect the resulting distribution.
    */
   private int pickWeightedGroup(int groupCount, int startGroupId) {
-    double utilizationPower = utilizationPower();
+    double skew = skewFactor();
     double evenShare = 1.0 / groupCount;
     double floor = PROBE_FLOOR_FRACTION * evenShare;
     // Pre-pass: total inferred strength and the neutral strength used for not-yet-measured groups.
@@ -203,7 +247,7 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
     int selectedGroup = -1;
     for (int i = 0; i < groupCount; ++i) {
       int currentGroup = (i + startGroupId) % groupCount;
-      double share = shareForGroup(currentGroup, evenShare, floor, utilizationPower, neutralStrength, totalStrength);
+      double share = shareForGroup(currentGroup, evenShare, floor, skew, neutralStrength, totalStrength);
       if (share <= 0.0) {
         continue;
       }
@@ -219,18 +263,18 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
 
   /**
    * The target share for a group:
-   * {@code max( (1 - u^m) * evenShare + u^m * strength(g) / totalStrength, floor )}. The floor keeps a slow
+   * {@code max( (1 - skew) * evenShare + skew * strength(g) / totalStrength, floor )}. The floor keeps a slow
    * group from being fully starved so its latency stays observable.
    */
   private double shareForGroup(
       int groupId,
       double evenShare,
       double floor,
-      double utilizationPower,
+      double skew,
       double neutralStrength,
       double totalStrength) {
     double strengthShare = totalStrength > 0 ? strength(groupId, neutralStrength) / totalStrength : evenShare;
-    double share = (1.0 - utilizationPower) * evenShare + utilizationPower * strengthShare;
+    double share = (1.0 - skew) * evenShare + skew * strengthShare;
     return Math.max(share, floor);
   }
 
@@ -271,16 +315,21 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
     return total;
   }
 
-  /** {@code u^m}, where {@code u} is the clamped aggregate utilization and {@code m} is the interpolation exponent. */
-  private double utilizationPower() {
+  /**
+   * The skew factor in {@code [0, 1]}: {@code 0} at or below {@code evenUntilUtilization} (stay fully even),
+   * {@code 1} at or above {@code fullSkewAtUtilization} (full latency-proportional split), and a ramp shaped by
+   * the in-band exponent {@code m} in between.
+   */
+  private double skewFactor() {
     double utilization = utilizationSupplier.getAsDouble();
-    if (utilization <= 0.0) {
+    if (utilization <= evenUntilUtilization) {
       return 0.0;
     }
-    if (utilization >= 1.0) {
+    if (utilization >= fullSkewAtUtilization) {
       return 1.0;
     }
-    return interpolationExponent == 1.0 ? utilization : Math.pow(utilization, interpolationExponent);
+    double position = (utilization - evenUntilUtilization) / (fullSkewAtUtilization - evenUntilUtilization);
+    return interpolationExponent == 1.0 ? position : Math.pow(position, interpolationExponent);
   }
 
   private void timeoutRequest(long requestId, int groupId, boolean cancelTimeoutFuture) {

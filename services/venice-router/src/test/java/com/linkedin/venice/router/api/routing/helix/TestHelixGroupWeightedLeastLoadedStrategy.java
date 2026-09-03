@@ -10,7 +10,9 @@ import static org.mockito.Mockito.when;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.function.DoubleSupplier;
 import org.apache.logging.log4j.LogManager;
@@ -65,6 +67,8 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   private static HelixGroupWeightedLeastLoadedStrategy weightedStrategy(
       double[] latency,
       DoubleSupplier utilization,
+      double evenUntilUtilization,
+      double fullSkewAtUtilization,
       double interpolationExponent,
       Random random) {
     return new HelixGroupWeightedLeastLoadedStrategy(
@@ -73,11 +77,45 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
         mock(HelixGroupStats.class),
         groupId -> latency[groupId],
         utilization,
+        evenUntilUtilization,
+        fullSkewAtUtilization,
         interpolationExponent,
         random::nextDouble);
   }
 
-  /** Convenience overload for scenarios with a constant aggregate utilization. */
+  /** Convenience overload for scenarios with a constant aggregate utilization and explicit knobs. */
+  private static HelixGroupWeightedLeastLoadedStrategy weightedStrategy(
+      double[] latency,
+      double utilization,
+      double evenUntilUtilization,
+      double fullSkewAtUtilization,
+      double interpolationExponent,
+      Random random) {
+    return weightedStrategy(
+        latency,
+        () -> utilization,
+        evenUntilUtilization,
+        fullSkewAtUtilization,
+        interpolationExponent,
+        random);
+  }
+
+  /** Convenience overload using the strategy's default stay-even and full-skew thresholds. */
+  private static HelixGroupWeightedLeastLoadedStrategy weightedStrategy(
+      double[] latency,
+      DoubleSupplier utilization,
+      double interpolationExponent,
+      Random random) {
+    return weightedStrategy(
+        latency,
+        utilization,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_UTILIZATION,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_UTILIZATION,
+        interpolationExponent,
+        random);
+  }
+
+  /** Convenience overload using the strategy's default thresholds and a constant aggregate utilization. */
   private static HelixGroupWeightedLeastLoadedStrategy weightedStrategy(
       double[] latency,
       double utilization,
@@ -148,10 +186,27 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
    * (b) find the environment's fixed point in the closed-loop test.
    */
   private static double[] analyticShares(double[] latency, double u, double m) {
+    return analyticShares(
+        latency,
+        u,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_UTILIZATION,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_UTILIZATION,
+        m);
+  }
+
+  private static double[] analyticShares(double[] latency, double u, double evenUntil, double fullSkew, double m) {
     int groupCount = latency.length;
     double even = 1.0 / groupCount;
     double floor = HelixGroupWeightedLeastLoadedStrategy.PROBE_FLOOR_FRACTION * even;
-    double uPow = u <= 0 ? 0.0 : (u >= 1 ? 1.0 : Math.pow(u, m));
+    double skew;
+    if (u <= evenUntil) {
+      skew = 0.0;
+    } else if (u >= fullSkew) {
+      skew = 1.0;
+    } else {
+      double position = (u - evenUntil) / (fullSkew - evenUntil);
+      skew = m == 1.0 ? position : Math.pow(position, m);
+    }
 
     double sumMeasured = 0.0;
     int measured = 0;
@@ -175,7 +230,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     double sum = 0.0;
     for (int g = 0; g < groupCount; g++) {
       double strengthShare = totalStrength > 0 ? strength[g] / totalStrength : even;
-      shares[g] = Math.max((1.0 - uPow) * even + uPow * strengthShare, floor);
+      shares[g] = Math.max((1.0 - skew) * even + skew * strengthShare, floor);
       sum += shares[g];
     }
     for (int g = 0; g < groupCount; g++) {
@@ -277,79 +332,23 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
    */
   @Test
   public void testReproducesFiveStageLatencyModel() {
-    int groupCount = 3;
-    // Measured average latency per group (ms). Group 2 is consistently ~2x faster; strengths {1/40,1/40,1/20}
-    // give latency-proportional shares 0.25 / 0.25 / 0.50 at full utilization.
     double[] latency = { 40.0, 40.0, 20.0 };
     int fastGroup = argMin(latency);
-    // The implied full-utilization ceiling per group (its share of the total quota); used only for reporting and
-    // the "never exceed ceiling" assertion -- it is NOT fed into the strategy.
-    double totalQuota = 42000.0;
-    double[] impliedCeiling = new double[groupCount];
-    double[] saturationShares =
-        analyticShares(latency, 1.0, HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
-    for (int g = 0; g < groupCount; g++) {
-      impliedCeiling[g] = saturationShares[g] * totalQuota;
-    }
-    int[] stageLoads = { 10000, 20000, 30000, 38000, 42000 };
-    double m = HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT;
-    double slack = 0.01 * totalQuota;
+    int groupCount = latency.length;
+    double slack = 0.01 * STAGED_TOTAL_QUOTA;
+
+    StagedRun run = runStagedScenario("Five-stage latency model - group 2 is 2x faster", latency);
 
     double previousFastShare = -1.0;
     int[] previousRouted = null;
-    double[] lastServedLatency = null;
-    long nextRequestId = 0;
-
-    LOGGER.info(
-        "Five-stage latency model (measured latency {}, implied ceilings {}). "
-            + "stage | load(RPS) | u | routed(abs) | shares%% | avg latency/group(ms) | total avg latency(ms)",
-        Arrays.toString(latency),
-        Arrays.toString(Arrays.stream(impliedCeiling).mapToLong(Math::round).toArray()));
-
-    for (int stage = 0; stage < stageLoads.length; stage++) {
-      int load = stageLoads[stage];
-      double u = load / totalQuota;
-
-      int[] routed = routeAndFinish(weightedStrategy(latency, u, m, new Random(SEED)), groupCount, nextRequestId, load);
-      nextRequestId += load;
-
-      double[] shares = new double[groupCount];
-      double[] servedLatency = new double[groupCount];
-      double weightedLatencySum = 0.0;
-      for (int g = 0; g < groupCount; g++) {
-        shares[g] = routed[g] / (double) load;
-        // The latency this stage's routing would produce, given each group's implied ceiling (a consequence,
-        // reported to show that keeping groups at/under their ceiling keeps every group within SLO).
-        servedLatency[g] = Math.min(LATENCY_SLO_MS, environmentLatencyMs(routed[g], impliedCeiling[g]));
-        weightedLatencySum += routed[g] * servedLatency[g];
-      }
-      // Total avg latency = the latency an average request sees this stage (weighted by where traffic landed).
-      double totalAvgLatency = weightedLatencySum / load;
-      double fastShare = shares[fastGroup];
-
-      LOGGER.info(
-          String.format(
-              "  %2d   |   %5d   | %.3f | %-22s | [%.1f, %.1f, %.1f] | [%.1f, %.1f, %.1f] | %.1f",
-              stage,
-              load,
-              u,
-              Arrays.toString(routed),
-              100 * shares[0],
-              100 * shares[1],
-              100 * shares[2],
-              servedLatency[0],
-              servedLatency[1],
-              servedLatency[2],
-              totalAvgLatency));
-
-      double[] expected = analyticShares(latency, u, m);
+    for (int stage = 0; stage < run.stageLoads.length; stage++) {
+      int[] routed = run.routed[stage];
+      int load = run.stageLoads[stage];
+      double fastShare = routed[fastGroup] / (double) load;
       for (int g = 0; g < groupCount; g++) {
         Assert.assertTrue(
-            Math.abs(shares[g] - expected[g]) < 0.02,
-            "Stage " + stage + " group " + g + " share=" + shares[g] + " should match model " + expected[g]);
-        Assert.assertTrue(
-            routed[g] <= impliedCeiling[g] + slack,
-            "Group " + g + " routed=" + routed[g] + " must not exceed its implied ceiling " + impliedCeiling[g]);
+            routed[g] <= run.impliedCeiling[g] + slack,
+            "Group " + g + " routed=" + routed[g] + " must not exceed its implied ceiling " + run.impliedCeiling[g]);
       }
       // The faster group's share must not shrink as load grows.
       if (previousFastShare >= 0) {
@@ -358,8 +357,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
             "Faster group share should grow (not shrink) as load rises; was " + previousFastShare + " now "
                 + fastShare);
       }
-      // Ali's health property: as RPS rises every group keeps getting MORE absolute traffic; the slower members
-      // are never starved of throughput, they just take a shrinking share of a growing total.
+      // Ali's health property: as RPS rises every group keeps getting MORE absolute traffic.
       if (previousRouted != null) {
         for (int g = 0; g < groupCount; g++) {
           Assert.assertTrue(
@@ -370,28 +368,177 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
       }
       previousFastShare = fastShare;
       previousRouted = routed;
-      lastServedLatency = servedLatency;
     }
-
-    // At the final stage every group is served at (not past) its implied ceiling -- the healthy saturation point.
+    // At the final stage every group is served at (not past) its implied ceiling -- the healthy saturation point,
+    // and the served latencies converge instead of one weak group becoming the SLO outlier.
     for (int g = 0; g < groupCount; g++) {
       Assert.assertTrue(
-          Math.abs(previousRouted[g] - impliedCeiling[g]) < slack,
-          "At full quota group " + g + " should be served at its ceiling " + impliedCeiling[g] + "; routed="
+          Math.abs(previousRouted[g] - run.impliedCeiling[g]) < slack,
+          "At full quota group " + g + " should be served at its ceiling " + run.impliedCeiling[g] + "; routed="
               + previousRouted[g]);
     }
-    // ...and because per-group utilization is balanced at saturation, the served latencies converge instead of
-    // one weak group becoming the SLO outlier.
-    double minLatency = lastServedLatency[0];
-    double topLatency = lastServedLatency[0];
-    for (double l: lastServedLatency) {
-      minLatency = Math.min(minLatency, l);
-      topLatency = Math.max(topLatency, l);
-    }
+    double[] saturationLatency = run.servedLatency[run.stageLoads.length - 1];
     Assert.assertTrue(
-        topLatency - minLatency < 10.0,
+        spread(saturationLatency) < 10.0,
         "At saturation group latencies should be balanced (no SLO outlier); latencies="
-            + Arrays.toString(lastServedLatency));
+            + Arrays.toString(saturationLatency));
+  }
+
+  /**
+   * Control scenario: when every host is identical latency-wise there is no "faster" group to skew toward, so
+   * every group's inferred strength is equal and the strength term reduces to the even split at <em>every</em>
+   * utilization. Routing therefore stays even and the request spread stays ~0 all the way up to full quota. This
+   * is the common homogeneous-fault-zone case: the strategy is a safe no-op that behaves exactly like plain even
+   * routing when there is no real latency signal to act on.
+   */
+  @Test
+  public void testEvenHostsStayEvenAsRpsRises() {
+    double[] latency = { 30.0, 30.0, 30.0 };
+    int groupCount = latency.length;
+
+    StagedRun run = runStagedScenario("Even hosts - identical latency (30/30/30)", latency);
+
+    for (int stage = 0; stage < run.stageLoads.length; stage++) {
+      int[] routed = run.routed[stage];
+      int load = run.stageLoads[stage];
+      double spreadPct = 100.0 * (maxOf(routed) - minOf(routed)) / load;
+      Assert.assertTrue(
+          spreadPct < 2.0,
+          "Identical hosts must stay even at u=" + run.utilization[stage] + "; req spread=" + spreadPct + "%");
+      for (int g = 0; g < groupCount; g++) {
+        Assert.assertTrue(
+            Math.abs(routed[g] / (double) load - 1.0 / groupCount) < 0.02,
+            "Identical hosts: every group should stay near the even share; routed=" + Arrays.toString(routed));
+      }
+    }
+  }
+
+  /**
+   * The single-slow-host scenario: two identical fast hosts plus one host at 2x latency. At low load routing is
+   * even (the slow host is not yet a problem), but as RPS climbs toward the quota the slow host progressively
+   * <em>sheds</em> share to the two fast hosts -- its absolute traffic still rises (never starved, never taken
+   * below its floor), it simply carries a shrinking fraction of a growing total. The request spread grows with
+   * load while the served latencies converge, so no host is pushed past its ceiling.
+   */
+  @Test
+  public void testOneSlowHostShedsTrafficAsRpsRises() {
+    double[] latency = { 30.0, 30.0, 60.0 };
+    int slowGroup = 2;
+    int groupCount = latency.length;
+
+    StagedRun run = runStagedScenario("One slow host - group 2 is 2x slower (30/30/60)", latency);
+
+    int lastStage = run.stageLoads.length - 1;
+    int[] firstRouted = run.routed[0];
+    int[] lastRouted = run.routed[lastStage];
+
+    // Low load: even (the slow host is barely distinguished).
+    double firstSpreadPct = 100.0 * (maxOf(firstRouted) - minOf(firstRouted)) / run.stageLoads[0];
+    Assert.assertTrue(
+        firstSpreadPct < 3.0,
+        "At low load routing should still be near-even; spread=" + firstSpreadPct + "%");
+
+    // High load: the slow host carries the least, the two fast hosts carry the most.
+    Assert.assertTrue(
+        lastRouted[slowGroup] < lastRouted[0] && lastRouted[slowGroup] < lastRouted[1],
+        "At saturation the slow host should carry the least traffic; routed=" + Arrays.toString(lastRouted));
+
+    // The slow host sheds share as load rises, but its absolute traffic still grows (never starved).
+    double firstSlowShare = firstRouted[slowGroup] / (double) run.stageLoads[0];
+    double lastSlowShare = lastRouted[slowGroup] / (double) run.stageLoads[lastStage];
+    Assert.assertTrue(
+        lastSlowShare < firstSlowShare - 0.05,
+        "The slow host should shed share as RPS rises; was " + firstSlowShare + " now " + lastSlowShare);
+    Assert.assertTrue(
+        lastRouted[slowGroup] > firstRouted[slowGroup],
+        "The slow host's absolute traffic should still rise with RPS; first=" + firstRouted[slowGroup] + " last="
+            + lastRouted[slowGroup]);
+    Assert.assertTrue(
+        lastRouted[slowGroup] > 0.05 * run.stageLoads[lastStage],
+        "The slow host must never be starved below its probe floor; routed=" + Arrays.toString(lastRouted));
+
+    // Request spread widens with load; served latencies still converge (balanced saturation).
+    Assert.assertTrue(
+        (maxOf(lastRouted) - minOf(lastRouted)) > (maxOf(firstRouted) - minOf(firstRouted)),
+        "Request spread should widen as RPS rises for a heterogeneous fleet");
+    Assert.assertTrue(
+        spread(run.servedLatency[lastStage]) < 10.0,
+        "At saturation the served latencies should still converge; latencies="
+            + Arrays.toString(run.servedLatency[lastStage]));
+  }
+
+  /**
+   * The two controllable knobs in action, on the same one-slow-host fleet ({30, 30, 60}). Both knobs move
+   * <em>where</em> on the utilization axis the strategy reacts, without touching the latency signal itself:
+   *
+   * <ul>
+   *   <li><b>evenUntilUtilization (stay-even knob)</b> — the utilization up to which routing stays fully even.
+   *       Lowering it (0.70 -> 0.50) makes the strategy shed traffic off the slow host <em>sooner</em> (at a
+   *       lower utilization); raising it (0.70 -> 0.90) keeps the fleet even for longer.</li>
+   *   <li><b>fullSkewAtUtilization (full-skew knob)</b> — the utilization at which routing reaches its maximum
+   *       latency-proportional split. Lowering it (1.00 -> 0.85) reaches full protection <em>before</em>
+   *       saturation, so the slow host is at its floor-bounded minimum earlier.</li>
+   * </ul>
+   *
+   * Each configuration renders its own staged table so the effect of moving a knob is directly visible.
+   */
+  @Test
+  public void testKnobsControlEvenBandAndFullSkewOnset() {
+    double[] slowHost = { 30.0, 30.0, 60.0 };
+    int slow = 2;
+    int midStage = 2; // u = 30000 / 42000 = 0.714
+    int highStage = 3; // u = 38000 / 42000 = 0.905
+    double linear = 1.0;
+
+    StagedRun defaults =
+        runStagedScenario("Knobs A: even<=0.70, full-skew@1.00 (default)", slowHost, 0.70, 1.00, linear);
+    StagedRun early =
+        runStagedScenario("Knobs B: even<=0.50, full-skew@1.00 (reacts sooner)", slowHost, 0.50, 1.00, linear);
+    StagedRun late =
+        runStagedScenario("Knobs C: even<=0.90, full-skew@1.00 (stays even longer)", slowHost, 0.90, 1.00, linear);
+    StagedRun earlyFull = runStagedScenario(
+        "Knobs D: even<=0.50, full-skew@0.85 (max skew before saturation)",
+        slowHost,
+        0.50,
+        0.85,
+        linear);
+
+    double defaultSlowMid = defaults.routed[midStage][slow] / (double) defaults.stageLoads[midStage];
+    double earlySlowMid = early.routed[midStage][slow] / (double) early.stageLoads[midStage];
+    double lateSlowMid = late.routed[midStage][slow] / (double) late.stageLoads[midStage];
+
+    // Stay-even knob at 0.90: at u=0.71 (below the knob) the slow host is still routed ~evenly.
+    Assert.assertEquals(
+        lateSlowMid,
+        1.0 / 3.0,
+        0.02,
+        "with stay-even=0.90 the slow host stays ~even at u=0.71; share=" + lateSlowMid);
+    // Lowering the stay-even knob to 0.50 sheds slow-host traffic sooner than the 0.70 default at the same u.
+    Assert.assertTrue(
+        earlySlowMid < defaultSlowMid - 0.02,
+        "lowering stay-even 0.70->0.50 sheds slow-host traffic sooner at u=0.71; early=" + earlySlowMid + " default="
+            + defaultSlowMid);
+    // And the default already sheds a little at u=0.71 (just past its 0.70 knob), so it sits below fully-even.
+    Assert.assertTrue(
+        defaultSlowMid < 1.0 / 3.0 + 0.01,
+        "the default knob has just started reacting at u=0.71; share=" + defaultSlowMid);
+
+    // Full-skew knob at 0.85: by u=0.905 the slow host is already at full skew (its floor-bounded minimum),
+    // below where the default (full skew only at u=1.0) has it at the same utilization.
+    double earlyFullSlowHigh = earlyFull.routed[highStage][slow] / (double) earlyFull.stageLoads[highStage];
+    double defaultSlowHigh = defaults.routed[highStage][slow] / (double) defaults.stageLoads[highStage];
+    Assert.assertTrue(
+        earlyFullSlowHigh < defaultSlowHigh - 0.01,
+        "reaching full skew at 0.85 sheds more slow-host traffic by u=0.905 than the 1.0 default; early="
+            + earlyFullSlowHigh + " default=" + defaultSlowHigh);
+    // No knob setting ever starves the slow host below its probe floor.
+    for (StagedRun run: new StagedRun[] { defaults, early, late, earlyFull }) {
+      int last = run.stageLoads.length - 1;
+      Assert.assertTrue(
+          run.routed[last][slow] > 0.05 * run.stageLoads[last],
+          "the slow host must stay above its probe floor under every knob setting; routed="
+              + Arrays.toString(run.routed[last]));
+    }
   }
 
   /**
@@ -519,6 +666,206 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
       max = Math.max(max, v);
     }
     return max - min;
+  }
+
+  /** Render a box-drawn table to the log: computes per-column widths and centers each cell. */
+  private static void logTable(String title, String[] headers, List<String[]> rows) {
+    int columns = headers.length;
+    int[] width = new int[columns];
+    for (int c = 0; c < columns; c++) {
+      width[c] = headers[c].length();
+    }
+    for (String[] row: rows) {
+      for (int c = 0; c < columns; c++) {
+        width[c] = Math.max(width[c], row[c].length());
+      }
+    }
+    String top = border(width, '┌', '┬', '┐');
+    String mid = border(width, '├', '┼', '┤');
+    String bottom = border(width, '└', '┴', '┘');
+
+    StringBuilder table = new StringBuilder("\n").append(title).append('\n');
+    table.append(top).append('\n').append(rowLine(headers, width)).append('\n').append(mid).append('\n');
+    for (String[] row: rows) {
+      table.append(rowLine(row, width)).append('\n');
+    }
+    table.append(bottom);
+    LOGGER.info(table.toString());
+  }
+
+  private static String border(int[] width, char left, char joint, char right) {
+    StringBuilder line = new StringBuilder().append(left);
+    for (int c = 0; c < width.length; c++) {
+      for (int i = 0; i < width[c] + 2; i++) {
+        line.append('─');
+      }
+      line.append(c == width.length - 1 ? right : joint);
+    }
+    return line.toString();
+  }
+
+  private static String rowLine(String[] cells, int[] width) {
+    StringBuilder line = new StringBuilder().append('│');
+    for (int c = 0; c < cells.length; c++) {
+      line.append(' ').append(center(cells[c], width[c])).append(" │");
+    }
+    return line.toString();
+  }
+
+  private static String center(String value, int width) {
+    int pad = width - value.length();
+    int left = pad / 2;
+    int right = pad - left;
+    StringBuilder out = new StringBuilder();
+    for (int i = 0; i < left; i++) {
+      out.append(' ');
+    }
+    out.append(value);
+    for (int i = 0; i < right; i++) {
+      out.append(' ');
+    }
+    return out.toString();
+  }
+
+  private static final double STAGED_TOTAL_QUOTA = 42000.0;
+  private static final int[] STAGED_LOADS = { 10000, 20000, 30000, 38000, 42000 };
+
+  /** The per-stage outputs of a staged scenario run, so a test can assert on them after the table is rendered. */
+  private static final class StagedRun {
+    final int[] stageLoads;
+    final double[] utilization;
+    final int[][] routed;
+    final double[][] servedLatency;
+    final double[] impliedCeiling;
+
+    StagedRun(
+        int[] stageLoads,
+        double[] utilization,
+        int[][] routed,
+        double[][] servedLatency,
+        double[] impliedCeiling) {
+      this.stageLoads = stageLoads;
+      this.utilization = utilization;
+      this.routed = routed;
+      this.servedLatency = servedLatency;
+      this.impliedCeiling = impliedCeiling;
+    }
+  }
+
+  /**
+   * Drive the shared five-stage harness for a given measured-latency vector: route real traffic through the
+   * strategy at each rising RPS stage, sanity-check that the routed distribution matches the analytic model,
+   * render the box table, and return the per-stage outputs. The only per-group signal fed to the strategy is
+   * {@code measuredLatency}; the implied per-group ceiling used for the latency column is derived from the
+   * saturation shares purely for reporting and is never given to the strategy.
+   */
+  private StagedRun runStagedScenario(String scenario, double[] measuredLatency) {
+    return runStagedScenario(
+        scenario,
+        measuredLatency,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_UTILIZATION,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_UTILIZATION,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+  }
+
+  private StagedRun runStagedScenario(
+      String scenario,
+      double[] measuredLatency,
+      double evenUntil,
+      double fullSkew,
+      double m) {
+    int groupCount = measuredLatency.length;
+    double[] saturationShares = analyticShares(measuredLatency, 1.0, evenUntil, fullSkew, m);
+    double[] impliedCeiling = new double[groupCount];
+    for (int g = 0; g < groupCount; g++) {
+      impliedCeiling[g] = saturationShares[g] * STAGED_TOTAL_QUOTA;
+    }
+
+    int[][] routedByStage = new int[STAGED_LOADS.length][];
+    double[][] latencyByStage = new double[STAGED_LOADS.length][];
+    double[] utilization = new double[STAGED_LOADS.length];
+    List<String[]> tableRows = new ArrayList<>();
+    long nextRequestId = 0;
+
+    for (int stage = 0; stage < STAGED_LOADS.length; stage++) {
+      int load = STAGED_LOADS[stage];
+      double u = load / STAGED_TOTAL_QUOTA;
+      utilization[stage] = u;
+
+      int[] routed = routeAndFinish(
+          weightedStrategy(measuredLatency, u, evenUntil, fullSkew, m, new Random(SEED)),
+          groupCount,
+          nextRequestId,
+          load);
+      nextRequestId += load;
+
+      double[] shares = new double[groupCount];
+      double[] servedLatency = new double[groupCount];
+      double weightedLatencySum = 0.0;
+      for (int g = 0; g < groupCount; g++) {
+        shares[g] = routed[g] / (double) load;
+        // The latency this stage's routing would produce, given each group's implied ceiling (a consequence,
+        // reported to show that keeping groups at/under their ceiling keeps every group within SLO).
+        servedLatency[g] = Math.min(LATENCY_SLO_MS, environmentLatencyMs(routed[g], impliedCeiling[g]));
+        weightedLatencySum += routed[g] * servedLatency[g];
+      }
+      double totalAvgLatency = weightedLatencySum / load;
+      int requestSpread = maxOf(routed) - minOf(routed);
+      double requestSpreadPct = 100.0 * requestSpread / load;
+
+      // Sanity: the real strategy's routed distribution matches the analytic model for this latency + u + knobs.
+      double[] expected = analyticShares(measuredLatency, u, evenUntil, fullSkew, m);
+      for (int g = 0; g < groupCount; g++) {
+        Assert.assertTrue(
+            Math.abs(shares[g] - expected[g]) < 0.02,
+            scenario + " stage " + stage + " group " + g + " share=" + shares[g] + " should match model "
+                + expected[g]);
+      }
+
+      tableRows.add(
+          new String[] { String.valueOf(stage), String.valueOf(load), String.format("%.3f", u), Arrays.toString(routed),
+              join(shares, 100.0, "%.1f"), String.format("%d (%.1f%%)", requestSpread, requestSpreadPct),
+              join(servedLatency, 1.0, "%.1f"), String.format("%.1f", totalAvgLatency) });
+
+      routedByStage[stage] = routed;
+      latencyByStage[stage] = servedLatency;
+    }
+
+    logTable(
+        scenario + " (implied ceilings "
+            + Arrays.toString(Arrays.stream(impliedCeiling).mapToLong(Math::round).toArray()) + ")",
+        new String[] { "stage", "load (RPS)", "u", "routed (absolute)", "shares %", "req spread (max-min)",
+            "avg latency / group (ms)", "total avg (ms)" },
+        tableRows);
+
+    return new StagedRun(STAGED_LOADS, utilization, routedByStage, latencyByStage, impliedCeiling);
+  }
+
+  private static String join(double[] values, double scale, String perFormat) {
+    StringBuilder out = new StringBuilder();
+    for (int i = 0; i < values.length; i++) {
+      if (i > 0) {
+        out.append(" / ");
+      }
+      out.append(String.format(perFormat, values[i] * scale));
+    }
+    return out.toString();
+  }
+
+  private static int maxOf(int[] values) {
+    int max = values[0];
+    for (int v: values) {
+      max = Math.max(max, v);
+    }
+    return max;
+  }
+
+  private static int minOf(int[] values) {
+    int min = values[0];
+    for (int v: values) {
+      min = Math.min(min, v);
+    }
+    return min;
   }
 
   /**
