@@ -23,74 +23,73 @@ import java.util.function.IntToDoubleFunction;
  * even when its latency edge is sub-millisecond. That over-concentration drives one group's nodes toward
  * their read-quota ceiling (429s) while other groups sit idle with headroom.
  *
- * <p>This strategy replaces the lexicographic (counter, latency) rule with a single per-group weight and a
- * weighted-random draw across all groups:
+ * <p>This strategy replaces the lexicographic (counter, latency) rule with a single per-group target
+ * <em>share</em> and a weighted-random draw. The share of each group interpolates between an even split and a
+ * capacity-proportional split as aggregate utilization rises:
  *
  * <pre>
- *   weight(g) = headroom(g)^beta * latencyHeadroom(g) / (inFlight(g) + 1)
+ *   u        = clamp01( sum(used(g)) / sum(capacity(g)) )     // aggregate utilization in [0, 1]
+ *   share(g) = (1 - u^m) * (1 / G)  +  u^m * (capacity(g) / sum(capacity))
  * </pre>
  *
  * <ul>
- *   <li><b>latencyHeadroom(g)</b> — a latency-budget-aware gate in [{@code MIN_LATENCY_HEADROOM}, 1]. It is
- *       {@code 1 - (latency(g) / budget)^k}, where {@code budget} is the per-request latency budget (the
- *       long-tail retry threshold for the request's key range, see
- *       {@link com.linkedin.venice.router.api.path.VenicePath#getLongTailRetryThresholdMs()}) and {@code k} is
- *       {@link #DEFAULT_LATENCY_URGENCY_EXPONENT}. Because {@code k > 1}, the gate stays close to 1 while a
- *       group's latency is well under the budget -- so healthy groups are treated as interchangeable and load
- *       spreads evenly, preserving read-quota headroom -- and only drops sharply as a group's latency
- *       approaches the budget (i.e. nears an SLA breach), shedding its traffic to groups that are still fast.
- *       This is the key difference from the legacy tie-break, which skewed toward the momentarily fastest group
- *       at <em>all</em> latencies (even a sub-millisecond edge), over-concentrating traffic and driving one
- *       group's nodes toward their read-quota ceiling (429s) while others sat idle. When no budget is known the
- *       gate is disabled (returns 1) and latency does not influence routing.</li>
- *   <li><b>inFlight(g)</b> — folds the in-flight counter into the weight so a busier group is de-prioritized
- *       continuously instead of via a hard primary key. When all groups are healthy this is the dominant term,
- *       yielding an even spread.</li>
- *   <li><b>headroom(g)</b> — a value in [0, 1] describing the group's remaining read-quota headroom (1.0 =
- *       full headroom, 0.0 = at the 429 mark). As a group approaches its quota its weight decays toward zero
- *       and traffic sheds to groups with headroom. {@code beta} controls how aggressively the shed ramps.
- *       Crucially, because headroom multiplies the weight directly, a quota-saturated group is de-prioritized
- *       even when its in-flight counter looks low (saturated groups reject fast, so rejected requests never
- *       accumulate as pending and would otherwise make the group look attractive to a pure least-loaded rule).
- *       This signal is not yet wired in the router; until it is, {@link #FULL_HEADROOM} is used.</li>
+ *   <li><b>u</b> — aggregate utilization: total consumed read capacity across all groups divided by total
+ *       allocated read capacity. It is the single knob that decides how even vs. how skewed routing should be.
+ *       When there is ample headroom ({@code u} small) routing is essentially even; as the cluster fills
+ *       ({@code u} toward 1) routing shifts toward the capacity-proportional split.</li>
+ *   <li><b>capacity(g)</b> — the group's allocated read capacity (its read-quota allocation). A "stronger"
+ *       group has a larger capacity and therefore absorbs a larger proportional share as utilization climbs.
+ *       When no capacity signal is wired in, {@link #UNIFORM_CAPACITY} treats every group as equal, so the
+ *       capacity-proportional term also reduces to {@code 1 / G} and the strategy stays even at every load.</li>
+ *   <li><b>1 / G (even split)</b> — the low-utilization target. Spreading evenly while there is headroom keeps
+ *       every group's read-quota consumption low and avoids the over-concentration that pushes a single group
+ *       to its 429 ceiling.</li>
+ *   <li><b>m (interpolation exponent)</b> — controls how late the shift from even to capacity-proportional
+ *       happens. Because {@code m > 1}, {@code u^m} stays near zero for most of the utilization range and only
+ *       climbs sharply as {@code u} approaches 1, so the cluster runs even for most of its life and only skews
+ *       toward the stronger groups when it is genuinely close to saturation.</li>
  * </ul>
  *
- * <p>The counter-leak protection via {@link TimeoutProcessor} and the synchronized accounting are preserved
- * from {@link HelixGroupLeastLoadedStrategy}.
+ * <p>Latency is deliberately <em>not</em> a routing input here: under this model latency is a
+ * <em>consequence</em> of load, and the aggregate-utilization signal already captures how close the cluster is
+ * to its read-quota ceiling. Trading a small, within-SLO increase in average / p99 latency for the avoidance of
+ * read-quota breaches (429s) is the explicit design goal.
+ *
+ * <p>The counter-leak protection via {@link TimeoutProcessor} and the synchronized in-flight accounting are
+ * preserved from {@link HelixGroupLeastLoadedStrategy}; the in-flight counters are kept for leak protection and
+ * observability ({@link HelixGroupStats#recordGroupPendingRequest}) and do not influence the target share.
  */
 public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectionStrategy {
   public static final int MAX_ALLOWED_GROUP = 100;
 
   /**
-   * Fallback headroom provider used when no read-quota signal is wired in yet: every group is treated as
-   * having full headroom, so the strategy reduces to latency-budget- and in-flight-weighted balancing.
+   * Fallback capacity provider used when no read-quota allocation signal is wired in yet: every group is
+   * treated as having equal capacity, so the capacity-proportional term also reduces to an even split and the
+   * strategy spreads evenly at every utilization level.
    */
-  public static final IntToDoubleFunction FULL_HEADROOM = groupId -> 1.0;
-
-  /** Default exponent applied to the headroom factor. */
-  public static final double DEFAULT_HEADROOM_EXPONENT = 1.0;
+  public static final IntToDoubleFunction UNIFORM_CAPACITY = groupId -> 1.0;
 
   /**
-   * Default exponent {@code k} in the latency gate {@code 1 - (latency/budget)^k}. Values &gt; 1 keep the gate
-   * near 1 while a group is comfortably under its latency budget and make it drop sharply only as the budget is
-   * approached, so the strategy spreads evenly when healthy and sheds hard only near an SLA breach.
+   * Fallback usage provider used when no consumed-read-capacity signal is wired in yet: every group reports
+   * zero usage, so aggregate utilization is 0 and routing is even.
    */
-  public static final double DEFAULT_LATENCY_URGENCY_EXPONENT = 4.0;
+  public static final IntToDoubleFunction ZERO_USAGE = groupId -> 0.0;
 
   /**
-   * Floor for the latency gate so a group whose latency is at or beyond its budget still keeps a small,
-   * non-zero weight (it is de-prioritized, not permanently unreachable).
+   * Default interpolation exponent {@code m}. Values &gt; 1 keep {@code u^m} near zero for most of the
+   * utilization range and make it climb sharply only as utilization approaches 1, so the cluster stays even for
+   * most of its life and skews toward the stronger groups only when close to saturation.
    */
-  private static final double MIN_LATENCY_HEADROOM = 0.01;
+  public static final double DEFAULT_INTERPOLATION_EXPONENT = 3.0;
 
   private final int[] counters = new int[MAX_ALLOWED_GROUP];
   private final TimeoutProcessor timeoutProcessor;
   private final long timeoutInMS;
   private final Map<Long, Pair<Integer, TimeoutProcessor.TimeoutFuture>> requestTimeoutFutureMap = new HashMap<>();
   private final HelixGroupStats helixGroupStats;
-  private final IntToDoubleFunction groupHeadroomProvider;
-  private final double headroomExponent;
-  private final double latencyUrgencyExponent;
+  private final IntToDoubleFunction capacityProvider;
+  private final IntToDoubleFunction usageProvider;
+  private final double interpolationExponent;
   private final DoubleSupplier randomSupplier;
 
   public HelixGroupWeightedLeastLoadedStrategy(
@@ -101,17 +100,19 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
         timeoutProcessor,
         timeoutInMS,
         helixGroupStats,
-        FULL_HEADROOM,
-        DEFAULT_HEADROOM_EXPONENT,
-        DEFAULT_LATENCY_URGENCY_EXPONENT,
+        UNIFORM_CAPACITY,
+        ZERO_USAGE,
+        DEFAULT_INTERPOLATION_EXPONENT,
         () -> ThreadLocalRandom.current().nextDouble());
   }
 
   /**
-   * @param groupHeadroomProvider maps a group id to its remaining read-quota headroom in [0, 1]; values are
-   *                              clamped into that range.
-   * @param headroomExponent      the {@code beta} exponent applied to the headroom factor.
-   * @param latencyUrgencyExponent the {@code k} exponent in the latency gate {@code 1 - (latency/budget)^k}.
+   * @param capacityProvider      maps a group id to its allocated read capacity (read-quota allocation);
+   *                              non-positive values are treated as zero.
+   * @param usageProvider         maps a group id to its consumed read capacity; non-positive values are treated
+   *                              as zero.
+   * @param interpolationExponent the {@code m} exponent controlling how late routing shifts from an even split
+   *                              to a capacity-proportional split as utilization rises.
    * @param randomSupplier        supplies a uniform random double in [0, 1); injectable so tests can be
    *                              deterministic.
    */
@@ -119,26 +120,21 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
       TimeoutProcessor timeoutProcessor,
       long timeoutInMS,
       HelixGroupStats helixGroupStats,
-      IntToDoubleFunction groupHeadroomProvider,
-      double headroomExponent,
-      double latencyUrgencyExponent,
+      IntToDoubleFunction capacityProvider,
+      IntToDoubleFunction usageProvider,
+      double interpolationExponent,
       DoubleSupplier randomSupplier) {
     this.timeoutProcessor = timeoutProcessor;
     this.timeoutInMS = timeoutInMS;
     this.helixGroupStats = helixGroupStats;
-    this.groupHeadroomProvider = groupHeadroomProvider;
-    this.headroomExponent = headroomExponent;
-    this.latencyUrgencyExponent = latencyUrgencyExponent;
+    this.capacityProvider = capacityProvider;
+    this.usageProvider = usageProvider;
+    this.interpolationExponent = interpolationExponent;
     this.randomSupplier = randomSupplier;
   }
 
   @Override
   public int selectGroup(long requestId, int groupCount) {
-    return selectGroup(requestId, groupCount, NO_LATENCY_BUDGET);
-  }
-
-  @Override
-  public int selectGroup(long requestId, int groupCount, int latencyBudgetMs) {
     if (groupCount > MAX_ALLOWED_GROUP || groupCount <= 0) {
       throw new VeniceException(
           "The valid group num must fail into this range: [1, " + MAX_ALLOWED_GROUP + "], but received: " + groupCount);
@@ -151,7 +147,7 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
             "One request should at most select one group, but request with request id: " + requestId
                 + " has invoked this function more than once");
       }
-      selectedGroup = pickWeightedGroup(groupCount, startGroupId, latencyBudgetMs);
+      selectedGroup = pickWeightedGroup(groupCount, startGroupId);
       final int finalSelectedGroup = selectedGroup;
       /**
        * Setting up timeout future for this request since it is possible in some situation, {@link #finishRequest}
@@ -173,80 +169,73 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
 
   /**
    * Weighted-random reservoir selection across all groups. Each group is adopted with probability
-   * {@code weight(g) / cumulativeWeight}, yielding a final selection probability of
-   * {@code weight(g) / sum(weight)} in a single pass without allocation. The scan starts at
-   * {@code startGroupId} purely to avoid biasing toward group 0; it does not affect the resulting
-   * distribution.
+   * {@code share(g) / cumulativeShare}, yielding a final selection probability of {@code share(g)} (the shares
+   * sum to 1) in a single pass without allocation. The scan starts at {@code startGroupId} purely to avoid
+   * biasing toward group 0; it does not affect the resulting distribution.
    */
-  private int pickWeightedGroup(int groupCount, int startGroupId, int latencyBudgetMs) {
-    // A group whose average latency is not yet known (unused) reports a non-positive latency; fall back to
-    // the mean of the known latencies so a cold group competes on par instead of dominating (a negative
-    // latency would otherwise win a naive comparison) or starving (never being explored).
-    double neutralLatency = meanKnownLatency(groupCount);
-    double cumulativeWeight = 0.0;
+  private int pickWeightedGroup(int groupCount, int startGroupId) {
+    double utilizationPower = utilizationPower(groupCount);
+    double totalCapacity = totalCapacity(groupCount);
+    double evenShare = 1.0 / groupCount;
+    double cumulativeShare = 0.0;
     int selectedGroup = -1;
     for (int i = 0; i < groupCount; ++i) {
       int currentGroup = (i + startGroupId) % groupCount;
-      double weight = weightForGroup(currentGroup, neutralLatency, latencyBudgetMs);
-      if (weight <= 0.0) {
+      double share = shareForGroup(currentGroup, evenShare, utilizationPower, totalCapacity);
+      if (share <= 0.0) {
         continue;
       }
-      cumulativeWeight += weight;
-      if (randomSupplier.getAsDouble() * cumulativeWeight < weight) {
+      cumulativeShare += share;
+      if (randomSupplier.getAsDouble() * cumulativeShare < share) {
         selectedGroup = currentGroup;
       }
     }
-    // Every weight collapsed to zero (e.g. all groups reported zero headroom): fall back to the scan start so
+    // Every share collapsed to zero (should not happen since shares sum to 1): fall back to the scan start so
     // the request is still routed somewhere rather than dropped.
     return selectedGroup < 0 ? startGroupId : selectedGroup;
   }
 
-  private double weightForGroup(int groupId, double neutralLatency, int latencyBudgetMs) {
-    double avgLatency = helixGroupStats.getGroupResponseWaitingTimeAvg(groupId);
-    double effectiveLatency = avgLatency > 0 ? avgLatency : neutralLatency;
-    double headroom = clampHeadroom(groupHeadroomProvider.applyAsDouble(groupId));
-    double headroomFactor = headroomExponent == 1.0 ? headroom : Math.pow(headroom, headroomExponent);
-    double latencyFactor = latencyHeadroom(effectiveLatency, latencyBudgetMs);
-    // inFlight + 1 keeps the denominator positive and lets an idle group (0 in-flight) still be bounded.
-    return headroomFactor * latencyFactor / (counters[groupId] + 1);
-  }
-
   /**
-   * The latency-budget gate {@code 1 - (latency/budget)^k}, floored at {@link #MIN_LATENCY_HEADROOM}. Returns
-   * ~1 while the group's latency is well under the budget (so healthy groups are interchangeable and load
-   * spreads evenly) and drops sharply toward the floor as the latency approaches the budget (shedding traffic
-   * from a group nearing an SLA breach). When no budget is known the gate is disabled and returns 1.
+   * The target share for a group: {@code (1 - u^m) * evenShare + u^m * capacity(g) / totalCapacity}. When there
+   * is no capacity signal ({@code totalCapacity <= 0}) the capacity term degenerates to the even split, so the
+   * share is simply {@code evenShare}.
    */
-  private double latencyHeadroom(double latencyMs, int latencyBudgetMs) {
-    if (latencyBudgetMs <= 0 || latencyMs <= 0) {
-      return 1.0;
-    }
-    double urgency = latencyMs / latencyBudgetMs;
-    if (urgency >= 1.0) {
-      return MIN_LATENCY_HEADROOM;
-    }
-    double headroom = 1.0 - Math.pow(urgency, latencyUrgencyExponent);
-    return headroom < MIN_LATENCY_HEADROOM ? MIN_LATENCY_HEADROOM : headroom;
+  private double shareForGroup(int groupId, double evenShare, double utilizationPower, double totalCapacity) {
+    double capacityShare =
+        totalCapacity > 0 ? nonNegative(capacityProvider.applyAsDouble(groupId)) / totalCapacity : evenShare;
+    return (1.0 - utilizationPower) * evenShare + utilizationPower * capacityShare;
   }
 
-  private double meanKnownLatency(int groupCount) {
-    double sum = 0.0;
-    int known = 0;
-    for (int g = 0; g < groupCount; ++g) {
-      double avgLatency = helixGroupStats.getGroupResponseWaitingTimeAvg(g);
-      if (avgLatency > 0) {
-        sum += avgLatency;
-        ++known;
-      }
-    }
-    return known == 0 ? 1.0 : sum / known;
-  }
-
-  private static double clampHeadroom(double headroom) {
-    if (headroom < 0.0) {
+  /** {@code u^m}, where {@code u} is aggregate utilization in [0, 1] and {@code m} is the interpolation exponent. */
+  private double utilizationPower(int groupCount) {
+    double totalCapacity = totalCapacity(groupCount);
+    if (totalCapacity <= 0) {
       return 0.0;
     }
-    return Math.min(headroom, 1.0);
+    double totalUsage = 0.0;
+    for (int g = 0; g < groupCount; ++g) {
+      totalUsage += nonNegative(usageProvider.applyAsDouble(g));
+    }
+    double utilization = totalUsage / totalCapacity;
+    if (utilization <= 0.0) {
+      return 0.0;
+    }
+    if (utilization >= 1.0) {
+      return 1.0;
+    }
+    return interpolationExponent == 1.0 ? utilization : Math.pow(utilization, interpolationExponent);
+  }
+
+  private double totalCapacity(int groupCount) {
+    double total = 0.0;
+    for (int g = 0; g < groupCount; ++g) {
+      total += nonNegative(capacityProvider.applyAsDouble(g));
+    }
+    return total;
+  }
+
+  private static double nonNegative(double value) {
+    return value > 0.0 ? value : 0.0;
   }
 
   private void timeoutRequest(long requestId, int groupId, boolean cancelTimeoutFuture) {
