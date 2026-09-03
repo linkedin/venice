@@ -52,8 +52,13 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
    * stays ~0 and the routed share is driven purely by the latency/headroom weight). Returns the per-group
    * routed counts.
    */
+  /**
+   * Route {@code requestCount} requests through the strategy, finishing each one immediately (so in-flight
+   * stays ~0 and the routed share is driven purely by the latency/headroom weight). Returns the per-group
+   * routed counts.
+   */
   private static int[] routeAndFinish(
-      HelixGroupWeightedLeastLoadedStrategy strategy,
+      HelixGroupSelectionStrategy strategy,
       double[] latencies,
       int groupCount,
       long startRequestId,
@@ -72,6 +77,142 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     int idx = 0;
     for (int i = 1; i < values.length; i++) {
       if (values[i] > values[idx]) {
+        idx = i;
+      }
+    }
+    return idx;
+  }
+
+  /**
+   * Baseline reproduction of the production bug (VENG-12751), plus the fix, on identical input.
+   *
+   * <p>Both the current production strategy ({@link HelixGroupLeastLoadedStrategy}) and the new
+   * {@link HelixGroupWeightedLeastLoadedStrategy} are driven through the same harness using the <em>real
+   * per-group latency vector measured on {@code venice-router.venice-8} / prod-lor1</em> (only a 1.18x spread
+   * between the fastest and slowest group). Little's Law says a 1.18x latency spread should give the fastest
+   * group only a ~22% share of a 5-group cluster.
+   *
+   * <p>This test runs in the tiebreak-isolated regime (each request finishes before the next is selected, so
+   * the in-flight counters are always tied at zero and the tiebreak alone decides every request). This is the
+   * exact regime the production bug lives in: at low per-router in-flight the least-loaded counters are almost
+   * always tied, so the tiebreak fires on nearly every request. The old strategy resolves every tie with a
+   * deterministic lowest-latency pick, so it collapses to winner-take-all and funnels essentially all traffic
+   * onto the single fastest group, starving read-quota headroom on the others (the mechanism behind the 429s).
+   * In production the residual in-flight dilutes this from 100% to the observed ~40%, but the direction and the
+   * quota-breaching concentration are the same. The new strategy replaces the tiebreak with a continuous
+   * {@code 1/latency} weight, so the fastest group settles right on its ~22% Little's-Law share and every group
+   * keeps a fair, latency-proportional slice.
+   */
+  @Test
+  public void testBaselineOldStrategyOverConcentratesVersusNewStrategy() {
+    int groupCount = 5;
+    // Real measured per-group average latency (ms) on venice-router.venice-8 / prod-lor1; group 4 is fastest.
+    double[] measured = new double[] { 22.88, 22.13, 23.84, 20.94, 20.25 };
+    int fastGroup = argMin(measured);
+    double evenShare = 1.0 / groupCount;
+    int requestCount = 50000;
+
+    // --- Baseline: current production strategy on the measured latency vector. ---
+    double[] oldLatencies = Arrays.copyOf(measured, groupCount);
+    HelixGroupLeastLoadedStrategy oldStrategy =
+        new HelixGroupLeastLoadedStrategy(mockTimeoutProcessor(), TIMEOUT_MS, statsWithLatencies(oldLatencies));
+    int[] oldRouted = routeAndFinish(oldStrategy, oldLatencies, groupCount, 0, requestCount);
+
+    // --- Fix: new weighted strategy on the identical latency vector. ---
+    double[] newLatencies = Arrays.copyOf(measured, groupCount);
+    Random random = new Random(SEED);
+    HelixGroupWeightedLeastLoadedStrategy newStrategy = new HelixGroupWeightedLeastLoadedStrategy(
+        mockTimeoutProcessor(),
+        TIMEOUT_MS,
+        statsWithLatencies(newLatencies),
+        HelixGroupWeightedLeastLoadedStrategy.FULL_HEADROOM,
+        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_HEADROOM_EXPONENT,
+        random::nextDouble);
+    int[] newRouted = routeAndFinish(newStrategy, newLatencies, groupCount, 0, requestCount);
+
+    double oldFastShare = oldRouted[fastGroup] / (double) requestCount;
+    double newFastShare = newRouted[fastGroup] / (double) requestCount;
+
+    LOGGER.info(
+        "Baseline reproduction on measured venice-8 latency vector {} (1.18x spread):",
+        Arrays.toString(measured));
+    LOGGER.info(
+        "  OLD (production)  routed={}  fast group {} share={}%",
+        Arrays.toString(oldRouted),
+        fastGroup,
+        String.format("%.1f", 100 * oldFastShare));
+    LOGGER.info(
+        "  NEW (weighted)    routed={}  fast group {} share={}%",
+        Arrays.toString(newRouted),
+        fastGroup,
+        String.format("%.1f", 100 * newFastShare));
+
+    // The baseline must actually exhibit the undesirable over-concentration: despite only a 1.18x latency
+    // spread, the old strategy collapses to winner-take-all on the fastest group and starves the rest.
+    Assert.assertEquals(argMax(oldRouted), fastGroup, "Baseline should concentrate on the fastest group");
+    Assert.assertTrue(
+        oldFastShare > 0.95,
+        "Baseline should over-concentrate (winner-take-all) on the fastest group; share=" + oldFastShare);
+    int starvedUnderOld = 0;
+    for (int g = 0; g < groupCount; g++) {
+      if (oldRouted[g] < 0.01 * requestCount) {
+        starvedUnderOld++;
+      }
+    }
+    Assert.assertTrue(
+        starvedUnderOld >= groupCount - 1,
+        "Baseline should starve every non-fastest group; routed=" + Arrays.toString(oldRouted));
+
+    // The fix removes that over-concentration: the fastest group settles near its (fair) Little's-Law share,
+    // materially below the baseline, routing is monotonic in latency, and no group is starved.
+    Assert.assertTrue(
+        newFastShare < oldFastShare - 0.5,
+        "New strategy must materially reduce the over-concentration; old=" + oldFastShare + " new=" + newFastShare);
+    Assert.assertTrue(
+        newFastShare < evenShare * 1.3,
+        "New strategy should keep the fastest group near an even/Little's-Law share; share=" + newFastShare);
+    for (int g = 0; g < groupCount; g++) {
+      Assert.assertTrue(
+          newRouted[g] > 0.10 * requestCount,
+          "No group should be starved under the new strategy; routed=" + Arrays.toString(newRouted));
+    }
+    // Routing under the new strategy is monotonic in latency: the fastest group gets the most traffic, the
+    // slowest the least.
+    Assert.assertEquals(
+        argMax(newRouted),
+        fastGroup,
+        "New strategy should still give the fastest group the largest (fair) share; routed="
+            + Arrays.toString(newRouted));
+    Assert.assertEquals(
+        argMin(newRouted),
+        argMax(measured),
+        "New strategy should give the slowest group the smallest share; routed=" + Arrays.toString(newRouted));
+  }
+
+  private static int argMin(double[] values) {
+    int idx = 0;
+    for (int i = 1; i < values.length; i++) {
+      if (values[i] < values[idx]) {
+        idx = i;
+      }
+    }
+    return idx;
+  }
+
+  private static int argMax(double[] values) {
+    int idx = 0;
+    for (int i = 1; i < values.length; i++) {
+      if (values[i] > values[idx]) {
+        idx = i;
+      }
+    }
+    return idx;
+  }
+
+  private static int argMin(int[] values) {
+    int idx = 0;
+    for (int i = 1; i < values.length; i++) {
+      if (values[i] < values[idx]) {
         idx = i;
       }
     }
