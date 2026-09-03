@@ -361,6 +361,132 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   }
 
   /**
+   * The read-quota story from the originating issue: routing should get <em>more even as offered load grows
+   * toward the aggregate read quota</em>, so every group is used and none breaches its per-group ceiling (the
+   * 429s), even though a latency edge would happily concentrate traffic on the fast group when there is spare
+   * quota.
+   *
+   * <p>The scenario gives group 0 a latency edge (20ms vs 85ms against a 100ms budget) so the latency gate
+   * alone would over-weight it, and models a per-group read quota via a dynamic headroom provider:
+   * {@code headroom(g) = 1 - consumed(g)/quota(g)}, where {@code consumed} is incremented as the batch routes,
+   * so a filling group self-corrects mid-batch (a saturated group drops to zero headroom and stops being
+   * picked). Sweeping the offered load from a small fraction of the aggregate quota up to the full aggregate:
+   *
+   * <ul>
+   *   <li>At low load the latency edge dominates -- traffic skews onto the fast group (uneven), which is fine
+   *       because there is ample quota headroom and no group is anywhere near its ceiling.</li>
+   *   <li>As the load approaches the aggregate quota the fast group fills first, its headroom collapses, and
+   *       the quota factor forces the remaining load onto the other groups -- the distribution flattens toward
+   *       even, every group is used, and no group is driven past its quota (so no 429s).</li>
+   * </ul>
+   */
+  @Test
+  public void testRoutingEvensOutAsRpsApproachesQuota() {
+    int groupCount = 5;
+    int perGroupQuota = 10000; // reads served per quota window, per group
+    int aggregateQuota = perGroupQuota * groupCount; // 50000
+    int budgetMs = 100;
+    double fastLatencyMs = 20.0; // group 0 -- the latency edge that would skew routing absent quota pressure
+    double slowLatencyMs = 85.0; // groups 1-4
+    double evenShare = 1.0 / groupCount;
+
+    double[] latencies = new double[groupCount];
+    latencies[0] = fastLatencyMs;
+    for (int g = 1; g < groupCount; g++) {
+      latencies[g] = slowLatencyMs;
+    }
+
+    // Per-group consumed reads in the current window; the headroom provider reads this live so a filling group
+    // is down-weighted mid-batch. Reset for each offered-load level.
+    int[] consumed = new int[groupCount];
+    IntToDoubleFunction headroomProvider = groupId -> Math.max(0.0, 1.0 - consumed[groupId] / (double) perGroupQuota);
+
+    // Offered load as a fraction of the aggregate quota: from lightly loaded up to fully saturated.
+    int[] offeredLoads = { 5000, 20000, 35000, 45000, aggregateQuota };
+
+    LOGGER.info(
+        "RPS vs read quota (aggregate quota {}, group 0 fast @ {}ms, others @ {}ms, {}ms budget).",
+        aggregateQuota,
+        (int) fastLatencyMs,
+        (int) slowLatencyMs,
+        budgetMs);
+    LOGGER.info("  offered load | utilization | fast g0 share | max group utilization | consumed per group");
+
+    long nextRequestId = 0;
+    double previousFastShare = Double.MAX_VALUE;
+    double firstFastShare = -1;
+    double lastFastShare = -1;
+
+    for (int offeredLoad: offeredLoads) {
+      Arrays.fill(consumed, 0);
+      Random random = new Random(SEED);
+      HelixGroupWeightedLeastLoadedStrategy strategy = new HelixGroupWeightedLeastLoadedStrategy(
+          mockTimeoutProcessor(),
+          TIMEOUT_MS,
+          statsWithLatencies(latencies),
+          headroomProvider,
+          2.0,
+          HelixGroupWeightedLeastLoadedStrategy.DEFAULT_LATENCY_URGENCY_EXPONENT,
+          random::nextDouble);
+
+      for (int i = 0; i < offeredLoad; i++) {
+        long requestId = nextRequestId++;
+        int group = strategy.selectGroup(requestId, groupCount, budgetMs);
+        consumed[group]++;
+        strategy.finishRequest(requestId, group, latencies[group]);
+      }
+
+      int maxConsumed = consumed[0];
+      int minConsumed = consumed[0];
+      for (int g = 1; g < groupCount; g++) {
+        maxConsumed = Math.max(maxConsumed, consumed[g]);
+        minConsumed = Math.min(minConsumed, consumed[g]);
+      }
+      double fastShare = consumed[0] / (double) offeredLoad;
+      double utilization = offeredLoad / (double) aggregateQuota;
+      double maxGroupUtilization = maxConsumed / (double) perGroupQuota;
+
+      LOGGER.info(
+          String.format(
+              "  %11d  | %10.0f%% | %12.1f%% | %20.2f  | %s",
+              offeredLoad,
+              100 * utilization,
+              100 * fastShare,
+              maxGroupUtilization,
+              Arrays.toString(consumed)));
+
+      // No group may ever be driven past its read quota -- that is the 429 this whole change exists to prevent.
+      Assert.assertTrue(
+          maxGroupUtilization <= 1.0 + 1e-9,
+          "No group may exceed its read quota; consumed=" + Arrays.toString(consumed));
+      // Evenness must not get worse as load grows (allowing a small sampling epsilon).
+      Assert.assertTrue(
+          fastShare <= previousFastShare + 0.015,
+          "Routing should get more even (fast-group share must not grow) as load approaches quota; was "
+              + previousFastShare + " now " + fastShare);
+
+      if (firstFastShare < 0) {
+        firstFastShare = fastShare;
+      }
+      lastFastShare = fastShare;
+      previousFastShare = fastShare;
+    }
+
+    // At low load the latency edge is allowed to skew traffic onto the fast group.
+    Assert.assertTrue(
+        firstFastShare > evenShare + 0.05,
+        "At low load the fast group should be over-represented (uneven is fine); share=" + firstFastShare);
+    // At full quota the distribution is essentially even -- every group is used to its ceiling, none breaches.
+    Assert.assertTrue(
+        lastFastShare < evenShare + 0.02,
+        "At full quota routing should be essentially even so all groups are used; fast share=" + lastFastShare);
+    Assert.assertTrue(
+        firstFastShare - lastFastShare > 0.08,
+        "Routing should measurably even out as load approaches quota; low=" + firstFastShare + " full="
+            + lastFastShare);
+  }
+
+  /**
    * Baseline reproduction of the group-routing skew this strategy fixes, plus the fix, on identical input.
    *
    * <p>Both the existing {@link HelixGroupLeastLoadedStrategy} and the new
