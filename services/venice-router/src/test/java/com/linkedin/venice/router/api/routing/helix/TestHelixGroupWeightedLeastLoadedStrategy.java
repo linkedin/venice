@@ -210,6 +210,87 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   }
 
   /**
+   * Oscillation scenario: the other groups' latency follows a sine wave that swings from healthy up to near the
+   * SLA budget and back. Routing should "breathe" with it -- close to even at the troughs (minimal skew, quota
+   * preserved), skewing onto the steady fast group at the peaks (so requests still complete within the latency
+   * budget), and relaxing back to even once the wave subsides. This proves the gate is not sticky: the skew
+   * appears only while latency is high and disappears when it recovers, with no hysteresis between the two
+   * troughs.
+   *
+   * <p>Latency is driven deterministically (no jitter) so the wave, and the routed response to it, are clean to
+   * read; the jittered, production-latency reproduction lives in
+   * {@link #testBaselineOldStrategyOverConcentratesVersusNewStrategy}.
+   */
+  @Test
+  public void testRoutingBreathesWithSinusoidalLatency() {
+    int groupCount = 5;
+    int budgetMs = 100;
+    double troughMs = 20.0; // all groups healthy -> even routing
+    double peakMs = 95.0; // other groups near the budget -> shed to the fast group
+    double mid = (peakMs + troughMs) / 2;
+    double amplitude = (peakMs - troughMs) / 2;
+
+    double[] latencies = new double[groupCount];
+    Arrays.fill(latencies, troughMs);
+    Random random = new Random(SEED);
+    HelixGroupWeightedLeastLoadedStrategy strategy = weightedStrategy(statsWithLatencies(latencies), random);
+
+    int requestsPerSnapshot = 10000;
+    int steps = 16; // one full period
+    long nextRequestId = 0;
+    double[] fastShares = new double[steps + 1];
+
+    LOGGER.info(
+        "Sinusoidal latency ({}ms budget, group 0 steady at {}ms). Step | others latency (ms) | routed | fast g0 share",
+        budgetMs,
+        (int) troughMs);
+
+    for (int step = 0; step <= steps; step++) {
+      // Start at the trough (sin = -1), rise to the peak (sin = +1) at the half-period, and return to the trough.
+      double phase = -Math.PI / 2 + (2 * Math.PI * step) / steps;
+      double othersLatency = mid + amplitude * Math.sin(phase);
+      for (int g = 1; g < groupCount; g++) {
+        latencies[g] = othersLatency;
+      }
+
+      int[] routed = routeAndFinish(strategy, latencies, groupCount, nextRequestId, requestsPerSnapshot, budgetMs);
+      nextRequestId += requestsPerSnapshot;
+      double fastShare = routed[0] / (double) requestsPerSnapshot;
+      fastShares[step] = fastShare;
+
+      LOGGER.info(
+          String.format(
+              "  %2d  | %3d | %-32s | %5.1f%%",
+              step,
+              Math.round(othersLatency),
+              Arrays.toString(routed),
+              100 * fastShare));
+    }
+
+    int peakStep = steps / 2; // sin = +1 here -> maximum latency on the other groups
+    // Troughs at both ends: routing is close to even (minimal skew).
+    Assert.assertTrue(
+        fastShares[0] < 0.26,
+        "Fast group should be near even at the starting trough; share=" + fastShares[0]);
+    Assert.assertTrue(
+        fastShares[steps] < 0.26,
+        "Routing should return to even once the wave subsides; share=" + fastShares[steps]);
+    // Peak: traffic skews onto the steady fast group so requests stay within the budget.
+    Assert.assertTrue(
+        fastShares[peakStep] > 0.45,
+        "Fast group should absorb the peak of the wave; share=" + fastShares[peakStep]);
+    // The skew tracks the wave rather than latching: the peak is far above both troughs.
+    Assert.assertTrue(
+        fastShares[peakStep] > fastShares[0] + 0.2 && fastShares[peakStep] > fastShares[steps] + 0.2,
+        "Peak skew should clearly exceed the trough skew");
+    // ...and the two troughs are essentially identical (fully relaxed, no hysteresis).
+    Assert.assertTrue(
+        Math.abs(fastShares[0] - fastShares[steps]) < 0.05,
+        "The wave should return routing to its original evenness; start=" + fastShares[0] + " end="
+            + fastShares[steps]);
+  }
+
+  /**
    * The weight folds in the in-flight counter, so a large backlog of un-finished (in-flight) requests on a
    * group must steer subsequent traffic away from it toward groups with spare capacity, independent of latency.
    */
