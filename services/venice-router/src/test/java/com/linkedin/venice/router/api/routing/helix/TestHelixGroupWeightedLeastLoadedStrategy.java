@@ -196,56 +196,69 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   }
 
   /**
-   * The design reproduction: replay Ali Poursamadi's five-stage capacity model. Three groups share a fixed
-   * aggregate read quota; group 2 is the stronger member (~2x the read-capacity allocation of each weak
-   * member). As the offered load climbs from a fraction of the aggregate quota up to the full quota, routing
-   * must move from an even split (no group anywhere near its ceiling) to a capacity-proportional split (the
-   * stronger member carrying its larger share), reproducing the modelled distribution at every stage.
+   * The design reproduction: replay Ali Poursamadi's five-stage capacity model with request rate (RPS) rising
+   * in tandem with utilization. Three groups share a fixed aggregate read quota; group 2 is the stronger member
+   * (~2x the read-capacity allocation of each weak member). Each stage offers a higher absolute load than the
+   * last (10k -> 20k -> 30k -> 38k -> 42k requests), so utilization climbs from a fraction of the quota up to
+   * the full quota, and the model shifts from an even split (no group anywhere near its ceiling) to a
+   * capacity-proportional split (the stronger member carrying its larger share).
+   *
+   * <p>The key health property this asserts is on <em>absolute</em> traffic, not just shares: because RPS rises
+   * every stage, each group -- including the weaker/slower members -- must keep receiving <em>more</em> absolute
+   * traffic as load grows (its share shrinks, but its throughput does not). Traffic is never taken away from the
+   * slower machines; the stronger member simply absorbs a growing <em>fraction</em> of the growing total. (An
+   * earlier version of this test held the total request count fixed across stages, which made the weaker groups'
+   * absolute counts fall as the strong group's share rose -- an artifact of a constant total, not the model.)
    *
    * <p>Expected distributions from the model (per stage): even ~33/33/34 while there is headroom, sliding to
-   * ~26/25/49 at full utilization. The stronger group's share must increase monotonically across the stages.
+   * ~26/25/49 at full utilization. Both the stronger group's share and every group's absolute throughput
+   * increase monotonically across the stages, and no group is ever driven past its capacity ceiling.
    */
   @Test
   public void testReproducesFiveStageCapacityModel() {
     int groupCount = 3;
-    // Per-group read-capacity allocation (the "strength" of each member). Group 2 is ~2x the weak members.
+    // Per-group read-capacity allocation (the "strength" of each member). Group 2 is ~2x the weak members;
+    // the sum is the aggregate read quota, and each value is that group's absolute ceiling at full utilization.
     double[] capacity = { 10920, 10500, 20580 };
     double totalCapacity = 10920 + 10500 + 20580; // 42000
-    // Offered aggregate load at each stage (sum of per-group consumed read capacity in the window).
+    // Offered aggregate load (RPS) at each stage -- rising in tandem with utilization, up to the full quota.
     int[] stageLoads = { 10000, 20000, 30000, 38000, 42000 };
-    int requestsPerStage = 40000;
     double m = HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT;
+    // Sampling slack: absolute-count noise is well under 1% of the aggregate quota, while a genuine "traffic
+    // taken away" regression would be on the order of thousands of requests.
+    double slack = 0.01 * totalCapacity;
 
     double[] usage = new double[groupCount];
     double previousStrongShare = -1.0;
+    int[] previousRouted = null;
+    long nextRequestId = 0;
 
     LOGGER.info(
-        "Five-stage capacity model (capacity {}, total quota {}). stage | u | routed | shares%% | strong g2 share",
+        "Five-stage capacity model (capacity {}, total quota {}). stage | load(RPS) | u | routed(abs) | shares%% | strong g2 share",
         Arrays.toString(capacity),
         (int) totalCapacity);
 
     for (int stage = 0; stage < stageLoads.length; stage++) {
+      int load = stageLoads[stage];
       // Only the aggregate matters for utilization; split the stage load arbitrarily across groups.
-      double per = stageLoads[stage] / (double) groupCount;
-      Arrays.fill(usage, per);
-      double u = stageLoads[stage] / totalCapacity;
+      Arrays.fill(usage, load / (double) groupCount);
+      double u = load / totalCapacity;
 
-      int[] routed = routeAndFinish(
-          weightedStrategy(capacity, usage, m, new Random(SEED)),
-          groupCount,
-          (long) stage * requestsPerStage,
-          requestsPerStage);
+      int[] routed =
+          routeAndFinish(weightedStrategy(capacity, usage, m, new Random(SEED)), groupCount, nextRequestId, load);
+      nextRequestId += load;
 
       double[] shares = new double[groupCount];
       for (int g = 0; g < groupCount; g++) {
-        shares[g] = routed[g] / (double) requestsPerStage;
+        shares[g] = routed[g] / (double) load;
       }
       double strongShare = shares[2];
 
       LOGGER.info(
           String.format(
-              "  %2d   | %.3f | %-22s | [%.1f, %.1f, %.1f] | %.1f%%",
+              "  %2d   |   %5d   | %.3f | %-22s | [%.1f, %.1f, %.1f] | %.1f%%",
               stage,
+              load,
               u,
               Arrays.toString(routed),
               100 * shares[0],
@@ -260,6 +273,10 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
         Assert.assertTrue(
             Math.abs(shares[g] - expected) < 0.02,
             "Stage " + stage + " group " + g + " share=" + shares[g] + " should match model " + expected);
+        // No group may ever be driven past its capacity ceiling -- that is the 429 this change prevents.
+        Assert.assertTrue(
+            routed[g] <= capacity[g] + slack,
+            "Group " + g + " routed=" + routed[g] + " must not exceed its capacity " + capacity[g]);
       }
       // The stronger group's share must not shrink as load grows.
       if (previousStrongShare >= 0) {
@@ -268,24 +285,27 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
             "Stronger group share should grow (not shrink) as load rises; was " + previousStrongShare + " now "
                 + strongShare);
       }
+      // Ali's health property: as RPS rises every group keeps getting MORE absolute traffic; the slower members
+      // are never starved of throughput, they just take a shrinking share of a growing total.
+      if (previousRouted != null) {
+        for (int g = 0; g < groupCount; g++) {
+          Assert.assertTrue(
+              routed[g] >= previousRouted[g] - slack,
+              "Group " + g + " absolute traffic must not drop as RPS rises; was " + previousRouted[g] + " now "
+                  + routed[g]);
+        }
+      }
       previousStrongShare = strongShare;
+      previousRouted = routed;
     }
 
-    // Bookend checks anchored to the model: even at the first stage, clearly skewed to the strong member at full quota.
-    double[] usageLow = { 3333, 3333, 3334 };
-    int[] low =
-        routeAndFinish(weightedStrategy(capacity, usageLow, m, new Random(SEED)), groupCount, 0, requestsPerStage);
-    Assert.assertTrue(
-        Math.abs(low[2] / (double) requestsPerStage - 1.0 / groupCount) < 0.02,
-        "First stage should be ~even for the strong group; routed=" + Arrays.toString(low));
-
-    double[] usageFull = { 14000, 14000, 14000 };
-    int[] full =
-        routeAndFinish(weightedStrategy(capacity, usageFull, m, new Random(SEED)), groupCount, 0, requestsPerStage);
-    double fullStrongShare = full[2] / (double) requestsPerStage;
-    Assert.assertTrue(
-        Math.abs(fullStrongShare - capacity[2] / totalCapacity) < 0.02,
-        "At full quota the strong group should carry its capacity share (~49%); share=" + fullStrongShare);
+    // At the final stage every group is served at (not past) its capacity ceiling -- the healthy saturation point.
+    for (int g = 0; g < groupCount; g++) {
+      Assert.assertTrue(
+          Math.abs(previousRouted[g] - capacity[g]) < slack,
+          "At full quota group " + g + " should be served at its capacity " + capacity[g] + "; routed="
+              + previousRouted[g]);
+    }
   }
 
   /**
