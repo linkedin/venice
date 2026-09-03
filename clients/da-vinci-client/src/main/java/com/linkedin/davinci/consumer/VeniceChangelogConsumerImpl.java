@@ -386,16 +386,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
-          currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
+          recordSubscriptionForHeartbeatReporting(topicPartition);
         }
       } finally {
         subscriptionLock.writeLock().unlock();
       }
-      if (changeCaptureStats != null) {
-        if (!heartbeatReporterThread.isAlive()) {
-          heartbeatReporterThread.start();
-        }
-      }
+      startHeartbeatReporterIfNeeded();
       isSubscribed.set(true);
       return null;
     }, seekExecutorService);
@@ -658,6 +654,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected void synchronousSeek(Set<Integer> partitions, PubSubTopic targetTopic, SeekFunction seekAction) {
+    List<PubSubTopicPartition> topicPartitionListToSeek;
     subscriptionLock.writeLock().lock();
     try {
       // Prune out current subscriptions
@@ -668,14 +665,28 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
       }
 
-      List<PubSubTopicPartition> topicPartitionListToSeek =
-          getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
+      topicPartitionListToSeek = getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
 
       for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
         seekAction.apply(topicPartition);
+        recordSubscriptionForHeartbeatReporting(topicPartition);
       }
     } finally {
       subscriptionLock.writeLock().unlock();
+    }
+    if (!topicPartitionListToSeek.isEmpty()) {
+      startHeartbeatReporterIfNeeded();
+      isSubscribed.set(true);
+    }
+  }
+
+  private void recordSubscriptionForHeartbeatReporting(PubSubTopicPartition topicPartition) {
+    currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
+  }
+
+  private void startHeartbeatReporterIfNeeded() {
+    if (changeCaptureStats != null && !heartbeatReporterThread.isAlive()) {
+      heartbeatReporterThread.start();
     }
   }
 
