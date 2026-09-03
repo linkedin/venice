@@ -284,6 +284,46 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testSeekToTailStartsHeartbeatReporter() throws Exception {
+    PubSubPosition tailPosition = mock(PubSubPosition.class);
+    Set<PubSubTopicPartition> assignments = Collections.synchronizedSet(new HashSet<>());
+    when(mockPubSubConsumer.getAssignment()).thenReturn(assignments);
+    when(mockPubSubConsumer.endPosition(any())).thenReturn(tailPosition);
+    doAnswer(invocation -> {
+      assignments.add(invocation.getArgument(0));
+      return null;
+    }).when(mockPubSubConsumer).subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
+
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    try {
+      long beforeSeek = System.currentTimeMillis();
+      veniceChangelogConsumer.seekToTail(Collections.singleton(0)).get(10, TimeUnit.SECONDS);
+      long afterSeek = System.currentTimeMillis();
+
+      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+      verify(mockPubSubConsumer).subscribe(eq(pubSubTopicPartition), eq(tailPosition), eq(true));
+      Map<Integer, Long> lastHeartbeat = veniceChangelogConsumer.getLastHeartbeatPerPartition();
+      assertEquals(lastHeartbeat.size(), 1);
+      assertTrue(lastHeartbeat.containsKey(0));
+      assertTrue(lastHeartbeat.get(0) >= beforeSeek);
+      assertTrue(lastHeartbeat.get(0) <= afterSeek);
+      assertTrue(veniceChangelogConsumer.subscribed());
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(veniceChangelogConsumer.getHeartbeatReporterThread().isAlive()));
+    } finally {
+      veniceChangelogConsumer.close();
+    }
+  }
+
+  @Test
   public void testAdjustCheckpoints() {
     PubSubConsumerAdapter mockConsumer = Mockito.mock(PubSubConsumerAdapter.class);
     Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
