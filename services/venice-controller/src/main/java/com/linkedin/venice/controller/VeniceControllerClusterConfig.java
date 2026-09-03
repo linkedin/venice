@@ -109,6 +109,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
@@ -456,6 +457,7 @@ public class VeniceControllerClusterConfig {
   private final CloudConfig helixCloudConfig;
 
   private final long controllerHelixParticipantDeregistrationTimeoutMs;
+  private final long controllerStandbyToLeaderTransitionTimeoutMs;
 
   private final String helixRestCustomizedHealthUrl;
 
@@ -1195,6 +1197,8 @@ public class VeniceControllerClusterConfig {
 
     this.controllerHelixParticipantDeregistrationTimeoutMs =
         props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(10));
+    this.controllerStandbyToLeaderTransitionTimeoutMs =
+        props.getLong(CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(10));
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
 
     this.serverHelixClusterTopologyAware = props.getBoolean(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, false);
@@ -2196,6 +2200,10 @@ public class VeniceControllerClusterConfig {
 
   public long getControllerHelixParticipantDeregistrationTimeoutMs() {
     return controllerHelixParticipantDeregistrationTimeoutMs;
+  }
+
+  public long getControllerStandbyToLeaderTransitionTimeoutMs() {
+    return controllerStandbyToLeaderTransitionTimeoutMs;
   }
 
   public String getHelixRestCustomizedHealthUrl() {
