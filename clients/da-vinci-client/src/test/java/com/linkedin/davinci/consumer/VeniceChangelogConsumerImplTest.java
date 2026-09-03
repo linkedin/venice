@@ -302,14 +302,17 @@ public class VeniceChangelogConsumerImplTest {
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
     try {
+      long beforeSeek = System.currentTimeMillis();
       veniceChangelogConsumer.seekToTail(Collections.singleton(0)).get(10, TimeUnit.SECONDS);
+      long afterSeek = System.currentTimeMillis();
 
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
       verify(mockPubSubConsumer).subscribe(eq(pubSubTopicPartition), eq(tailPosition), eq(true));
       Map<Integer, Long> lastHeartbeat = veniceChangelogConsumer.getLastHeartbeatPerPartition();
       assertEquals(lastHeartbeat.size(), 1);
       assertTrue(lastHeartbeat.containsKey(0));
-      assertTrue(lastHeartbeat.get(0) <= System.currentTimeMillis());
+      assertTrue(lastHeartbeat.get(0) >= beforeSeek);
+      assertTrue(lastHeartbeat.get(0) <= afterSeek);
       assertTrue(veniceChangelogConsumer.subscribed());
       TestUtils.waitForNonDeterministicAssertion(
           5,

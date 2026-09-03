@@ -684,8 +684,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
   }
 
-  private void startHeartbeatReporterIfNeeded() {
-    if (changeCaptureStats != null && !heartbeatReporterThread.isAlive()) {
+  private synchronized void startHeartbeatReporterIfNeeded() {
+    if (changeCaptureStats != null && heartbeatReporterThread.getState() == Thread.State.NEW) {
       heartbeatReporterThread.start();
     }
   }
