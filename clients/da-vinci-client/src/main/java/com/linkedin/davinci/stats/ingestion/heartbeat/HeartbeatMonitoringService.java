@@ -946,10 +946,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             }
           }
           if (lingerReplica && heartbeatLagMonitorIngestionCrossCheckEnabled) {
-            // Never remove an actively-subscribed, ingesting replica — the customized view can lag
-            // behind the local ingestion state (e.g. a freshly-transitioned resource that has not yet
-            // propagated into the customized view). The local ingestion state is authoritative: a genuine
-            // version deletion or reassignment stops consumption, so real cleanups still proceed below.
+            // The customized view can lag behind local ingestion, so cross-check it against the
+            // authoritative local ingestion state before removing. Keep the entry if the partition is
+            // still being consumed; a genuine deletion or reassignment stops consumption and cleans up below.
             KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();
             if (ingestionService != null && ingestionService.isPartitionConsuming(topic, partition)) {
               cleanupHeartbeatMap.remove(replicaId);

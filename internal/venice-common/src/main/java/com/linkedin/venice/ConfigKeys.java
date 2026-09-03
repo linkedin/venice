@@ -3519,8 +3519,7 @@ public class ConfigKeys {
    * When enabled, the heartbeat lag-monitor cleanup path cross-checks live ingestion state before
    * removing a lingering replica: a replica that is still actively consuming is never removed, even
    * if the locally cached Helix customized view does not (yet) show it assigned to this node. This
-   * guards against a customized view that lags behind local ingestion during a fresh version's
-   * assignment propagation. Defaults to true.
+   * guards against a customized view that lags behind local ingestion. Defaults to true.
    */
   public static final String SERVER_HEARTBEAT_LAG_MONITOR_INGESTION_CROSS_CHECK_ENABLED =
       "server.heartbeat.lag.monitor.ingestion.cross.check.enabled";
