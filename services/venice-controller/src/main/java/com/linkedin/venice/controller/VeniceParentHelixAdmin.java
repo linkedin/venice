@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
-import static com.linkedin.venice.meta.VersionStatus.CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
@@ -19,7 +18,6 @@ import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
-import static java.lang.Thread.currentThread;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -117,7 +115,6 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.IngestionPauseMode;
@@ -132,7 +129,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -212,7 +208,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
@@ -236,7 +231,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
-  private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
@@ -279,15 +273,11 @@ public class VeniceParentHelixAdmin implements Admin {
   private ParentHelixOfflinePushAccessor offlinePushAccessor;
 
   /**
-   * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
-   * 1. For errored topics, {@link #getOffLineJobStatus} won't truncate them;
-   * 2. For errored topics, {@link #killOfflinePush(String, String, boolean)} won't truncate them;
-   * 3. {@link #getTopicForCurrentPushJob(String, String, boolean, boolean)} will truncate the errored topics based on
-   * {@link #maxErroredTopicNumToKeep};
-   *
-   * It means error topic retiring is only be triggered by next push.
-   *
-   * When {@link #maxErroredTopicNumToKeep} is 0, errored topics will be truncated right away when job is finished.
+   * The parent controller no longer writes or truncates version topics, so errored version topics are
+   * neither retained nor cleaned up here. {@link #maxErroredTopicNumToKeep} now only gates: cleanup of
+   * the corresponding stream-reprocessing topic in {@link #killOfflinePush(String, String, boolean)}
+   * (when it is 0); and, in {@link #truncateTopicsOptionally}, whether an errored push's stream-reprocessing
+   * topic is skipped for truncation and reported as such in the status details (when it is greater than 0).
    */
   private int maxErroredTopicNumToKeep;
 
@@ -1381,226 +1371,17 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-  * Check whether any topic for this store exists or not.
-  * The existing topic could be introduced by two cases:
-  * 1. The previous job push is still running;
-  * 2. The previous job push fails to delete this topic;
-  *
-  * For the 1st case, it is expected to refuse the new data push,
-  * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
-  **/
-  List<PubSubTopic> existingVersionTopicsForStore(String storeName) {
-    List<PubSubTopic> outputList = new ArrayList<>();
-    TopicManager topicManager = getTopicManager();
-    Set<PubSubTopic> topics = topicManager.listTopics();
-    String storeNameForCurrentTopic;
-    for (PubSubTopic topic: topics) {
-      if (AdminTopicUtils.isAdminTopic(topic.getName()) || AdminTopicUtils.isKafkaInternalTopic(topic.getName())
-          || topic.isRealTime() || VeniceView.isViewTopic(topic.getName())) {
-        continue;
-      }
-      try {
-        storeNameForCurrentTopic = Version.parseStoreFromKafkaTopicName(topic.getName());
-      } catch (Exception e) {
-        LOGGER.debug("Failed to parse StoreName from topic: {}, and error message: {}", topic, e.getMessage());
-        continue;
-      }
-      if (storeNameForCurrentTopic.equals(storeName)) {
-        outputList.add(topic);
-      }
-    }
-    return outputList;
-  }
-
-  /**
-   * Get the version topics list for the specified store in freshness order; the first
-   * topic in the list is the latest topic and the last topic is the oldest one.
-   * @param storeName
-   * @return the version topics in freshness order
-   */
-  List<PubSubTopic> getKafkaTopicsByAge(String storeName) {
-    List<PubSubTopic> existingTopics = existingVersionTopicsForStore(storeName);
-    if (!existingTopics.isEmpty()) {
-      existingTopics.sort((t1, t2) -> {
-        int v1 = Version.parseVersionFromKafkaTopicName(t1.getName());
-        int v2 = Version.parseVersionFromKafkaTopicName(t2.getName());
-        return v2 - v1;
-      });
-    }
-    return existingTopics;
-  }
-
-  /**
    * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
-   * else will return the ongoing Kafka topic. It will also try to clean up legacy topics.
+   * else will return the ongoing Kafka topic.
+   *
+   * <p>Note: {@code isIncrementalPush} and {@code isRepush} are accepted for interface/call-site compatibility but
+   * are not used by this parent-controller implementation, which relies solely on parent version status.
    */
-
   public Optional<String> getTopicForCurrentPushJob(
       String clusterName,
       String storeName,
       boolean isIncrementalPush,
       boolean isRepush) {
-    VeniceControllerClusterConfig controllerConfig =
-        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
-    ConcurrentPushDetectionStrategy pushDetectionStrategy = controllerConfig.getConcurrentPushDetectionStrategy();
-    if (ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY.equals(pushDetectionStrategy)) {
-      return getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, isIncrementalPush, isRepush);
-    } else if (ConcurrentPushDetectionStrategy.DUAL.equals(pushDetectionStrategy)) {
-      Optional<String> topicBased =
-          getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, isIncrementalPush, isRepush);
-      Optional<String> versionStatusBased =
-          getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
-      if (!topicBased.equals(versionStatusBased)) {
-        LOGGER.error(
-            "getTopicForCurrentPushJob returns different value for store {} in cluster {}, topicBased: {}, versionStatusBased: {}",
-            storeName,
-            clusterName,
-            topicBased,
-            versionStatusBased);
-      }
-      return topicBased;
-    } else {
-      return getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
-    }
-  }
-
-  Optional<String> getTopicForCurrentPushJobTopicBasedTracking(
-      String clusterName,
-      String storeName,
-      boolean isIncrementalPush,
-      boolean isRepush) {
-    // The first/last topic in the list is the latest/oldest version topic
-    List<PubSubTopic> versionTopics = getKafkaTopicsByAge(storeName);
-    Optional<PubSubTopic> latestTopic = Optional.empty();
-    if (!versionTopics.isEmpty()) {
-      latestTopic = Optional.of(versionTopics.get(0));
-    }
-
-    if (latestTopic.isPresent()) {
-      LOGGER.debug("Latest kafka topic for store: {} is {}", storeName, latestTopic.get());
-      final String latestTopicName = latestTopic.get().getName();
-      int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
-      Store store = getStore(clusterName, storeName);
-      Version version = store.getVersion(versionNumber);
-      boolean onlyDeferredSwap = version.isVersionSwapDeferred() && StringUtils.isEmpty(version.getTargetSwapRegion());
-      boolean isTargetRegionPushWithDeferredSwap =
-          version != null && version.isVersionSwapDeferred() && StringUtils.isNotEmpty(version.getTargetSwapRegion());
-
-      if (onlyDeferredSwap) {
-        if (version.getStatus() == STARTED || version.getStatus() == PUSHED) {
-          LOGGER.error(
-              "Future version {} exists for store {}, please wait till the future version is made current.",
-              versionNumber,
-              storeName);
-          return Optional.of(latestTopic.get().getName());
-        } else if (version.getStatus() == ONLINE) {
-          // for only deferred swap, users need to rollforward to mark it current for online status
-          boolean validatedChildVersion = validateChildCurrentVersions(clusterName, storeName, versionNumber);
-          if (!validatedChildVersion) {
-            return Optional.of(latestTopic.get().getName());
-          }
-        }
-      } else if (isTargetRegionPushWithDeferredSwap) {
-        LOGGER.error(
-            "Future version {} exists for store {}, please wait till the future version is made current.",
-            versionNumber,
-            storeName);
-        return Optional.of(latestTopic.get().getName());
-      }
-
-      if (!isTopicTruncated(latestTopicName)) {
-        /**
-         * Check whether the corresponding version exists or not, since it is possible that last push
-         * meets Kafka topic creation timeout.
-         * When Kafka topic creation timeout happens, topic/job could be still running, but the version
-         * should not exist according to the logic in {@link VeniceHelixAdmin#addVersion}.
-         * However, it is possible that a different request enters this code section when the topic has been created but
-         * either the version information has not been persisted to Zk or the in-memory Store object. In this case, it
-         * is desirable to add a delay to topic deletion.
-         *
-         * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
-         * the incomplete topic/job.
-         */
-        StoreVersionInfo storeVersionPair =
-            getVeniceHelixAdmin().waitVersion(clusterName, storeName, versionNumber, Duration.ofSeconds(30));
-        if (storeVersionPair.getVersion() == null) {
-          // TODO: Guard this topic deletion code using a store-level lock instead.
-          Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestTopicName);
-          if (inMemoryTopicCreationTime != null
-              && SystemTime.INSTANCE.getMilliseconds() < (inMemoryTopicCreationTime + TOPIC_DELETION_DELAY_MS)) {
-            throw new VeniceException(
-                "Failed to get version information but the topic exists and has been created recently. Try again after some time.");
-          }
-
-          killOfflinePush(clusterName, latestTopicName, true);
-          LOGGER.info("Found topic: {} without the corresponding version, will kill it", latestTopicName);
-          return Optional.empty();
-        }
-
-        /**
-         * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
-         * job status by sending requests to each individual datacenter.
-         * If the job is still running, Parent Controller will block current push.
-         */
-        final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
-        ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
-        Map<String, String> extraInfo = new HashMap<>();
-
-        int retryTimes = 5;
-        int current = 0;
-        while (current++ < retryTimes) {
-          OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopicName);
-          jobStatus = offlineJobStatus.getExecutionStatus();
-          extraInfo = offlineJobStatus.getExtraInfo();
-          if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-            break;
-          }
-          // Retry since there is a connection failure when querying job status against each datacenter
-          try {
-            timer.sleep(SLEEP_MS_BETWEEN_RETRY);
-          } catch (InterruptedException e) {
-            currentThread().interrupt();
-            throw new VeniceException(
-                "Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
-          }
-        }
-        if (extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-          // TODO: Do we need to throw exception here??
-          LOGGER.error(
-              "Failed to get job status for topic: {} after retrying {} times, extra info: {}",
-              latestTopicName,
-              retryTimes,
-              extraInfo);
-        }
-        if (!jobStatus.isTerminal()) {
-          LOGGER.info(
-              "Job status: {} for Kafka topic: {} is not terminal, extra info: {}",
-              jobStatus,
-              latestTopicName,
-              extraInfo);
-          if (latestTopic.isPresent()) {
-            return Optional.of(latestTopic.get().getName());
-          }
-          return Optional.empty();
-        } else {
-          /**
-           * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
-           * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
-           */
-          if (!isIncrementalPush) {
-            Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
-            truncateTopicsBasedOnMaxErroredTopicNumToKeep(
-                versionTopics.stream().map(vt -> vt.getName()).collect(Collectors.toList()),
-                isRepush,
-                currentVersionsMap);
-          }
-        }
-      }
-    }
-    return Optional.empty();
-  }
-
-  Optional<String> getTopicForCurrentPushJobParentVersionStatusBasedTracking(String clusterName, String storeName) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       return Optional.empty();
@@ -1608,8 +1389,18 @@ public class VeniceParentHelixAdmin implements Admin {
     int lastVersionNum = store.getLargestUsedVersionNumber();
     Version lastVersion = store.getVersion(lastVersionNum);
 
-    if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
+    if (lastVersionNum == NON_EXISTING_VERSION) {
       LOGGER.info("Store {} does not have any version", storeName);
+      return Optional.empty();
+    }
+    if (lastVersion == null) {
+      // largestUsedVersionNumber is monotonic and isn't decremented on deleteVersion, and can also be
+      // advanced before the corresponding Version is added (e.g. initiateDataRecovery); in either case
+      // there is no ongoing push to wait on for this (missing) version.
+      LOGGER.info(
+          "Store {} largest used version {} does not correspond to an existing version; no ongoing push to wait on",
+          storeName,
+          lastVersionNum);
       return Optional.empty();
     }
 
@@ -1621,13 +1412,17 @@ public class VeniceParentHelixAdmin implements Admin {
     // - ONLINE: push already completed; any pending deferred-swap roll-forward is orchestrated by
     // DeferredVersionSwapService and a subsequent push simply supersedes it. Keys off ZK version
     // status alone (not the parent VT, which may never exist under PARENT_VERSION_STATUS_ONLY).
-    // Non-terminal statuses fall through to the polling branch below.
+    // - NOT_CREATED: no real version (also the rolling-deployment fallback for an unrecognized status
+    // id, see VersionStatus#getVersionStatusFromInt); documented to be inert and non-blocking.
+    // CREATED/PUSHED block the next push outright. STARTED can still represent a normal push whose
+    // current-version promotion has already completed but whose parent version status has not caught up.
     switch (lastVersion.getStatus()) {
       case KILLED:
       case ERROR:
       case ROLLED_BACK:
       case PARTIALLY_ONLINE:
       case ONLINE:
+      case NOT_CREATED:
         LOGGER.info(
             "Store {} version {} is in status {} (no ongoing push); allowing the next push to proceed",
             storeName,
@@ -1635,129 +1430,45 @@ public class VeniceParentHelixAdmin implements Admin {
             lastVersion.getStatus());
         return Optional.empty();
       default:
-        // Non-terminal — fall through to the polling/wait branch below.
+        // Non-terminal — fall through to the block-the-next-push branch below.
         break;
     }
-    LOGGER.info(
-        "Found latest version status: {} for store: {}, version: {}",
-        lastVersion.getStatus(),
-        storeName,
-        lastVersionNum);
-    Optional<String> latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
 
-    if ((lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
-        || lastVersion.getStatus() == CREATED)) {
-      LOGGER.error(
-          "The push for version {} of store {} is not completed, please wait till the push is completed.",
-          lastVersionNum,
-          storeName);
-      return latestTopic;
-    }
-
-    /**
-     * If the job is still running, Parent Controller will block current push.
-     */
-    final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
-    ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
-    Map<String, String> extraInfo = new HashMap<>();
-
-    int retryTimes = 5;
-    int current = 0;
-    while (current++ < retryTimes) {
-      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopic.get());
-      jobStatus = offlineJobStatus.getExecutionStatus();
-      extraInfo = offlineJobStatus.getExtraInfo();
-      if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-        break;
-      }
-      // Retry since there is a connection failure when querying job status against each datacenter
-      try {
-        timer.sleep(SLEEP_MS_BETWEEN_RETRY);
-      } catch (InterruptedException e) {
-        currentThread().interrupt();
-        throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
-      }
-    }
-    if (!jobStatus.isTerminal()) {
-      LOGGER.info("Job status: {} for {} is not terminal, extra info: {}", jobStatus, latestTopic.get(), extraInfo);
-      return latestTopic;
-    }
-    return Optional.empty();
-  }
-
-  private boolean validateChildCurrentVersions(String clusterName, String storeName, int lastVersionNum) {
-    Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
-    for (Map.Entry entry: currentVersionsMap.entrySet()) {
-      if (!entry.getValue().equals(lastVersionNum)) {
-        LOGGER.error(
-            "Future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
-            lastVersionNum,
+    if (lastVersion.getStatus() == STARTED && !lastVersion.isVersionSwapDeferred()) {
+      Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
+      boolean allFabricsServingLastVersion = currentVersions != null && !currentVersions.isEmpty()
+          && currentVersions.values()
+              .stream()
+              .allMatch(currentVersion -> Objects.equals(currentVersion, lastVersionNum));
+      if (store.getCurrentVersion() == lastVersionNum || allFabricsServingLastVersion) {
+        LOGGER.info(
+            "Store {} version {} is already current while its status is still STARTED; allowing the next push to proceed",
             storeName,
-            entry.getKey(),
-            entry.getValue());
-        return false;
+            lastVersionNum);
+        return Optional.empty();
       }
-    }
-    return true;
-  }
-
-  /**
-   * Only keep {@link #maxErroredTopicNumToKeep} non-truncated topics ordered by version. It works as a general method
-   * for cleaning up leaking topics. ({@link #maxErroredTopicNumToKeep} is always 0.)
-   */
-  void truncateTopicsBasedOnMaxErroredTopicNumToKeep(
-      List<String> topics,
-      boolean isRepush,
-      Map<String, Integer> currentVersionsMap) {
-    // Based on current logic, only 'errored' topics were not truncated.
-    List<String> sortedNonTruncatedTopics =
-        topics.stream().filter(topic -> !isTopicTruncated(topic)).sorted((t1, t2) -> {
-          int v1 = Version.parseVersionFromKafkaTopicName(t1);
-          int v2 = Version.parseVersionFromKafkaTopicName(t2);
-          return v1 - v2;
-        }).collect(Collectors.toList());
-    Set<String> streamReprocessingTopics =
-        sortedNonTruncatedTopics.stream().filter(Version::isStreamReprocessingTopic).collect(Collectors.toSet());
-    List<String> sortedNonTruncatedVersionTopics = sortedNonTruncatedTopics.stream()
-        .filter(topic -> !Version.isStreamReprocessingTopic(topic))
-        .collect(Collectors.toList());
-    if (sortedNonTruncatedVersionTopics.size() <= maxErroredTopicNumToKeep) {
       LOGGER.info(
-          "Non-truncated version topics size: {} isn't bigger than maxErroredTopicNumToKeep: {}, so no topic "
-              + "will be truncated this time",
-          sortedNonTruncatedTopics.size(),
-          maxErroredTopicNumToKeep);
-      return;
+          "Store {} version {} is still STARTED and is not current in all fabrics: {}",
+          storeName,
+          lastVersionNum,
+          currentVersions);
     }
-    int topicNumToTruncate = sortedNonTruncatedVersionTopics.size() - maxErroredTopicNumToKeep;
-    int truncatedTopicCnt = 0;
-    for (String topic: sortedNonTruncatedVersionTopics) {
-      /**
-       * If Venice repush somehow failed and we delete the version topic for the current version here, future incremental
-       * pushes will fail; therefore, keep Venice repush transparent and don't delete any VTs; future regular batch pushes
-       * from users will delete the VT we retain here.
-       * Potential improvement: After the Venice repush completes, we can automatically deletes VT from previous version,
-       * at the risk of not being able to roll back to previous version though, so not recommend to do such automation.
-       */
-      if (isRepush && currentVersionsMap.containsValue(Version.parseVersionFromVersionTopicName(topic))) {
-        LOGGER.info(
-            "Do not delete the current version topic: {} since the incoming push is a Venice internal re-push.",
-            topic);
-        continue;
-      }
-      if (++truncatedTopicCnt > topicNumToTruncate) {
-        break;
-      }
-      truncateKafkaTopic(topic);
-      LOGGER.info("Errored topic: {} got truncated", topic);
-      String correspondingStreamReprocessingTopic = Version.composeStreamReprocessingTopicFromVersionTopic(topic);
-      if (streamReprocessingTopics.contains(correspondingStreamReprocessingTopic)) {
-        truncateKafkaTopic(correspondingStreamReprocessingTopic);
-        LOGGER.info(
-            "Corresponding stream reprocessing topic: {} also got truncated.",
-            correspondingStreamReprocessingTopic);
-      }
-    }
+
+    // The only statuses left after the terminal cases above are non-terminal: CREATED (version exists
+    // but its push has not begun), STARTED (push in flight), and PUSHED (a deferred-swap version whose
+    // push completed in its target region but whose swap is still pending). In all of these the version
+    // is not yet done from the user's perspective, so the next push must wait. STARTED is treated the
+    // same as CREATED/PUSHED for deferred-swap versions, or when the version is not current yet, rather
+    // than polling the child job status: a job-status poll only observes ingestion completion, which for
+    // a deferred-swap version does not imply the version swap has finished, so unblocking on a terminal
+    // poll would let a concurrent push slip in during the STARTED -> PUSHED transition.
+    LOGGER.info(
+        "The push for version {} (pushJobId {}) of store {} is not completed (status {}); the next push must wait.",
+        lastVersionNum,
+        lastVersion.getPushJobId(),
+        storeName,
+        lastVersion.getStatus());
+    return Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
   }
 
   /**
@@ -1970,11 +1681,23 @@ public class VeniceParentHelixAdmin implements Admin {
             pushJobId,
             storeName);
       } else {
-        String msg = version.isVersionSwapDeferred()
-            ? ". There is already a future version " + version.getNumber() + " exists for the store " + storeName
-                + " please make that version current before starting a next push."
-            : ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
-                + " is found and it must be terminated before another push can be started.";
+        String msg;
+        if (version.isVersionSwapDeferred() && version.getStatus() == PUSHED) {
+          // The blocking version finished its push but is mid deferred (colo-by-colo) version swap:
+          // PUSHED on the parent (push complete but swap not yet done) and not yet current in every region.
+          // Surface the per-region status so operators do not mistake this for an in-flight concurrent push.
+          Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
+          String targetSwapRegion = version.getTargetSwapRegion();
+          msg = ". Version " + version.getNumber() + " of store " + storeName
+              + " has completed its push and is waiting on deferred version swap (colo-by-colo roll-forward);"
+              + " current version per region: " + currentVersions
+              + (StringUtils.isNotEmpty(targetSwapRegion) ? ", target swap region(s): " + targetSwapRegion : "")
+              + ". Roll it forward to make it current in all regions (or roll it back) before starting a new push.";
+        } else {
+          msg = ". An ongoing push for version " + version.getNumber() + " (status " + version.getStatus()
+              + ", pushJobId " + existingPushJobId + ", topic " + currentPushTopic.get()
+              + ") is still in progress and must complete or be terminated before another push can be started.";
+        }
         VeniceException e = new ConcurrentBatchPushException(
             "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
         e.setStackTrace(EMPTY_STACK_TRACE);
@@ -2564,17 +2287,6 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
-      Version futureVersion = getStore(clusterName, storeName).getVersion(futureVersionBeforeRollForward);
-      boolean onlyDeferredSwap =
-          futureVersion.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersion.getTargetSwapRegion());
-      ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
-          getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
-      if (onlyDeferredSwap && concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
-        LOGGER.info(
-            "Truncating topic {} after child controllers tried to roll forward to not block new versions",
-            kafkaTopic);
-        truncateKafkaTopic(kafkaTopic);
-      }
 
       // Verify that all regions are serving the future version after roll forward
       // before marking status as ONLINE
@@ -3959,21 +3671,15 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isTargetRegionPushWithDeferredSwap =
           isDeferredVersionSwap && !StringUtils.isEmpty(version.getTargetSwapRegion());
 
-      ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
-          getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
       if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess
           || isTargetRegionPushWithDeferredSwap)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
-        if (concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
-          LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
-          truncateKafkaTopic(kafkaTopic);
-        }
         if (version != null && version.getPushType().isStreamReprocessing()) {
           String streamReprocessingTopic = Version.composeStreamReprocessingTopic(store.getName(), version.getNumber());
           LOGGER.info("Truncating kafka topic: {} with job status: {}", streamReprocessingTopic, currentReturnStatus);
           truncateKafkaTopic(streamReprocessingTopic);
+          currentReturnStatusDetails.append("Stream reprocessing topic truncated");
         }
-        currentReturnStatusDetails.append("Parent Kafka topic truncated");
       }
     }
   }
@@ -4329,13 +4035,6 @@ public class VeniceParentHelixAdmin implements Admin {
        * The reason is that every errored push will call this function.
        */
       if (maxErroredTopicNumToKeep == 0) {
-        // Truncate Kafka topic
-        LOGGER.info("Truncating topic when kill offline push job, topic: {}", kafkaTopic);
-        ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
-            getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
-        if (concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
-          truncateKafkaTopic(kafkaTopic);
-        }
         PubSubTopic correspondingStreamReprocessingTopic =
             pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopicFromVersionTopic(kafkaTopic));
         if (getTopicManager().containsTopic(correspondingStreamReprocessingTopic)) {
