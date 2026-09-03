@@ -55,8 +55,13 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
 
   @Override
   public int selectGroup(long requestId, int groupNum) {
+    return selectGroup(requestId, groupNum, HelixGroupSelectionStrategy.NO_LATENCY_BUDGET);
+  }
+
+  @Override
+  public int selectGroup(long requestId, int groupNum, int latencyBudgetMs) {
     helixGroupStats.recordGroupNum(groupNum);
-    int assignedGroupId = selectionStrategy.selectGroup(requestId, groupNum);
+    int assignedGroupId = selectionStrategy.selectGroup(requestId, groupNum, latencyBudgetMs);
     helixGroupStats.recordGroupRequest(assignedGroupId);
     return assignedGroupId;
   }

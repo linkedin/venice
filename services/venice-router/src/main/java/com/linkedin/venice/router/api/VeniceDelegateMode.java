@@ -825,7 +825,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
          * This function only needs to assign a group id to the original Router request, and all the retried requests
          * will share the same group id as the original Router request.
          */
-        venicePath.setHelixGroupId(helixGroupSelector.selectGroup(venicePath.getRequestId(), getHelixGroupNum()));
+        venicePath.setHelixGroupId(
+            helixGroupSelector
+                .selectGroup(venicePath.getRequestId(), getHelixGroupNum(), venicePath.getLongTailRetryThresholdMs()));
       }
       return venicePath.getHelixGroupId();
     }
