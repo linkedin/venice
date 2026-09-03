@@ -671,6 +671,12 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setMaxNearlineRecordSizeBytes(message.maxNearlineRecordSizeBytes);
     params.setThroughputQuotaInBytes(message.throughputQuotaInBytes);
     params.setThroughputQuotaInRecords(message.throughputQuotaInRecords);
+    if (message.veniceUnits != null) {
+      params.setVeniceUnits(message.veniceUnits);
+    }
+    if (message.workloadType != null) {
+      params.setWorkloadType(message.workloadType.toString());
+    }
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {

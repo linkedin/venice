@@ -89,7 +89,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -205,6 +207,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
     if (pubSubEncryptionKeyUrn != null && !pubSubEncryptionKeyUrn.trim().isEmpty()) {
       updateStoreQueryParams.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    }
+
+    if (srcStore.getVeniceUnits() != null) {
+      updateStoreQueryParams.setVeniceUnits(srcStore.getVeniceUnits());
+    }
+
+    if (srcStore.getWorkloadType() != null) {
+      updateStoreQueryParams.setWorkloadType(srcStore.getWorkloadType());
     }
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
@@ -617,6 +627,22 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<StorageMode> getStorageMode() {
     return Optional.ofNullable(params.get(STORAGE_MODE)).map(StorageMode::valueOf);
+  }
+
+  public UpdateStoreQueryParams setVeniceUnits(int veniceUnits) {
+    return putInteger(VENICE_UNITS, veniceUnits);
+  }
+
+  public Optional<Integer> getVeniceUnits() {
+    return getInteger(VENICE_UNITS);
+  }
+
+  public UpdateStoreQueryParams setWorkloadType(String workloadType) {
+    return putString(WORKLOAD_TYPE, workloadType);
+  }
+
+  public Optional<String> getWorkloadType() {
+    return getString(WORKLOAD_TYPE);
   }
 
   public UpdateStoreQueryParams setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {

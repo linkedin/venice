@@ -1436,6 +1436,8 @@ public class AdminTool {
     longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);
     integerParam(cmd, Arg.MAX_RECORD_SIZE_BYTES, params::setMaxRecordSizeBytes, argSet);
     integerParam(cmd, Arg.MAX_NEARLINE_RECORD_SIZE_BYTES, params::setMaxNearlineRecordSizeBytes, argSet);
+    integerParam(cmd, Arg.VENICE_UNITS, params::setVeniceUnits, argSet);
+    genericParam(cmd, Arg.WORKLOAD_TYPE, s -> s, params::setWorkloadType, argSet);
     longParam(cmd, Arg.THROUGHPUT_QUOTA_IN_BYTES, params::setThroughputQuotaInBytes, argSet);
     longParam(cmd, Arg.THROUGHPUT_QUOTA_IN_RECORDS, params::setThroughputQuotaInRecords, argSet);
     booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);

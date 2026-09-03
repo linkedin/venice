@@ -328,21 +328,11 @@ subprojects {
       // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
+      // StoreMetaValue v49 and AdminOperation v104 are now active: the veniceUnits/workloadType store configs are
+      // wired end to end, so codegen picks up the highest version directory for both. v49 is a superset of the
+      // previously staged v48, so activating it also carries the version-level maxNearlineRecordSizeBytes field
+      // on StoreVersion. That field stays nullable and unwritten until its own follow-up wires the snapshot logic.
       def versionOverrides = [
-          // StoreMetaValue v48 stages the version-level maxNearlineRecordSizeBytes field on StoreVersion. Pinned to
-          // the current active version so the generated classes stay on v47 and no code path can serialize v48 yet.
-          // The override is removed and METADATA_SYSTEM_SCHEMA_STORE is bumped to v48 in the follow-up PR that reads
-          // and snapshots the per-version limit, which is also what makes the controllers register v48.
-          //
-          // StoreMetaValue v49 stages the store-level veniceUnits/workloadType fields (capacity-forecast metadata).
-          // Pinned to the current active version for the same reason as v48 above -- this override is removed and
-          // METADATA_SYSTEM_SCHEMA_STORE is bumped to v49 in a follow-up PR.
-          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v47', PathValidation.DIRECTORY),
-          // AdminOperation v104 stages the veniceUnits/workloadType fields on UpdateStore (capacity-forecast
-          // metadata). Pinned to the current active version so the generated classes stay
-          // on v103 and no code path can serialize v104 yet. The override is removed and ADMIN_OPERATION is bumped
-          // to v104 in a follow-up PR.
-          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v103', PathValidation.DIRECTORY),
       ]
 
       def schemaDirs = [sourceDir]

@@ -173,6 +173,7 @@ import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.VENICE_ETL_STRATEGY;
+import static com.linkedin.venice.Arg.VENICE_UNITS;
 import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
 import static com.linkedin.venice.Arg.VIEW_CLASS;
@@ -180,6 +181,7 @@ import static com.linkedin.venice.Arg.VIEW_NAME;
 import static com.linkedin.venice.Arg.VIEW_PARAMS;
 import static com.linkedin.venice.Arg.VOLDEMORT_STORE;
 import static com.linkedin.venice.Arg.VSON_STORE;
+import static com.linkedin.venice.Arg.WORKLOAD_TYPE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
@@ -342,7 +344,7 @@ public enum Command {
           SEPARATE_REALTIME_TOPIC_ENABLED, NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER,
           TARGET_SWAP_REGION, TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION,
           GLOBAL_RT_DIV_ENABLED, TTL_REPUSH_ENABLED, ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST,
-          BLOB_TRANSFER_IN_SERVER_ENABLED, FLINK_VENICE_VIEWS_ENABLED, BLOB_DB_ENABLED }
+          BLOB_TRANSFER_IN_SERVER_ENABLED, FLINK_VENICE_VIEWS_ENABLED, BLOB_DB_ENABLED, VENICE_UNITS, WORKLOAD_TYPE }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
