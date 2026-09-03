@@ -302,7 +302,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
 
     LOGGER.info(
         "Five-stage latency model (measured latency {}, implied ceilings {}). "
-            + "stage | load(RPS) | u | routed(abs) | shares%% | served latency(ms)",
+            + "stage | load(RPS) | u | routed(abs) | shares%% | avg latency/group(ms) | total avg latency(ms)",
         Arrays.toString(latency),
         Arrays.toString(Arrays.stream(impliedCeiling).mapToLong(Math::round).toArray()));
 
@@ -315,17 +315,21 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
 
       double[] shares = new double[groupCount];
       double[] servedLatency = new double[groupCount];
+      double weightedLatencySum = 0.0;
       for (int g = 0; g < groupCount; g++) {
         shares[g] = routed[g] / (double) load;
         // The latency this stage's routing would produce, given each group's implied ceiling (a consequence,
         // reported to show that keeping groups at/under their ceiling keeps every group within SLO).
         servedLatency[g] = Math.min(LATENCY_SLO_MS, environmentLatencyMs(routed[g], impliedCeiling[g]));
+        weightedLatencySum += routed[g] * servedLatency[g];
       }
+      // Total avg latency = the latency an average request sees this stage (weighted by where traffic landed).
+      double totalAvgLatency = weightedLatencySum / load;
       double fastShare = shares[fastGroup];
 
       LOGGER.info(
           String.format(
-              "  %2d   |   %5d   | %.3f | %-22s | [%.1f, %.1f, %.1f] | [%.1f, %.1f, %.1f]",
+              "  %2d   |   %5d   | %.3f | %-22s | [%.1f, %.1f, %.1f] | [%.1f, %.1f, %.1f] | %.1f",
               stage,
               load,
               u,
@@ -335,7 +339,8 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
               100 * shares[2],
               servedLatency[0],
               servedLatency[1],
-              servedLatency[2]));
+              servedLatency[2],
+              totalAvgLatency));
 
       double[] expected = analyticShares(latency, u, m);
       for (int g = 0; g < groupCount; g++) {
