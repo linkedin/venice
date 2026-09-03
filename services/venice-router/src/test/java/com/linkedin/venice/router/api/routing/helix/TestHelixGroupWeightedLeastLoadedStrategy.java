@@ -84,17 +84,17 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   }
 
   /**
-   * Baseline reproduction of the production bug (VENG-12751), plus the fix, on identical input.
+   * Baseline reproduction of the group-routing skew this strategy fixes, plus the fix, on identical input.
    *
-   * <p>Both the current production strategy ({@link HelixGroupLeastLoadedStrategy}) and the new
-   * {@link HelixGroupWeightedLeastLoadedStrategy} are driven through the same harness using the <em>real
-   * per-group latency vector measured on {@code venice-router.venice-8} / prod-lor1</em> (only a 1.18x spread
+   * <p>Both the existing {@link HelixGroupLeastLoadedStrategy} and the new
+   * {@link HelixGroupWeightedLeastLoadedStrategy} are driven through the same harness using a <em>real
+   * per-group latency vector observed in production</em> (only a 1.18x spread
    * between the fastest and slowest group). Little's Law says a 1.18x latency spread should give the fastest
    * group only a ~22% share of a 5-group cluster.
    *
    * <p>This test runs in the tiebreak-isolated regime (each request finishes before the next is selected, so
    * the in-flight counters are always tied at zero and the tiebreak alone decides every request). This is the
-   * exact regime the production bug lives in: at low per-router in-flight the least-loaded counters are almost
+   * exact regime the skew lives in: at low per-router in-flight the least-loaded counters are almost
    * always tied, so the tiebreak fires on nearly every request. The old strategy resolves every tie with a
    * deterministic lowest-latency pick, so it collapses to winner-take-all and funnels essentially all traffic
    * onto the single fastest group, starving read-quota headroom on the others (the mechanism behind the 429s).
@@ -106,13 +106,13 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   @Test
   public void testBaselineOldStrategyOverConcentratesVersusNewStrategy() {
     int groupCount = 5;
-    // Real measured per-group average latency (ms) on venice-router.venice-8 / prod-lor1; group 4 is fastest.
+    // Real per-group average latency (ms) observed in production; group 4 is fastest.
     double[] measured = new double[] { 22.88, 22.13, 23.84, 20.94, 20.25 };
     int fastGroup = argMin(measured);
     double evenShare = 1.0 / groupCount;
     int requestCount = 50000;
 
-    // --- Baseline: current production strategy on the measured latency vector. ---
+    // --- Baseline: existing least-loaded strategy on the measured latency vector. ---
     double[] oldLatencies = Arrays.copyOf(measured, groupCount);
     HelixGroupLeastLoadedStrategy oldStrategy =
         new HelixGroupLeastLoadedStrategy(mockTimeoutProcessor(), TIMEOUT_MS, statsWithLatencies(oldLatencies));
@@ -134,10 +134,10 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     double newFastShare = newRouted[fastGroup] / (double) requestCount;
 
     LOGGER.info(
-        "Baseline reproduction on measured venice-8 latency vector {} (1.18x spread):",
+        "Baseline reproduction on production-observed latency vector {} (1.18x spread):",
         Arrays.toString(measured));
     LOGGER.info(
-        "  OLD (production)  routed={}  fast group {} share={}%",
+        "  OLD (least-loaded)  routed={}  fast group {} share={}%",
         Arrays.toString(oldRouted),
         fastGroup,
         String.format("%.1f", 100 * oldFastShare));
@@ -220,7 +220,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   }
 
   /**
-   * Ali's scenario: 5 groups start at equal latency, then 4 of them gradually get slower while group 0 stays
+   * Gradual-slowdown scenario: 5 groups start at equal latency, then 4 of them gradually get slower while group 0 stays
    * fast. We take a snapshot of the queries routed to each group at every step and assert the distribution
    * responds correctly over time:
    *
