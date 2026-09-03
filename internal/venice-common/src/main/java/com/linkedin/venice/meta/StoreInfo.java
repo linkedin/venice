@@ -45,6 +45,8 @@ public class StoreInfo {
     storeInfo.setEtlStoreConfig(store.getEtlStoreConfig());
     storeInfo.setExternalStorageReadMode(store.getExternalStorageReadMode());
     storeInfo.setStorageMode(store.getStorageMode());
+    storeInfo.setVeniceUnits(store.getVeniceUnits());
+    storeInfo.setWorkloadType(store.getWorkloadType());
     if (store.isHybrid()) {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
@@ -412,6 +414,14 @@ public class StoreInfo {
   private boolean separateRealTimeTopicEnabled = false;
   private ExternalStorageReadMode externalStorageReadMode = ExternalStorageReadMode.VENICE_ONLY;
   private StorageMode storageMode = StorageMode.INTERNAL;
+  /**
+   * The forecasted Venice Units (VU) capacity ask for this store, or null when it has not been provided.
+   */
+  private Integer veniceUnits = null;
+  /**
+   * The requested class of service for this store, or null when it has not been provided.
+   */
+  private String workloadType = null;
 
   public StoreInfo() {
   }
@@ -757,6 +767,22 @@ public class StoreInfo {
 
   public void setStorageMode(StorageMode storageMode) {
     this.storageMode = storageMode == null ? StorageMode.INTERNAL : storageMode;
+  }
+
+  public Integer getVeniceUnits() {
+    return veniceUnits;
+  }
+
+  public void setVeniceUnits(Integer veniceUnits) {
+    this.veniceUnits = veniceUnits;
+  }
+
+  public String getWorkloadType() {
+    return workloadType;
+  }
+
+  public void setWorkloadType(String workloadType) {
+    this.workloadType = workloadType;
   }
 
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {

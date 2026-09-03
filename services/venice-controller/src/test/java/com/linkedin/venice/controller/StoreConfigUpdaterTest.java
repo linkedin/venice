@@ -27,6 +27,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -41,6 +43,7 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -989,6 +992,47 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertTrue(
         updatedKeys.contains(TARGET_REGION_PROMOTED),
         "updatedConfigsList must contain '" + TARGET_REGION_PROMOTED + "' but got: " + updatedKeys);
+  }
+
+  @Test
+  public void testApplyOnParent_VeniceUnitsAndWorkloadType_SetAndClear() {
+    String storeName = Utils.getUniqueString("parent-vu");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    store.setVeniceUnits(42);
+    store.setWorkloadType("LOW_LATENCY");
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    // Not provided: the current store values are carried over and neither config is marked updated.
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
+    UpdateStore untouched = captureLastUpdateStore();
+    assertEquals(untouched.veniceUnits, Integer.valueOf(42));
+    assertEquals(untouched.workloadType.toString(), "LOW_LATENCY");
+    Set<String> untouchedKeys = updatedConfigKeys(untouched);
+    assertFalse(untouchedKeys.contains(VENICE_UNITS), "Unprovided config must not be marked updated");
+    assertFalse(untouchedKeys.contains(WORKLOAD_TYPE), "Unprovided config must not be marked updated");
+
+    // Provided with a value.
+    parentAdmin
+        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setVeniceUnits(7).setWorkloadType("GENERIC"));
+    UpdateStore set = captureLastUpdateStore();
+    assertEquals(set.veniceUnits, Integer.valueOf(7));
+    assertEquals(set.workloadType.toString(), "GENERIC");
+    assertTrue(updatedConfigKeys(set).containsAll(Arrays.asList(VENICE_UNITS, WORKLOAD_TYPE)));
+
+    // Provided as null: the clear must reach the admin message rather than being read as "unchanged".
+    parentAdmin
+        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setVeniceUnits(null).setWorkloadType(null));
+    UpdateStore cleared = captureLastUpdateStore();
+    assertNull(cleared.veniceUnits, "An explicit clear must null out veniceUnits on the admin message");
+    assertNull(cleared.workloadType, "An explicit clear must null out workloadType on the admin message");
+    assertTrue(
+        updatedConfigKeys(cleared).containsAll(Arrays.asList(VENICE_UNITS, WORKLOAD_TYPE)),
+        "An explicit clear must be replicated to child controllers");
+  }
+
+  private static Set<String> updatedConfigKeys(UpdateStore msg) {
+    return msg.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet());
   }
 
   /**

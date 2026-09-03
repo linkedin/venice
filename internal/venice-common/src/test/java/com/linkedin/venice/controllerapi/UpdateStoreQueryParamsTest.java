@@ -2,6 +2,8 @@ package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.meta.ExternalStorageReadMode;
@@ -10,8 +12,11 @@ import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import org.apache.http.NameValuePair;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -56,6 +61,80 @@ public class UpdateStoreQueryParamsTest {
   public void testStorageModeUnsetIsEmpty() {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     Assert.assertFalse(params.getStorageMode().isPresent());
+  }
+
+  @Test
+  public void testVeniceUnitsAndWorkloadTypeTriState() {
+    // Not provided at all: leave the config unchanged.
+    UpdateStoreQueryParams unset = new UpdateStoreQueryParams();
+    Assert.assertFalse(unset.isVeniceUnitsSpecified());
+    Assert.assertNull(unset.getVeniceUnits());
+    Assert.assertFalse(unset.isWorkloadTypeSpecified());
+    Assert.assertNull(unset.getWorkloadType());
+
+    // Provided with a value: set the config.
+    UpdateStoreQueryParams set = new UpdateStoreQueryParams().setVeniceUnits(42).setWorkloadType("LOW_LATENCY");
+    Assert.assertTrue(set.isVeniceUnitsSpecified());
+    Assert.assertEquals(set.getVeniceUnits(), Integer.valueOf(42));
+    Assert.assertTrue(set.isWorkloadTypeSpecified());
+    Assert.assertEquals(set.getWorkloadType(), "LOW_LATENCY");
+
+    // Provided as null: explicitly clear the config. This must stay distinguishable from "not provided".
+    UpdateStoreQueryParams cleared = new UpdateStoreQueryParams().setVeniceUnits(null).setWorkloadType(null);
+    Assert.assertTrue(cleared.isVeniceUnitsSpecified());
+    Assert.assertNull(cleared.getVeniceUnits());
+    Assert.assertTrue(cleared.isWorkloadTypeSpecified());
+    Assert.assertNull(cleared.getWorkloadType());
+
+    // A previously set value can be cleared afterwards.
+    set.setVeniceUnits(null).setWorkloadType(null);
+    Assert.assertTrue(set.isVeniceUnitsSpecified());
+    Assert.assertNull(set.getVeniceUnits());
+    Assert.assertTrue(set.isWorkloadTypeSpecified());
+    Assert.assertNull(set.getWorkloadType());
+  }
+
+  @Test
+  public void testVeniceUnitsAndWorkloadTypeClearSurvivesWireRoundTrip() {
+    // An explicit clear has to survive the query-param serialization used between the client and the
+    // controller, otherwise the clear degrades into "leave unchanged" on the server side.
+    UpdateStoreQueryParams cleared = new UpdateStoreQueryParams().setVeniceUnits(null).setWorkloadType(null);
+    UpdateStoreQueryParams received = new UpdateStoreQueryParams(toWireMap(cleared));
+    Assert.assertTrue(received.isVeniceUnitsSpecified());
+    Assert.assertNull(received.getVeniceUnits());
+    Assert.assertTrue(received.isWorkloadTypeSpecified());
+    Assert.assertNull(received.getWorkloadType());
+
+    UpdateStoreQueryParams valued = new UpdateStoreQueryParams().setVeniceUnits(7).setWorkloadType("GENERIC");
+    UpdateStoreQueryParams receivedValued = new UpdateStoreQueryParams(toWireMap(valued));
+    Assert.assertEquals(receivedValued.getVeniceUnits(), Integer.valueOf(7));
+    Assert.assertEquals(receivedValued.getWorkloadType(), "GENERIC");
+
+    UpdateStoreQueryParams receivedUnset = new UpdateStoreQueryParams(toWireMap(new UpdateStoreQueryParams()));
+    Assert.assertFalse(receivedUnset.isVeniceUnitsSpecified());
+    Assert.assertFalse(receivedUnset.isWorkloadTypeSpecified());
+  }
+
+  @Test
+  public void testVeniceUnitsAndWorkloadTypeClearSurvivesCloneConfig() {
+    // The child controller rebuilds params by cloning only the configs named in updatedConfigsList,
+    // so an explicit clear must survive that filtering too.
+    UpdateStoreQueryParams source = new UpdateStoreQueryParams().setVeniceUnits(null).setWorkloadType(null);
+    UpdateStoreQueryParams target = new UpdateStoreQueryParams();
+    target.cloneConfig(VENICE_UNITS, source);
+    target.cloneConfig(WORKLOAD_TYPE, source);
+    Assert.assertTrue(target.isVeniceUnitsSpecified());
+    Assert.assertNull(target.getVeniceUnits());
+    Assert.assertTrue(target.isWorkloadTypeSpecified());
+    Assert.assertNull(target.getWorkloadType());
+  }
+
+  private static Map<String, String> toWireMap(UpdateStoreQueryParams params) {
+    Map<String, String> wireMap = new HashMap<>();
+    for (NameValuePair pair: params.getNameValuePairs()) {
+      wireMap.put(pair.getName(), pair.getValue());
+    }
+    return wireMap;
   }
 
   @Test

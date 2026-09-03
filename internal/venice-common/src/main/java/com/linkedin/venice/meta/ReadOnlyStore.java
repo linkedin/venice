@@ -1115,7 +1115,10 @@ public class ReadOnlyStore implements Store {
     storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
     storeProperties.setExternalStorageReadMode(getExternalStorageReadMode().getValue());
     storeProperties.setStorageMode(getStorageMode().getValue());
-    // Set fields to default values - fields exist in schema but not yet exposed via Store interface
+    storeProperties.setVeniceUnits(getVeniceUnits());
+    storeProperties.setWorkloadType(getWorkloadType());
+    // transientRecordCacheEnabled and mergedValueRmdColumnFamilyEnabled exist in the schema but are not exposed
+    // via the Store interface, so they are defaulted here.
     storeProperties.setTransientRecordCacheEnabled(false);
     storeProperties.setMergedValueRmdColumnFamilyEnabled(false);
 
@@ -1403,6 +1406,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setStorageMode(StorageMode storageMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Integer getVeniceUnits() {
+    return this.delegate.getVeniceUnits();
+  }
+
+  @Override
+  public void setVeniceUnits(Integer veniceUnits) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public String getWorkloadType() {
+    return this.delegate.getWorkloadType();
+  }
+
+  @Override
+  public void setWorkloadType(String workloadType) {
     throw new UnsupportedOperationException();
   }
 

@@ -320,6 +320,16 @@ public enum Arg {
       "max-nearline-record-size-bytes", "mnrsb", true,
       "Store-level max record size for VeniceWriter to determine whether to pause consumption on nearline jobs with partial updates."
   ),
+  VENICE_UNITS(
+      "venice-units", "vu", true,
+      "Store-level forecasted Venice Units (VU) capacity ask, derived from the store-needs-estimation process. "
+          + "Pass 'null' to clear the config; omit the flag to leave it unchanged."
+  ),
+  WORKLOAD_TYPE(
+      "workload-type", "wlt", true,
+      "Store-level requested class of service. Values: GENERIC, LOW_LATENCY. "
+          + "Pass 'null' to clear the config; omit the flag to leave it unchanged."
+  ),
   THROUGHPUT_QUOTA_IN_BYTES(
       "throughput-quota-in-bytes", "tqib", true,
       "Store-level nearline write quota: maximum throughput in bytes clients can produce into the store. -1 means no limit."
