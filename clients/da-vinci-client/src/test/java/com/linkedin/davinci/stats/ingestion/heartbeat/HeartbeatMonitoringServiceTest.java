@@ -1018,6 +1018,91 @@ public class HeartbeatMonitoringServiceTest {
   }
 
   @Test
+  public void testCleanupPreservesActivelyIngestingReplicaWhenCrossCheckEnabled() {
+    // An actively-subscribed, ingesting follower must never be removed by cleanup even when the
+    // customized view reports it as no longer assigned to this node. The live ingestion state is the
+    // authoritative cross-check; once the replica genuinely stops consuming, cleanup proceeds as before.
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
+    currentVersion.setHybridStoreConfig(hybridStoreConfig);
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getCurrentVersion()).thenReturn(currentVersion.getNumber());
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(currentVersion);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    doReturn(new StoreVersionInfo(mockStore, currentVersion)).when(mockReadOnlyRepository)
+        .waitVersion(eq(TEST_STORE), eq(1), any(), anyLong());
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+    String hostname = "localhost";
+    int port = 123;
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(regions).when(serverConfig).getRegionNames();
+    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
+    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
+    doReturn(hostname).when(serverConfig).getListenerHostname();
+    doReturn(port).when(serverConfig).getListenerPort();
+    doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
+    doReturn(true).when(serverConfig).isHeartbeatLagMonitorIngestionCrossCheckEnabled();
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+
+    // Converged customized view reports p0 assigned to a different node -> replica looks unassigned here.
+    HelixCustomizedViewOfflinePushRepository mockCV = mock(HelixCustomizedViewOfflinePushRepository.class);
+    Instance otherInstance = Instance.fromNodeId("otherInstance_321");
+    Set<Instance> instancesWithoutThisNode = new HashSet<>();
+    instancesWithoutThisNode.add(otherInstance);
+    Partition mockPartition0 = mock(Partition.class);
+    doReturn(instancesWithoutThisNode).when(mockPartition0).getAllInstancesSet();
+    PartitionAssignment mockPartitionAssignment = mock(PartitionAssignment.class);
+    doReturn(mockPartition0).when(mockPartitionAssignment).getPartition(0);
+    doReturn(mockPartitionAssignment).when(mockCV).getPartitionAssignments(versionTopic);
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> cvFuture = CompletableFuture.completedFuture(mockCV);
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        mock(HeartbeatMonitoringServiceStats.class),
+        cvFuture);
+
+    // The follower is actively consuming.
+    KafkaStoreIngestionService ingestionService = mock(KafkaStoreIngestionService.class);
+    doReturn(true).when(ingestionService).isPartitionConsuming(versionTopic, 0);
+    heartbeatMonitoringService.setKafkaStoreIngestionService(ingestionService);
+
+    heartbeatMonitoringService.updateLagMonitor(
+        versionTopic,
+        0,
+        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+        Utils.getReplicaId(versionTopic, 0));
+    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 1);
+
+    // Many cleanup cycles while consuming: entry must never be marked for cleanup nor removed.
+    for (int i = 0; i < 10; i++) {
+      heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
+    }
+    Assert.assertTrue(
+        heartbeatMonitoringService.getCleanupHeartbeatMap().isEmpty(),
+        "Actively ingesting replica must not be marked for cleanup");
+    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 1);
+
+    // Once the replica genuinely stops consuming, cleanup proceeds and removes it after the cycle threshold.
+    doReturn(false).when(ingestionService).isPartitionConsuming(versionTopic, 0);
+    for (int i = 0; i < 5; i++) {
+      heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
+    }
+    Assert.assertEquals(
+        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1),
+        0,
+        "Replica that stopped consuming should be cleaned up");
+  }
+
+  @Test
   public void testLargestHeartbeatLag() {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     doCallRealMethod().when(heartbeatMonitoringService).getMaxHeartbeatLag(anyLong(), anyMap());

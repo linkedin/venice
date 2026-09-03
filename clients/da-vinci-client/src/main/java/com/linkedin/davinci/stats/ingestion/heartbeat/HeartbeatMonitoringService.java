@@ -90,6 +90,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final int lagMonitorCleanupCycle;
   private final boolean recordLevelTimestampEnabled;
   private final boolean perRecordOtelMetricsEnabled;
+  private final boolean heartbeatLagMonitorIngestionCrossCheckEnabled;
   private final int heartbeatReporterIntervalSeconds;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
@@ -127,6 +128,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordOtelMetricsEnabled = serverConfig.isPerRecordOtelMetricsEnabled();
+    this.heartbeatLagMonitorIngestionCrossCheckEnabled = serverConfig.isHeartbeatLagMonitorIngestionCrossCheckEnabled();
     this.heartbeatReporterIntervalSeconds = serverConfig.getHeartbeatReporterIntervalSeconds();
     this.serverConfig = serverConfig;
     LOGGER.info(
@@ -928,7 +930,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         }
         for (int partition: versionEntry.getValue()) {
           boolean lingerReplica = isResourceDeleted;
-          String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNum), partition);
+          String topic = Version.composeKafkaTopic(storeName, versionNum);
+          String replicaId = Utils.getReplicaId(topic, partition);
           if (!isResourceDeleted) {
             Set<String> instanceIdSet = partitionAssignment.getPartition(partition)
                 .getAllInstancesSet()
@@ -940,6 +943,16 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               cleanupHeartbeatMap.remove(replicaId);
             } else {
               lingerReplica = true;
+            }
+          }
+          if (lingerReplica && heartbeatLagMonitorIngestionCrossCheckEnabled) {
+            // The customized view can lag behind local ingestion, so cross-check it against the
+            // authoritative local ingestion state before removing. Keep the entry if the partition is
+            // still being consumed; a genuine deletion or reassignment stops consumption and cleans up below.
+            KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();
+            if (ingestionService != null && ingestionService.isPartitionConsuming(topic, partition)) {
+              cleanupHeartbeatMap.remove(replicaId);
+              continue;
             }
           }
           if (lingerReplica) {
