@@ -171,6 +171,7 @@ public class DispatchingAvroGenericStoreClientTest {
       long routingRequestDefaultTimeOutMS) throws InterruptedException {
 
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
+        .setDisableRouteMetrics(false)
         .setR2Client(getMockR2Client(false))
         .setD2Client(mock(D2Client.class))
         .setClusterDiscoveryD2Service("test_server_discovery")

@@ -53,7 +53,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
     this.metricsRepository = clientConfig.getMetricsRepository();
-    this.clusterRouteStats = ClusterRouteStats.getInstance(clientConfig.getStoreName());
+    this.clusterRouteStats =
+        clientConfig.isRouteMetricsDisabled() ? null : ClusterRouteStats.getInstance(clientConfig.getStoreName());
   }
 
   @Override
@@ -253,6 +254,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         clusterStats.recordBlockedInstanceCount(monitor.getBlockedInstanceCount());
         clusterStats.recordUnhealthyInstanceCount(monitor.getUnhealthyInstanceCount());
         clusterStats.recordOverloadedInstanceCount(monitor.getOverloadedInstanceCount());
+      }
+      if (clusterRouteStats == null) {
+        return;
       }
       replicaRequestFuture.forEach((instance, future) -> {
         future.whenComplete((status, throwable) -> {

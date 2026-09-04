@@ -40,6 +40,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   private final Client r2Client;
   private final String statsPrefix;
+  private final boolean disableRouteMetrics;
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
@@ -136,6 +137,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.r2Client = builder.r2Client;
     this.storeName = builder.storeName;
     this.statsPrefix = (builder.statsPrefix == null ? "" : builder.statsPrefix);
+    this.disableRouteMetrics = builder.disableRouteMetrics;
     this.metricsRepository = builder.metricsRepository != null
         ? builder.metricsRepository
         : MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
@@ -249,6 +251,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
+  }
+
+  public boolean isRouteMetricsDisabled() {
+    return disableRouteMetrics;
   }
 
   public FastClientStats getStats(RequestType requestType) {
@@ -432,6 +438,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
+    private boolean disableRouteMetrics = true;
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
@@ -504,6 +511,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setStatsPrefix(String statsPrefix) {
       this.statsPrefix = statsPrefix;
+      return this;
+    }
+
+    /**
+     * Disable per-backend-host route metrics for both Tehuti (RRD) and OpenTelemetry.
+     * Defaults to true to avoid high metric cardinality. Store-level request metrics and
+     * aggregate instance-health metrics are unaffected.
+     */
+    public ClientConfigBuilder<K, V, T> setDisableRouteMetrics(boolean disableRouteMetrics) {
+      this.disableRouteMetrics = disableRouteMetrics;
       return this;
     }
 
@@ -741,6 +758,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setR2Client(r2Client)
           .setMetricsRepository(metricsRepository)
           .setStatsPrefix(statsPrefix)
+          .setDisableRouteMetrics(disableRouteMetrics)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
           .setMetadataRefreshExecutor(metadataRefreshExecutor)
