@@ -147,12 +147,11 @@ public class PartitionedProducerExecutorTest {
   @Test
   public void testWorkersEnabledQueueFullBlocksCaller() throws InterruptedException {
     // Very small queue to easily trigger blocking
-    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(1, 1, 0, 100, TEST_STORE, null);
+    AdmissionObservingProducerExecutor executor = new AdmissionObservingProducerExecutor();
 
     try {
       CountDownLatch blockingTaskStarted = new CountDownLatch(1);
       CountDownLatch allowBlockingTaskToFinish = new CountDownLatch(1);
-      AtomicBoolean callerWasBlocked = new AtomicBoolean(false);
       AtomicBoolean allTasksOnWorkerThread = new AtomicBoolean(true);
       String workerThreadPrefix = "venice-producer-worker-" + TEST_STORE;
 
@@ -193,16 +192,8 @@ public class PartitionedProducerExecutorTest {
       // Wait for submitter to start
       assertTrue(submitterStarted.await(2, TimeUnit.SECONDS), "Submitter should start");
 
-      // Wait for submitter to become blocked (WAITING or TIMED_WAITING state)
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-      while (System.nanoTime() < deadline && !submitterFinished.get()) {
-        Thread.State state = submitterThread.getState();
-        if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
-          callerWasBlocked.set(true);
-          break;
-        }
-        Thread.yield();
-      }
+      assertTrue(executor.awaitBlockedSubmitter(5, TimeUnit.SECONDS), "Submitter should reach bounded admission");
+      assertFalse(submitterFinished.get(), "Caller should remain blocked while the worker queue is full");
 
       // Allow blocking task to finish - this should unblock the submitter
       allowBlockingTaskToFinish.countDown();
@@ -211,7 +202,6 @@ public class PartitionedProducerExecutorTest {
       assertTrue(tasksCompleted.await(5, TimeUnit.SECONDS), "All tasks should complete");
       submitterThread.join(2000);
 
-      assertTrue(callerWasBlocked.get(), "Caller should have been blocked when queue was full");
       assertTrue(allTasksOnWorkerThread.get(), "All tasks should run on worker thread, not caller thread");
     } finally {
       executor.shutdown();
@@ -565,6 +555,16 @@ public class PartitionedProducerExecutorTest {
       assertTrue(queueSize >= 0, "Queue size should be non-negative");
     } finally {
       executor.shutdown();
+    }
+  }
+
+  private static final class AdmissionObservingProducerExecutor extends PartitionedProducerExecutor {
+    private AdmissionObservingProducerExecutor() {
+      super(1, 1, 0, 100, TEST_STORE, null);
+    }
+
+    private boolean awaitBlockedSubmitter(long timeout, TimeUnit unit) throws InterruptedException {
+      return awaitWorkerAdmission(0, timeout, unit);
     }
   }
 }

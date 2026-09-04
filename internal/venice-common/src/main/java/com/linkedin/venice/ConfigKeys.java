@@ -2792,6 +2792,33 @@ public class ConfigKeys {
   public static final String CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY = "client.producer.callback.queue.capacity";
 
   /**
+   * Number of partition workers used by VeniceSystemProducer for STREAM writes.
+   * Default: 4. Set to 0 to execute writes inline.
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_COUNT = "venice.system.producer.worker.count";
+
+  /**
+   * Queue capacity per VeniceSystemProducer STREAM worker.
+   * Default: 100000.
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY =
+      "venice.system.producer.worker.queue.capacity";
+
+  /**
+   * Number of VeniceSystemProducer durable-completion callback threads.
+   * Default: 0, which hands durable completion to the shared Venice completion executor.
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_CALLBACK_THREAD_COUNT =
+      "venice.system.producer.callback.thread.count";
+
+  /**
+   * Queue capacity for the VeniceSystemProducer callback executor.
+   * Default: 100000.
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_CALLBACK_QUEUE_CAPACITY =
+      "venice.system.producer.callback.queue.capacity";
+
+  /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
    */
   public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =

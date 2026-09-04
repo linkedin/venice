@@ -5,9 +5,13 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -35,11 +39,16 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -57,6 +66,147 @@ public class BatchingVeniceWriterTest {
   private static final RecordDeserializer<GenericRecord> updateDeserializer =
       FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(UPDATE_SCHEMA, UPDATE_SCHEMA);
   private static final WriteComputeHandler updateHandler = new WriteComputeHandlerV1();
+
+  @Test
+  public void testPartitionRoutingDelegatesToInternalWriter() {
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer = mock(BatchingVeniceWriter.class);
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    byte[] serializedKey = new byte[] { 1, 2, 3 };
+    doReturn(internalWriter).when(writer).getVeniceWriter();
+    doCallRealMethod().when(writer).getPartitionId(any());
+    doReturn(7).when(internalWriter).getPartitionId(serializedKey);
+
+    Assert.assertEquals(writer.getPartitionId(serializedKey), 7);
+  }
+
+  @Test
+  public void testClosePropagatesGracefulFlagAndClosesInternalWriterExactlyOnce() throws Exception {
+    for (boolean gracefulClose: new boolean[] { true, false }) {
+      VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+      ExecutorService checkServiceExecutor = mock(ExecutorService.class);
+      doReturn(true).when(checkServiceExecutor).awaitTermination(anyLong(), eq(TimeUnit.SECONDS));
+      BatchingVeniceWriter<byte[], byte[], byte[]> writer = newCloseTestWriter(internalWriter, checkServiceExecutor);
+
+      writer.close(gracefulClose);
+      writer.close(!gracefulClose);
+
+      verify(internalWriter, times(1)).close(gracefulClose);
+      verify(internalWriter, never()).close(!gracefulClose);
+    }
+  }
+
+  @Test
+  public void testGracefulCloseWaitsForCheckServiceExitBeforeClosingInternalWriter() throws Exception {
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    ExecutorService checkServiceExecutor = mock(ExecutorService.class);
+    doReturn(true).when(checkServiceExecutor).awaitTermination(anyLong(), eq(TimeUnit.SECONDS));
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer = newCloseTestWriter(internalWriter, checkServiceExecutor);
+
+    writer.close(true);
+
+    InOrder inOrder = inOrder(checkServiceExecutor, internalWriter);
+    inOrder.verify(checkServiceExecutor).shutdown();
+    inOrder.verify(checkServiceExecutor).awaitTermination(anyLong(), eq(TimeUnit.SECONDS));
+    inOrder.verify(internalWriter).close(true);
+    verify(checkServiceExecutor, never()).shutdownNow();
+  }
+
+  @Test
+  public void testGracefulCloseStillClosesInternalWriterWhenCheckServiceShutdownTimesOut() throws Exception {
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    ExecutorService checkServiceExecutor = mock(ExecutorService.class);
+    doReturn(false).when(checkServiceExecutor).awaitTermination(anyLong(), eq(TimeUnit.SECONDS));
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer = newCloseTestWriter(internalWriter, checkServiceExecutor);
+
+    writer.close(true);
+
+    verify(checkServiceExecutor).shutdownNow();
+    verify(internalWriter, times(1)).close(true);
+  }
+
+  @Test
+  public void testInterruptedGracefulCloseStillClosesInternalWriterAndRestoresInterrupt() throws Exception {
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    ExecutorService checkServiceExecutor = mock(ExecutorService.class);
+    doAnswer(invocation -> {
+      throw new InterruptedException("Injected check service shutdown interruption");
+    }).when(checkServiceExecutor).awaitTermination(anyLong(), eq(TimeUnit.SECONDS));
+    doAnswer(invocation -> {
+      Assert.assertFalse(
+          Thread.currentThread().isInterrupted(),
+          "Interrupt status must be cleared while the internal writer is closed");
+      return null;
+    }).when(internalWriter).close(true);
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer = newCloseTestWriter(internalWriter, checkServiceExecutor);
+
+    try {
+      Thread.currentThread().interrupt();
+      writer.close(true);
+
+      verify(checkServiceExecutor).shutdownNow();
+      verify(internalWriter, times(1)).close(true);
+      Assert.assertTrue(Thread.currentThread().isInterrupted(), "Close must restore the caller interrupt status");
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  @Test
+  public void testCloseFromCheckServiceCallbackDefersInternalWriterClose() throws Exception {
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    ExecutorService checkServiceExecutor = Executors.newSingleThreadExecutor();
+    CountDownLatch callbackCloseReturned = new CountDownLatch(1);
+    // A produce failure notifies the user callback on the check service thread, which then closes this writer.
+    doAnswer(invocation -> {
+      PubSubProducerCallback produceCallback = invocation.getArgument(4);
+      produceCallback.onCompletion(null, new Exception("Injected produce failure"));
+      return CompletableFuture.completedFuture(null);
+    }).when(internalWriter).put(any(), any(), anyInt(), anyLong(), any());
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer = newCloseTestWriter(internalWriter, checkServiceExecutor);
+
+    try {
+      writer.put(new byte[] { 1 }, new byte[] { 2 }, -1, (result, exception) -> {
+        writer.close(true);
+        callbackCloseReturned.countDown();
+      });
+
+      // Deliberately below CHECK_SERVICE_SHUTDOWN_TIMEOUT_SECONDS: a close which waits on its own executor fails here.
+      Assert.assertTrue(callbackCloseReturned.await(5, TimeUnit.SECONDS));
+      Assert.assertTrue(checkServiceExecutor.awaitTermination(10, TimeUnit.SECONDS));
+      verify(internalWriter, times(1)).close(true);
+    } finally {
+      checkServiceExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  public void testOverlappingCloseDoesNotDoubleCloseInternalWriter() throws Exception {
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    CountDownLatch internalCloseEntered = new CountDownLatch(1);
+    CountDownLatch internalCloseReleased = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      internalCloseEntered.countDown();
+      Assert.assertTrue(internalCloseReleased.await(10, TimeUnit.SECONDS));
+      return null;
+    }).when(internalWriter).close(false);
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer =
+        newCloseTestWriter(internalWriter, mock(ExecutorService.class));
+    ExecutorService closeExecutor = Executors.newFixedThreadPool(2);
+
+    try {
+      CompletableFuture<Void> cleanupOwner = CompletableFuture.runAsync(() -> writer.close(false), closeExecutor);
+      Assert.assertTrue(internalCloseEntered.await(10, TimeUnit.SECONDS));
+      // The caller which lost the close CAS returns while the owner is still inside the internal close.
+      CompletableFuture.runAsync(() -> writer.close(false), closeExecutor).get(10, TimeUnit.SECONDS);
+      internalCloseReleased.countDown();
+      cleanupOwner.get(10, TimeUnit.SECONDS);
+
+      verify(internalWriter, times(1)).close(false);
+    } finally {
+      internalCloseReleased.countDown();
+      closeExecutor.shutdownNow();
+    }
+  }
 
   @Test
   public void testSendRecord() {
@@ -1239,5 +1389,17 @@ public class BatchingVeniceWriterTest {
     verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
     verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
     verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
+  }
+
+  private BatchingVeniceWriter<byte[], byte[], byte[]> newCloseTestWriter(
+      VeniceWriter<byte[], byte[], byte[]> internalWriter,
+      ExecutorService checkServiceExecutor) {
+    VeniceWriterOptions options =
+        new VeniceWriterOptions.Builder("test-topic").setBatchIntervalInMs(1).setPartitionCount(1).build();
+    BatchingVeniceWriter<byte[], byte[], byte[]> writer =
+        spy(new BatchingVeniceWriter<>(options, VeniceProperties.empty(), mock(PubSubProducerAdapter.class)));
+    doReturn(internalWriter).when(writer).getVeniceWriter();
+    doReturn(checkServiceExecutor).when(writer).getCheckServiceExecutor();
+    return writer;
   }
 }

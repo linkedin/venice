@@ -67,7 +67,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -131,6 +134,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final Time time;
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
+  private final int workerCount;
+  private final int workerQueueCapacity;
+  private final int callbackThreadCount;
+  private final int callbackQueueCapacity;
   private final Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
   private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaToIdsMap =
       new VeniceConcurrentHashMap<>();
@@ -160,12 +167,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private boolean isWriteComputeEnabled = false;
   private boolean isChunkingEnabled = false;
 
-  private boolean isStarted = false;
+  private volatile boolean isStarted = false;
+  private final ReentrantLock lifecycleLock = new ReentrantLock();
+  private boolean startupAttempted;
 
   private Optional<String> discoveryUrl = Optional.empty();
   private Optional<String> routerUrl = Optional.empty();
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
+  private VeniceSystemProducerWriteDispatcher streamWriteDispatcher;
+  private volatile boolean cleanupComplete;
   private final VeniceWriterHook writerHook;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
@@ -181,6 +192,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.samzaJobId = config.getSamzaJobId();
     this.runningFabric = config.getRunningFabric();
     this.verifyLatestProtocolPresent = config.isVerifyLatestProtocolPresent();
+    this.workerCount = config.getWorkerCount();
+    this.workerQueueCapacity = config.getWorkerQueueCapacity();
+    this.callbackThreadCount = config.getCallbackThreadCount();
+    this.callbackQueueCapacity = config.getCallbackQueueCapacity();
     this.factory = config.getFactory();
     this.sslFactory = config.getSslFactory();
     this.partitioners = config.getPartitioners();
@@ -448,83 +463,136 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   @Override
-  public synchronized void start() {
-    if (this.isStarted) {
-      return;
-    }
-    this.isStarted = true;
-
-    setupClientsAndReInitProvider();
-
-    // Request all the necessary info from Venice Controller
-    VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
-        () -> this.controllerClient.requestTopicForWrites(
-            this.storeName,
-            1,
-            pushType,
-            samzaJobId,
-            true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
-            false, // Samza jobs, including batch ones, are expected to write data out of order
-            false,
-            partitioners,
-            Optional.empty(),
-            Optional.ofNullable(runningFabric),
-            false,
-            -1),
-        2);
-    LOGGER.info("Got [store: {}] VersionCreationResponse: {}", storeName, versionCreationResponse);
-    this.topicName = versionCreationResponse.getKafkaTopic();
-    this.kafkaBootstrapServers = versionCreationResponse.getKafkaBootstrapServers();
-
-    StoreResponse storeResponse =
-        (StoreResponse) controllerRequestWithRetry(() -> this.controllerClient.getStore(storeName), 2);
-    this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
-
-    boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
-
-    getKeySchema();
-
-    // Load Schemas from Venice
-    refreshSchemaCache();
-
-    if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
-      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      pushMonitor = Optional.of(new RouterBasedPushMonitor(transportClient, versionTopic, factory, this));
-      pushMonitor.get().start();
-    }
-
-    if (pushType.isBatchOrStreamReprocessing()) {
-      int versionNumber = versionCreationResponse.getVersion();
-      Version version = storeResponse.getStore()
-          .getVersion(versionNumber)
-          .orElseThrow(
-              () -> new VeniceException(
-                  "Version info for version " + versionNumber + " not available in store response"));
-      // For pushes made to VT or SR topic, the producer should chunk the data
-      this.isChunkingEnabled = version.isChunkingEnabled();
-    } else {
-      // For pushes made to RT, the producer should not chunk the data
-      this.isChunkingEnabled = false;
-    }
-
-    this.veniceWriter = getVeniceWriter(versionCreationResponse);
-
-    if (pushMonitor.isPresent()) {
-      /**
-       * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
-       */
-      if (pushMonitor.get().getCurrentStatus().isError()) {
-        throw new VeniceException(
-            "Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
+  public void start() {
+    lifecycleLock.lock();
+    try {
+      if (this.isStarted) {
+        return;
       }
-    }
+      if (startupAttempted && hasResources()) {
+        /*
+         * A failed start can be retried only after every published resource is reclaimed. This prevents a retry from
+         * overwriting a writer, monitor, or client whose cleanup is still retryable.
+         */
+        Throwable cleanupFailure = cleanupResources(true);
+        if (hasResources()) {
+          if (cleanupFailure != null) {
+            throwAsRuntimeException(
+                "Failed to clean up a previous Venice SystemProducer start attempt",
+                cleanupFailure);
+          }
+          throw new VeniceException("Previous Venice SystemProducer start resources remain after cleanup");
+        }
+      }
+      // A stopped dispatcher may retain a sticky failure for repeated stop() calls, but owns no live resources.
+      streamWriteDispatcher = null;
+      veniceWriter = null;
+      startupAttempted = true;
+      this.cleanupComplete = false;
 
-    if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING))
-        && hybridStoreDiskQuotaEnabled) {
-      hybridStoreQuotaMonitor = Optional
-          .of(new RouterBasedHybridStoreQuotaMonitor(transportClient, storeName, pushType, topicName, reinitProvider));
-      hybridStoreQuotaMonitor.get().start();
+      try {
+        setupClientsAndReInitProvider();
+
+        // Request all the necessary info from Venice Controller
+        VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
+            () -> this.controllerClient.requestTopicForWrites(
+                this.storeName,
+                1,
+                pushType,
+                samzaJobId,
+                true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
+                false, // Samza jobs, including batch ones, are expected to write data out of order
+                false,
+                partitioners,
+                Optional.empty(),
+                Optional.ofNullable(runningFabric),
+                false,
+                -1),
+            2);
+        LOGGER.info("Got [store: {}] VersionCreationResponse: {}", storeName, versionCreationResponse);
+        this.topicName = versionCreationResponse.getKafkaTopic();
+        this.kafkaBootstrapServers = versionCreationResponse.getKafkaBootstrapServers();
+
+        StoreResponse storeResponse =
+            (StoreResponse) controllerRequestWithRetry(() -> this.controllerClient.getStore(storeName), 2);
+        this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
+
+        boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
+
+        getKeySchema();
+
+        // Load Schemas from Venice
+        refreshSchemaCache();
+
+        if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
+          String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+          pushMonitor = Optional.of(createPushMonitor(versionTopic));
+          pushMonitor.get().start();
+        }
+
+        if (pushType.isBatchOrStreamReprocessing()) {
+          int versionNumber = versionCreationResponse.getVersion();
+          Version version = storeResponse.getStore()
+              .getVersion(versionNumber)
+              .orElseThrow(
+                  () -> new VeniceException(
+                      "Version info for version " + versionNumber + " not available in store response"));
+          // For pushes made to VT or SR topic, the producer should chunk the data
+          this.isChunkingEnabled = version.isChunkingEnabled();
+        } else {
+          // For pushes made to RT, the producer should not chunk the data
+          this.isChunkingEnabled = false;
+        }
+
+        this.veniceWriter = getVeniceWriter(versionCreationResponse);
+        if (Version.PushType.STREAM.equals(pushType)) {
+          this.streamWriteDispatcher = createStreamWriteDispatcher(veniceWriter);
+        }
+
+        if (pushMonitor.isPresent()) {
+          /**
+           * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
+           */
+          if (pushMonitor.get().getCurrentStatus().isError()) {
+            throw new VeniceException(
+                "Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
+          }
+        }
+
+        if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING))
+            && hybridStoreDiskQuotaEnabled) {
+          hybridStoreQuotaMonitor = Optional.of(createHybridStoreQuotaMonitor());
+          hybridStoreQuotaMonitor.get().start();
+        }
+        this.isStarted = true;
+      } catch (Throwable startupFailure) {
+        Throwable cleanupFailure = cleanupResources(true);
+        if (cleanupFailure != null && cleanupFailure != startupFailure) {
+          startupFailure.addSuppressed(cleanupFailure);
+        }
+        throwAsRuntimeException("Failed to start Venice SystemProducer", startupFailure);
+      }
+    } finally {
+      lifecycleLock.unlock();
     }
+  }
+
+  VeniceSystemProducerWriteDispatcher createStreamWriteDispatcher(AbstractVeniceWriter<byte[], byte[], byte[]> writer) {
+    return new VeniceSystemProducerWriteDispatcher(
+        writer,
+        workerCount,
+        workerQueueCapacity,
+        callbackThreadCount,
+        callbackQueueCapacity,
+        storeName);
+  }
+
+  RouterBasedPushMonitor createPushMonitor(String versionTopic) {
+    return new RouterBasedPushMonitor(transportClient, versionTopic, factory, this);
+  }
+
+  RouterBasedHybridStoreQuotaMonitor createHybridStoreQuotaMonitor() {
+    return new RouterBasedHybridStoreQuotaMonitor(transportClient, storeName, pushType, topicName, reinitProvider);
   }
 
   // Grabs all Venice schemas and their associated ID's and caches them
@@ -547,36 +615,226 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   @Override
-  public synchronized void stop() {
-    this.isStarted = false;
-    Utils.closeQuietlyWithErrorLogged(veniceWriter);
-    if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
-      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      switch (pushMonitor.get().getCurrentStatus().getRootStatus()) {
-        case COMPLETED:
-          LOGGER.info("Push job for {} is COMPLETED.", topicName);
-          break;
-        case END_OF_PUSH_RECEIVED:
-          LOGGER.info("Batch load for {} has finished.", topicName);
-          break;
-        case ERROR:
-          LOGGER.info("Push job for {} encountered error.", topicName);
-          break;
-        default:
-          LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
-          /**
-           * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
-           * the containers send kill requests to controller at the same time to avoid hammering on controller.
-           */
-          Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
-          this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
-          LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
+  public void stop() {
+    lifecycleLock.lock();
+    try {
+      Throwable cleanupFailure = cleanupResources(false);
+      if (cleanupFailure != null) {
+        throwAsRuntimeException("Failed to stop Venice SystemProducer", cleanupFailure);
       }
-      Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
+    } finally {
+      lifecycleLock.unlock();
     }
-    Utils.closeQuietlyWithErrorLogged(this.controllerClient);
-    hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+  }
+
+  private Throwable cleanupResources(boolean captureAuxiliaryFailures) {
+    this.isStarted = false;
+    Throwable cleanupFailure = null;
+
+    if (streamWriteDispatcher == null) {
+      if (veniceWriter != null) {
+        try {
+          // BATCH and STREAM_REPROCESSING retain their original inline writer lifecycle.
+          veniceWriter.close();
+          veniceWriter = null;
+        } catch (Throwable throwable) {
+          cleanupFailure = throwable;
+        }
+      }
+    } else {
+      Throwable dispatcherFailure = null;
+      try {
+        streamWriteDispatcher.stop();
+      } catch (Throwable throwable) {
+        dispatcherFailure = throwable;
+        cleanupFailure = throwable;
+      }
+      if (streamWriteDispatcher.isStopped()) {
+        veniceWriter = null;
+        if (dispatcherFailure == null) {
+          streamWriteDispatcher = null;
+        }
+      }
+    }
+
+    if (pushMonitor.isPresent()) {
+      RouterBasedPushMonitor monitor = pushMonitor.get();
+      if (!captureAuxiliaryFailures && Version.PushType.STREAM_REPROCESSING.equals(pushType)) {
+        try {
+          cleanupStreamReprocessingPush(monitor);
+        } catch (Throwable throwable) {
+          cleanupFailure = handleAuxiliaryCleanupFailure(
+              cleanupFailure,
+              throwable,
+              captureAuxiliaryFailures,
+              "stream reprocessing push");
+        }
+      }
+      try {
+        monitor.close();
+        pushMonitor = Optional.empty();
+      } catch (Throwable throwable) {
+        cleanupFailure =
+            handleAuxiliaryCleanupFailure(cleanupFailure, throwable, captureAuxiliaryFailures, "push monitor");
+        if (!captureAuxiliaryFailures) {
+          pushMonitor = Optional.empty();
+        }
+      }
+    }
+
+    if (controllerClient != null) {
+      try {
+        controllerClient.close();
+        controllerClient = null;
+      } catch (Throwable throwable) {
+        cleanupFailure =
+            handleAuxiliaryCleanupFailure(cleanupFailure, throwable, captureAuxiliaryFailures, "controller client");
+        if (!captureAuxiliaryFailures) {
+          controllerClient = null;
+        }
+      }
+    }
+
+    if (hybridStoreQuotaMonitor.isPresent()) {
+      try {
+        hybridStoreQuotaMonitor.get().close();
+        hybridStoreQuotaMonitor = Optional.empty();
+      } catch (Throwable throwable) {
+        cleanupFailure =
+            handleAuxiliaryCleanupFailure(cleanupFailure, throwable, captureAuxiliaryFailures, "quota monitor");
+        if (!captureAuxiliaryFailures) {
+          hybridStoreQuotaMonitor = Optional.empty();
+        }
+      }
+    }
+
+    if (schemaFetcher != null) {
+      try {
+        schemaFetcher.close();
+        schemaFetcher = null;
+      } catch (Throwable throwable) {
+        cleanupFailure =
+            handleAuxiliaryCleanupFailure(cleanupFailure, throwable, captureAuxiliaryFailures, "schema fetcher");
+        if (!captureAuxiliaryFailures) {
+          schemaFetcher = null;
+        }
+      }
+    }
+
+    if (transportClient != null) {
+      try {
+        transportClient.close();
+        transportClient = null;
+      } catch (Throwable throwable) {
+        cleanupFailure =
+            handleAuxiliaryCleanupFailure(cleanupFailure, throwable, captureAuxiliaryFailures, "transport client");
+        if (!captureAuxiliaryFailures) {
+          transportClient = null;
+        }
+      }
+    }
+
+    java.util.Iterator<Map.Entry<String, D2ClientEnvelope>> clientIterator =
+        d2ZkHostToClientEnvelopeMap.entrySet().iterator();
+    while (clientIterator.hasNext()) {
+      Map.Entry<String, D2ClientEnvelope> clientEntry = clientIterator.next();
+      try {
+        clientEntry.getValue().close();
+        clientIterator.remove();
+      } catch (Throwable throwable) {
+        cleanupFailure =
+            handleAuxiliaryCleanupFailure(cleanupFailure, throwable, captureAuxiliaryFailures, "D2 client");
+        if (!captureAuxiliaryFailures) {
+          clientIterator.remove();
+        }
+      }
+    }
+    if (d2ZkHostToClientEnvelopeMap.isEmpty()) {
+      primaryControllerColoD2Client = null;
+      childColoD2Client = null;
+    }
+
+    cleanupComplete = streamWriteDispatcher == null ? veniceWriter == null : streamWriteDispatcher.isStopped();
+    if (cleanupComplete) {
+      reinitProvider = null;
+    }
+    return cleanupFailure;
+  }
+
+  private void cleanupStreamReprocessingPush(RouterBasedPushMonitor monitor) {
+    String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+    switch (monitor.getCurrentStatus().getRootStatus()) {
+      case COMPLETED:
+        LOGGER.info("Push job for {} is COMPLETED.", topicName);
+        break;
+      case END_OF_PUSH_RECEIVED:
+        LOGGER.info("Batch load for {} has finished.", topicName);
+        break;
+      case ERROR:
+        LOGGER.info("Push job for {} encountered error.", topicName);
+        break;
+      default:
+        LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
+        if (controllerClient == null) {
+          LOGGER.warn("Cannot kill offline push job {} because the controller client is already closed", versionTopic);
+          break;
+        }
+        /**
+         * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
+         * the containers send kill requests to controller at the same time to avoid hammering on controller.
+         */
+        Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
+        this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
+        LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
+    }
+  }
+
+  private boolean hasResources() {
+    return veniceWriter != null || (streamWriteDispatcher != null && !streamWriteDispatcher.isStopped())
+        || pushMonitor.isPresent() || hybridStoreQuotaMonitor.isPresent() || controllerClient != null
+        || schemaFetcher != null || transportClient != null || !d2ZkHostToClientEnvelopeMap.isEmpty();
+  }
+
+  private static Throwable appendFailure(Throwable currentFailure, Throwable cleanupFailure) {
+    if (currentFailure == null) {
+      return cleanupFailure;
+    }
+    if (currentFailure != cleanupFailure) {
+      currentFailure.addSuppressed(cleanupFailure);
+    }
+    return currentFailure;
+  }
+
+  private Throwable handleAuxiliaryCleanupFailure(
+      Throwable currentFailure,
+      Throwable cleanupFailure,
+      boolean captureFailure,
+      String resourceName) {
+    if (captureFailure) {
+      return appendFailure(currentFailure, cleanupFailure);
+    }
+    LOGGER.warn("Failed to close Venice SystemProducer {} during best-effort cleanup", resourceName, cleanupFailure);
+    return currentFailure;
+  }
+
+  private static void throwAsRuntimeException(String message, Throwable throwable) {
+    if (throwable instanceof Error) {
+      throw (Error) throwable;
+    }
+    if (throwable instanceof RuntimeException) {
+      throw (RuntimeException) throwable;
+    }
+    throw new VeniceException(message, throwable);
+  }
+
+  /**
+   * Return whether producer write resources have been physically torn down.
+   *
+   * <p>Auxiliary client cleanup remains best effort and does not affect this status. A prior write failure may still be
+   * rethrown by {@link #stop()} after this becomes true.</p>
+   */
+  public boolean isStopped() {
+    return cleanupComplete;
   }
 
   @Override
@@ -586,8 +844,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   @Override
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
-    if (!isStarted) {
-      throw new SamzaException("Send called on Venice System Producer that is not started yet!");
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        captureDispatcher("Send called on Venice System Producer that is not started yet!");
+    if (dispatcher != null) {
+      dispatcher.checkForFailure();
     }
     String storeOfIncomingMessage = outgoingMessageEnvelope.getSystemStream().getStream();
     if (!storeOfIncomingMessage.equals(storeName)) {
@@ -651,6 +911,34 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    * @return a {@link CompletableFuture} that completes when the write is acknowledged
    */
   protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        captureDispatcher("Cannot send with a Venice SystemProducer that is not started or is already stopped");
+    CompletableFuture<Void> durableFuture = send(keyObject, valueObject, dispatcher);
+    waitForStreamSubmissionIfNeeded(durableFuture, dispatcher);
+    return durableFuture;
+  }
+
+  private CompletableFuture<Void> send(
+      Object keyObject,
+      Object valueObject,
+      VeniceSystemProducerWriteDispatcher dispatcher) {
+    if (!isStarted) {
+      throw new SamzaException("Cannot send with a Venice SystemProducer that is not started or is already stopped");
+    }
+    if (Version.PushType.STREAM.equals(pushType)) {
+      if (dispatcher == null) {
+        throw new SamzaException("Cannot send with a Venice SystemProducer that is not started or is already stopped");
+      }
+      dispatcher.checkForFailure();
+    }
+    VeniceSystemProducerWriteCommand command = prepareWrite(keyObject, valueObject);
+    if (!Version.PushType.STREAM.equals(pushType)) {
+      return sendInline(command);
+    }
+    return dispatcher.dispatch(command);
+  }
+
+  private VeniceSystemProducerWriteCommand prepareWrite(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
     String canonicalSchemaStr = canonicalSchemaStrCache.get(keyObjectSchema);
 
@@ -675,11 +963,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       valueObject = objectWithTimestamp.getObject();
     }
 
-    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-
     if (valueObject == null) {
-      getInternalWriter().delete(serializedKey, logicalTimestamp, new CompletableFutureCallback(completableFuture));
-      return completableFuture;
+      return VeniceSystemProducerWriteCommand.delete(serializedKey, logicalTimestamp);
     }
 
     Schema valueObjectSchema = getSchemaFromObject(valueObject);
@@ -706,27 +991,21 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     int derivedSchemaId = valueSchemaIdPair.getSecond();
 
     if (derivedSchemaId == -1) {
-      getInternalWriter().put(
-          serializedKey,
-          serializedValue,
-          valueSchemaId,
-          logicalTimestamp,
-          new CompletableFutureCallback(completableFuture));
-    } else {
-      if (!isWriteComputeEnabled) {
-        throw new SamzaException(
-            "Cannot write partial update record to Venice store " + storeName + " "
-                + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
-      }
-      getInternalWriter().update(
-          serializedKey,
-          serializedValue,
-          valueSchemaId,
-          derivedSchemaId,
-          logicalTimestamp,
-          new CompletableFutureCallback(completableFuture));
+      return VeniceSystemProducerWriteCommand.put(serializedKey, serializedValue, valueSchemaId, logicalTimestamp);
     }
-    return completableFuture;
+    if (!isWriteComputeEnabled) {
+      throw new SamzaException(
+          "Cannot write partial update record to Venice store " + storeName + " "
+              + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
+    }
+    return VeniceSystemProducerWriteCommand
+        .update(serializedKey, serializedValue, valueSchemaId, derivedSchemaId, logicalTimestamp);
+  }
+
+  private CompletableFuture<Void> sendInline(VeniceSystemProducerWriteCommand command) {
+    CompletableFuture<Void> durableFuture = new CompletableFuture<>();
+    command.submit(getInternalWriter(), new CompletableFutureCallback(durableFuture));
+    return durableFuture;
   }
 
   public CompletableFuture<Void> put(Object keyObject, Object valueObject) {
@@ -744,7 +1023,54 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    getInternalWriter().flush();
+    VeniceSystemProducerWriteDispatcher dispatcher =
+        captureDispatcher("Cannot flush a Venice SystemProducer that is not started or is already stopped");
+    if (!Version.PushType.STREAM.equals(pushType)) {
+      getInternalWriter().flush();
+      return;
+    }
+    if (dispatcher == null) {
+      throw new SamzaException("Cannot flush a Venice SystemProducer that is not started or is already stopped");
+    }
+    dispatcher.flush();
+  }
+
+  private VeniceSystemProducerWriteDispatcher captureDispatcher(String stoppedMessage) {
+    if (!isStarted) {
+      throw new SamzaException(stoppedMessage);
+    }
+    return streamWriteDispatcher;
+  }
+
+  private void waitForSubmission(Future<Void> submissionFuture) {
+    try {
+      submissionFuture.get();
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new SamzaException("Interrupted while waiting for Venice write submission", exception);
+    } catch (ExecutionException exception) {
+      Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+      if (cause instanceof RuntimeException) {
+        throw (RuntimeException) cause;
+      }
+      if (cause instanceof Error) {
+        throw (Error) cause;
+      }
+      throw new SamzaException("Venice write submission failed", cause);
+    }
+  }
+
+  private void waitForStreamSubmissionIfNeeded(
+      CompletableFuture<Void> durableFuture,
+      VeniceSystemProducerWriteDispatcher dispatcher) {
+    if (!Version.PushType.STREAM.equals(pushType)) {
+      return;
+    }
+    if (dispatcher == null) {
+      throw new SamzaException("Cannot send with a Venice SystemProducer that is not started or is already stopped");
+    }
+    waitForSubmission(dispatcher.getSubmissionFuture(durableFuture));
+    dispatcher.checkForFailure();
   }
 
   private static Schema getSchemaFromObject(Object object) {
@@ -895,8 +1221,18 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           .setClientFactories(clientFactories)
           .setRestOverStream(true)
           .build();
-      D2ClientUtils.startClient(d2Client);
-      return new D2ClientEnvelope(d2Client, fsBasePath);
+      D2ClientEnvelope envelope = new D2ClientEnvelope(d2Client, fsBasePath);
+      try {
+        D2ClientUtils.startClient(d2Client);
+        return envelope;
+      } catch (RuntimeException | Error startupFailure) {
+        try {
+          envelope.close();
+        } catch (Throwable cleanupFailure) {
+          startupFailure.addSuppressed(cleanupFailure);
+        }
+        throw startupFailure;
+      }
     });
     return d2ClientEnvelope.d2Client;
   }

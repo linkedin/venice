@@ -19,12 +19,14 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -45,15 +47,29 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
 
   private final SchemaReader schemaReader;
   private final ICProvider icProvider;
+  private final VeniceWriterHook writerHook;
+  private final AtomicBoolean resourceCleanupInProgress = new AtomicBoolean();
+  private volatile boolean resourcesClosed;
+  private volatile IOException resourceCleanupFailure;
 
   OnlineVeniceProducer(
       ClientConfig storeClientConfig,
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
       ICProvider icProvider) {
+    this(storeClientConfig, producerConfigs, metricsRepository, icProvider, null);
+  }
+
+  OnlineVeniceProducer(
+      ClientConfig storeClientConfig,
+      VeniceProperties producerConfigs,
+      MetricsRepository metricsRepository,
+      ICProvider icProvider,
+      VeniceWriterHook writerHook) {
     LOGGER.info("Creating venice online producer for: {}", storeClientConfig.getStoreName());
     this.storeName = storeClientConfig.getStoreName();
     this.icProvider = icProvider;
+    this.writerHook = writerHook;
 
     Duration schemaRefreshPeriod;
     if (producerConfigs.containsKey(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS)) {
@@ -114,6 +130,11 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
   }
 
   @Override
+  protected VeniceWriterHook getWriterHook() {
+    return writerHook;
+  }
+
+  @Override
   protected VersionCreationResponse requestTopic() {
     String requestTopicRequestPath = "request_topic/" + storeName;
     VersionCreationResponse versionCreationResponse;
@@ -162,10 +183,69 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
 
   @Override
   public void close() throws IOException {
-    if (!isClosed()) {
+    IOException closeFailure = null;
+    try {
+      // AbstractVeniceProducer.close() is intentionally idempotent and must run on every invocation so a failure
+      // recorded after a depth-exempted reentrant close remains observable.
       super.close();
-      Utils.closeQuietlyWithErrorLogged(schemaReader);
-      Utils.closeQuietlyWithErrorLogged(storeClient);
+    } catch (IOException exception) {
+      closeFailure = exception;
     }
+
+    if (isCoreResourceCleanupComplete() && !resourcesClosed && resourceCleanupInProgress.compareAndSet(false, true)) {
+      try {
+        if (!resourcesClosed) {
+          closeClientResources(closeFailure);
+          resourcesClosed = true;
+        }
+      } finally {
+        resourceCleanupInProgress.set(false);
+      }
+    }
+    if (resourcesClosed) {
+      synchronized (this) {
+        if (resourceCleanupFailure == null) {
+          resourceCleanupFailure = closeFailure;
+        } else {
+          if (closeFailure != null && !containsFailure(resourceCleanupFailure, closeFailure)) {
+            resourceCleanupFailure.addSuppressed(closeFailure);
+          }
+          closeFailure = resourceCleanupFailure;
+        }
+      }
+    }
+    if (closeFailure != null) {
+      throw closeFailure;
+    }
+  }
+
+  private void closeClientResources(IOException primaryFailure) {
+    Utils.closeQuietly(schemaReader, exception -> recordClientCloseFailure(primaryFailure, exception));
+    Utils.closeQuietly(storeClient, exception -> recordClientCloseFailure(primaryFailure, exception));
+  }
+
+  private void recordClientCloseFailure(IOException primaryFailure, Exception clientCloseFailure) {
+    if (primaryFailure == null) {
+      LOGGER.error("Failed to close Venice online producer client resource", clientCloseFailure);
+    } else if (clientCloseFailure != primaryFailure) {
+      primaryFailure.addSuppressed(clientCloseFailure);
+    }
+  }
+
+  private static boolean containsFailure(Throwable recordedFailure, Throwable candidateFailure) {
+    if (recordedFailure == candidateFailure) {
+      return true;
+    }
+    Throwable candidateCause = candidateFailure.getCause();
+    if (candidateCause != null && recordedFailure.getCause() == candidateCause) {
+      return true;
+    }
+    for (Throwable suppressed: recordedFailure.getSuppressed()) {
+      if (containsFailure(suppressed, candidateFailure)
+          || (candidateCause != null && containsFailure(suppressed, candidateCause))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

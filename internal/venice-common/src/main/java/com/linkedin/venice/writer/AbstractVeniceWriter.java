@@ -26,6 +26,21 @@ public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
     return this.topicName;
   }
 
+  /**
+   * Return the exact Venice partition that this writer will use for a serialized key.
+   *
+   * <p>This is a non-abstract compatibility extension so existing external subclasses continue to link. Writers that
+   * can route serialized byte keys should override it; callers receive a clear failure from unsupported wrappers rather
+   * than guessing from controller metadata.</p>
+   *
+   * @param serializedKey serialized Venice key
+   * @return the partition selected by this writer
+   */
+  public int getPartitionId(byte[] serializedKey) {
+    throw new UnsupportedOperationException(
+        "Partition routing is not supported by writer class " + getClass().getName());
+  }
+
   public CompletableFuture<PubSubProduceResult> put(K key, V value, int valueSchemaId) {
     return put(key, value, valueSchemaId, null);
   }

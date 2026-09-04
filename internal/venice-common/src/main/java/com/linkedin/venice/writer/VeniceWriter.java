@@ -2787,6 +2787,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return partitioner.getPartitionId(key, numberOfPartitions);
   }
 
+  @Override
+  public int getPartitionId(byte[] serializedKey) {
+    return getPartition(serializedKey);
+  }
+
   /**
    * @param partition for which we want to get the current {@link Segment}. Segment will be
    *                  ended automatically if its creation time is prior to

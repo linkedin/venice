@@ -73,6 +73,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
    * normal millisecond-resolution clock the wait exits after the first attempt.
    */
   private static final long MAX_TIMESTAMP_ADVANCE_WAIT_MS = 100;
+  private static final long CHECK_SERVICE_SHUTDOWN_TIMEOUT_SECONDS = 10;
   private final ReentrantLock lock = new ReentrantLock();
   private final ExecutorService checkServiceExecutor = Executors.newSingleThreadExecutor();
   private final List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
@@ -87,8 +88,14 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   private final Map<Schema, RecordSerializer<GenericRecord>> updateSerializerMap = new VeniceConcurrentHashMap<>();
 
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
+  /** Guards owned-resource cleanup: the thread which flips this flag is the only one which closes {@link #veniceWriter}. */
+  private final AtomicBoolean closeStarted = new AtomicBoolean(false);
   private final SchemaFetcherBackedStoreSchemaCache storeSchemaCache;
   private volatile long lastBatchProduceMs;
+  private volatile Thread checkServiceThread;
+  /** Only written and read on the check service thread, see {@link #close(boolean)}. */
+  private boolean closeDeferredToCheckServiceExit;
+  private boolean deferredCloseGraceful;
   private int bufferSizeInBytes;
 
   public BatchingVeniceWriter(
@@ -221,19 +228,63 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   }
 
   @Override
+  public int getPartitionId(byte[] serializedKey) {
+    return getVeniceWriter().getPartitionId(serializedKey);
+  }
+
+  @Override
   public void close(boolean gracefulClose) {
+    if (!closeStarted.compareAndSet(false, true)) {
+      // Cleanup is owned by the thread which won the CAS, so return immediately instead of waiting for it.
+      return;
+    }
     isRunning.set(false);
+    if (currentThread() == checkServiceThread) {
+      /**
+       * A produce failure can invoke a user callback on the check service thread, and that callback can close this
+       * writer. That thread cannot wait for its own executor to terminate, so defer the cleanup it owns to
+       * {@link #periodicCheckTask()}.
+       */
+      deferredCloseGraceful = gracefulClose;
+      closeDeferredToCheckServiceExit = true;
+      getCheckServiceExecutor().shutdownNow();
+      return;
+    }
+    boolean interrupted = false;
     if (gracefulClose) {
-      checkServiceExecutor.shutdown();
+      getCheckServiceExecutor().shutdown();
       try {
-        if (!checkServiceExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-          checkServiceExecutor.shutdownNow();
+        if (!getCheckServiceExecutor().awaitTermination(CHECK_SERVICE_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+          getCheckServiceExecutor().shutdownNow();
         }
       } catch (InterruptedException e) {
-        currentThread().interrupt();
+        interrupted = true;
+        getCheckServiceExecutor().shutdownNow();
       }
     } else {
-      checkServiceExecutor.shutdownNow();
+      getCheckServiceExecutor().shutdownNow();
+    }
+    /**
+     * Do not wait any further after this bounded shutdown attempt: a check service which ignores shutdown may finish an
+     * operation after the internal writer is closed, and {@link VeniceWriter#close(boolean)} is idempotent.
+     */
+    closeInternalWriter(gracefulClose, interrupted);
+  }
+
+  /**
+   * Closes the internal writer owned by this instance, exactly once, on behalf of the thread which won the close CAS.
+   * {@link VeniceWriter#close(boolean)} waits interruptibly and swallows the interruption, so a pending interrupt is
+   * cleared for the duration of the cleanup and restored afterwards. Otherwise this method would return, and report the
+   * writer as closed, while the internal writer is still closing.
+   */
+  private void closeInternalWriter(boolean gracefulClose, boolean interrupted) {
+    interrupted |= Thread.interrupted();
+    try {
+      getVeniceWriter().close(gracefulClose);
+    } finally {
+      if (interrupted) {
+        currentThread().interrupt();
+      }
     }
   }
 
@@ -243,6 +294,18 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   }
 
   private void periodicCheckTask() {
+    checkServiceThread = currentThread();
+    try {
+      runPeriodicCheckLoop();
+    } finally {
+      checkServiceThread = null;
+      if (closeDeferredToCheckServiceExit) {
+        closeInternalWriter(deferredCloseGraceful, false);
+      }
+    }
+  }
+
+  private void runPeriodicCheckLoop() {
     while (isRunning.get()) {
       long sleepIntervalInMs = batchIntervalInMs;
       try {
@@ -704,7 +767,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   void maybeStartCheckExecutor() {
     // Start the service only once
     if (isRunning.compareAndSet(false, true)) {
-      checkServiceExecutor.execute(this::periodicCheckTask);
+      getCheckServiceExecutor().execute(this::periodicCheckTask);
       lastBatchProduceMs = System.currentTimeMillis();
     }
   }
@@ -752,6 +815,10 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
 
   VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
     return veniceWriter;
+  }
+
+  ExecutorService getCheckServiceExecutor() {
+    return checkServiceExecutor;
   }
 
   BiIntKeyCache<RecordDeserializer<GenericRecord>> getDeserializerCacheForFullValue() {
