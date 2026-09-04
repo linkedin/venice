@@ -1490,6 +1490,14 @@ public class ConfigKeys {
   public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY =
       "router.helix.assisted.routing.group.selection.strategy";
 
+  /**
+   * Whether Helix-assisted-routing group selection weights each request by its key count (estimated RCU)
+   * instead of counting every request as 1, so variable-size multi-get traffic is balanced by keys/RCU
+   * across Helix groups. Only affects {@literal HelixGroupLeastLoadedStrategy}. Default: false.
+   */
+  public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_WEIGHT_AWARE_ENABLED =
+      "router.helix.assisted.routing.group.selection.weight.aware.enabled";
+
   public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
   /**
