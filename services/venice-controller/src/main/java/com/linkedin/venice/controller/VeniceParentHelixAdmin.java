@@ -3721,6 +3721,10 @@ public class VeniceParentHelixAdmin implements Admin {
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Store parentStore = repository.getStore(storeName);
     Version version = parentStore.getVersion(versionNum);
+    // The version can be null when it was deleted while a client is still polling job status for it (e.g. a system
+    // push that was killed and had its stranded version removed). Derive the status null-safely so downstream checks
+    // never dereference a null version and the controller returns a valid status instead of HTTP 500.
+    VersionStatus versionStatus = version == null ? VersionStatus.NOT_CREATED : version.getStatus();
 
     // Check if push is in a terminal status in target regions for pushes using deferred swap and try
     // updating the parent status. Parent status should only be updated if it is currently in a STARTED state to avoid
@@ -3753,13 +3757,13 @@ public class VeniceParentHelixAdmin implements Admin {
         }
 
         if (isTargetRegionPushWithDeferredSwap) {
-          boolean isVersionTerminal = TERMINAL_VERSION_SWAP_STATUSES.contains(version.getStatus());
+          boolean isVersionTerminal = TERMINAL_VERSION_SWAP_STATUSES.contains(versionStatus);
           if (isVersionTerminal) {
             LOGGER.info(
                 "Truncating parent VT {} after push status {} and version status {}",
                 kafkaTopic,
                 currentReturnStatus.getRootStatus(),
-                version.getStatus());
+                versionStatus);
             truncateTopicsOptionally(
                 clusterName,
                 kafkaTopic,
@@ -3772,7 +3776,7 @@ public class VeniceParentHelixAdmin implements Admin {
         // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark
         // the
         // push job status as terminal (ERROR) as job was killed
-        if (version.getStatus().equals(KILLED)) {
+        if (versionStatus == KILLED) {
           LOGGER.info(
               "Marking execution status as ERROR for store {} because parent version status is KILLED",
               storeName);
