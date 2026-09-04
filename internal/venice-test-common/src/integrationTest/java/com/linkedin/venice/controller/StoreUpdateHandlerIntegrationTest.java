@@ -2,7 +2,8 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -19,7 +20,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -35,13 +37,17 @@ import org.testng.annotations.Test;
 
 public class StoreUpdateHandlerIntegrationTest {
   private static final long TEST_TIMEOUT_MS = 2 * Time.MS_PER_MINUTE;
-  private static final long UPDATED_READ_QUOTA = 1234;
+  private static final long UPDATED_THROUGHPUT_QUOTA_IN_BYTES = 10 * 1024 * 1024;
+  private static final long UPDATED_THROUGHPUT_QUOTA_IN_RECORDS = 5000;
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testStoreUpdateHandlerRetriesWithFinalReadOnlySnapshot() throws InterruptedException {
     String storeName = Utils.getUniqueString("store-update-handler");
     String originalOwner = "test-owner";
-    RetryingStoreUpdateHandler storeUpdateHandler = new RetryingStoreUpdateHandler(storeName, UPDATED_READ_QUOTA);
+    RetryingStoreUpdateHandler storeUpdateHandler = new RetryingStoreUpdateHandler(
+        storeName,
+        UPDATED_THROUGHPUT_QUOTA_IN_BYTES,
+        UPDATED_THROUGHPUT_QUOTA_IN_RECORDS);
     AtomicInteger childHandlerInvocationCount = new AtomicInteger();
 
     Properties parentControllerProperties = new Properties();
@@ -85,8 +91,10 @@ public class StoreUpdateHandlerIntegrationTest {
             TimeUnit.SECONDS,
             () -> Assert.assertFalse(childControllerClient.getStore(storeName).isError()));
 
-        ControllerResponse updateStoreResponse = parentControllerClient
-            .updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(UPDATED_READ_QUOTA));
+        ControllerResponse updateStoreResponse = parentControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setThroughputQuotaInBytes(UPDATED_THROUGHPUT_QUOTA_IN_BYTES)
+                .setThroughputQuotaInRecords(UPDATED_THROUGHPUT_QUOTA_IN_RECORDS));
         Assert.assertFalse(updateStoreResponse.isError(), updateStoreResponse.getError());
         Assert.assertTrue(
             storeUpdateHandler.awaitSuccessfulInvocation(30, TimeUnit.SECONDS),
@@ -97,13 +105,16 @@ public class StoreUpdateHandlerIntegrationTest {
         Assert.assertEquals(storeUpdateHandler.getLatestClusterName(), clusterName);
         Assert.assertEquals(callbackStore.getName(), storeName);
         Assert.assertEquals(callbackStore.getOwner(), originalOwner);
-        Assert.assertEquals(callbackStore.getReadQuotaInCU(), UPDATED_READ_QUOTA);
+        Assert.assertEquals(callbackStore.getThroughputQuotaInBytes(), UPDATED_THROUGHPUT_QUOTA_IN_BYTES);
+        Assert.assertEquals(callbackStore.getThroughputQuotaInRecords(), UPDATED_THROUGHPUT_QUOTA_IN_RECORDS);
         Assert.assertTrue(storeUpdateHandler.receivedOnlyReadOnlyStores());
         Assert.assertTrue(storeUpdateHandler.receivedOnlyImmutableUpdatedConfigs());
+        Set<String> expectedUpdatedConfigs =
+            new HashSet<>(Arrays.asList(THROUGHPUT_QUOTA_IN_BYTES, THROUGHPUT_QUOTA_IN_RECORDS));
         Assert.assertTrue(
             storeUpdateHandler.getReceivedUpdatedConfigs()
                 .stream()
-                .allMatch(updatedConfigs -> updatedConfigs.equals(Collections.singleton(READ_QUOTA_IN_CU))));
+                .allMatch(updatedConfigs -> updatedConfigs.equals(expectedUpdatedConfigs)));
 
         String barrierOwner = "owner-after-update";
         ControllerResponse setOwnerResponse = parentControllerClient.setStoreOwner(storeName, barrierOwner);
@@ -111,11 +122,13 @@ public class StoreUpdateHandlerIntegrationTest {
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreInfo childStore = childControllerClient.getStore(storeName).getStore();
           Assert.assertEquals(childStore.getOwner(), barrierOwner);
-          Assert.assertEquals(childStore.getReadQuotaInCU(), UPDATED_READ_QUOTA);
+          Assert.assertEquals(childStore.getThroughputQuotaInBytes(), UPDATED_THROUGHPUT_QUOTA_IN_BYTES);
+          Assert.assertEquals(childStore.getThroughputQuotaInRecords(), UPDATED_THROUGHPUT_QUOTA_IN_RECORDS);
         });
 
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getReadQuotaInCU(), UPDATED_READ_QUOTA);
+        Assert.assertEquals(parentStore.getThroughputQuotaInBytes(), UPDATED_THROUGHPUT_QUOTA_IN_BYTES);
+        Assert.assertEquals(parentStore.getThroughputQuotaInRecords(), UPDATED_THROUGHPUT_QUOTA_IN_RECORDS);
         Assert.assertTrue(storeUpdateHandler.getInvocationCount() >= 2);
         Assert.assertEquals(childHandlerInvocationCount.get(), 0);
       }
@@ -124,7 +137,8 @@ public class StoreUpdateHandlerIntegrationTest {
 
   private static final class RetryingStoreUpdateHandler implements StoreUpdateHandler {
     private final String targetStoreName;
-    private final long targetReadQuota;
+    private final long targetThroughputQuotaInBytes;
+    private final long targetThroughputQuotaInRecords;
     private final AtomicInteger invocationCount = new AtomicInteger();
     private final AtomicReference<String> latestClusterName = new AtomicReference<>();
     private final AtomicReference<Store> latestStore = new AtomicReference<>();
@@ -133,14 +147,19 @@ public class StoreUpdateHandlerIntegrationTest {
     private final CopyOnWriteArrayList<Set<String>> receivedUpdatedConfigs = new CopyOnWriteArrayList<>();
     private final CountDownLatch successfulInvocation = new CountDownLatch(1);
 
-    private RetryingStoreUpdateHandler(String targetStoreName, long targetReadQuota) {
+    private RetryingStoreUpdateHandler(
+        String targetStoreName,
+        long targetThroughputQuotaInBytes,
+        long targetThroughputQuotaInRecords) {
       this.targetStoreName = targetStoreName;
-      this.targetReadQuota = targetReadQuota;
+      this.targetThroughputQuotaInBytes = targetThroughputQuotaInBytes;
+      this.targetThroughputQuotaInRecords = targetThroughputQuotaInRecords;
     }
 
     @Override
     public void handleStoreUpdate(String clusterName, Store store, Set<String> updatedConfigs) {
-      if (!targetStoreName.equals(store.getName()) || store.getReadQuotaInCU() != targetReadQuota) {
+      if (!targetStoreName.equals(store.getName()) || store.getThroughputQuotaInBytes() != targetThroughputQuotaInBytes
+          || store.getThroughputQuotaInRecords() != targetThroughputQuotaInRecords) {
         return;
       }
 
