@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.CLUSTER_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -25,6 +26,7 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -34,6 +36,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -50,7 +53,8 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * {@link AggKafkaConsumerService} supports Kafka consumer pool for multiple Kafka clusters from different data centers;
- * for each Kafka bootstrap server url, {@link AggKafkaConsumerService} will create one {@link KafkaConsumerService}.
+ * for each Kafka bootstrap server URL and consumer decryption mode, {@link AggKafkaConsumerService} will create one
+ * {@link KafkaConsumerService}.
  */
 public class AggKafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
@@ -68,7 +72,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
   private final boolean isKafkaConsumerOffsetCollectionEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
-  private final Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap =
+  private final Map<ConsumerServiceKey, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap =
       new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
@@ -92,6 +96,42 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final VeniceJsonSerializer<Map<String, Map<String, TopicPartitionIngestionInfo>>> topicPartitionIngestionContextJsonSerializer =
       new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, TopicPartitionIngestionInfo>>>() {
       });
+
+  static final class ConsumerServiceKey {
+    private final String resolvedKafkaUrl;
+    private final boolean decryptionEnabled;
+
+    ConsumerServiceKey(String resolvedKafkaUrl, boolean decryptionEnabled) {
+      this.resolvedKafkaUrl = Objects.requireNonNull(resolvedKafkaUrl);
+      this.decryptionEnabled = decryptionEnabled;
+    }
+
+    String getResolvedKafkaUrl() {
+      return resolvedKafkaUrl;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof ConsumerServiceKey)) {
+        return false;
+      }
+      ConsumerServiceKey that = (ConsumerServiceKey) o;
+      return decryptionEnabled == that.decryptionEnabled && resolvedKafkaUrl.equals(that.resolvedKafkaUrl);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(resolvedKafkaUrl, decryptionEnabled);
+    }
+
+    @Override
+    public String toString() {
+      return resolvedKafkaUrl + " (decryptionEnabled=" + decryptionEnabled + ")";
+    }
+  }
 
   public AggKafkaConsumerService(
       final PubSubPropertiesSupplier pubSubPropertiesSupplier,
@@ -200,7 +240,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   protected static Runnable getStuckConsumerDetectionAndRepairRunnable(
       Logger logger,
       Time time,
-      Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
+      Map<?, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
       Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping,
       long stuckConsumerRepairThresholdMs,
       long nonExistingTopicIngestionTaskKillThresholdMs,
@@ -306,12 +346,12 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private static void reportStaleTopicPartitions(
       Logger logger,
       Time time,
-      Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
+      Map<?, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
       long consumerPollTrackerStaleThresholdMs) {
     StringBuilder stringBuilder = new StringBuilder();
     long now = time.getMilliseconds();
     // Detect and log any subscribed topic partitions that are not polling records
-    for (Map.Entry<String, AbstractKafkaConsumerService> consumerService: kafkaServerToConsumerServiceMap.entrySet()) {
+    for (Map.Entry<?, AbstractKafkaConsumerService> consumerService: kafkaServerToConsumerServiceMap.entrySet()) {
       Map<PubSubTopicPartition, Long> staleTopicPartitions =
           consumerService.getValue().getStaleTopicPartitions(now - consumerPollTrackerStaleThresholdMs);
       if (!staleTopicPartitions.isEmpty()) {
@@ -354,12 +394,16 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    *         or null if there isn't any.
    */
   AbstractKafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
-    AbstractKafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.get(kafkaURL);
-    if (consumerService == null && kafkaClusterUrlResolver != null) {
-      // The resolver is needed to resolve a special format of kafka URL to the original kafka URL
-      consumerService = kafkaServerToConsumerServiceMap.get(kafkaClusterUrlResolver.apply(kafkaURL));
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL, false);
+    if (consumerService == null) {
+      consumerService = getKafkaConsumerService(kafkaURL, true);
     }
     return consumerService;
+  }
+
+  AbstractKafkaConsumerService getKafkaConsumerService(final String kafkaURL, boolean decryptionEnabled) {
+    String resolvedKafkaUrl = kafkaClusterUrlResolver == null ? kafkaURL : kafkaClusterUrlResolver.apply(kafkaURL);
+    return kafkaServerToConsumerServiceMap.get(new ConsumerServiceKey(resolvedKafkaUrl, decryptionEnabled));
   }
 
   /**
@@ -377,9 +421,12 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
     }
     String resolvedKafkaUrl = kafkaClusterUrlResolver == null ? kafkaUrl : kafkaClusterUrlResolver.apply(kafkaUrl);
-    final AbstractKafkaConsumerService alreadyCreatedConsumerService = getKafkaConsumerService(resolvedKafkaUrl);
+    boolean decryptionEnabled = new VeniceProperties(consumerProperties).getBoolean(CLUSTER_ENCRYPTION_ENABLED, false);
+    ConsumerServiceKey consumerServiceKey = new ConsumerServiceKey(resolvedKafkaUrl, decryptionEnabled);
+    final AbstractKafkaConsumerService alreadyCreatedConsumerService =
+        kafkaServerToConsumerServiceMap.get(consumerServiceKey);
     if (alreadyCreatedConsumerService != null) {
-      LOGGER.info("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
+      LOGGER.info("KafkaConsumerService has already been created for {}", consumerServiceKey);
       return alreadyCreatedConsumerService;
     }
 
@@ -411,7 +458,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             getCrossTpProcessingPoolForPoolType(poolType));
 
     AbstractKafkaConsumerService consumerService =
-        kafkaServerToConsumerServiceMap.computeIfAbsent(resolvedKafkaUrl, url -> {
+        kafkaServerToConsumerServiceMap.computeIfAbsent(consumerServiceKey, key -> {
           if (serverConfig
               .getConsumerPoolStrategyType() == KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION) {
             return new KafkaConsumerServiceDelegator(serverConfig, consumerServiceBuilder);
@@ -452,18 +499,24 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
-    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
-    if (consumerService == null) {
-      return false;
+    for (boolean decryptionEnabled: new boolean[] { false, true }) {
+      AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL, decryptionEnabled);
+      if (consumerService != null) {
+        SharedKafkaConsumer consumer =
+            consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+        if (consumer != null && consumer.hasSubscription(pubSubTopicPartition)) {
+          return true;
+        }
+      }
     }
-    SharedKafkaConsumer consumer =
-        consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
-    return consumer != null && consumer.hasSubscription(pubSubTopicPartition);
+    return false;
   }
 
   boolean hasConsumerAssignedFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
-      if (hasConsumerAssignedFor(kafkaUrl, versionTopic, pubSubTopicPartition)) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+      SharedKafkaConsumer consumer =
+          consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+      if (consumer != null && consumer.hasSubscription(pubSubTopicPartition)) {
         return true;
       }
     }
@@ -515,9 +568,28 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       PubSubPosition lastOffset,
       boolean inclusive) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
+    boolean decryptionEnabled = StoreIngestionTask.resolveConsumerEncryptionEnabled(
+        serverConfig.getClusterProperties(),
+        metadataRepository.getStore(versionTopic.getStoreName()));
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL, decryptionEnabled);
+    return subscribeConsumerFor(
+        consumerService,
+        kafkaURL,
+        storeIngestionTask,
+        partitionReplicaIngestionContext,
+        lastOffset,
+        inclusive);
+  }
+
+  ConsumedDataReceiver<List<DefaultPubSubMessage>> subscribeConsumerFor(
+      AbstractKafkaConsumerService consumerService,
+      final String kafkaURL,
+      StoreIngestionTask storeIngestionTask,
+      PartitionReplicaIngestionContext partitionReplicaIngestionContext,
+      PubSubPosition lastOffset,
+      boolean inclusive) {
+    PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
     PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
-    AbstractKafkaConsumerService consumerService =
-        getKafkaConsumerService(kafkaClusterUrlResolver == null ? kafkaURL : kafkaClusterUrlResolver.apply(kafkaURL));
     if (consumerService == null) {
       throw new VeniceException(
           "Kafka consumer service must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaURL);
@@ -549,10 +621,14 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
-    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
-    return consumerService == null
-        ? -1
-        : consumerService.getLatestOffsetBasedOnMetrics(versionTopic, pubSubTopicPartition);
+    for (boolean decryptionEnabled: new boolean[] { false, true }) {
+      AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL, decryptionEnabled);
+      if (consumerService != null
+          && consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition) != null) {
+        return consumerService.getLatestOffsetBasedOnMetrics(versionTopic, pubSubTopicPartition);
+      }
+    }
+    return -1;
   }
 
   /**
@@ -596,9 +672,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    */
   Set<String> getKafkaUrlsFor(PubSubTopic versionTopic) {
     Set<String> kafkaUrls = new HashSet<>(kafkaServerToConsumerServiceMap.size());
-    for (Map.Entry<String, AbstractKafkaConsumerService> entry: kafkaServerToConsumerServiceMap.entrySet()) {
+    for (Map.Entry<ConsumerServiceKey, AbstractKafkaConsumerService> entry: kafkaServerToConsumerServiceMap
+        .entrySet()) {
       if (entry.getValue().hasAnySubscriptionFor(versionTopic)) {
-        kafkaUrls.add(entry.getKey());
+        kafkaUrls.add(entry.getKey().getResolvedKafkaUrl());
       }
     }
     return kafkaUrls;
@@ -606,8 +683,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   byte[] getIngestionInfoFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) throws IOException {
     Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContext = new HashMap<>();
-    for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
-      AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
+    for (Map.Entry<ConsumerServiceKey, AbstractKafkaConsumerService> consumerServiceEntry: kafkaServerToConsumerServiceMap
+        .entrySet()) {
+      String kafkaUrl = consumerServiceEntry.getKey().getResolvedKafkaUrl();
+      AbstractKafkaConsumerService consumerService = consumerServiceEntry.getValue();
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
           consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, false);
       for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
@@ -629,12 +708,19 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     if (kafkaUrl == null) {
       return "kafkaUrl is not found for region: " + regionName;
     }
-    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
-    if (consumerService == null) {
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
+    boolean consumerServiceFound = false;
+    for (boolean decryptionEnabled: new boolean[] { false, true }) {
+      AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl, decryptionEnabled);
+      if (consumerService != null) {
+        consumerServiceFound = true;
+        topicPartitionIngestionInfoMap
+            .putAll(consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, true));
+      }
+    }
+    if (!consumerServiceFound) {
       return "Kafka consumer service is not found for kafkaUrl: " + kafkaUrl + ", region: " + regionName;
     }
-    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-        consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, true);
     return KafkaConsumerService.convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
   }
 
