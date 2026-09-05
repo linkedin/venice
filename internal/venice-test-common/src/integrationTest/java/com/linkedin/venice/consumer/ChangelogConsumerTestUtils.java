@@ -89,6 +89,7 @@ public class ChangelogConsumerTestUtils {
       String clusterName,
       String zkAddress) {
     Properties consumerProperties = new Properties();
+    // pubSubClientProperties already carries the pub-sub adapter factory classes advertised by the broker under test.
     consumerProperties.putAll(pubSubClientProperties);
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     consumerProperties.put(CLUSTER_NAME, clusterName);

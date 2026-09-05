@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
@@ -28,6 +29,14 @@ import org.apache.logging.log4j.Logger;
  */
 public class PubSubClientsFactory {
   private static final Logger LOGGER = LogManager.getLogger(PubSubClientsFactory.class);
+
+  /**
+   * By default the adapter factories do NOT fall back to Apache Kafka when their factory-class config
+   * is missing; callers must configure the factory classes explicitly so that misconfiguration fails
+   * fast. Set {@link com.linkedin.venice.ConfigKeys#PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED} to
+   * {@code true} to restore the legacy implicit-Kafka behavior.
+   */
+  public static final boolean DEFAULT_KAFKA_FALLBACK_ENABLED = false;
 
   private enum FactoryType {
     PRODUCER, CONSUMER, ADMIN
@@ -107,13 +116,28 @@ public class PubSubClientsFactory {
       String alternateConfigKey,
       String defaultClassName,
       FactoryType factoryType) {
-    String className;
-    if (properties.containsKey(preferredConfigKey) || properties.containsKey(alternateConfigKey)) {
-      className = properties.getStringWithAlternative(preferredConfigKey, alternateConfigKey);
-      LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
-    } else {
+    String className = properties.getStringWithAlternative(preferredConfigKey, alternateConfigKey, null);
+    if (className == null || className.trim().isEmpty()) {
+      // A missing or blank value is treated as "not configured": either fall back to the Apache Kafka
+      // adapter factory (when explicitly enabled) or fail fast with a message naming the missing key.
+      boolean kafkaFallbackEnabled =
+          properties.getBoolean(PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED, DEFAULT_KAFKA_FALLBACK_ENABLED);
+      if (!kafkaFallbackEnabled) {
+        throw new VeniceException(
+            String.format(
+                "PubSub %s adapter factory class is not configured. Set '%s' (or the legacy '%s') to the "
+                    + "fully-qualified factory class name. Implicit fallback to the Apache Kafka adapter factory "
+                    + "('%s') is disabled; set '%s=true' to re-enable it.",
+                factoryType,
+                preferredConfigKey,
+                alternateConfigKey,
+                defaultClassName,
+                PUBSUB_ADAPTER_FACTORY_KAFKA_FALLBACK_ENABLED));
+      }
       className = defaultClassName;
       LOGGER.debug("Creating pub-sub {} adapter factory instance with default class: {}", factoryType, className);
+    } else {
+      LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
     }
 
     return createInstance(className);

@@ -42,9 +42,11 @@ public class TestAdminToolEndToEnd {
 
   String clusterName;
   VeniceClusterWrapper venice;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Properties properties = new Properties();
     String regionName = "dc-0";
     properties.setProperty(LOCAL_REGION_NAME, regionName);
@@ -72,9 +74,16 @@ public class TestAdminToolEndToEnd {
     clusterName = venice.getClusterName();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     venice.close();
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
