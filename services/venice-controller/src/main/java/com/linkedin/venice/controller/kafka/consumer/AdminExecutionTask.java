@@ -396,7 +396,7 @@ public class AdminExecutionTask implements Callable<Void> {
           AdminMessageType.valueOf(adminOperation),
           e.getMessage());
     }
-    if (storeUpdated && isParentController && !storeUpdateHandler.isNoOp()) {
+    if (storeUpdated && isParentController && storeUpdateHandler != StoreUpdateHandler.NO_OP) {
       Store store = admin.getStore(clusterName, storeName);
       if (store == null) {
         // Fail with an explicit, retriable reason rather than NPE'ing on a null store snapshot.

@@ -23,16 +23,7 @@ import java.util.Set;
  */
 @FunctionalInterface
 public interface StoreUpdateHandler {
-  StoreUpdateHandler NO_OP = new StoreUpdateHandler() {
-    @Override
-    public void handleStoreUpdate(String clusterName, Store store, Set<String> updatedConfigs) {
-    }
-
-    @Override
-    public boolean isNoOp() {
-      return true;
-    }
-  };
+  StoreUpdateHandler NO_OP = (clusterName, store, updatedConfigs) -> {};
 
   /**
    * @param clusterName the cluster containing the updated store
@@ -44,11 +35,4 @@ public interface StoreUpdateHandler {
    *        was replicated" and fall back to {@code store}, never as "nothing changed".
    */
   void handleStoreUpdate(String clusterName, Store store, Set<String> updatedConfigs);
-
-  /**
-   * @return whether callback-specific work, including fetching the final store snapshot, should be skipped
-   */
-  default boolean isNoOp() {
-    return false;
-  }
 }
