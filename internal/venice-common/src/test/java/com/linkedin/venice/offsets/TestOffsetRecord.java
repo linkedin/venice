@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -15,11 +16,21 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.config.Property;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -109,6 +120,111 @@ public class TestOffsetRecord {
     // no upstream found for it so fall back to use the leaderOffset which is 1
     Assert.assertEquals(offsetRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1), p1);
     Assert.assertEquals(offsetRecord.getCheckpointedRtPosition(TEST_KAFKA_URL2), p2);
+  }
+
+  /**
+   * R14 edge/failure case: when the wire-format bytes for a checkpointed position are malformed,
+   * {@link OffsetRecord} must never let the deserialization-failure warning attribute the failure to a bare
+   * {@code null}/"N/A". It should use its bound replicaId or, before it is associated with a replica, fall back to a
+   * stable field-scoped label that identifies which checkpoint accessor/field is affected.
+   */
+  @Test
+  public void testCheckpointedPositionsLogNonNullSourceOnDeserializationFailure() {
+    ByteBuffer malformedBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 });
+    PartitionState corruptState = new PartitionState();
+    corruptState.offset = 777L;
+    corruptState.lastProcessedVersionTopicPubSubPosition = malformedBuffer.duplicate();
+    corruptState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
+    corruptState.upstreamOffsetMap.put(TEST_KAFKA_URL1, 888L);
+    corruptState.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
+    corruptState.upstreamRealTimeTopicPubSubPositionMap.put(TEST_KAFKA_URL1, malformedBuffer.duplicate());
+    OffsetRecord corruptRecord = new OffsetRecord(
+        corruptState,
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    List<String> capturedMessages = new ArrayList<>();
+    Appender appender = new AbstractAppender(
+        "testCheckpointedPositionsLogNonNullSourceAppender",
+        null,
+        null,
+        false,
+        Property.EMPTY_ARRAY) {
+      @Override
+      public void append(LogEvent event) {
+        capturedMessages.add(event.getMessage().getFormattedMessage());
+      }
+    };
+    appender.start();
+
+    LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
+    Configuration configuration = loggerContext.getConfiguration();
+    LoggerConfig loggerConfig = configuration.getLoggerConfig(PubSubUtil.class.getName());
+    loggerConfig.addAppender(appender, null, null);
+    loggerContext.updateLoggers();
+
+    try {
+      // Before replica association, use a field-scoped label rather than null/"N/A".
+      assertEquals(corruptRecord.getCheckpointedLocalVtPosition().getNumericOffset(), 777L);
+      assertTrue(
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition")
+                      && message.contains("OffsetRecord.lastProcessedVersionTopicPubSubPosition")),
+          "Expected field-scoped fallback label in: " + capturedMessages);
+      assertTrue(
+          capturedMessages.stream()
+              .noneMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains("N/A")),
+          "Should not need the N/A sentinel when a field-scoped label is available: " + capturedMessages);
+
+      capturedMessages.clear();
+      assertEquals(corruptRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1).getNumericOffset(), 888L);
+      assertTrue(
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition")
+                      && message.contains("OffsetRecord.upstreamRealTimeTopicPubSubPosition[" + TEST_KAFKA_URL1 + "]")),
+          "Expected broker-qualified fallback label in: " + capturedMessages);
+
+      String replicaId = "myStore_v3-5";
+      corruptRecord.setReplicaId(replicaId);
+      capturedMessages.clear();
+      assertEquals(corruptRecord.getCheckpointedLocalVtPosition().getNumericOffset(), 777L);
+      assertTrue(
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains(replicaId)),
+          "Expected bound replicaId in: " + capturedMessages);
+
+      capturedMessages.clear();
+      assertEquals(corruptRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1).getNumericOffset(), 888L);
+      assertTrue(
+          capturedMessages.stream()
+              .anyMatch(
+                  message -> message.contains("Failed to deserialize PubSubPosition") && message.contains(replicaId)),
+          "Expected bound replicaId in: " + capturedMessages);
+    } finally {
+      loggerConfig.removeAppender("testCheckpointedPositionsLogNonNullSourceAppender");
+      loggerContext.updateLoggers();
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testReplicaIdBindingIsRuntimeOnlyAndCannotChange() {
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    byte[] serializedBeforeBinding = record.toBytes();
+
+    record.setReplicaId("myStore_v3-5");
+    record.setReplicaId("myStore_v3-5");
+
+    assertTrue(
+        Arrays.equals(serializedBeforeBinding, record.toBytes()),
+        "Runtime replica identity must not alter serialized PartitionState");
+    Assert.expectThrows(IllegalStateException.class, () -> record.setReplicaId("anotherStore_v1-0"));
   }
 
   @Test

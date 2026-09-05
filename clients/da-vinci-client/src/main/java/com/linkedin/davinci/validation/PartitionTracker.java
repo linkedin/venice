@@ -32,6 +32,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -1003,7 +1004,8 @@ public class PartitionTracker {
                 deserializePositionWithOffsetFallback(
                     consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition,
                     consumerRecord.getValue().leaderMetadataFooter.upstreamOffset,
-                    pubSubPositionDeserializer))
+                    pubSubPositionDeserializer,
+                    Utils.getReplicaId(consumerRecord.getTopicPartition())))
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)
             .append("; producer host name: ")
