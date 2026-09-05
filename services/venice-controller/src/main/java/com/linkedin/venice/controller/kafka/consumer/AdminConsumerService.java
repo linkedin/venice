@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionWireFormat;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
@@ -50,6 +51,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final LogContext logContext;
   private final PubSubPositionDeserializer pubSubPositionDeserializer;
+  private final StoreUpdateHandler storeUpdateHandler;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
@@ -58,6 +60,24 @@ public class AdminConsumerService extends AbstractVeniceService {
       PubSubConsumerAdapterFactory consumerFactory,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
+    this(
+        admin,
+        config,
+        metricsRepository,
+        consumerFactory,
+        pubSubTopicRepository,
+        pubSubMessageDeserializer,
+        StoreUpdateHandler.NO_OP);
+  }
+
+  public AdminConsumerService(
+      VeniceHelixAdmin admin,
+      VeniceControllerClusterConfig config,
+      MetricsRepository metricsRepository,
+      PubSubConsumerAdapterFactory consumerFactory,
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      StoreUpdateHandler storeUpdateHandler) {
     this.config = config;
     this.logContext = config.getLogContext();
     this.admin = admin;
@@ -77,6 +97,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     this.consumerFactory = consumerFactory;
     this.pubSubPositionDeserializer = config.getPubSubPositionDeserializer();
     this.threadFactory = new DaemonThreadFactory("AdminConsumerService-" + config.getClusterName(), logContext);
+    this.storeUpdateHandler = storeUpdateHandler;
   }
 
   @Override
@@ -118,7 +139,8 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminConsumptionCycleTimeoutMs(),
         config.getAdminConsumptionMaxWorkerThreadPoolSize(),
         pubSubTopicRepository,
-        config.getRegionName());
+        config.getRegionName(),
+        storeUpdateHandler);
   }
 
   /**
