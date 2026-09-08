@@ -19,6 +19,7 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -3336,14 +3337,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void checkNewPushCapacityFromChildrenBlocksWhenChildRolledBackWithinRetention() {
     String store = "npc_from_children_rollback_block";
+    long promotionTimestamp = 1_000_000;
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
     doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+    mockParentAdmin.setTimer(new TestMockTime(promotionTimestamp));
 
     // Child dc-0 still holds a ROLLED_BACK version within retention -> the parent must block the push.
     Map<String, ControllerClient> map = new HashMap<>();
-    map.put("dc-0", childClient(rolledBackOriginStore(store)));
+    map.put("dc-0", childClient(rolledBackOriginStore(store, promotionTimestamp)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
@@ -3352,17 +3355,50 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void checkNewPushCapacityFromChildrenBlocksWhenChildHasPendingBackupWithinDelay() {
     String store = "npc_from_children_backup_block";
+    long currentTimestamp = 1_000_000;
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
     doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+    TestMockTime mockTime = new TestMockTime(currentTimestamp);
+    mockParentAdmin.setTimer(mockTime);
 
     // Child dc-0 has a KILLED backup pending deletion, promoted just now -> parent must block.
     Map<String, ControllerClient> map = new HashMap<>();
-    map.put("dc-0", childClient(backupPendingStore(store)));
+    map.put("dc-0", childClient(backupPendingStore(store, currentTimestamp)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
+    assertEquals(mockTime.getMilliseconds(), currentTimestamp);
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenSamplesTimeAfterFetchingChildSnapshot() {
+    // Fetching the child snapshot costs a cross-region RPC, so a clock read taken before that call
+    // is already stale by the round-trip duration when compared against the child's promotion
+    // timestamp. Simulate a 50ms RPC across a 20ms retention window: the window has expired by the
+    // time the snapshot is in hand, so the rolled-back version must no longer block the push.
+    String store = "npc_from_children_time_sampled_after_fetch";
+    long promotionTimestamp = 1_000_000;
+    long rpcDurationMs = 50;
+    long rolledBackRetentionMs = 20;
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, rolledBackRetentionMs, 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+    TestMockTime mockTime = new TestMockTime(promotionTimestamp);
+    mockParentAdmin.setTimer(mockTime);
+
+    ControllerClient slowClient = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(StoreInfo.fromStore(rolledBackOriginStore(store, promotionTimestamp)));
+    doAnswer(invocation -> {
+      mockTime.addMilliseconds(rpcDurationMs);
+      return response;
+    }).when(slowClient).getStore(anyString(), anyInt());
+    doReturn(Collections.singletonMap("dc-0", slowClient)).when(internalAdmin).getControllerClientMap(anyString());
+
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
   }
 
   @Test
@@ -3474,17 +3510,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(clusterConfig).when(multiConfig).getControllerConfig(anyString());
     doReturn(minVersions).when(multiConfig).getMinNumberOfStoreVersionsToPreserve();
     doReturn(multiConfig).when(admin).getMultiClusterConfigs();
+    doCallRealMethod().when(admin).setTimer(any());
+    admin.setTimer(new TestMockTime(System.currentTimeMillis()));
   }
 
-  private static Store backupPendingStore(String storeName) {
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+  private static Store backupPendingStore(String storeName, long promotionTimestamp) {
+    Store store = TestUtils.createTestStore(storeName, "owner", promotionTimestamp);
     store.addVersion(new VersionImpl(storeName, 1, "push1"));
     store.addVersion(new VersionImpl(storeName, 2, "push2"));
     // v1 KILLED is always pending deletion (canDelete); v2 was just promoted -> within cleanup delay.
     store.updateVersionStatus(1, VersionStatus.KILLED);
     store.updateVersionStatus(2, VersionStatus.ONLINE);
     store.setCurrentVersion(2);
-    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    store.setLatestVersionPromoteToCurrentTimestamp(promotionTimestamp);
     return store;
   }
 
@@ -3506,14 +3544,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     return client;
   }
 
-  private static Store rolledBackOriginStore(String storeName) {
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+  private static Store rolledBackOriginStore(String storeName, long promotionTimestamp) {
+    Store store = TestUtils.createTestStore(storeName, "owner", promotionTimestamp);
     store.addVersion(new VersionImpl(storeName, 1, "push1"));
     store.addVersion(new VersionImpl(storeName, 2, "push2"));
     store.updateVersionStatus(1, VersionStatus.ONLINE);
     store.updateVersionStatus(2, VersionStatus.ROLLED_BACK);
     store.setCurrentVersion(1);
-    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    store.setLatestVersionPromoteToCurrentTimestamp(promotionTimestamp);
     return store;
   }
 
