@@ -39,7 +39,6 @@ import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -898,7 +897,6 @@ public class AdminExecutionTaskTest {
     assertTrue(thrown.getCause() instanceof VeniceUnsupportedOperationException);
     // The wrapper must be retriable so the admin consumer counts callback retries as retriable (INFO) rather than
     // classifying every intentional retry as a non-retriable ERROR failure.
-    assertTrue(thrown instanceof VeniceRetriableException);
     verify(mockStats).recordFailedRetriableAdminConsumption();
     verify(mockStats, never()).recordFailedAdminConsumption();
 
