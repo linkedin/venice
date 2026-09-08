@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 
 
 /**
@@ -13,7 +13,7 @@ import com.linkedin.venice.exceptions.VeniceException;
  * durable update already succeeded. Like other admin-processing exceptions, this exception is retriable: the admin
  * operation stays eligible for retry until the handler succeeds.</p>
  */
-public class StoreUpdateCallbackException extends VeniceException {
+public class StoreUpdateCallbackException extends VeniceRetriableException {
   public StoreUpdateCallbackException(String clusterName, String storeName, Throwable cause) {
     super(
         "Store update handler failed for cluster: " + clusterName + ", store: " + storeName
