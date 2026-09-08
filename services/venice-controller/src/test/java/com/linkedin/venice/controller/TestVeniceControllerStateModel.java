@@ -183,6 +183,43 @@ public class TestVeniceControllerStateModel {
   }
 
   @Test(timeOut = 10000)
+  public void testNegativeStateTransitionTimeoutCancelsBackgroundTask() throws Exception {
+    CountDownLatch initializationStarted = new CountDownLatch(1);
+    CountDownLatch initializationInterrupted = new CountDownLatch(1);
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenAnswer(invocation -> {
+      assertTrue(initializationStarted.await(5, TimeUnit.SECONDS));
+      return -1L;
+    });
+    stateModel.setClusterConfig(clusterConfig);
+    configureLeaderTransitionMessage();
+
+    stateModel = spy(stateModel);
+    SafeHelixManager initializedManager = mockConnectedHelixManager("test-instance");
+    doAnswer(invocation -> {
+      stateModel.setHelixManager(initializedManager);
+      return null;
+    }).when(stateModel).initHelixManager("test-controller");
+    doAnswer(invocation -> {
+      initializationStarted.countDown();
+      try {
+        new CountDownLatch(1).await();
+      } catch (InterruptedException e) {
+        initializationInterrupted.countDown();
+        Thread.currentThread().interrupt();
+        throw e;
+      }
+      return null;
+    }).when(stateModel).initClusterResources();
+
+    assertThrows(VeniceException.class, () -> stateModel.onBecomeLeaderFromStandby(mockMessage, mockContext));
+
+    assertTrue(initializationInterrupted.await(5, TimeUnit.SECONDS));
+    verify(clusterConfig).getControllerStandbyToLeaderTransitionTimeoutMs();
+    stateModel.reset();
+  }
+
+  @Test(timeOut = 10000)
   public void testStateTransitionExecutionException() throws Exception {
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     when(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs()).thenReturn(TimeUnit.SECONDS.toMillis(5));
