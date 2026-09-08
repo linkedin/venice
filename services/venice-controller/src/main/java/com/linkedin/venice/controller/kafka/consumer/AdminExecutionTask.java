@@ -399,8 +399,9 @@ public class AdminExecutionTask implements Callable<Void> {
     if (storeUpdated && isParentController && storeUpdateHandler != StoreUpdateHandler.NO_OP) {
       Store store = admin.getStore(clusterName, storeName);
       if (store == null) {
-        // Fail with an explicit, retriable reason rather than NPE'ing on a null store snapshot.
-        throw new VeniceException(
+        // Retriable so this intentionally retained queue entry is classified like callback retries,
+        // rather than NPE'ing on a null store snapshot.
+        throw new VeniceRetriableException(
             "Cannot invoke store update handler for cluster: " + clusterName + ", store: " + storeName
                 + " because the store could not be found after a successful UPDATE_STORE admin operation");
       }

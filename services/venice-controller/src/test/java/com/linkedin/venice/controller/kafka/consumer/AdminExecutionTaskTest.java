@@ -37,8 +37,8 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -976,10 +976,13 @@ public class AdminExecutionTaskTest {
         inflightThreadsByStore,
         storeUpdateHandler);
 
-    // A missing final store must fail explicitly rather than NPE, and must not advance the execution id.
-    assertThrows(VeniceException.class, task::call);
+    // A missing final store must fail retriably rather than NPE, must not advance the execution id, and must be
+    // classified as a retriable admin consumption failure so it is retried consistently with callback failures.
+    assertThrows(VeniceRetriableException.class, task::call);
     verify(storeUpdateHandler, never()).handleStoreUpdate(anyString(), any(Store.class), any());
     verify(mockExecutionIdAccessor, never()).updateLastSucceededExecutionIdMap(anyString(), anyString(), anyLong());
+    verify(mockStats).recordFailedRetriableAdminConsumption();
+    verify(mockStats, never()).recordFailedAdminConsumption();
     assertNull(lastSucceededExecutionIdMap.get(storeName));
   }
 
