@@ -157,18 +157,24 @@ ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
 
 Key configuration options for `ClientConfig`:
 
-| Option                                         | Description                                     | Default |
-| ---------------------------------------------- | ----------------------------------------------- | ------- |
-| `setStoreName(String)`                         | Store name (required)                           | -       |
-| `setR2Client(Client)`                          | R2 client for HTTP (required unless using gRPC) | -       |
-| `setD2Client(D2Client)`                        | D2 client for service discovery                 | -       |
-| `setClusterDiscoveryD2Service(String)`         | D2 service name for controller                  | -       |
-| `setMetadataRefreshIntervalInSeconds(long)`    | Metadata refresh interval                       | 60      |
-| `setLongTailRetryEnabledForSingleGet(boolean)` | Enable retry for single get                     | false   |
-| `setLongTailRetryEnabledForBatchGet(boolean)`  | Enable retry for batch get                      | false   |
-| `setRetryBudgetEnabled(boolean)`               | Enable retry budget                             | true    |
-| `setRetryBudgetPercentage(double)`             | Max retry rate percentage (0.0-1.0)             | 0.1     |
-| `setStoreLoadControllerEnabled(boolean)`       | Enable load control                             | false   |
+| Option                                         | Description                                               | Default |
+| ---------------------------------------------- | --------------------------------------------------------- | ------- |
+| `setStoreName(String)`                         | Store name (required)                                     | -       |
+| `setR2Client(Client)`                          | R2 client for HTTP (required unless using gRPC)           | -       |
+| `setD2Client(D2Client)`                        | D2 client for service discovery                           | -       |
+| `setClusterDiscoveryD2Service(String)`         | D2 service name for controller                            | -       |
+| `setMetadataRefreshIntervalInSeconds(long)`    | Metadata refresh interval                                 | 60      |
+| `setLongTailRetryEnabledForSingleGet(boolean)` | Enable retry for single get                               | false   |
+| `setLongTailRetryEnabledForBatchGet(boolean)`  | Enable retry for batch get                                | false   |
+| `setRetryBudgetEnabled(boolean)`               | Enable retry budget                                       | true    |
+| `setRetryBudgetPercentage(double)`             | Max retry rate percentage (0.0-1.0)                       | 0.1     |
+| `setStoreLoadControllerEnabled(boolean)`       | Enable load control                                       | false   |
+| `setDisableRouteMetrics(boolean)`              | Disable per-backend-host metrics in RRD and OpenTelemetry | true    |
+
+Per-backend-host route metrics are disabled by default to limit metric cardinality. This includes route request counts,
+latencies, pending request counts, and rejection ratios for single-get, batch-get, and compute requests. Store-level
+request metrics and aggregate instance-health metrics remain enabled. Set `setDisableRouteMetrics(false)` to opt into
+route metrics for both RRD (Tehuti) and OpenTelemetry.
 
 ### Routing Strategies
 

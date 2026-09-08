@@ -21,6 +21,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -56,6 +57,21 @@ public class ClientConfigTest {
   public void testClientWithAllRequiredInputs() {
     ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
     clientConfigBuilder.build();
+  }
+
+  @Test
+  public void testRouteMetricsDisabledByDefault() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    assertTrue(clientConfigBuilder.build().isRouteMetricsDisabled());
+    assertTrue(clientConfigBuilder.clone().build().isRouteMetricsDisabled());
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDisableRouteMetrics(boolean disableRouteMetrics) {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        getClientConfigWithMinimumRequiredInputs().setDisableRouteMetrics(disableRouteMetrics);
+    assertEquals(clientConfigBuilder.build().isRouteMetricsDisabled(), disableRouteMetrics);
+    assertEquals(clientConfigBuilder.clone().build().isRouteMetricsDisabled(), disableRouteMetrics);
   }
 
   @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Either param: specificThinClient or param: genericThinClient.*")
