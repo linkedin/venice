@@ -120,7 +120,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         recordRequestMetrics(requestContext, numberOfKeys, innerFuture, startTimeInNS, clientStats);
     // Record per replica metric
     statFuture.whenComplete((result, throwable) -> {
-      recordPerRouteMetrics(requestContext, clientStats);
+      recordPerRouteMetrics(requestContext);
     });
 
     return AppTimeOutTrackingCompletableFuture.track(statFuture, clientStats);
@@ -245,10 +245,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     });
   }
 
-  private void recordPerRouteMetrics(RequestContext requestContext, FastClientStats clientStats) {
+  private void recordPerRouteMetrics(RequestContext requestContext) {
     final long requestSentTimestampNS = requestContext.requestSentTimestampNS;
     if (requestSentTimestampNS > 0) {
-      Map<String, CompletableFuture<Integer>> replicaRequestFuture = requestContext.routeRequestMap;
       final InstanceHealthMonitor monitor = requestContext.instanceHealthMonitor;
       if (monitor != null) {
         clusterStats.recordBlockedInstanceCount(monitor.getBlockedInstanceCount());
@@ -258,6 +257,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       if (clusterRouteStats == null) {
         return;
       }
+      Map<String, CompletableFuture<Integer>> replicaRequestFuture = requestContext.routeRequestMap;
       replicaRequestFuture.forEach((instance, future) -> {
         future.whenComplete((status, throwable) -> {
           ClusterRouteStats.RouteStats routeStats = clusterRouteStats.getRouteStats(
