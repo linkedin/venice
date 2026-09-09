@@ -27,6 +27,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
@@ -111,6 +112,7 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
     // Build a system producer that writes nearline to dc-0
     SystemProducer producerInDC0 = new VeniceSystemProducer(
         new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+            .setSamzaConfig(new MapConfig(childDatacenters.get(0).getPubSubClientProperties()))
             .setStoreName(storeName)
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -124,6 +126,7 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
 
     SystemProducer producerInDC1 = new VeniceSystemProducer(
         new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+            .setSamzaConfig(new MapConfig(childDatacenters.get(1).getPubSubClientProperties()))
             .setStoreName(storeName)
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -138,6 +141,7 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
     // Build another one which will write some batch data
     SystemProducer batchProducer = new VeniceSystemProducer(
         new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+            .setSamzaConfig(new MapConfig(childDatacenters.get(0).getPubSubClientProperties()))
             .setStoreName(storeName)
             .setPushType(Version.PushType.BATCH)
             .setSamzaJobId(Utils.getUniqueString("venice-push-id"))

@@ -70,6 +70,7 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.IdealState;
 import org.apache.http.HttpStatus;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemStream;
 import org.testng.annotations.AfterClass;
@@ -469,6 +470,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
       try (VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDataCenter.getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -563,6 +565,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
       try (VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDataCenter1.getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))

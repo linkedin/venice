@@ -31,6 +31,7 @@ public class TestBatchForRocksDB extends TestBatch {
     VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options);
 
     Properties serverProperties = new Properties();
+    serverProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");

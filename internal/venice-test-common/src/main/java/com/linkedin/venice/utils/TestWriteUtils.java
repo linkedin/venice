@@ -1,6 +1,8 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -987,6 +989,8 @@ public class TestWriteUtils {
   }
 
   private static Properties defaultVPJPropsInternal(Properties props, String inputDirPath, String storeName) {
+    TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs().forEach(props::putIfAbsent);
+    props.putIfAbsent(PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY, PUBSUB_CLIENT_CONFIG_PREFIX);
     props.put(VENICE_STORE_NAME_PROP, storeName);
     props.put(INPUT_PATH_PROP, inputDirPath);
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.

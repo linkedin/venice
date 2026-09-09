@@ -216,9 +216,11 @@ public class TestAdminOperationWithPreviousVersion {
   private Admin veniceAdmin;
   private List<ControllerClient> childControllerClients;
   private VeniceMultiClusterWrapper multiClusterWrapperRegion0;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Utils.thisIsLocalhost();
 
     // Validate that all operations have test coverage BEFORE running any tests
@@ -294,6 +296,13 @@ public class TestAdminOperationWithPreviousVersion {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   /**

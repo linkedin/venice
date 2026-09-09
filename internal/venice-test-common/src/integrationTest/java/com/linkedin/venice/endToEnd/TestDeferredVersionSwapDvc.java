@@ -75,9 +75,11 @@ public class TestDeferredVersionSwapDvc {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final int TEST_TIMEOUT = 120_000;
   private List<VeniceMultiClusterWrapper> childDatacenters;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
@@ -103,6 +105,13 @@ public class TestDeferredVersionSwapDvc {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT * 2)

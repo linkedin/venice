@@ -43,6 +43,7 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.endToEnd.TestChangelogKey;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.SslUtils;
@@ -91,6 +92,9 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
 
     Properties consumerProperties = new Properties();
+    // This forked process must configure the pub-sub adapter factory classes explicitly; the factory
+    // fails fast otherwise (there is no implicit default).
+    consumerProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);

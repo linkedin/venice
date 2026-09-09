@@ -45,9 +45,11 @@ public class StoreMetadataRecoveryTest {
   private String parentZKUrl;
   private String parentKafkaUrl;
   private String childControllerUrl;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Utils.thisIsLocalhost();
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
@@ -88,6 +90,13 @@ public class StoreMetadataRecoveryTest {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(twoLayerClusterWrapper);
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -87,7 +87,8 @@ public class StoreBackendTest {
   @BeforeMethod
   void setUp() {
     baseDataPath = Utils.getTempDataDirectory();
-    VeniceProperties backendConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+    VeniceProperties backendConfig = new PropertyBuilder().put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
+        .put(ConfigKeys.CLUSTER_NAME, "test-cluster")
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
@@ -671,7 +672,8 @@ public class StoreBackendTest {
   @Test
   public void testLegacyNonTargetRegionSubscribesOnOnline() throws Exception {
     // Re-create storeBackend with paused-SIT disabled (legacy mode).
-    VeniceProperties legacyConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+    VeniceProperties legacyConfig = new PropertyBuilder().put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
+        .put(ConfigKeys.CLUSTER_NAME, "test-cluster")
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
@@ -719,7 +721,8 @@ public class StoreBackendTest {
    * region stays {@code dc-0} and paused-SIT stays enabled.
    */
   private void rebuildStoreBackendWithRollForwardOrder(String rollForwardOrder) {
-    VeniceProperties config = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+    VeniceProperties config = new PropertyBuilder().put(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs())
+        .put(ConfigKeys.CLUSTER_NAME, "test-cluster")
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())

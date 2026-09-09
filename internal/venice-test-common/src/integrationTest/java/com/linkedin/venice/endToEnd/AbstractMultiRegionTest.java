@@ -85,12 +85,15 @@ public abstract class AbstractMultiRegionTest {
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.putAll(getExtraServerProperties());
+    serverProperties.putAll(ServiceFactory.getPubSubClientConfigs());
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
     parentControllerProps.putAll(getExtraParentControllerProperties());
+    parentControllerProps.putAll(ServiceFactory.getPubSubClientConfigs());
     Properties childControllerProps = new Properties();
     childControllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
     childControllerProps.putAll(getExtraChildControllerProperties());
+    childControllerProps.putAll(ServiceFactory.getPubSubClientConfigs());
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(getNumberOfRegions())
             .numberOfClusters(getNumberOfClusters())

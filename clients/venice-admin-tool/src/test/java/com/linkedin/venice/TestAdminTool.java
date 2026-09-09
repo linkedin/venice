@@ -57,6 +57,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
@@ -76,10 +77,40 @@ import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class TestAdminTool {
+  private static final String[] PUBSUB_ADAPTER_FACTORY_CONFIG_KEYS =
+      TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs().stringPropertyNames().toArray(new String[0]);
+  private static final Properties ORIGINAL_PUBSUB_ADAPTER_FACTORY_SYSTEM_PROPERTIES = new Properties();
+
+  @BeforeClass(alwaysRun = true)
+  public void setUpPubSubAdapterFactorySystemProperties() {
+    Properties factoryConfigs = TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs();
+    for (String key: PUBSUB_ADAPTER_FACTORY_CONFIG_KEYS) {
+      String originalValue = System.getProperty(key);
+      if (originalValue != null) {
+        ORIGINAL_PUBSUB_ADAPTER_FACTORY_SYSTEM_PROPERTIES.setProperty(key, originalValue);
+      }
+      System.setProperty(key, factoryConfigs.getProperty(key));
+    }
+  }
+
+  @AfterClass(alwaysRun = true)
+  public void restorePubSubAdapterFactorySystemProperties() {
+    for (String key: PUBSUB_ADAPTER_FACTORY_CONFIG_KEYS) {
+      if (ORIGINAL_PUBSUB_ADAPTER_FACTORY_SYSTEM_PROPERTIES.containsKey(key)) {
+        System.setProperty(key, ORIGINAL_PUBSUB_ADAPTER_FACTORY_SYSTEM_PROPERTIES.getProperty(key));
+      } else {
+        System.clearProperty(key);
+      }
+    }
+    ORIGINAL_PUBSUB_ADAPTER_FACTORY_SYSTEM_PROPERTIES.clear();
+  }
+
   @Test
   public void testPrintObject() {
     List<String> output = new ArrayList<>();

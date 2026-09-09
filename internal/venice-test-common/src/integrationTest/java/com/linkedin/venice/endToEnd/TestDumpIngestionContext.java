@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Store;
@@ -21,17 +22,33 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class TestDumpIngestionContext extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestDumpIngestionContext.class);
   private static final int TEST_TIMEOUT_MS = 180_000;
+  private Properties originalPubSubAdapterFactorySystemProperties;
+
+  @BeforeClass(alwaysRun = true)
+  public void setUpAdminToolSystemProperties() {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
+  }
+
+  @AfterClass(alwaysRun = true)
+  public void restoreAdminToolSystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
+  }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testDumpHostHeartbeatLag() {

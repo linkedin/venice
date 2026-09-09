@@ -66,9 +66,11 @@ public class TestStoreMigrationMultiRegion {
   private String parentControllerUrl;
   private String childControllerUrl0;
   private String childControllerUrl1;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass(timeOut = 180_000)
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Utils.thisIsLocalhost();
     Properties controllerProperties = new Properties();
     controllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(4000));
@@ -111,6 +113,13 @@ public class TestStoreMigrationMultiRegion {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(twoLayerMultiRegionMultiClusterWrapper);
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

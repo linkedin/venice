@@ -53,9 +53,11 @@ public class AdminToolE2ETest {
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     // Disable auto materialization here as we need to test the back-fill command.
     Properties parentControllerProperties = new Properties();
     parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
@@ -80,6 +82,13 @@ public class AdminToolE2ETest {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
