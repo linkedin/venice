@@ -503,7 +503,8 @@ public class KafkaTopicDumper implements AutoCloseable {
               : PubSubUtil.deserializePositionWithOffsetFallback(
                   leaderMetadata.upstreamPubSubPosition,
                   leaderMetadata.upstreamOffset,
-                  pubSubPositionDeserializer),
+                  pubSubPositionDeserializer,
+                  Utils.getReplicaId(record.getTopicPartition())),
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
           chunkMetadata);
     } catch (Exception e) {
@@ -669,7 +670,8 @@ public class KafkaTopicDumper implements AutoCloseable {
             : PubSubUtil.deserializePositionWithOffsetFallback(
                 leaderMetadata.upstreamPubSubPosition,
                 leaderMetadata.upstreamOffset,
-                pubSubPositionDeserializer),
+                pubSubPositionDeserializer,
+                Utils.getReplicaId(record.getTopicPartition())),
         leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
   }
 
