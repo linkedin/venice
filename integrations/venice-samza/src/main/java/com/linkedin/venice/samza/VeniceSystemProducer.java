@@ -170,11 +170,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   // Non-null only for async STREAM dispatch; null keeps the fully-inline legacy path (BATCH,
   // STREAM_REPROCESSING, or the worker-count kill switch).
   private VeniceSystemProducerWriteDispatcher writeDispatcher = null;
-  // STREAM async-dispatch worker config, validated in start() before any client/writer allocation so a bad
-  // value fails fast (a retry cannot then silently start inline). A worker count of 0 (the kill switch) or a
-  // non-STREAM push leaves this at 0, meaning "no async dispatcher; run every write inline".
-  private int validatedWorkerCount = 0;
-  private int validatedQueueCapacity = VeniceSystemProducerWriteDispatcher.DEFAULT_WORKER_QUEUE_CAPACITY;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
@@ -460,7 +455,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     if (this.isStarted) {
       return;
     }
-    validateWriteDispatcherConfig();
+    ValidatedWriteDispatcherConfig validatedDispatcherConfig = validateWriteDispatcherConfig();
     this.isStarted = true;
 
     setupClientsAndReInitProvider();
@@ -517,7 +512,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
-    this.writeDispatcher = maybeCreateWriteDispatcher();
+    this.writeDispatcher = maybeCreateWriteDispatcher(validatedDispatcherConfig);
     if (pushMonitor.isPresent()) {
       /**
        * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
@@ -772,15 +767,35 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   /**
+   * Validated STREAM async-dispatch worker config, produced by {@link #validateWriteDispatcherConfig()} and
+   * consumed by {@link #maybeCreateWriteDispatcher(ValidatedWriteDispatcherConfig)}. It is passed as a return
+   * value rather than stored in fields so a restart cannot leave stale validated state behind (a previously
+   * validated positive worker count can never survive into a later start() that disabled async dispatch).
+   */
+  static final class ValidatedWriteDispatcherConfig {
+    final int workerCount;
+    final int queueCapacity;
+
+    ValidatedWriteDispatcherConfig(int workerCount, int queueCapacity) {
+      this.workerCount = workerCount;
+      this.queueCapacity = queueCapacity;
+    }
+  }
+
+  /**
    * Validates the STREAM async-dispatch worker configs up front — before {@code isStarted}, client setup, or
    * writer allocation — so an operator error fails {@link #start()} early and a retry cannot silently fall back
    * to inline. Non-STREAM pushes ignore these configs. A worker count of 0 is the kill switch (fully inline);
    * the per-stripe queue capacity is parsed only when the worker count is positive. A negative worker count, a
    * nonpositive queue capacity, or a malformed integer are rejected with {@link SamzaException}.
+   *
+   * @return the validated worker config, or {@code null} for the fully-inline path (non-STREAM push or the
+   *         worker-count kill switch). The result is a pure function of the current config, so no cached state
+   *         can go stale across a stop()/start() restart.
    */
-  void validateWriteDispatcherConfig() {
+  ValidatedWriteDispatcherConfig validateWriteDispatcherConfig() {
     if (!Version.PushType.STREAM.equals(pushType)) {
-      return;
+      return null;
     }
     int workerCount = getIntConfig(
         VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG,
@@ -791,10 +806,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
               + " (must be >= 0; 0 disables async dispatch)");
     }
     if (workerCount == 0) {
-      // Kill switch: reset to 0 so no dispatcher is created (every write runs inline), even on a restart whose
-      // earlier start() validated a positive worker count.
-      this.validatedWorkerCount = 0;
-      return;
+      // Kill switch: no dispatcher is created (every write runs inline).
+      return null;
     }
     int queueCapacity = getIntConfig(
         VeniceSystemProducerWriteDispatcher.WORKER_QUEUE_CAPACITY_CONFIG,
@@ -804,22 +817,22 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           "Invalid " + VeniceSystemProducerWriteDispatcher.WORKER_QUEUE_CAPACITY_CONFIG + ": " + queueCapacity
               + " (must be > 0)");
     }
-    this.validatedWorkerCount = workerCount;
-    this.validatedQueueCapacity = queueCapacity;
+    return new ValidatedWriteDispatcherConfig(workerCount, queueCapacity);
   }
 
   /**
    * Creates the async write dispatcher from the config validated in {@link #validateWriteDispatcherConfig()};
-   * returns null (fully inline) for BATCH, STREAM_REPROCESSING, or a worker-count of 0 (the kill switch).
+   * returns null (fully inline) for BATCH, STREAM_REPROCESSING, or a worker-count of 0 (the kill switch), all of
+   * which produce a {@code null} validated config.
    */
-  private VeniceSystemProducerWriteDispatcher maybeCreateWriteDispatcher() {
-    if (validatedWorkerCount <= 0) {
+  private VeniceSystemProducerWriteDispatcher maybeCreateWriteDispatcher(ValidatedWriteDispatcherConfig validated) {
+    if (validated == null) {
       return null;
     }
     return new VeniceSystemProducerWriteDispatcher(
         veniceWriter,
-        validatedWorkerCount,
-        validatedQueueCapacity,
+        validated.workerCount,
+        validated.queueCapacity,
         storeName);
   }
 

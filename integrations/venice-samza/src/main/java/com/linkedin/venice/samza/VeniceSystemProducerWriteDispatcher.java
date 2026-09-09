@@ -20,8 +20,8 @@ import org.apache.logging.log4j.Logger;
  * Routes already-serialized {@link VeniceSystemProducerWriteCommand}s onto a {@link PartitionStripedExecutor}
  * so that the {@link VeniceSystemProducer} STREAM path can submit writes without the caller waiting for the
  * Venice writer. Records that map to the same Venice partition always land on the same stripe, so a partition
- * blocked by leader rebalance cannot stall a different partition, while per-partition FIFO and the writer's
- * own DIV locks are preserved.
+ * blocked by leader rebalance cannot stall a partition on a different stripe, while per-partition FIFO and the
+ * writer's own DIV locks are preserved.
  *
  * <p>Cross-stripe progress is a guarantee of <em>normal dispatch</em>: outside an explicit flush fence, a
  * partition blocked on one stripe never stalls a partition on a different stripe. Partitions that share a

@@ -55,7 +55,6 @@ import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -743,17 +742,31 @@ public class VeniceSystemProducerTest {
   }
 
   /**
-   * Reviewer Thread 1: worker.count=0 is the kill switch (fully inline). The validation must reset
-   * {@code validatedWorkerCount} to 0 in that branch, so a restart whose earlier {@code start()} validated a
-   * positive worker count cannot leave stale state that recreates a dispatcher after the operator disabled async
-   * dispatch. This is reachable when the samza configs are mutated across a stop()/start() restart. The buggy
-   * path has no black-box observable (the field and dispatcher creation are private), so it is asserted directly.
+   * Reviewer Thread 1: worker.count=0 is the kill switch (fully inline). {@link
+   * VeniceSystemProducer#validateWriteDispatcherConfig()} returns {@code null} (no dispatcher) for the kill
+   * switch and a non-null validated config for a positive worker count. Because the choice is a pure function of
+   * the current config — validation no longer writes a hidden field — a restart that flips worker.count to 0
+   * cannot leave stale state that recreates a dispatcher after the operator disabled async dispatch. This
+   * asserts both directions on the package-private validation seam, so no reflection is needed.
    */
   @Test(timeOut = 30_000)
-  public void killSwitchValidationResetsPreviouslyValidatedWorkerCount() throws Exception {
+  public void killSwitchValidationDisablesAsyncDispatch() {
+    // Positive worker count validates to an async dispatcher config (async dispatch enabled).
+    VeniceSystemProducer.ValidatedWriteDispatcherConfig asyncConfig =
+        newStreamProducerWithWorkerCount("4").validateWriteDispatcherConfig();
+    assertNotNull(asyncConfig, "a positive worker count must validate to an async dispatcher config");
+    assertEquals(asyncConfig.workerCount, 4);
+
+    // Kill switch validates to no dispatcher (fully inline), independent of any prior validation.
+    assertNull(
+        newStreamProducerWithWorkerCount("0").validateWriteDispatcherConfig(),
+        "worker.count=0 kill switch must validate to no async dispatcher so every write runs inline");
+  }
+
+  private static VeniceSystemProducer newStreamProducerWithWorkerCount(String workerCount) {
     Map<String, String> configMap = new HashMap<>();
-    configMap.put(VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG, "4");
-    VeniceSystemProducer producer = new VeniceSystemProducer(
+    configMap.put(VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG, workerCount);
+    return new VeniceSystemProducer(
         new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId("push-job-id-1")
@@ -762,32 +775,6 @@ public class VeniceSystemProducerTest {
             .setDiscoveryUrl("discoveryUrl")
             .setSamzaConfig(new MapConfig(configMap))
             .build());
-
-    // First start()'s validation accepts the positive worker count (async dispatch enabled).
-    producer.validateWriteDispatcherConfig();
-    assertEquals(readValidatedWorkerCount(producer), 4);
-
-    // Operator flips the kill switch; the job restarts and the producer re-reads its (now mutated) configs.
-    mutateAdditionalConfig(producer, VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG, "0");
-    producer.validateWriteDispatcherConfig();
-
-    assertEquals(
-        readValidatedWorkerCount(producer),
-        0,
-        "kill switch must reset the previously validated worker count so no dispatcher is created on restart");
-  }
-
-  private static int readValidatedWorkerCount(VeniceSystemProducer producer) throws Exception {
-    Field field = VeniceSystemProducer.class.getDeclaredField("validatedWorkerCount");
-    field.setAccessible(true);
-    return field.getInt(producer);
-  }
-
-  @SuppressWarnings("unchecked")
-  private static void mutateAdditionalConfig(VeniceSystemProducer producer, String key, String value) throws Exception {
-    Field field = VeniceSystemProducer.class.getDeclaredField("additionalConfigs");
-    field.setAccessible(true);
-    ((Map<String, String>) field.get(producer)).put(key, value);
   }
 
   /**
