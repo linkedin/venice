@@ -1,11 +1,17 @@
 package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.REQUEST_REJECTION_COUNT;
+import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.REQUEST_REJECTION_RATIO;
 import static com.linkedin.venice.read.RequestType.MULTI_GET;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static com.linkedin.venice.stats.dimensions.RejectionReason.NO_REPLICAS_AVAILABLE;
+import static com.linkedin.venice.stats.dimensions.RejectionReason.THROTTLED_BY_LOAD_CONTROLLER;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -15,17 +21,29 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.stats.FastClientMetricEntity;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
 
@@ -72,6 +90,191 @@ public class ClientConfigTest {
         getClientConfigWithMinimumRequiredInputs().setDisableRouteMetrics(disableRouteMetrics);
     assertEquals(clientConfigBuilder.build().isRouteMetricsDisabled(), disableRouteMetrics);
     assertEquals(clientConfigBuilder.clone().build().isRouteMetricsDisabled(), disableRouteMetrics);
+  }
+
+  @Test
+  public void testFeatureMetricsDisabledByDefault() {
+    MetricsRepository repository = new MetricsRepository();
+    MetricsRepository legacyRepository = new MetricsRepository();
+    try {
+      ClientConfig config = getClientConfigWithMinimumRequiredInputs().setMetricsRepository(repository)
+          .setInstanceHealthMonitor(mock(InstanceHealthMonitor.class))
+          .build();
+      assertFalse(config.isDualReadEnabled());
+      assertFalse(config.isStoreLoadControllerEnabled());
+
+      for (RequestType requestType: RequestType.values()) {
+        FastClientStats.getClientStats(legacyRepository, "", config.getStoreName(), requestType);
+        assertFeatureMetricRegistration(repository, requestType, false, false, true);
+      }
+      Set<String> omittedMetrics = new HashSet<>(legacyRepository.metrics().keySet());
+      omittedMetrics.removeAll(repository.metrics().keySet());
+      assertEquals(omittedMetrics.size(), 65);
+      assertTrue(
+          omittedMetrics.stream()
+              .allMatch(
+                  name -> name.contains("dual_read_") || name.contains("rejected_request_count_by_load_controller")
+                      || name.contains("rejection_ratio.")),
+          "Only dual-read and store-load-controller metrics should be omitted");
+    } finally {
+      repository.close();
+      legacyRepository.close();
+    }
+  }
+
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testFeatureMetricsFollowClientConfig(
+      boolean dualReadEnabled,
+      boolean storeLoadControllerEnabled,
+      boolean emitTehutiMetrics,
+      boolean emitOtelMetrics) throws IOException {
+    Set<MetricEntity> metricEntities = new HashSet<>(CLIENT_METRIC_ENTITIES);
+    for (FastClientMetricEntity entity: FastClientMetricEntity.values()) {
+      metricEntities.add(entity.getMetricEntity());
+    }
+    try (InMemoryMetricReader reader = InMemoryMetricReader.create();
+        VeniceMetricsRepository repository = new VeniceMetricsRepository(
+            new VeniceMetricsConfig.Builder().setServiceName(FAST_CLIENT.getName())
+                .setMetricPrefix(FAST_CLIENT.getMetricsPrefix())
+                .setMetricEntities(metricEntities)
+                .emitTehutiMetrics(emitTehutiMetrics)
+                .setEmitOtelMetrics(emitOtelMetrics)
+                .setOtelAdditionalMetricsReader(reader)
+                .build())) {
+      ClientConfig config = getClientConfigWithMinimumRequiredInputs().setMetricsRepository(repository)
+          .setInstanceHealthMonitor(mock(InstanceHealthMonitor.class))
+          .setDualReadEnabled(dualReadEnabled)
+          .setGenericThinClient(dualReadEnabled ? mock(AvroGenericStoreClient.class) : null)
+          .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
+          .build();
+      for (RequestType requestType: RequestType.values()) {
+        assertFeatureMetricRegistration(
+            repository,
+            requestType,
+            dualReadEnabled,
+            storeLoadControllerEnabled,
+            emitTehutiMetrics);
+      }
+
+      for (String clusterName: new String[] { OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME, "migrated_cluster" }) {
+        config.onClusterNameUpdated(clusterName);
+        for (RequestType requestType: RequestType.values()) {
+          FastClientStats stats = config.getStats(requestType);
+          stats.emitHealthyRequestMetricsNonDavinciClient(1, 1, 1);
+          stats.recordFastClientSlowerRequest();
+          stats.recordFastClientErrorThinClientSucceedRequest();
+          stats.recordThinClientFastClientLatencyDelta(8);
+          stats.recordRejectionRatio(0);
+          stats.recordRejectionRatio(0.25);
+          stats.recordRejectedRequestByLoadController();
+          stats.recordNoAvailableReplicaRequest();
+
+          assertFeatureMetricRegistration(
+              repository,
+              requestType,
+              dualReadEnabled,
+              storeLoadControllerEnabled,
+              emitTehutiMetrics);
+          String prefix = ".test_store--" + requestType.getMetricPrefix();
+          if (emitTehutiMetrics) {
+            assertTrue(repository.getMetric(prefix + "request.OccurrenceRate").value() > 0);
+            assertTrue(repository.getMetric(prefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
+            if (dualReadEnabled) {
+              assertTrue(
+                  repository.getMetric(prefix + "dual_read_fastclient_slower_request_count.OccurrenceRate")
+                      .value() > 0);
+              assertTrue(
+                  repository
+                      .getMetric(prefix + "dual_read_fastclient_error_thinclient_succeed_request_count.OccurrenceRate")
+                      .value() > 0);
+              assertEquals(
+                  repository.getMetric(prefix + "dual_read_thinclient_fastclient_latency_delta.Max").value(),
+                  8.0);
+            }
+            if (storeLoadControllerEnabled) {
+              assertTrue(
+                  repository.getMetric(prefix + "rejected_request_count_by_load_controller.OccurrenceRate")
+                      .value() > 0);
+              assertEquals(repository.getMetric(prefix + "rejection_ratio.Max").value(), 0.25);
+            }
+          }
+          if (emitOtelMetrics) {
+            Attributes attributes =
+                new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(config.getStoreName())
+                    .setRequestType(requestType)
+                    .setClusterName(clusterName)
+                    .build();
+            String rejectionReason = VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat();
+            validateLongPointDataFromCounter(
+                reader,
+                1,
+                attributes.toBuilder().put(rejectionReason, NO_REPLICAS_AVAILABLE.getDimensionValue()).build(),
+                REQUEST_REJECTION_COUNT.getMetricEntity().getMetricName(),
+                FAST_CLIENT.getMetricsPrefix());
+            if (storeLoadControllerEnabled) {
+              Attributes loadControllerAttributes =
+                  attributes.toBuilder().put(rejectionReason, THROTTLED_BY_LOAD_CONTROLLER.getDimensionValue()).build();
+              validateLongPointDataFromCounter(
+                  reader,
+                  1,
+                  loadControllerAttributes,
+                  REQUEST_REJECTION_COUNT.getMetricEntity().getMetricName(),
+                  FAST_CLIENT.getMetricsPrefix());
+              validateHistogramPointData(
+                  reader,
+                  0,
+                  0.25,
+                  2,
+                  0.25,
+                  loadControllerAttributes,
+                  REQUEST_REJECTION_RATIO.getMetricEntity().getMetricName(),
+                  FAST_CLIENT.getMetricsPrefix());
+            }
+          }
+        }
+        Collection<MetricData> otelMetrics = reader.collectAllMetrics();
+        if (emitOtelMetrics) {
+          AttributeKey<String> rejectionReasonKey =
+              AttributeKey.stringKey(VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat());
+          assertEquals(
+              otelMetrics.stream().anyMatch(metric -> metric.getName().endsWith(".request.rejection_ratio")),
+              storeLoadControllerEnabled);
+          assertEquals(
+              otelMetrics.stream()
+                  .filter(metric -> metric.getName().endsWith(".request.rejection_count"))
+                  .flatMap(metric -> metric.getLongSumData().getPoints().stream())
+                  .anyMatch(
+                      point -> THROTTLED_BY_LOAD_CONTROLLER.getDimensionValue()
+                          .equals(point.getAttributes().get(rejectionReasonKey))),
+              storeLoadControllerEnabled,
+              "Disabled load control must not emit its rejection reason on the shared counter");
+        } else {
+          assertTrue(otelMetrics.isEmpty());
+        }
+      }
+    }
+  }
+
+  private void assertFeatureMetricRegistration(
+      MetricsRepository repository,
+      RequestType requestType,
+      boolean dualReadEnabled,
+      boolean storeLoadControllerEnabled,
+      boolean emitTehutiMetrics) {
+    String prefix = ".test_store--" + requestType.getMetricPrefix();
+    Set<String> metrics = repository.metrics().keySet();
+    assertEquals(
+        metrics.stream().filter(name -> name.startsWith(prefix + "dual_read_")).count(),
+        emitTehutiMetrics && dualReadEnabled ? 10L : 0L);
+    for (String suffix: new String[] { "rejected_request_count_by_load_controller.OccurrenceRate",
+        "rejection_ratio.Avg", "rejection_ratio.Max" }) {
+      assertEquals(metrics.contains(prefix + suffix), emitTehutiMetrics && storeLoadControllerEnabled, prefix + suffix);
+    }
+    assertEquals(metrics.contains(prefix + "request.OccurrenceRate"), emitTehutiMetrics);
+    assertEquals(metrics.contains(prefix + "no_available_replica_request_count.OccurrenceRate"), emitTehutiMetrics);
+    if (!emitTehutiMetrics) {
+      assertTrue(metrics.isEmpty());
+    }
   }
 
   @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Either param: specificThinClient or param: genericThinClient.*")

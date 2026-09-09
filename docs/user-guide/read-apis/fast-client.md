@@ -153,6 +153,11 @@ ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
     .build();
 ```
 
+Dual-read metrics are registered in RRD (Tehuti) only when `setDualReadEnabled(true)` is configured.
+Store-load-controller metrics are registered and emitted in RRD and OpenTelemetry only when
+`setStoreLoadControllerEnabled(true)` is configured. Both features are disabled by default. These settings do not
+disable core request metrics, no-available-replica metrics, or aggregate instance-health metrics.
+
 ## Configuration Options
 
 Key configuration options for `ClientConfig`:
