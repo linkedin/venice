@@ -223,7 +223,7 @@ public class VeniceControllerStateModel extends StateModel {
         stateTransitionFuture.cancel(true);
       }
       throw new VeniceException(e);
-    } catch (ExecutionException | TimeoutException | IllegalArgumentException e) {
+    } catch (ExecutionException | TimeoutException e) {
       LOGGER.error("Failed to execute the controller state transition from STANDBY to LEADER for {}", clusterName, e);
       if (stateTransitionFuture != null && !stateTransitionFuture.isDone()) {
         stateTransitionFuture.cancel(true);
