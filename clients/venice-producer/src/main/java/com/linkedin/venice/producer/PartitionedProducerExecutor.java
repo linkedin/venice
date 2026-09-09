@@ -244,11 +244,11 @@ public class PartitionedProducerExecutor {
    * <p>An interrupt does not abandon the drain. {@link AbstractVeniceProducer#close()} force-cancels
    * (calls {@link #shutdownNow()}) whenever this method throws {@link InterruptedException}, so returning
    * early on interrupt would let a close thread that happened to be interrupted drop still-queued worker
-   * writes. Instead the interrupt is absorbed and the wait continues against the <em>original</em> deadline
-   * until the shared worker kernel drains (or the deadline lapses); only then is the interrupt surfaced.
-   * Once the workers have drained, the subsequent {@code shutdownNow()} is a no-op and nothing is lost.
-   * The interrupt is re-thrown (not re-asserted) so {@link AbstractVeniceProducer}'s existing catch keeps
-   * ownership of caller interrupt restoration.</p>
+   * writes or callback completions. Instead the interrupt is absorbed and each wait continues against the
+   * <em>original</em> deadline until the shared worker kernel and the callback pool drain (or the deadline
+   * lapses); only then is the interrupt surfaced. Once they have drained, the subsequent {@code shutdownNow()}
+   * is a no-op and nothing is lost. The interrupt is re-thrown (not re-asserted) so
+   * {@link AbstractVeniceProducer}'s existing catch keeps ownership of caller interrupt restoration.</p>
    *
    * @param timeout the maximum time to wait
    * @param unit the time unit of the timeout argument
@@ -275,12 +275,18 @@ public class PartitionedProducerExecutor {
       }
     }
 
-    boolean callbackTerminated = true;
-    if (callbackExecutor != null) {
+    boolean callbackTerminated = callbackExecutor == null;
+    while (!callbackTerminated) {
       long remainingNanos = deadlineNanos - System.nanoTime();
+      if (remainingNanos <= 0) {
+        break;
+      }
       try {
-        callbackTerminated = callbackExecutor.awaitTermination(Math.max(0, remainingNanos), TimeUnit.NANOSECONDS);
+        callbackTerminated = callbackExecutor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
       } catch (InterruptedException e) {
+        // Absorb and keep draining against the original deadline so an interrupted close() does not force-cancel
+        // still-queued callback tasks (which complete user futures). The flag was cleared by the throw, so the
+        // next iteration actually blocks rather than spinning.
         interrupted = true;
       }
     }

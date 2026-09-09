@@ -791,7 +791,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
               + " (must be >= 0; 0 disables async dispatch)");
     }
     if (workerCount == 0) {
-      // Kill switch: leave validatedWorkerCount at 0 so no dispatcher is created (every write runs inline).
+      // Kill switch: reset to 0 so no dispatcher is created (every write runs inline), even on a restart whose
+      // earlier start() validated a positive worker count.
+      this.validatedWorkerCount = 0;
       return;
     }
     int queueCapacity = getIntConfig(

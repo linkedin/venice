@@ -153,6 +153,32 @@ public class VeniceSystemProducerWriteDispatcherTest {
   }
 
   @Test
+  public void partitionRoutingFailureBecomesStickyAndSurfaces() throws Exception {
+    // A partitioner failure (writer.getPartitionId throwing) must follow the same failure path as an admission
+    // failure: it fails this command's submission and durable futures, records a sticky failure, and never lets
+    // the record silently escape dispatch. Otherwise the routing exception would propagate synchronously out of
+    // dispatch() and orphan the durable future while a later flush() reported success.
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    RuntimeException boom = new RuntimeException("partition routing failure");
+    when(writer.getPartitionId(any())).thenThrow(boom);
+
+    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
+    try {
+      VeniceSystemProducerWriteCommand.DurableWriteFuture durable = dispatcher.dispatch(putCommand(0));
+      assertSame(expectCause(durable.getSubmissionFuture()), boom);
+      assertSame(expectCause(durable), boom);
+      // A record that failed routing must never reach the writer's put path.
+      verify(writer, never()).put(any(), any(), anyInt(), anyLong(), any());
+
+      // Sticky failure is surfaced by both flush and a subsequent dispatch.
+      assertSame(expectVeniceException(dispatcher::flush).getCause(), boom);
+      assertSame(expectVeniceException(() -> dispatcher.dispatch(putCommand(0))).getCause(), boom);
+    } finally {
+      dispatcher.stop();
+    }
+  }
+
+  @Test
   public void asynchronousCallbackFailureBecomesStickyAndSurfaces() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<PubSubProducerCallback> callbackRef = new AtomicReference<>();

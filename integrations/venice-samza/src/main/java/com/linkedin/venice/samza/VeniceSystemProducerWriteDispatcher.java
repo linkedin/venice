@@ -84,8 +84,12 @@ class VeniceSystemProducerWriteDispatcher {
 
   /**
    * Routes {@code command} to the stripe owning its Venice partition and returns its durable future after
-   * bounded admission. Never waits for the writer. A rejected admission (dispatcher stopped or kernel shutdown)
-   * fails the command's submission and records a sticky failure.
+   * bounded admission. Never waits for the writer.
+   *
+   * <p>If the dispatcher has stopped accepting, only this command's submission is failed; no sticky failure is
+   * recorded, so a normal {@link #stop()} does not poison a later {@link #flush()}. If partition routing or
+   * kernel admission throws a {@link RuntimeException}, the failure is recorded as sticky and this command's
+   * submission is failed with it, so it surfaces through the durable future and {@code flush()}.</p>
    */
   VeniceSystemProducerWriteCommand.DurableWriteFuture dispatch(VeniceSystemProducerWriteCommand command) {
     checkForFailure();
@@ -97,8 +101,8 @@ class VeniceSystemProducerWriteDispatcher {
             command.finishSubmission(new VeniceException("VeniceSystemProducer write dispatcher is stopped")));
         return command.getDurableFuture();
       }
-      int partition = writer.getPartitionId(command.getKey());
       try {
+        int partition = writer.getPartitionId(command.getKey());
         kernel.submit(partition, () -> execute(command));
       } catch (RuntimeException e) {
         recordSticky(e);
