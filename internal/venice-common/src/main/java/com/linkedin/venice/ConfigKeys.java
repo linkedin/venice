@@ -358,7 +358,6 @@ public class ConfigKeys {
    */
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
-  public static final String CONCURRENT_PUSH_DETECTION_STRATEGY = "concurrent.push.detection.strategy";
   /**
    * Minimum interval between admitted user-store version-creation attempts in the leader parent controller. A value of
    * 0 disables the process-local cooldown.

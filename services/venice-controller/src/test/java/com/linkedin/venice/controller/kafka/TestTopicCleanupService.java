@@ -357,6 +357,37 @@ public class TestTopicCleanupService {
   }
 
   @Test
+  public void testGetTopicManagersForCleanup() {
+    // Non-parent controllers only clean up their single default Kafka cluster.
+    doReturn(false).when(admin).isParent();
+    List<TopicManager> childTopicManagers = topicCleanupService.getTopicManagersForCleanup();
+    assertEquals(childTopicManagers, Collections.singletonList(topicManager));
+
+    // Parent controllers must clean up every parent fabric's Kafka cluster so that topics truncated across all
+    // parent fabrics are eventually deleted everywhere.
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(admin).getTopicManager("local");
+    doReturn(true).when(admin).isParent();
+    doReturn(Utils.setOf("local", "remote")).when(veniceControllerMultiClusterConfig).getParentFabrics();
+    List<TopicManager> parentTopicManagers = topicCleanupService.getTopicManagersForCleanup();
+    assertEquals(parentTopicManagers.size(), 2);
+    assertTrue(parentTopicManagers.contains(localTopicManager));
+    assertTrue(parentTopicManagers.contains(remoteTopicManager));
+
+    // A parent fabric without a configured Kafka URL is skipped instead of crashing the cleanup loop.
+    Map<String, String> partialKafkaUrlMap = new HashMap<>();
+    partialKafkaUrlMap.put("local", "local");
+    doReturn(partialKafkaUrlMap).when(veniceControllerMultiClusterConfig).getChildDataCenterKafkaUrlMap();
+    List<TopicManager> configuredOnly = topicCleanupService.getTopicManagersForCleanup();
+    assertEquals(configuredOnly, Collections.singletonList(localTopicManager));
+
+    // When no parent fabric is configured with a Kafka URL, fall back to the default topic manager.
+    doReturn(new HashMap<>()).when(veniceControllerMultiClusterConfig).getChildDataCenterKafkaUrlMap();
+    List<TopicManager> fallback = topicCleanupService.getTopicManagersForCleanup();
+    assertEquals(fallback, Collections.singletonList(topicManager));
+  }
+
+  @Test
   public void testRun() {
     String storeName1 = Utils.getUniqueString("store1");
     String storeName2 = Utils.getUniqueString("store2");
