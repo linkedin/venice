@@ -2410,7 +2410,6 @@ public class VeniceParentHelixAdmin implements Admin {
     int minNumberOfStoreVersionsToPreserve = getMultiClusterConfigs().getMinNumberOfStoreVersionsToPreserve();
     long minBackupVersionCleanupDelayMs =
         getMultiClusterConfigs().getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
-    long currentTimeMs = System.currentTimeMillis();
 
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (controllerClients.isEmpty()) {
@@ -2451,6 +2450,7 @@ public class VeniceParentHelixAdmin implements Admin {
             region);
         continue;
       }
+      long currentTimeMs = timer.getMilliseconds();
       VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
           clusterName,
           storeName,
