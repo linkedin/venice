@@ -202,7 +202,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           String errMessage =
               "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
                   + ", won't be able to process the request for " + blobTransferRequest.getFullResourceName();
-          LOGGER.error(errMessage);
+          LOGGER.warn(errMessage);
           setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
           return;
         }
@@ -217,7 +217,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
               String errMessage =
                   "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
                       + ", won't be able to process the request for " + blobTransferRequest.getFullResourceName();
-              LOGGER.error(errMessage);
+              LOGGER.warn(errMessage);
               setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
               return;
             }
@@ -267,7 +267,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(blobTransferMaxTimeoutInMin)) {
         String errMessage =
             String.format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
-        LOGGER.error(errMessage);
+        LOGGER.warn(errMessage);
         setupResponseAndFlush(
             HttpResponseStatus.REQUEST_TIMEOUT,
             errMessage.getBytes(),
@@ -289,7 +289,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       if (future.isSuccess()) {
         LOGGER.info("All files sent successfully for {} to host {}", replicaInfo, ctx.channel().remoteAddress());
       } else {
-        LOGGER.error(
+        LOGGER.warn(
             "Failed to send all files for {} to host {}",
             replicaInfo,
             ctx.channel().remoteAddress(),
@@ -317,7 +317,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           globalConcurrentTransferRequests.decrementAndGet();
         }
       } catch (Exception e) {
-        LOGGER.error("Failed to decrease the snapshot concurrent user count for request {}", blobTransferRequest, e);
+        LOGGER.warn("Failed to decrease the snapshot concurrent user count for request {}", blobTransferRequest, e);
       }
     }
     if (clientOrigin) {
@@ -406,7 +406,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
             replicaInfo,
             ctx.channel().remoteAddress());
       } else {
-        LOGGER.error(
+        LOGGER.debug(
             "Failed to send file: {} for replica: {} to host: {}",
             file.getName(),
             replicaInfo,
@@ -442,7 +442,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
             Utils.getReplicaId(metadata.getTopicName(), metadata.getPartitionId()),
             metadataBytes.length);
       } else {
-        LOGGER.error(
+        LOGGER.warn(
             "Failed to send metadata for {}",
             Utils.getReplicaId(metadata.getTopicName(), metadata.getPartitionId()),
             future.cause());
