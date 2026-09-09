@@ -193,28 +193,7 @@ public class VeniceControllerStateModel extends StateModel {
      */
     Future<?> stateTransitionFuture = null;
     try {
-      stateTransitionFuture = executeStateTransitionAsync(message, () -> {
-        if (helixManagerInitialized()) {
-          throw new VeniceException(
-              String.format(
-                  "Helix manager already exists for instance %s on cluster %s and received controller name %s",
-                  helixManager.getInstanceName(),
-                  clusterName,
-                  controllerName));
-        } else {
-          try {
-            initHelixManager(controllerName);
-          } catch (Exception e) {
-            throw new VeniceException("Failed to initialize Helix Manager for " + controllerName, e);
-          }
-          initClusterResources();
-          LOGGER.info(
-              "Controller {} with instance {} is the leader of cluster {}",
-              controllerName,
-              helixManager.getInstanceName(),
-              clusterName);
-        }
-      });
+      stateTransitionFuture = executeStateTransitionAsync(message, () -> initializeAsLeader(controllerName));
       stateTransitionFuture.get(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs(), TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -230,6 +209,28 @@ public class VeniceControllerStateModel extends StateModel {
       }
       throw new VeniceException(e);
     }
+  }
+
+  private synchronized void initializeAsLeader(String controllerName) throws Exception {
+    if (helixManagerInitialized()) {
+      throw new VeniceException(
+          String.format(
+              "Helix manager already exists for instance %s on cluster %s and received controller name %s",
+              helixManager.getInstanceName(),
+              clusterName,
+              controllerName));
+    }
+    try {
+      initHelixManager(controllerName);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to initialize Helix Manager for " + controllerName, e);
+    }
+    initClusterResources();
+    LOGGER.info(
+        "Controller {} with instance {} is the leader of cluster {}",
+        controllerName,
+        helixManager.getInstanceName(),
+        clusterName);
   }
 
   private boolean helixManagerInitialized() {
@@ -380,9 +381,11 @@ public class VeniceControllerStateModel extends StateModel {
     if (clusterResources != null) {
       try (AutoCloseableLock ignore = clusterResources.lockForShutdown()) {
         clearResources();
+        closeHelixManager();
       }
+    } else {
+      closeHelixManager();
     }
-    closeHelixManager();
   }
 
   /** synchronized because concurrent calls could cause a NPE */
