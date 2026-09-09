@@ -5,7 +5,7 @@ package com.linkedin.venice.router.api.routing.helix;
  */
 public class HelixGroupRoundRobinStrategy implements HelixGroupSelectionStrategy {
   @Override
-  public int selectGroup(long requestId, int groupNum) {
+  public int selectGroup(long requestId, int groupNum, int weight) {
     int assignedGroupId = 0;
     if (groupNum > 0) {
       assignedGroupId = (int) (requestId % groupNum);

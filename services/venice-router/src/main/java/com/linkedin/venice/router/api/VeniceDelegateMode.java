@@ -109,6 +109,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final RouterStats<RouteHttpStats> perRouteStatsByType;
   private final boolean latencyBasedRoutingEnabled;
+  private final boolean helixGroupSelectionWeightAwareEnabled;
 
   private final RoutingComputationMode routingComputationMode;
   private final ThreadPoolExecutor parallelRoutingExecutor;
@@ -124,6 +125,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.perRouteStatsByType = perRouteStatsByType;
     this.latencyBasedRoutingEnabled = config.isLatencyBasedRoutingEnabled();
+    this.helixGroupSelectionWeightAwareEnabled = config.isHelixGroupSelectionWeightAwareEnabled();
     this.multiKeyRoutingStrategy = config.getMultiKeyRoutingStrategy();
     switch (this.multiKeyRoutingStrategy) {
       case GROUP_BY_PRIMARY_HOST_ROUTING:
@@ -824,8 +826,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         /**
          * This function only needs to assign a group id to the original Router request, and all the retried requests
          * will share the same group id as the original Router request.
+         *
+         * When weight-aware group selection is enabled, the request contributes load proportional to its key count
+         * (an estimate of its RCU cost) so variable-size multi-key requests are balanced by keys/RCU across Helix
+         * groups rather than by raw request count. When disabled, every request weighs 1 (legacy behavior).
          */
-        venicePath.setHelixGroupId(helixGroupSelector.selectGroup(venicePath.getRequestId(), getHelixGroupNum()));
+        int weight = helixGroupSelectionWeightAwareEnabled ? venicePath.getPartitionKeys().size() : 1;
+        venicePath
+            .setHelixGroupId(helixGroupSelector.selectGroup(venicePath.getRequestId(), getHelixGroupNum(), weight));
       }
       return venicePath.getHelixGroupId();
     }

@@ -38,6 +38,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HEART_BEAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_WEIGHT_AWARE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INITIAL_WINDOW_SIZE;
@@ -211,6 +212,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int ioThreadCountInPoolMode;
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
+  private final boolean helixGroupSelectionWeightAwareEnabled;
   private final String systemSchemaClusterName;
   private final int maxConcurrentSslHandshakes;
   private final int resolveThreads;
@@ -404,6 +406,8 @@ public class VeniceRouterConfig implements RouterRetryConfig {
                 + helixGroupSelectionStrategyStr + ", and allowed values: "
                 + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
       }
+      helixGroupSelectionWeightAwareEnabled =
+          props.getBoolean(ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_WEIGHT_AWARE_ENABLED, false);
       systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
       routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
       httpClient5PoolSize = props.getInt(ROUTER_HTTP_CLIENT5_POOL_SIZE, 1);
@@ -750,6 +754,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public HelixGroupSelectionStrategyEnum getHelixGroupSelectionStrategy() {
     return helixGroupSelectionStrategy;
+  }
+
+  public boolean isHelixGroupSelectionWeightAwareEnabled() {
+    return helixGroupSelectionWeightAwareEnabled;
   }
 
   public String getSystemSchemaClusterName() {
