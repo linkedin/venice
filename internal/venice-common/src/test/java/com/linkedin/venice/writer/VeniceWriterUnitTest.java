@@ -2021,7 +2021,7 @@ public class VeniceWriterUnitTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testGetPartitionIdRoutesDeterministicallyAndLegacyWritersUseStripeZero() {
+  public void testGetPartitionIdRoutesDeterministicallyAndUnsupportedWritersFailLoudly() {
     int partitionCount = 8;
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(anyString(), anyInt(), any(), any(), any(), any()))
@@ -2037,10 +2037,11 @@ public class VeniceWriterUnitTest {
       assertEquals(writer.getPartitionId(key), first, "Routing must be deterministic for a given key");
     }
 
-    // Legacy writers that do not override getPartitionId route everything to stripe 0.
-    AbstractVeniceWriter<Object, Object, Object> legacyWriter = mock(AbstractVeniceWriter.class);
-    when(legacyWriter.getPartitionId(any())).thenCallRealMethod();
-    assertEquals(legacyWriter.getPartitionId("any-key"), 0, "Legacy writer default routing must be stripe 0");
+    AbstractVeniceWriter<Object, Object, Object> unsupportedWriter = mock(AbstractVeniceWriter.class);
+    when(unsupportedWriter.getPartitionId(any())).thenCallRealMethod();
+    UnsupportedOperationException exception =
+        Assert.expectThrows(UnsupportedOperationException.class, () -> unsupportedWriter.getPartitionId("any-key"));
+    assertTrue(exception.getMessage().startsWith("Partition routing is not implemented for "));
   }
 
   @Test(timeOut = TIMEOUT)
