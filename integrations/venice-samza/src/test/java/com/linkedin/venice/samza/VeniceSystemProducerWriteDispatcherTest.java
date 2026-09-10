@@ -14,6 +14,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -24,6 +25,7 @@ import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -422,6 +424,73 @@ public class VeniceSystemProducerWriteDispatcherTest {
     releaseWorker.countDown();
     stopper.join();
     blocked.join();
+  }
+
+  @Test
+  public void kernelRejectionRacingStopFailsCleanStoppedNotSticky() throws Exception {
+    // Regression: dispatch() can pass the accepting check, then lose a race with a concurrent stop() that has
+    // flipped accepting=false and shut the kernel down, so kernel.submit throws RejectedExecutionException. That
+    // is a normal lifecycle rejection (reachable on the async Flink cancellation path), so it must fail only the
+    // raced command as a clean "stopped" write and must NOT be recorded as a sticky failure. Otherwise a benign
+    // stop would poison every later dispatch through checkForFailure() with "previously failed".
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    CountDownLatch routingEntered = new CountDownLatch(1);
+    CountDownLatch releaseRouting = new CountDownLatch(1);
+    AtomicBoolean firstRouting = new AtomicBoolean(true);
+    // Park the raced command inside getPartitionId — i.e. after dispatch()'s accepting check but before kernel
+    // submission — so stop() can run in that exact window. A later stopped-path dispatch short-circuits before
+    // routing, so it must never reach this answer; the guard keeps the mock robust if that ever changes.
+    when(writer.getPartitionId(any())).thenAnswer(invocation -> {
+      if (firstRouting.compareAndSet(true, false)) {
+        routingEntered.countDown();
+        assertTrue(releaseRouting.await(AWAIT_SECONDS, TimeUnit.SECONDS));
+      }
+      return 0;
+    });
+
+    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
+    AtomicReference<VeniceSystemProducerWriteCommand.DurableWriteFuture> raced = new AtomicReference<>();
+    CountDownLatch racedReturned = new CountDownLatch(1);
+    Thread racer = new Thread(() -> {
+      raced.set(dispatcher.dispatch(putCommand(0)));
+      racedReturned.countDown();
+    });
+    try {
+      racer.start();
+      assertTrue(routingEntered.await(AWAIT_SECONDS, TimeUnit.SECONDS), "raced command must park in routing");
+
+      // The kernel is still empty (the raced command has not submitted yet), so stop() drains immediately: it
+      // flips accepting=false and shuts the kernel down while the racer is parked in routing.
+      dispatcher.stop();
+
+      // Release routing: kernel.submit now throws RejectedExecutionException because the kernel is shut down.
+      releaseRouting.countDown();
+      assertTrue(racedReturned.await(AWAIT_SECONDS, TimeUnit.SECONDS), "raced dispatch must return, not hang");
+
+      // The raced command fails as a clean stopped write whose cause is the kernel rejection, NOT as sticky.
+      Throwable racedCause = expectCause(raced.get().getSubmissionFuture());
+      assertTrue(racedCause instanceof VeniceException, "raced failure must be a VeniceException, was: " + racedCause);
+      assertEquals(racedCause.getMessage(), "VeniceSystemProducer write dispatcher is stopped");
+      assertTrue(
+          racedCause.getCause() instanceof RejectedExecutionException,
+          "clean stopped rejection must carry the kernel RejectedExecutionException as its cause");
+      // The raced command never reached the writer's put path.
+      verify(writer, never()).put(any(), any(), anyInt(), anyLong(), any());
+
+      // No sticky failure was recorded: a later dispatch must follow the clean stopped-command path (its
+      // submission fails with "stopped", carrying no cause) instead of throwing "previously failed" from
+      // checkForFailure(). If this dispatch() threw, the test would fail here.
+      VeniceSystemProducerWriteCommand.DurableWriteFuture later = dispatcher.dispatch(putCommand(0));
+      Throwable laterCause = expectCause(later.getSubmissionFuture());
+      assertTrue(laterCause instanceof VeniceException, "later failure must be a VeniceException, was: " + laterCause);
+      assertEquals(laterCause.getMessage(), "VeniceSystemProducer write dispatcher is stopped");
+      assertNull(laterCause.getCause(), "clean stopped path must not carry a sticky cause");
+    } finally {
+      // Always free a parked racer so join (and the test) cannot hang if an assertion failed before release.
+      releaseRouting.countDown();
+      racer.join(TimeUnit.SECONDS.toMillis(AWAIT_SECONDS));
+      dispatcher.stop();
+    }
   }
 
   @Test

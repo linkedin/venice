@@ -8,6 +8,7 @@ import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -87,9 +88,13 @@ class VeniceSystemProducerWriteDispatcher {
    * bounded admission. Never waits for the writer.
    *
    * <p>If the dispatcher has stopped accepting, only this command's submission is failed; no sticky failure is
-   * recorded, so a normal {@link #stop()} does not poison a later {@link #flush()}. If partition routing or
-   * kernel admission throws a {@link RuntimeException}, the failure is recorded as sticky and this command's
-   * submission is failed with it, so it surfaces through the durable future and {@code flush()}.</p>
+   * recorded, so a normal {@link #stop()} does not poison a later {@link #flush()}. The same holds for the race
+   * where {@code stop()} shuts the kernel down <em>after</em> this command passed the accepting check: kernel
+   * admission then throws a {@link RejectedExecutionException}, and because the dispatcher is no longer accepting
+   * that is treated as the same clean stopped rejection rather than a sticky failure. If partition routing
+   * throws, or kernel admission fails while the dispatcher is still accepting, the failure is recorded as sticky
+   * and this command's submission is failed with it, so it surfaces through the durable future and
+   * {@code flush()}.</p>
    */
   VeniceSystemProducerWriteCommand.DurableWriteFuture dispatch(VeniceSystemProducerWriteCommand command) {
     checkForFailure();
@@ -103,7 +108,22 @@ class VeniceSystemProducerWriteDispatcher {
       }
       try {
         int partition = writer.getPartitionId(command.getKey());
-        kernel.submit(partition, () -> execute(command));
+        try {
+          kernel.submit(partition, () -> execute(command));
+        } catch (RejectedExecutionException rejection) {
+          if (accepting.get()) {
+            // Still accepting: a genuine admission failure that must poison a later flush().
+            recordSticky(rejection);
+            runDurableCompletion(command.finishSubmission(rejection));
+          } else {
+            // Lost the race with a concurrent stop() that shut the kernel down after the accepting check above.
+            // This is a clean lifecycle rejection, not a real write failure, so fail only this command with the
+            // stopped-admission contract and DO NOT record it as sticky.
+            runDurableCompletion(
+                command.finishSubmission(
+                    new VeniceException("VeniceSystemProducer write dispatcher is stopped", rejection)));
+          }
+        }
       } catch (RuntimeException e) {
         recordSticky(e);
         runDurableCompletion(command.finishSubmission(e));
