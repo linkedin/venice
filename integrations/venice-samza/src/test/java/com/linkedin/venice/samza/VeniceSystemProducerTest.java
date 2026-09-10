@@ -61,9 +61,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.SamzaException;
@@ -231,7 +236,7 @@ public class VeniceSystemProducerTest {
     VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
 
     PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
-    java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
+    CompletableFuture mockFuture = mock(CompletableFuture.class);
     when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
     VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
         new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).setWriterHook(mockHook).build(),
@@ -255,7 +260,7 @@ public class VeniceSystemProducerTest {
     VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
 
     PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
-    java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
+    CompletableFuture mockFuture = mock(CompletableFuture.class);
     when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
     VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
         new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).setWriterHook(mockHook).build(),
@@ -498,7 +503,7 @@ public class VeniceSystemProducerTest {
     assertNull(capturedConfig.getProvidedPrimaryControllerColoD2Client());
   }
 
-  private static void awaitSubmitted(java.util.concurrent.CompletableFuture<Void> future) {
+  private static void awaitSubmitted(CompletableFuture<Void> future) {
     VeniceSystemProducerWriteCommand.awaitSubmission(future);
   }
 
@@ -535,9 +540,8 @@ public class VeniceSystemProducerTest {
     CountDownLatch firstSendEntered = new CountDownLatch(1);
     CountDownLatch releaseFirstSend = new CountDownLatch(1);
     AtomicInteger sendCount = new AtomicInteger();
-    java.util.concurrent.atomic.AtomicReference<Object> firstKey = new java.util.concurrent.atomic.AtomicReference<>();
-    java.util.concurrent.atomic.AtomicReference<Object> firstEnvelope =
-        new java.util.concurrent.atomic.AtomicReference<>();
+    AtomicReference<Object> firstKey = new AtomicReference<>();
+    AtomicReference<Object> firstEnvelope = new AtomicReference<>();
 
     PubSubProducerAdapter blockingAdapter = mock(PubSubProducerAdapter.class);
     when(blockingAdapter.sendMessage(any(), any(), any(), any(), any(), any())).thenAnswer(invocation -> {
@@ -552,7 +556,7 @@ public class VeniceSystemProducerTest {
       if (callback != null) {
         callback.onCompletion(result, null);
       }
-      return java.util.concurrent.CompletableFuture.completedFuture(result);
+      return CompletableFuture.completedFuture(result);
     });
     VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
         new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).build(),
@@ -561,7 +565,7 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy =
         buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) realWriter);
 
-    java.util.concurrent.CompletableFuture<Void> asyncFuture = producerSpy.send("asyncKey", "asyncValue");
+    CompletableFuture<Void> asyncFuture = producerSpy.send("asyncKey", "asyncValue");
     assertTrue(firstSendEntered.await(20, TimeUnit.SECONDS), "worker never reached the blocked writer");
     assertTrue(((KafkaKey) firstKey.get()).isControlMessage(), "first blocked send must be a control message");
     ControlMessage blockedControlMessage = (ControlMessage) ((KafkaMessageEnvelope) firstEnvelope.get()).payloadUnion;
@@ -596,8 +600,7 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy =
         buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) mock(VeniceWriter.class));
     AtomicInteger sendInvocations = new AtomicInteger();
-    java.util.concurrent.BlockingQueue<VeniceSystemProducerWriteCommand> issued =
-        new java.util.concurrent.LinkedBlockingQueue<>();
+    BlockingQueue<VeniceSystemProducerWriteCommand> issued = new LinkedBlockingQueue<>();
     doAnswer(invocation -> {
       sendInvocations.incrementAndGet();
       VeniceSystemProducerWriteCommand command =
@@ -614,7 +617,7 @@ public class VeniceSystemProducerTest {
         issued);
     assertEquals(sendInvocations.get(), 3, "each public op must call protected send exactly once");
 
-    java.util.concurrent.CompletableFuture<Void> foreign = new java.util.concurrent.CompletableFuture<>();
+    CompletableFuture<Void> foreign = new CompletableFuture<>();
     doReturn(foreign).when(producerSpy).send((Object) any(), any());
     CountDownLatch putReturned = new CountDownLatch(1);
     Thread foreignPut = new Thread(() -> {
@@ -631,7 +634,7 @@ public class VeniceSystemProducerTest {
 
   private void assertPublicOpWaitsForSubmission(
       Runnable publicOp,
-      java.util.concurrent.BlockingQueue<VeniceSystemProducerWriteCommand> issued) throws Exception {
+      BlockingQueue<VeniceSystemProducerWriteCommand> issued) throws Exception {
     CountDownLatch returned = new CountDownLatch(1);
     Thread t = new Thread(() -> {
       publicOp.run();
@@ -694,7 +697,7 @@ public class VeniceSystemProducerTest {
         (AbstractVeniceWriter) mockWriter,
         new MapConfig(configMap));
 
-    java.util.concurrent.CompletableFuture<Void> future = producerSpy.send("inlineKey", "inlineValue");
+    CompletableFuture<Void> future = producerSpy.send("inlineKey", "inlineValue");
     verify(mockWriter).put(any(), any(), eq(1), anyLong(), any());
     assertFalse(
         future instanceof VeniceSystemProducerWriteCommand.DurableWriteFuture,
@@ -734,7 +737,7 @@ public class VeniceSystemProducerTest {
     BatchingVeniceWriter<byte[], byte[], byte[]> batchingWriter = mock(BatchingVeniceWriter.class);
     when(batchingWriter.getPartitionId(any())).thenReturn(0);
     when(batchingWriter.put(any(), any(), anyInt(), anyLong(), any()))
-        .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
+        .thenReturn(CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
 
     VeniceSystemProducer producerSpy =
         buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) batchingWriter);
@@ -757,7 +760,7 @@ public class VeniceSystemProducerTest {
     when(mockWriter.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       workerInPut.countDown();
       releasePut.await();
-      return java.util.concurrent.CompletableFuture.completedFuture(mock(PubSubProduceResult.class));
+      return CompletableFuture.completedFuture(mock(PubSubProduceResult.class));
     });
 
     VeniceSystemProducer producerSpy =
@@ -766,7 +769,7 @@ public class VeniceSystemProducerTest {
     producerSpy.send("k", "v");
     assertTrue(workerInPut.await(10, TimeUnit.SECONDS), "worker never entered writer.put");
 
-    java.util.concurrent.atomic.AtomicBoolean interruptSetOnReturn = new java.util.concurrent.atomic.AtomicBoolean();
+    AtomicBoolean interruptSetOnReturn = new AtomicBoolean();
     CountDownLatch stopReturned = new CountDownLatch(1);
     Thread stopper = new Thread(() -> {
       Thread.currentThread().interrupt(); // enter stop() already interrupted
@@ -789,12 +792,12 @@ public class VeniceSystemProducerTest {
   public void interruptedIdleStopStillClosesWriterThenRestoresInterrupt() throws Exception {
     VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
     when(mockWriter.put(any(), any(), anyInt(), anyLong(), any()))
-        .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
+        .thenReturn(CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
 
     VeniceSystemProducer producerSpy =
         buildStartedProducerSpy(buildMockControllerClient(1, -1), (AbstractVeniceWriter) mockWriter);
 
-    java.util.concurrent.atomic.AtomicBoolean interruptSetOnReturn = new java.util.concurrent.atomic.AtomicBoolean();
+    AtomicBoolean interruptSetOnReturn = new AtomicBoolean();
     CountDownLatch stopReturned = new CountDownLatch(1);
     Thread stopper = new Thread(() -> {
       Thread.currentThread().interrupt(); // enter stop() already interrupted, with an idle dispatcher
