@@ -20,10 +20,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Deterministic (latch/barrier based, no sleeps for positive waits) tests for the producer-agnostic
- * {@link PartitionStripedExecutor} kernel. These exercise the guarantees both consumers rely on: stable
- * partition-to-stripe mapping, per-stripe FIFO, cross-stripe progress, bounded blocking admission (never
- * caller-runs, never drops), interrupt handling, shutdown semantics, and a single shared await deadline.
+ * Deterministic latch/barrier tests for the producer-agnostic {@link PartitionStripedExecutor} kernel:
+ * partition-to-stripe mapping, per-stripe FIFO, cross-stripe progress, bounded admission, and shutdown.
  */
 public class PartitionStripedExecutorTest {
   private static final int AWAIT_SECONDS = 10;
@@ -34,12 +32,10 @@ public class PartitionStripedExecutorTest {
     PartitionStripedExecutor executor = new PartitionStripedExecutor(4, 10, "map-test");
     try {
       assertEquals(executor.getStripeCount(), 4);
-      // Integer.MIN_VALUE must not produce a negative index (Math.abs(MIN_VALUE) is still negative).
       assertEquals(executor.stripeFor(Integer.MIN_VALUE), 0);
       for (int partition = -1000; partition <= 1000; partition++) {
         int stripe = executor.stripeFor(partition);
         assertTrue(stripe >= 0 && stripe < 4, "stripe out of range for partition " + partition);
-        // Deterministic: same partition always maps to the same stripe.
         assertEquals(executor.stripeFor(partition), stripe);
       }
     } finally {
@@ -80,17 +76,14 @@ public class PartitionStripedExecutorTest {
     CountDownLatch otherStripeDone = new CountDownLatch(1);
     CountDownLatch samePartitionLaterDone = new CountDownLatch(1);
     try {
-      // Partition 0 -> stripe 0: hold it.
       executor.submit(0, () -> {
         stripe0Started.countDown();
         awaitQuietly(blockStripe0);
       });
       assertTrue(stripe0Started.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-      // A later task on the SAME partition must remain FIFO-blocked behind the held task.
       executor.submit(0, samePartitionLaterDone::countDown);
 
-      // Partition 1 -> stripe 1: must make progress while stripe 0 is blocked.
       executor.submit(1, otherStripeDone::countDown);
 
       assertTrue(otherStripeDone.await(AWAIT_SECONDS, TimeUnit.SECONDS), "different stripe was stalled");
@@ -107,7 +100,6 @@ public class PartitionStripedExecutorTest {
 
   @Test
   public void fullQueueBlocksSubmitterWithoutDroppingOrCallerRunning() throws InterruptedException {
-    // One stripe, capacity one: worker busy + one queued fills capacity, so the next admission must block.
     PartitionStripedExecutor executor = new PartitionStripedExecutor(1, 1, "backpressure-test");
     CountDownLatch release = new CountDownLatch(1);
     CountDownLatch workerStarted = new CountDownLatch(1);
@@ -124,7 +116,6 @@ public class PartitionStripedExecutorTest {
       });
       assertTrue(workerStarted.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-      // Fills the single queue slot.
       executor.submit(0, () -> {
         runnerThreads.add(Thread.currentThread().getName());
         allRan.countDown();
@@ -142,7 +133,6 @@ public class PartitionStripedExecutorTest {
       }, callerThreadName);
       submitter.start();
 
-      // The submitter must be blocked in admission: not admitted, and the task must NOT run on the caller.
       assertFalse(admitted.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS), "submit did not block on a full queue");
       assertFalse(thirdTaskRan.get(), "task ran while admission was supposedly blocked (caller-run/drop)");
 
@@ -150,7 +140,6 @@ public class PartitionStripedExecutorTest {
       assertTrue(admitted.await(AWAIT_SECONDS, TimeUnit.SECONDS), "blocked submit never completed after drain");
       submitter.join(TimeUnit.SECONDS.toMillis(AWAIT_SECONDS));
 
-      // No drop: all three tasks ran, and every one ran on a worker thread (never the caller).
       assertTrue(allRan.await(AWAIT_SECONDS, TimeUnit.SECONDS), "not all tasks ran");
       for (String name: runnerThreads) {
         assertTrue(name.startsWith("backpressure-test"), "task ran off the worker thread pool: " + name);
@@ -188,7 +177,6 @@ public class PartitionStripedExecutorTest {
         }
       }, "interrupt-submitter");
       submitter.start();
-      // Confirm the submitter is parked in blocking admission, then interrupt it.
       assertFalse(finished.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS));
       submitter.interrupt();
 
@@ -257,7 +245,6 @@ public class PartitionStripedExecutorTest {
 
       List<Runnable> drained = executor.shutdownNow();
       release.countDown();
-      // The five queued tasks are handed back to the caller and must not have executed.
       assertEquals(drained.size(), 5, "shutdownNow did not return the queued tasks");
       assertEquals(queuedTaskRuns.get(), 0, "queued tasks ran despite shutdownNow ownership transfer");
     } finally {
@@ -267,8 +254,6 @@ public class PartitionStripedExecutorTest {
 
   @Test
   public void shutdownNowRejectsBlockedSubmitterInsteadOfStrandingItInTheDrainedQueue() throws InterruptedException {
-    // Regression: a submitter blocked in admission must not win the offer race after shutdownNow() has
-    // already drained the queue (which would strand its task, neither run nor returned to the caller).
     PartitionStripedExecutor executor = new PartitionStripedExecutor(1, 1, "shutdownnow-race-test");
     CountDownLatch release = new CountDownLatch(1);
     CountDownLatch workerStarted = new CountDownLatch(1);
@@ -295,10 +280,6 @@ public class PartitionStripedExecutorTest {
       submitter.start();
       assertFalse(finished.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS), "submitter should block on the full queue");
 
-      // shutdownNow transitions the stripe to shut down and drains the filler while holding the stripe
-      // lifecycle lock. The blocked submitter shares that lock for its check-and-offer, so on its next cycle it
-      // observes the shutdown under the lock BEFORE it can offer, and is rejected rather than enqueued after
-      // the drain.
       executor.shutdownNow();
       release.countDown();
       assertTrue(finished.await(AWAIT_SECONDS, TimeUnit.SECONDS), "shutdownNow did not wake the blocked submitter");
@@ -313,10 +294,6 @@ public class PartitionStripedExecutorTest {
 
   @Test
   public void shutdownNowReturnsTaskOfferedBeforeConcurrentDrainInsteadOfStrandingIt() throws InterruptedException {
-    // Reverse-order race (offer-before-drain): an admission that WINS the offer before shutdownNow() drains
-    // must not be stranded. Because the offer and the shutdown transition/drain are serialized by the
-    // per-stripe lifecycle lock, such a task is captured by the drain snapshot and returned to the caller as
-    // pending ownership -- it is neither run nor lost, and admission does not throw.
     PartitionStripedExecutor executor = new PartitionStripedExecutor(1, 1, "offer-before-drain-test");
     CountDownLatch releaseA = new CountDownLatch(1);
     CountDownLatch workerStartedA = new CountDownLatch(1);
@@ -327,21 +304,17 @@ public class PartitionStripedExecutorTest {
     AtomicBoolean taskCRan = new AtomicBoolean(false);
     Runnable taskC = () -> taskCRan.set(true);
     try {
-      // A occupies the single worker thread.
       executor.submit(0, () -> {
         workerStartedA.countDown();
         awaitQuietly(releaseA);
       });
       assertTrue(workerStartedA.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-      // B fills the one queue slot. When the worker later dequeues B it parks, keeping the worker busy while
-      // leaving the queue slot free for C to be offered into.
       executor.submit(0, () -> {
         bRunning.countDown();
         awaitQuietly(releaseB);
       });
 
-      // C blocks in admission because the single queue slot is occupied by B.
       Thread submitterC = new Thread(() -> {
         try {
           executor.submit(0, taskC);
@@ -354,15 +327,11 @@ public class PartitionStripedExecutorTest {
       submitterC.start();
       assertFalse(admitted.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS), "C must block while the queue is full");
 
-      // Free the worker: it finishes A, dequeues B (freeing the slot) and parks in B. C then wins the freed
-      // slot and is enqueued while the worker stays parked in B.
       releaseA.countDown();
       assertTrue(bRunning.await(AWAIT_SECONDS, TimeUnit.SECONDS), "worker must dequeue and start B");
       assertTrue(admitted.await(AWAIT_SECONDS, TimeUnit.SECONDS), "C must be admitted once a slot frees up");
       assertNull(thrown.get(), "C won the offer before shutdown, so admission must not throw");
 
-      // C now sits in the queue while the worker is parked in B. A forced shutdown must hand the exact task
-      // back to the caller rather than strand it.
       List<Runnable> drained = executor.shutdownNow();
       releaseB.countDown();
 
@@ -396,7 +365,6 @@ public class PartitionStripedExecutorTest {
       long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
 
       assertFalse(terminated, "should not terminate while tasks are blocked");
-      // A shared deadline waits ~500ms total, NOT 4 x 500ms; allow generous slack but well under the naive sum.
       assertTrue(elapsedMillis < 1500, "await did not share one deadline across stripes: " + elapsedMillis + "ms");
     } finally {
       release.countDown();
@@ -423,10 +391,6 @@ public class PartitionStripedExecutorTest {
 
   @Test
   public void blockedSubmitterWokenByDequeueSignalWithoutPollingDelay() throws InterruptedException {
-    // One stripe, capacity one. Worker runs task A (parked) and task B fills the single queue slot, so a
-    // third submitter (C) must block in admission. Releasing A makes the worker DEQUEUE B, which frees the
-    // slot; the kernel must wake C immediately off that dequeue signal rather than after a fixed polling
-    // interval. Correctness is proven by ordering latches; the timing assertion is a soft regression guard.
     PartitionStripedExecutor executor = new PartitionStripedExecutor(1, 1, "responsiveness-test");
     CountDownLatch workerStarted = new CountDownLatch(1);
     CountDownLatch releaseA = new CountDownLatch(1);
@@ -435,22 +399,18 @@ public class PartitionStripedExecutorTest {
     CountDownLatch cAdmitted = new CountDownLatch(1);
     AtomicReference<Throwable> thrown = new AtomicReference<>();
     try {
-      // Task A: occupies the single worker thread until released, keeping the queue the only free capacity.
       executor.submit(0, () -> {
         workerStarted.countDown();
         awaitQuietly(releaseA);
       });
       assertTrue(workerStarted.await(AWAIT_SECONDS, TimeUnit.SECONDS));
 
-      // Task B: fills the single queue slot. When the worker dequeues B to run it, capacity frees and the
-      // kernel signals blocked admissions. B then parks so the worker stays busy.
       executor.submit(0, () -> {
         bDequeued.countDown();
         awaitQuietly(releaseB);
       });
       assertEquals(executor.getTotalQueueSize(), 1);
 
-      // Submitter C blocks in admission because worker+queue are full.
       Thread submitter = new Thread(() -> {
         try {
           executor.submit(0, () -> {});
@@ -461,10 +421,8 @@ public class PartitionStripedExecutorTest {
       }, "responsiveness-submitter");
       submitter.start();
 
-      // C must genuinely be parked (not admitted) while the queue is full.
       assertFalse(cAdmitted.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS), "submit did not block on a full queue");
 
-      // Free capacity: the worker dequeues B and must wake C immediately.
       releaseA.countDown();
 
       assertTrue(bDequeued.await(AWAIT_SECONDS, TimeUnit.SECONDS), "worker never dequeued the queued task");

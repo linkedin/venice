@@ -34,14 +34,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Deterministic tests for {@link VeniceSystemProducerWriteDispatcher} using a mocked
- * {@link AbstractVeniceWriter} whose {@code put}/{@code flush} can be blocked with latches. These prove the
- * dispatch contract the {@link VeniceSystemProducer} STREAM path relies on: dispatch never waits for the
- * writer; the same Venice partition keeps FIFO order while a different partition (different stripe) makes
- * progress; synchronous and asynchronous writer failures become sticky; flush is a fence that excludes new
- * admissions and then flushes the writer; and stop drains workers without closing the writer and cannot
- * deadlock a submitter blocked on a full queue. Kernel-level guarantees (striping, bounded admission, shared
- * await) are covered separately in {@code PartitionStripedExecutorTest}.
+ * Deterministic tests for {@link VeniceSystemProducerWriteDispatcher} with a latch-blockable mocked
+ * {@link AbstractVeniceWriter}; kernel-level guarantees are covered in {@code PartitionStripedExecutorTest}.
  */
 public class VeniceSystemProducerWriteDispatcherTest {
   private static final int AWAIT_SECONDS = 10;
@@ -73,7 +67,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
     try {
       VeniceSystemProducerWriteCommand.DurableWriteFuture durable = dispatcher.dispatch(putCommand(0));
-      // dispatch returned even though the worker is parked inside writer.put.
       assertTrue(putEntered.await(AWAIT_SECONDS, TimeUnit.SECONDS));
       CompletableFuture<Void> submission = durable.getSubmissionFuture();
       assertFalse(submission.isDone(), "submission must not complete until writer.put returns");
@@ -113,11 +106,9 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
     try {
-      // Partition 0 -> stripe 0 blocks; a later partition-0 record must stay FIFO-blocked behind it.
       VeniceSystemProducerWriteCommand.DurableWriteFuture first0 = dispatcher.dispatch(putCommand(0));
       assertTrue(partition0Entered.await(AWAIT_SECONDS, TimeUnit.SECONDS));
       VeniceSystemProducerWriteCommand.DurableWriteFuture second0 = dispatcher.dispatch(putCommand(0));
-      // Partition 1 -> stripe 1 must reach the writer despite stripe 0 being blocked.
       dispatcher.dispatch(putCommand(1));
       assertTrue(partition1Reached.await(AWAIT_SECONDS, TimeUnit.SECONDS), "different stripe must make progress");
 
@@ -146,7 +137,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       assertSame(expectCause(durable.getSubmissionFuture()), boom);
       assertSame(expectCause(durable), boom);
 
-      // Sticky failure is surfaced by both flush and a subsequent dispatch.
       assertSame(expectVeniceException(dispatcher::flush).getCause(), boom);
       assertSame(expectVeniceException(() -> dispatcher.dispatch(putCommand(0))).getCause(), boom);
     } finally {
@@ -156,10 +146,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void partitionRoutingFailureBecomesStickyAndSurfaces() throws Exception {
-    // A partitioner failure (writer.getPartitionId throwing) must follow the same failure path as an admission
-    // failure: it fails this command's submission and durable futures, records a sticky failure, and never lets
-    // the record silently escape dispatch. Otherwise the routing exception would propagate synchronously out of
-    // dispatch() and orphan the durable future while a later flush() reported success.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     RuntimeException boom = new RuntimeException("partition routing failure");
     when(writer.getPartitionId(any())).thenThrow(boom);
@@ -169,10 +155,8 @@ public class VeniceSystemProducerWriteDispatcherTest {
       VeniceSystemProducerWriteCommand.DurableWriteFuture durable = dispatcher.dispatch(putCommand(0));
       assertSame(expectCause(durable.getSubmissionFuture()), boom);
       assertSame(expectCause(durable), boom);
-      // A record that failed routing must never reach the writer's put path.
       verify(writer, never()).put(any(), any(), anyInt(), anyLong(), any());
 
-      // Sticky failure is surfaced by both flush and a subsequent dispatch.
       assertSame(expectVeniceException(dispatcher::flush).getCause(), boom);
       assertSame(expectVeniceException(() -> dispatcher.dispatch(putCommand(0))).getCause(), boom);
     } finally {
@@ -206,9 +190,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void flushWaitsForPreFenceWritesThenFlushesWriter() throws Exception {
-    // Flush is a global pre-fence durability boundary: every write admitted before the fence must reach the
-    // writer before writer.flush() runs. A pre-fence record whose worker is parked inside writer.put holds the
-    // fence marker on its stripe, so flush cannot reach writer.flush() until that write returns.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch putEntered = new CountDownLatch(1);
     CountDownLatch releasePut = new CountDownLatch(1);
@@ -230,7 +211,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
         flushReturned.countDown();
       });
       flusher.start();
-      // Flush must not reach writer.flush() while the pre-fence write is still parked in writer.put.
       assertFalse(flushReturned.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS), "flush must wait for pre-fence write");
       verify(writer, never()).flush();
 
@@ -245,9 +225,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void flushDoesNotDeadlockWithCallbackRetryContinuation() throws Exception {
-    // Regression: a broker callback continuation that re-dispatches (a retry) must not deadlock against a
-    // concurrent flush. Because flush releases the admission write lock before awaiting markers and calling
-    // writer.flush(), the callback thread can acquire the read lock and admit the retry while flush waits.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<PubSubProducerCallback> callbackRef = new AtomicReference<>();
     CountDownLatch flushEntered = new CountDownLatch(1);
@@ -268,7 +245,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       VeniceSystemProducerWriteCommand.DurableWriteFuture durable = dispatcher.dispatch(putCommand(0));
       durable.getSubmissionFuture().get(AWAIT_SECONDS, TimeUnit.SECONDS);
 
-      // When the broker callback completes the durable future, re-dispatch a retry on the callback thread.
       CountDownLatch retryDispatched = new CountDownLatch(1);
       durable.whenComplete((v, t) -> {
         dispatcher.dispatch(putCommand(0));
@@ -279,7 +255,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       flusher.start();
       assertTrue(flushEntered.await(AWAIT_SECONDS, TimeUnit.SECONDS), "flush must reach writer.flush");
 
-      // Fire the callback on this thread; its retry continuation must admit without blocking on flush.
       callbackRef.get().onCompletion(null, null);
       assertTrue(retryDispatched.await(AWAIT_SECONDS, TimeUnit.SECONDS), "callback retry must not deadlock with flush");
 
@@ -292,9 +267,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void stopDrainsActiveWorkerLosslesslyAndDoesNotForceInterrupt() throws Exception {
-    // Stop must drain every accepted task without force-interrupting an active worker: it wakes blocked
-    // admissions via kernel shutdown, then waits until workers actually terminate. A queued task behind a
-    // parked worker must still run, and its future must not be stranded.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch workerEntered = new CountDownLatch(1);
     CountDownLatch releaseWorker = new CountDownLatch(1);
@@ -315,7 +287,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return null;
     });
 
-    // One worker, capacity 100: first record is in-flight (parked), second is queued behind it.
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 1, 100, "s");
     dispatcher.dispatch(putCommand(0));
     assertTrue(workerEntered.await(AWAIT_SECONDS, TimeUnit.SECONDS));
@@ -327,7 +298,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       stopReturned.countDown();
     });
     stopper.start();
-    // Stop must not return while the worker is still active, and must not force-interrupt it.
     assertFalse(stopReturned.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS), "stop must wait for the active worker");
     assertFalse(forcedInterrupt.get(), "stop must not force-interrupt the active worker");
 
@@ -335,7 +305,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
     assertTrue(stopReturned.await(AWAIT_SECONDS, TimeUnit.SECONDS), "stop must return once workers terminate");
     stopper.join();
 
-    // The queued task ran to completion (lossless drain) and its future is not stranded.
     queued.getSubmissionFuture().get(AWAIT_SECONDS, TimeUnit.SECONDS);
     assertEquals(putCount.get(), 2, "the queued write must be drained, not dropped");
     assertFalse(forcedInterrupt.get());
@@ -344,8 +313,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void synchronousWriterErrorCompletesFuturesStickyAndRethrowsOnWorker() throws Exception {
-    // A fatal Error thrown synchronously by the writer must still complete submission+durable exceptionally
-    // with the Error identity preserved and become sticky, then be rethrown on the worker thread.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     FatalTestError fatal = new FatalTestError();
     when(writer.getPartitionId(any())).thenReturn(0);
@@ -356,7 +323,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       VeniceSystemProducerWriteCommand.DurableWriteFuture durable = dispatcher.dispatch(putCommand(0));
       assertSame(expectCause(durable.getSubmissionFuture()), fatal);
       assertSame(expectCause(durable), fatal);
-      // The Error is sticky and surfaces on a subsequent flush.
       assertSame(expectVeniceException(dispatcher::flush).getCause(), fatal);
     } finally {
       dispatcher.stop();
@@ -378,7 +344,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
     verify(writer, never()).close(anyBoolean());
 
-    // After stop, admissions are rejected and their submission fails fast.
     VeniceSystemProducerWriteCommand.DurableWriteFuture rejected = dispatcher.dispatch(putCommand(0));
     assertTrue(expectCause(rejected.getSubmissionFuture()) instanceof VeniceException);
   }
@@ -398,7 +363,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       return null;
     });
 
-    // One worker, queue capacity one: one in-flight + one queued fills capacity, a third admission blocks.
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 1, 1, "s");
     dispatcher.dispatch(putCommand(0));
     assertTrue(workerEntered.await(AWAIT_SECONDS, TimeUnit.SECONDS));
@@ -415,7 +379,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
         thirdReturned.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS),
         "third admission must block on full queue");
 
-    // stop() shuts the kernel down before taking any lock, so the blocked submitter is woken and fails fast.
     Thread stopper = new Thread(dispatcher::stop);
     stopper.start();
     assertTrue(thirdReturned.await(AWAIT_SECONDS, TimeUnit.SECONDS), "stop must wake the blocked submitter");
@@ -428,18 +391,10 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void kernelRejectionRacingStopFailsCleanStoppedNotSticky() throws Exception {
-    // Regression: dispatch() can pass the accepting check, then lose a race with a concurrent stop() that has
-    // flipped accepting=false and shut the kernel down, so kernel.submit throws RejectedExecutionException. That
-    // is a normal lifecycle rejection (reachable on the async Flink cancellation path), so it must fail only the
-    // raced command as a clean "stopped" write and must NOT be recorded as a sticky failure. Otherwise a benign
-    // stop would poison every later dispatch through checkForFailure() with "previously failed".
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch routingEntered = new CountDownLatch(1);
     CountDownLatch releaseRouting = new CountDownLatch(1);
     AtomicBoolean firstRouting = new AtomicBoolean(true);
-    // Park the raced command inside getPartitionId — i.e. after dispatch()'s accepting check but before kernel
-    // submission — so stop() can run in that exact window. A later stopped-path dispatch short-circuits before
-    // routing, so it must never reach this answer; the guard keeps the mock robust if that ever changes.
     when(writer.getPartitionId(any())).thenAnswer(invocation -> {
       if (firstRouting.compareAndSet(true, false)) {
         routingEntered.countDown();
@@ -459,34 +414,25 @@ public class VeniceSystemProducerWriteDispatcherTest {
       racer.start();
       assertTrue(routingEntered.await(AWAIT_SECONDS, TimeUnit.SECONDS), "raced command must park in routing");
 
-      // The kernel is still empty (the raced command has not submitted yet), so stop() drains immediately: it
-      // flips accepting=false and shuts the kernel down while the racer is parked in routing.
       dispatcher.stop();
 
-      // Release routing: kernel.submit now throws RejectedExecutionException because the kernel is shut down.
       releaseRouting.countDown();
       assertTrue(racedReturned.await(AWAIT_SECONDS, TimeUnit.SECONDS), "raced dispatch must return, not hang");
 
-      // The raced command fails as a clean stopped write whose cause is the kernel rejection, NOT as sticky.
       Throwable racedCause = expectCause(raced.get().getSubmissionFuture());
       assertTrue(racedCause instanceof VeniceException, "raced failure must be a VeniceException, was: " + racedCause);
       assertEquals(racedCause.getMessage(), "VeniceSystemProducer write dispatcher is stopped");
       assertTrue(
           racedCause.getCause() instanceof RejectedExecutionException,
           "clean stopped rejection must carry the kernel RejectedExecutionException as its cause");
-      // The raced command never reached the writer's put path.
       verify(writer, never()).put(any(), any(), anyInt(), anyLong(), any());
 
-      // No sticky failure was recorded: a later dispatch must follow the clean stopped-command path (its
-      // submission fails with "stopped", carrying no cause) instead of throwing "previously failed" from
-      // checkForFailure(). If this dispatch() threw, the test would fail here.
       VeniceSystemProducerWriteCommand.DurableWriteFuture later = dispatcher.dispatch(putCommand(0));
       Throwable laterCause = expectCause(later.getSubmissionFuture());
       assertTrue(laterCause instanceof VeniceException, "later failure must be a VeniceException, was: " + laterCause);
       assertEquals(laterCause.getMessage(), "VeniceSystemProducer write dispatcher is stopped");
       assertNull(laterCause.getCause(), "clean stopped path must not carry a sticky cause");
     } finally {
-      // Always free a parked racer so join (and the test) cannot hang if an assertion failed before release.
       releaseRouting.countDown();
       racer.join(TimeUnit.SECONDS.toMillis(AWAIT_SECONDS));
       dispatcher.stop();
@@ -495,10 +441,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void synchronousCallbackBeforeSubmissionRunsDurableContinuationOffWorker() throws Exception {
-    // A callback that fires synchronously (inside writer.put, before submission returns) must not complete the
-    // durable future on the stripe worker: a caller continuation (here calling stop()) would otherwise run
-    // inline on the worker and self-deadlock the drain. The dispatcher hands the durable completion off the
-    // worker onto its VSP-owned completion pool, so the continuation runs on a VSP thread and stop() completes.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<Thread> workerThread = new AtomicReference<>();
     when(writer.getPartitionId(any())).thenReturn(0);
@@ -513,14 +455,12 @@ public class VeniceSystemProducerWriteDispatcherTest {
     try {
       AtomicReference<Thread> continuationThread = new AtomicReference<>();
       CountDownLatch stopReturned = new CountDownLatch(1);
-      // Attach the continuation to the durable future BEFORE dispatch so the worker cannot complete it (and
-      // run the continuation) before whenComplete is registered — otherwise the continuation could run on the
-      // registering thread and the VSP-owned-thread assertion would be racy.
       VeniceSystemProducerWriteCommand command = putCommand(0);
       VeniceSystemProducerWriteCommand.DurableWriteFuture durable = command.getDurableFuture();
+      // Register before dispatch so a fast completion cannot move the continuation onto the test thread.
       durable.whenComplete((v, t) -> {
         continuationThread.set(Thread.currentThread());
-        dispatcher.stop(); // a caller continuation that drains the very worker that would complete it inline
+        dispatcher.stop();
         stopReturned.countDown();
       });
       dispatcher.dispatch(command);
@@ -542,8 +482,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void synchronousFailureRunsDurableContinuationOffWorker() throws Exception {
-    // A synchronous writer failure completes the durable future exceptionally; its continuation (here calling
-    // flush()) must run off the stripe worker so it cannot self-deadlock against the worker it is draining.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<Thread> workerThread = new AtomicReference<>();
     VeniceException boom = new VeniceException("sync failure");
@@ -557,16 +495,14 @@ public class VeniceSystemProducerWriteDispatcherTest {
     try {
       AtomicReference<Thread> continuationThread = new AtomicReference<>();
       CountDownLatch flushReturned = new CountDownLatch(1);
-      // Attach the continuation to the durable future BEFORE dispatch so the worker cannot complete it (and
-      // run the continuation) before whenComplete is registered.
       VeniceSystemProducerWriteCommand command = putCommand(0);
       VeniceSystemProducerWriteCommand.DurableWriteFuture durable = command.getDurableFuture();
+      // Register before dispatch so a fast completion cannot move the continuation onto the test thread.
       durable.whenComplete((v, t) -> {
         continuationThread.set(Thread.currentThread());
         try {
-          dispatcher.flush(); // surfaces the sticky failure; we only care that it does not self-wait
+          dispatcher.flush();
         } catch (VeniceException expected) {
-          // sticky failure is surfaced by flush
         }
         flushReturned.countDown();
       });
@@ -588,9 +524,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void stopReportsInterruptWithoutReassertingIt() throws Exception {
-    // When the draining thread is interrupted mid-drain, stop() keeps draining losslessly, reports the
-    // interrupt via its return value, and does NOT re-assert the interrupt flag so the caller can run its own
-    // interruptible writer cleanup with the flag clear.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch workerEntered = new CountDownLatch(1);
     CountDownLatch releaseWorker = new CountDownLatch(1);
@@ -615,7 +548,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       stopReturned.countDown();
     });
     stopper.start();
-    // Stop must keep draining despite the interrupt; it cannot return until the worker is released.
     assertFalse(
         stopReturned.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS),
         "stop must keep draining losslessly after an interrupt");
@@ -630,17 +562,12 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void routingErrorSettlesFuturesStickyAndRethrowsToCaller() throws Exception {
-    // A fatal Error thrown by partition routing (writer.getPartitionId) on the caller thread must be handled
-    // symmetrically to a synchronous writer Error: settle submission+durable exceptionally with the SAME Error
-    // identity, record it as sticky, and rethrow the identical Error to the caller. The writer must never be
-    // invoked, and a later flush() must surface the sticky cause.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     FatalTestError fatal = new FatalTestError();
     when(writer.getPartitionId(any())).thenThrow(fatal);
 
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
     try {
-      // Capture the command up front: dispatch throws before returning, so we read its futures off the command.
       VeniceSystemProducerWriteCommand command = putCommand(0);
       try {
         dispatcher.dispatch(command);
@@ -652,7 +579,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
       assertSame(expectCause(command.getDurableFuture().getSubmissionFuture()), fatal);
       assertSame(expectCause(command.getDurableFuture()), fatal);
       verify(writer, never()).put(any(), any(), anyInt(), anyLong(), any());
-      // The routing Error is sticky and surfaces on a subsequent flush.
       assertSame(expectVeniceException(dispatcher::flush).getCause(), fatal);
     } finally {
       dispatcher.stop();
@@ -661,10 +587,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
   @Test
   public void writerInternalCallbackIsChainedBeforeDurableCompletion() throws Exception {
-    // VeniceWriter chains its own bookkeeping callback (e.g. SendMessageErrorLoggerCallback) onto the callback
-    // the dispatcher supplies, via PubSubProducerCallback#setInternalCallback. The dispatcher's forwarding
-    // wrapper must retain that internal callback and, on completion, invoke it FIRST (with the exact exception)
-    // and exactly once, before the dispatcher settles the user-visible durable future / sticky handling.
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     when(writer.getPartitionId(any())).thenReturn(0);
 
@@ -677,13 +599,10 @@ public class VeniceSystemProducerWriteDispatcherTest {
 
     PubSubProducerCallback internalCallback = (result, exception) -> {
       internalCallbackCount.incrementAndGet();
-      // The dispatcher's onCallback (which settles the durable future) must run strictly AFTER this.
       internalFiredBeforeDurable.set(!durableRef.get().isDone());
       internalException.set(exception);
     };
 
-    // The writer chains its internal callback onto the supplied dispatcher callback and captures it, but does
-    // NOT complete it synchronously (mirrors the real async pubsub send path).
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       PubSubProducerCallback supplied = invocation.getArgument(4);
       supplied.setInternalCallback(internalCallback);
@@ -699,13 +618,10 @@ public class VeniceSystemProducerWriteDispatcherTest {
       durableRef.set(durable);
       assertTrue(submitted.await(AWAIT_SECONDS, TimeUnit.SECONDS), "worker must invoke the writer");
 
-      // Submission completes successfully; the durable future stays pending until the async callback arrives,
-      // and the internal callback must not have fired yet.
       durable.getSubmissionFuture().get(AWAIT_SECONDS, TimeUnit.SECONDS);
       assertFalse(durable.isDone(), "durable must remain pending until the writer callback arrives");
       assertEquals(internalCallbackCount.get(), 0, "internal callback must not fire before the writer completes it");
 
-      // The writer now completes the supplied (forwarding) callback with a failure.
       VeniceException boom = new VeniceException("async writer failure");
       suppliedCallback.get().onCompletion(null, boom);
 
@@ -719,11 +635,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
     }
   }
 
-  /**
-   * Asserts the durable continuation ran on a VSP-owned completion pool thread rather than the JDK common pool
-   * (the old {@code CompletableFuture.runAsync} behavior). The completion pool names its daemon threads with the
-   * {@code venice-samza-writer-completion-} prefix.
-   */
   private static void assertVspOwnedCompletionThread(Thread continuationThread) {
     assertNotNull(continuationThread);
     String name = continuationThread.getName();
@@ -755,7 +666,6 @@ public class VeniceSystemProducerWriteDispatcherTest {
     }
   }
 
-  /** A distinct Error subtype so identity-preservation assertions cannot accidentally match. */
   private static final class FatalTestError extends Error {
     private static final long serialVersionUID = 1L;
   }

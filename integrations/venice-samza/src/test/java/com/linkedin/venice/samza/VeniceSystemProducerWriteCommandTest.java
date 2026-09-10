@@ -24,10 +24,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Deterministic tests for the two-future ({@code submission} + {@code durable}) state machine of
- * {@link VeniceSystemProducerWriteCommand} and the {@link VeniceSystemProducerWriteCommand#awaitSubmission}
- * contract that public {@code put}/{@code delete} and the Samza envelope {@code send} rely on. No sleeps are
- * used for positive waits; a small bounded window is only used to assert something does NOT happen.
+ * Deterministic tests for the two-future (submission + durable) state machine of
+ * {@link VeniceSystemProducerWriteCommand} and its {@code awaitSubmission} contract.
  */
 public class VeniceSystemProducerWriteCommandTest {
   private static final int AWAIT_SECONDS = 10;
@@ -53,8 +51,6 @@ public class VeniceSystemProducerWriteCommandTest {
 
   @Test
   public void serializedPayloadIsSnapshotBeforeEnqueue() {
-    // The caller serializes before building the command; the command carries that exact snapshot to the
-    // worker, so the writer must receive the very bytes captured at construction time.
     @SuppressWarnings("unchecked")
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mock(AbstractVeniceWriter.class);
     byte[] key = new byte[] { 10, 20 };
@@ -88,7 +84,6 @@ public class VeniceSystemProducerWriteCommandTest {
         VeniceSystemProducerWriteCommand.put(new byte[] { 1 }, new byte[] { 2 }, 1, 0L);
     CompletableFuture<Void> durable = command.getDurableFuture();
 
-    // Callback can race ahead of submission; it must be deferred, not lost.
     Runnable early = command.registerCallback(null);
     assertNull(early, "a callback before submission is deferred, not completed");
     assertFalse(durable.isDone(), "durable must not complete before submission is done");
@@ -112,7 +107,6 @@ public class VeniceSystemProducerWriteCommandTest {
     assertSame(expectCause(submission), failure);
     durableFailure.run();
 
-    // A late async callback must not override the sticky synchronous failure.
     Runnable late = command.registerCallback(null);
     assertNull(late, "a late callback after a sync failure is ignored");
     assertSame(expectCause(durable), failure);
@@ -137,8 +131,6 @@ public class VeniceSystemProducerWriteCommandTest {
 
   @Test
   public void awaitSubmissionIsNoOpForForeignFuture() throws Exception {
-    // An inline path or a subclass override returns a plain future; awaitSubmission must never wait on or
-    // cast it, so an intentionally-never-completed foreign future returns immediately.
     CompletableFuture<Void> foreign = new CompletableFuture<>();
     CountDownLatch returned = new CountDownLatch(1);
     Thread t = new Thread(() -> {
@@ -173,9 +165,6 @@ public class VeniceSystemProducerWriteCommandTest {
 
   @Test
   public void awaitSubmissionIsUninterruptibleAndRestoresInterrupt() throws Exception {
-    // Once a command is admitted the write proceeds on the stripe worker, so an interrupt must not abandon the
-    // wait (which would let the caller retry and duplicate the write). The waiter keeps blocking through the
-    // interrupt, returns only when submission completes, and returns with the interrupt flag restored.
     VeniceSystemProducerWriteCommand command =
         VeniceSystemProducerWriteCommand.put(new byte[] { 1 }, new byte[] { 2 }, 1, 0L);
     CountDownLatch started = new CountDownLatch(1);
@@ -218,8 +207,6 @@ public class VeniceSystemProducerWriteCommandTest {
 
   @Test
   public void awaitSubmissionRethrowsErrorCauseUnchanged() throws Exception {
-    // A fatal Error completed into the state machine must reach both futures as the cause AND be rethrown by
-    // awaitSubmission with its original identity (not wrapped in a VeniceException).
     VeniceSystemProducerWriteCommand command =
         VeniceSystemProducerWriteCommand.put(new byte[] { 1 }, new byte[] { 2 }, 1, 0L);
     FatalTestError fatal = new FatalTestError();
@@ -247,7 +234,6 @@ public class VeniceSystemProducerWriteCommandTest {
     }
   }
 
-  /** A distinct Error subtype so the identity-preservation assertions cannot accidentally match. */
   private static final class FatalTestError extends Error {
     private static final long serialVersionUID = 1L;
   }

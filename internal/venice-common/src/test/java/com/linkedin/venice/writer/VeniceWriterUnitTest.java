@@ -2030,7 +2030,6 @@ public class VeniceWriterUnitTest {
         new VeniceWriterOptions.Builder("test_routing_rt").setPartitionCount(partitionCount).build();
     VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, VeniceProperties.empty(), mockedProducer);
 
-    // Real writer routing is a pure, in-range function of the key: same key -> same partition, always valid.
     for (byte[] key: new byte[][] { "alpha".getBytes(), "beta".getBytes(), "gamma".getBytes(), "delta-key".getBytes(),
         "0123456789".getBytes() }) {
       int first = writer.getPartitionId(key);
@@ -2038,7 +2037,7 @@ public class VeniceWriterUnitTest {
       assertEquals(writer.getPartitionId(key), first, "Routing must be deterministic for a given key");
     }
 
-    // Legacy writers that do not override getPartitionId conservatively route everything to stripe 0.
+    // Legacy writers that do not override getPartitionId route everything to stripe 0.
     AbstractVeniceWriter<Object, Object, Object> legacyWriter = mock(AbstractVeniceWriter.class);
     when(legacyWriter.getPartitionId(any())).thenCallRealMethod();
     assertEquals(legacyWriter.getPartitionId("any-key"), 0, "Legacy writer default routing must be stripe 0");
@@ -2051,15 +2050,14 @@ public class VeniceWriterUnitTest {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(anyString(), anyInt(), any(), any(), any(), any()))
         .thenReturn(CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
-    // Real internal writer with a nontrivial partitioner; batching must serialize the key before routing.
+    // Batching must serialize the key before routing, so use a real internal writer with a real partitioner.
     VeniceWriter<byte[], byte[], byte[]> internalWriter = new VeniceWriter<>(
         new VeniceWriterOptions.Builder(topic).setPartitionCount(partitionCount).build(),
         VeniceProperties.empty(),
         mockedProducer);
     VeniceKafkaSerializer keySerializer = new StringSerializer();
 
-    // Execute the real BatchingVeniceWriter.getPartitionId delegation without constructing the heavy
-    // schema-backed writer: stub only the collaborators it delegates to (internal writer, key serializer, topic).
+    // Exercise the real delegation via mock: stub only the collaborators it delegates to.
     BatchingVeniceWriter<String, byte[], byte[]> batchingWriter = mock(BatchingVeniceWriter.class);
     when(batchingWriter.getVeniceWriter()).thenReturn(internalWriter);
     when(batchingWriter.getKeySerializer()).thenReturn(keySerializer);
@@ -2070,13 +2068,12 @@ public class VeniceWriterUnitTest {
     for (int i = 0; i < 256; i++) {
       String key = "member-" + i;
       int delegated = batchingWriter.getPartitionId(key);
-      // The delegation must route on the SERIALIZED key bytes through the internal writer, not the raw object.
+      // Delegation must route on the SERIALIZED key bytes, not the raw object.
       int expected = internalWriter.getPartitionId(keySerializer.serialize(topic, key));
       assertEquals(delegated, expected, "Batching getPartitionId must match its internal writer's routing");
       assertTrue(delegated >= 0 && delegated < partitionCount, "Partition must be within [0, partitionCount)");
       observedPartitions.add(delegated);
     }
-    // Nontrivial routing: serialized keys must spread across multiple partitions, not collapse to stripe 0.
     assertTrue(observedPartitions.size() > 1, "Routing across serialized keys must be nontrivial");
   }
 }

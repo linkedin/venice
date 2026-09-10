@@ -18,22 +18,20 @@ import org.apache.logging.log4j.Logger;
  * Executor for partition-based parallel processing in Venice Producer.
  *
  * <p>This class enables partition-based workers that eliminate head-of-line blocking
- * while maintaining per-key ordering. Ordering only matters within the same partition
- * (same key maps to same partition), so different partitions can run in parallel.</p>
+ * while maintaining per-key ordering. The key insight is that ordering only matters
+ * within the same partition (same key maps to same partition), so different partitions
+ * can run in parallel.</p>
  *
- * <p>The partition-worker mechanism is provided by the shared, producer-agnostic
- * {@link PartitionStripedExecutor}. This class adapts it to the producer's needs and owns the
- * producer-specific policy the kernel deliberately does not: the optional callback pool, the
- * caller-runs fallback when a worker rejects a task (e.g. during shutdown), inline (worker-less)
- * execution, and the existing thread and metric names.</p>
+ * <p>The partition-worker mechanism is the shared, producer-agnostic {@link PartitionStripedExecutor}; this
+ * class adds only producer-specific policy: the optional callback pool, caller-runs fallback, and inline mode.</p>
  *
  * <p>Execution modes (both pools optional):</p>
  * <ul>
  *   <li>workerCount=0, callbackThreadCount=0: Fully inline (preprocess + dispatch on caller thread,
  *       callback on Kafka thread)</li>
- *   <li>workerCount=0, callbackThreadCount&gt;0: Inline preprocessing, callback on dedicated threads</li>
- *   <li>workerCount&gt;0, callbackThreadCount=0: Default - parallel workers, callback on Kafka thread</li>
- *   <li>workerCount&gt;0, callbackThreadCount&gt;0: Full async - parallel workers + callback isolation</li>
+ *   <li>workerCount=0, callbackThreadCount>0: Inline preprocessing, callback on dedicated threads</li>
+ *   <li>workerCount>0, callbackThreadCount=0: Default - parallel workers, callback on Kafka thread</li>
+ *   <li>workerCount>0, callbackThreadCount>0: Full async - parallel workers + callback isolation</li>
  * </ul>
  */
 public class PartitionedProducerExecutor {
@@ -67,8 +65,7 @@ public class PartitionedProducerExecutor {
     this.callbackExecutorEnabled = callbackThreadCount > 0;
     this.workerCount = workersEnabled ? workerCount : 0;
 
-    // Worker threads (OPTIONAL - null if disabled). Delegated to the shared kernel; the metrics observer
-    // wraps each stripe in the producer's existing ThreadPoolStats gauge, keeping the metric names intact.
+    // Worker threads (OPTIONAL - null if disabled)
     if (workersEnabled) {
       this.workers = new PartitionStripedExecutor(
           workerCount,
@@ -240,21 +237,13 @@ public class PartitionedProducerExecutor {
 
   /**
    * Blocks until all tasks have completed execution after a shutdown request, or the timeout occurs.
-   *
-   * <p>An interrupt does not abandon the drain. {@link AbstractVeniceProducer#close()} force-cancels
-   * (calls {@link #shutdownNow()}) whenever this method throws {@link InterruptedException}, so returning
-   * early on interrupt would let a close thread that happened to be interrupted drop still-queued worker
-   * writes or callback completions. Instead the interrupt is absorbed and each wait continues against the
-   * <em>original</em> deadline until the shared worker kernel and the callback pool drain (or the deadline
-   * lapses); only then is the interrupt surfaced. Once they have drained, the subsequent {@code shutdownNow()}
-   * is a no-op and nothing is lost. The interrupt is re-thrown (not re-asserted) so
-   * {@link AbstractVeniceProducer}'s existing catch keeps ownership of caller interrupt restoration.</p>
+   * <p>An interrupt does not abandon the drain (that would drop still-queued writes); it is absorbed, each wait
+   * continues against the original deadline, and it is re-thrown afterwards so the caller owns interrupt restoration.</p>
    *
    * @param timeout the maximum time to wait
    * @param unit the time unit of the timeout argument
    * @return true if all executors terminated, false if timeout elapsed
-   * @throws InterruptedException if interrupted while waiting (thrown only after the workers drain or the
-   *     original deadline lapses, never before)
+   * @throws InterruptedException if interrupted (thrown only after draining or the original deadline lapses)
    */
   public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
     long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
@@ -269,8 +258,6 @@ public class PartitionedProducerExecutor {
       try {
         workersTerminated = workers.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
       } catch (InterruptedException e) {
-        // Absorb and keep draining against the original deadline; the flag was cleared by the throw, so the
-        // next iteration actually blocks rather than spinning.
         interrupted = true;
       }
     }
@@ -284,9 +271,6 @@ public class PartitionedProducerExecutor {
       try {
         callbackTerminated = callbackExecutor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
       } catch (InterruptedException e) {
-        // Absorb and keep draining against the original deadline so an interrupted close() does not force-cancel
-        // still-queued callback tasks (which complete user futures). The flag was cleared by the throw, so the
-        // next iteration actually blocks rather than spinning.
         interrupted = true;
       }
     }
@@ -298,11 +282,7 @@ public class PartitionedProducerExecutor {
   }
 
   /**
-   * A rejection handler that blocks the submitting thread until queue space is available, mirroring the
-   * worker admission policy. Used for the callback pool, which the shared kernel does not own.
-   *
-   * <p>Handles shutdown gracefully by checking executor state and throwing
-   * RejectedExecutionException if the executor is shutting down.</p>
+   * Blocks the caller until the callback-pool queue has space, throwing once the pool is shutting down.
    */
   private static class BlockingRejectionHandler implements RejectedExecutionHandler {
     private static final long OFFER_TIMEOUT_MS = 100;

@@ -2793,11 +2793,9 @@ public class ConfigKeys {
 
   /**
    * Number of partition worker threads (stripes) for the VeniceSystemProducer async STREAM dispatch path.
-   * Records are routed to a worker by their Venice partition, so during normal dispatch a partition blocked
-   * by leader rebalance does not stall partitions mapped to other stripes; partitions that share a stripe are
-   * serialized and can wait on one another. {@code flush()} is a global durability boundary across all stripes
-   * (all pre-fence submissions precede the flush). Default: 4. Set to 0 to DISABLE async dispatch (writes
-   * execute inline on the caller thread, preserving the legacy synchronous behavior).
+   * Records route to a worker by their Venice partition, so a partition blocked by leader rebalance does not
+   * stall partitions on other stripes. Default: 4. Set to 0 to DISABLE async dispatch (writes execute inline
+   * on the caller thread, the legacy synchronous behavior).
    */
   public static final String VENICE_SYSTEM_PRODUCER_WORKER_COUNT = "venice.system.producer.worker.count";
 

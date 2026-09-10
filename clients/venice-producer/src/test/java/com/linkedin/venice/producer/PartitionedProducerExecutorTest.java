@@ -572,10 +572,7 @@ public class PartitionedProducerExecutorTest {
 
   @Test
   public void testAwaitTerminationAbsorbsInterruptAndDrainsBeforeForceShutdown() throws InterruptedException {
-    // Mirrors AbstractVeniceProducer.close(): shutdown(); awaitTermination(...); and on InterruptedException it
-    // force-cancels via shutdownNow(). An interrupted close thread must NOT drop queued worker writes:
-    // awaitTermination absorbs the interrupt, keeps draining against the original deadline, and only surfaces
-    // InterruptedException once the workers have drained, so the subsequent shutdownNow() is a no-op.
+    // An interrupted close() must drain queued worker writes before surfacing InterruptedException.
     PartitionedProducerExecutor executor = new PartitionedProducerExecutor(1, 100, 0, 100, TEST_STORE, null);
 
     CountDownLatch inFlightEntered = new CountDownLatch(1);
@@ -606,7 +603,7 @@ public class PartitionedProducerExecutorTest {
         executor.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         interruptObserved.set(true);
-        queuedRanBeforeForce.set(queuedTaskRan.get()); // captured before the force shutdownNow below
+        queuedRanBeforeForce.set(queuedTaskRan.get());
         executor.shutdownNow();
       } finally {
         closeReturned.countDown();
@@ -616,7 +613,6 @@ public class PartitionedProducerExecutorTest {
     assertTrue(readyToAwait.await(5, TimeUnit.SECONDS), "close thread should be ready to await termination");
     closer.interrupt();
 
-    // Whether delivered just before or during awaitTermination, the interrupt must not abandon the worker drain.
     assertFalse(
         closeReturned.await(300, TimeUnit.MILLISECONDS),
         "awaitTermination must keep draining despite the interrupt");
@@ -635,11 +631,7 @@ public class PartitionedProducerExecutorTest {
   @Test
   public void testAwaitTerminationAbsorbsInterruptAndDrainsCallbackPoolBeforeForceShutdown()
       throws InterruptedException {
-    // Symmetric to the worker-drain case, but for the callback pool: callback tasks complete user futures, so an
-    // interrupted close() must not force-cancel still-queued callbacks. With workers disabled, awaitTermination
-    // goes straight to the callback loop; it must absorb the interrupt, keep draining against the original
-    // deadline, and only surface InterruptedException once the queued callback has run, so the subsequent
-    // shutdownNow() drops nothing.
+    // Callback-pool variant: an interrupted close() must drain still-queued callbacks before surfacing the interrupt.
     PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 1, 100, TEST_STORE, null);
 
     CountDownLatch inFlightEntered = new CountDownLatch(1);
@@ -670,7 +662,7 @@ public class PartitionedProducerExecutorTest {
         executor.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         interruptObserved.set(true);
-        queuedRanBeforeForce.set(queuedCallbackRan.get()); // captured before the force shutdownNow below
+        queuedRanBeforeForce.set(queuedCallbackRan.get());
         executor.shutdownNow();
       } finally {
         closeReturned.countDown();
@@ -680,7 +672,6 @@ public class PartitionedProducerExecutorTest {
     assertTrue(readyToAwait.await(5, TimeUnit.SECONDS), "close thread should be ready to await termination");
     closer.interrupt();
 
-    // Whether delivered just before or during awaitTermination, the interrupt must not abandon the callback drain.
     assertFalse(
         closeReturned.await(300, TimeUnit.MILLISECONDS),
         "awaitTermination must keep draining the callback pool despite the interrupt");

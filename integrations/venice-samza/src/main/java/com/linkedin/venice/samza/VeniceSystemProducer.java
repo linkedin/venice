@@ -167,8 +167,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private final VeniceWriterHook writerHook;
-  // Non-null only for async STREAM dispatch; null keeps the fully-inline legacy path (BATCH,
-  // STREAM_REPROCESSING, or the worker-count kill switch).
+  // Non-null only for async STREAM dispatch; null keeps the fully-inline legacy path.
   private VeniceSystemProducerWriteDispatcher writeDispatcher = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
@@ -553,14 +552,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   @Override
   public synchronized void stop() {
     this.isStarted = false;
-    // Capture and clear any interrupt already set on the entering thread. This keeps the interruptible writer/
-    // auxiliary closes below from being disrupted, and ensures the already-terminated / idle-dispatcher case
-    // (where the dispatcher drain never throws) still restores the interrupt. Restored in the finally.
+    // Drain in-flight writes before closing the writer; absorb interrupts during cleanup and restore after.
     boolean interrupted = Thread.interrupted();
     try {
-      // Drain in-flight worker writes before closing the writer so no worker can touch a closed writer. The
-      // dispatcher reports whether it observed an interrupt but does not re-assert it, so the interrupt stays
-      // clear while the interruptible writer/auxiliary closes below run; it is restored in the finally.
       if (writeDispatcher != null) {
         interrupted |= writeDispatcher.stop();
       }
@@ -593,8 +587,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
       d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
     } finally {
-      // Restore the interrupt only after all cleanup, so an interrupt observed during the lossless drain does
-      // not disrupt the interruptible writer/auxiliary closes above but is not lost either.
       if (interrupted) {
         Thread.currentThread().interrupt();
       }
@@ -751,11 +743,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return future;
   }
 
-  /**
-   * Builds the write future for {@code command}: async STREAM dispatch through the striped executor when a
-   * dispatcher exists, otherwise the fully-inline legacy behavior (a plain future completed by the writer
-   * callback), byte-for-byte identical to the pre-dispatch path.
-   */
+  /** Async STREAM dispatch through the striped executor when a dispatcher exists, else the inline writer-callback path. */
   private CompletableFuture<Void> dispatchWrite(VeniceSystemProducerWriteCommand command) {
     VeniceSystemProducerWriteDispatcher dispatcher = this.writeDispatcher;
     if (dispatcher == null) {
@@ -766,12 +754,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return dispatcher.dispatch(command);
   }
 
-  /**
-   * Validated STREAM async-dispatch worker config, produced by {@link #validateWriteDispatcherConfig()} and
-   * consumed by {@link #maybeCreateWriteDispatcher(ValidatedWriteDispatcherConfig)}. It is passed as a return
-   * value rather than stored in fields so a restart cannot leave stale validated state behind (a previously
-   * validated positive worker count can never survive into a later start() that disabled async dispatch).
-   */
+  /** Validated STREAM async-dispatch config, returned by value so a restart cannot leave stale validated state. */
   static final class ValidatedWriteDispatcherConfig {
     final int workerCount;
     final int queueCapacity;
@@ -783,15 +766,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   /**
-   * Validates the STREAM async-dispatch worker configs up front — before {@code isStarted}, client setup, or
-   * writer allocation — so an operator error fails {@link #start()} early and a retry cannot silently fall back
-   * to inline. Non-STREAM pushes ignore these configs. A worker count of 0 is the kill switch (fully inline);
-   * the per-stripe queue capacity is parsed only when the worker count is positive. A negative worker count, a
-   * nonpositive queue capacity, or a malformed integer are rejected with {@link SamzaException}.
-   *
-   * @return the validated worker config, or {@code null} for the fully-inline path (non-STREAM push or the
-   *         worker-count kill switch). The result is a pure function of the current config, so no cached state
-   *         can go stale across a stop()/start() restart.
+   * Validates STREAM async-dispatch config up front so an operator error fails start() instead of silent inline
+   * fallback. Returns {@code null} for the fully-inline path (non-STREAM push or worker count 0 kill switch).
    */
   ValidatedWriteDispatcherConfig validateWriteDispatcherConfig() {
     if (!Version.PushType.STREAM.equals(pushType)) {
@@ -806,7 +782,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
               + " (must be >= 0; 0 disables async dispatch)");
     }
     if (workerCount == 0) {
-      // Kill switch: no dispatcher is created (every write runs inline).
       return null;
     }
     int queueCapacity = getIntConfig(
@@ -820,11 +795,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return new ValidatedWriteDispatcherConfig(workerCount, queueCapacity);
   }
 
-  /**
-   * Creates the async write dispatcher from the config validated in {@link #validateWriteDispatcherConfig()};
-   * returns null (fully inline) for BATCH, STREAM_REPROCESSING, or a worker-count of 0 (the kill switch), all of
-   * which produce a {@code null} validated config.
-   */
+  /** Creates the async write dispatcher from the validated config, or returns null (fully inline) when it is null. */
   private VeniceSystemProducerWriteDispatcher maybeCreateWriteDispatcher(ValidatedWriteDispatcherConfig validated) {
     if (validated == null) {
       return null;
@@ -844,7 +815,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     try {
       return Integer.parseInt(value.trim());
     } catch (NumberFormatException e) {
-      // Do not silently fall back to the default: a malformed value is an operator error and must surface.
       throw new SamzaException("Invalid integer for config " + key + ": '" + value + "'", e);
     }
   }
