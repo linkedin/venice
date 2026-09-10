@@ -2,6 +2,8 @@ package com.linkedin.venice.samza;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.PartitionStripedExecutor;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
@@ -127,6 +129,15 @@ class VeniceSystemProducerWriteDispatcher {
       } catch (RuntimeException e) {
         recordSticky(e);
         runDurableCompletion(command.finishSubmission(e));
+      } catch (Error e) {
+        // Symmetric to the worker path's fatal-Error handling: an Error from partition routing or kernel
+        // admission (e.g. a serializer/partitioner failure) must not escape with the command futures still
+        // incomplete and stickyFailure clear. Settle submission+durable state and record it as sticky so a
+        // later flush() cannot report success, then rethrow the identical Error so its original identity is
+        // preserved for the caller.
+        recordSticky(e);
+        runDurableCompletion(command.finishSubmission(e));
+        throw e;
       }
       return command.getDurableFuture();
     } finally {
@@ -137,7 +148,7 @@ class VeniceSystemProducerWriteDispatcher {
   /** Worker body: invoke the writer once, then finish submission (or fail it on a synchronous error). */
   private void execute(VeniceSystemProducerWriteCommand command) {
     try {
-      command.submit(writer, (result, exception) -> onCallback(command, exception));
+      command.submit(writer, new ForwardingProducerCallback(command));
       handOffDurableCompletion(command.finishSubmission(null));
     } catch (RuntimeException e) {
       recordSticky(e);
@@ -157,6 +168,42 @@ class VeniceSystemProducerWriteDispatcher {
       recordSticky(exception);
     }
     runDurableCompletion(command.registerCallback(exception));
+  }
+
+  /**
+   * Callback the dispatcher hands to {@link VeniceSystemProducerWriteCommand#submit} for a single write.
+   *
+   * <p>{@link AbstractVeniceWriter} (via {@code VeniceWriter}) chains its own bookkeeping callback -- e.g.
+   * {@code SendMessageErrorLoggerCallback} -- onto the callback it is given by calling
+   * {@link PubSubProducerCallback#setInternalCallback}. A bare lambda inherits the no-op default of that
+   * method and silently drops the writer's internal callback. This wrapper stores it and, on completion,
+   * invokes the writer's internal callback first (preserving the writer's own error logging/bookkeeping)
+   * and then the dispatcher's {@link #onCallback}, forwarding the exact {@link PubSubProduceResult} and
+   * exception unchanged. Duplicate-completion behavior stays governed by the command, not this wrapper.</p>
+   *
+   * <p>Declared as a non-static inner class so it can call {@link #onCallback} on the enclosing dispatcher
+   * without the command carrying an explicit {@code this} reference.</p>
+   */
+  private final class ForwardingProducerCallback implements PubSubProducerCallback {
+    private final VeniceSystemProducerWriteCommand command;
+    private PubSubProducerCallback internalCallback;
+
+    ForwardingProducerCallback(VeniceSystemProducerWriteCommand command) {
+      this.command = command;
+    }
+
+    @Override
+    public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+      if (internalCallback != null) {
+        internalCallback.onCompletion(produceResult, exception);
+      }
+      onCallback(command, exception);
+    }
+
+    @Override
+    public void setInternalCallback(PubSubProducerCallback internalCallback) {
+      this.internalCallback = internalCallback;
+    }
   }
 
   /**

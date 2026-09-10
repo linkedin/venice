@@ -628,6 +628,97 @@ public class VeniceSystemProducerWriteDispatcherTest {
     assertFalse(interruptStillSet.get(), "stop must not re-assert the interrupt on the draining thread");
   }
 
+  @Test
+  public void routingErrorSettlesFuturesStickyAndRethrowsToCaller() throws Exception {
+    // A fatal Error thrown by partition routing (writer.getPartitionId) on the caller thread must be handled
+    // symmetrically to a synchronous writer Error: settle submission+durable exceptionally with the SAME Error
+    // identity, record it as sticky, and rethrow the identical Error to the caller. The writer must never be
+    // invoked, and a later flush() must surface the sticky cause.
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    FatalTestError fatal = new FatalTestError();
+    when(writer.getPartitionId(any())).thenThrow(fatal);
+
+    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
+    try {
+      // Capture the command up front: dispatch throws before returning, so we read its futures off the command.
+      VeniceSystemProducerWriteCommand command = putCommand(0);
+      try {
+        dispatcher.dispatch(command);
+        fail("dispatch must rethrow the routing Error");
+      } catch (FatalTestError thrown) {
+        assertSame(thrown, fatal, "dispatch must rethrow the identical Error, not a copy or wrapper");
+      }
+
+      assertSame(expectCause(command.getDurableFuture().getSubmissionFuture()), fatal);
+      assertSame(expectCause(command.getDurableFuture()), fatal);
+      verify(writer, never()).put(any(), any(), anyInt(), anyLong(), any());
+      // The routing Error is sticky and surfaces on a subsequent flush.
+      assertSame(expectVeniceException(dispatcher::flush).getCause(), fatal);
+    } finally {
+      dispatcher.stop();
+    }
+  }
+
+  @Test
+  public void writerInternalCallbackIsChainedBeforeDurableCompletion() throws Exception {
+    // VeniceWriter chains its own bookkeeping callback (e.g. SendMessageErrorLoggerCallback) onto the callback
+    // the dispatcher supplies, via PubSubProducerCallback#setInternalCallback. The dispatcher's forwarding
+    // wrapper must retain that internal callback and, on completion, invoke it FIRST (with the exact exception)
+    // and exactly once, before the dispatcher settles the user-visible durable future / sticky handling.
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    when(writer.getPartitionId(any())).thenReturn(0);
+
+    AtomicReference<PubSubProducerCallback> suppliedCallback = new AtomicReference<>();
+    AtomicReference<CompletableFuture<Void>> durableRef = new AtomicReference<>();
+    AtomicInteger internalCallbackCount = new AtomicInteger();
+    AtomicBoolean internalFiredBeforeDurable = new AtomicBoolean();
+    AtomicReference<Exception> internalException = new AtomicReference<>();
+    CountDownLatch submitted = new CountDownLatch(1);
+
+    PubSubProducerCallback internalCallback = (result, exception) -> {
+      internalCallbackCount.incrementAndGet();
+      // The dispatcher's onCallback (which settles the durable future) must run strictly AFTER this.
+      internalFiredBeforeDurable.set(!durableRef.get().isDone());
+      internalException.set(exception);
+    };
+
+    // The writer chains its internal callback onto the supplied dispatcher callback and captures it, but does
+    // NOT complete it synchronously (mirrors the real async pubsub send path).
+    when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
+      PubSubProducerCallback supplied = invocation.getArgument(4);
+      supplied.setInternalCallback(internalCallback);
+      suppliedCallback.set(supplied);
+      submitted.countDown();
+      return null;
+    });
+
+    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
+    try {
+      VeniceSystemProducerWriteCommand command = putCommand(0);
+      VeniceSystemProducerWriteCommand.DurableWriteFuture durable = dispatcher.dispatch(command);
+      durableRef.set(durable);
+      assertTrue(submitted.await(AWAIT_SECONDS, TimeUnit.SECONDS), "worker must invoke the writer");
+
+      // Submission completes successfully; the durable future stays pending until the async callback arrives,
+      // and the internal callback must not have fired yet.
+      durable.getSubmissionFuture().get(AWAIT_SECONDS, TimeUnit.SECONDS);
+      assertFalse(durable.isDone(), "durable must remain pending until the writer callback arrives");
+      assertEquals(internalCallbackCount.get(), 0, "internal callback must not fire before the writer completes it");
+
+      // The writer now completes the supplied (forwarding) callback with a failure.
+      VeniceException boom = new VeniceException("async writer failure");
+      suppliedCallback.get().onCompletion(null, boom);
+
+      assertEquals(internalCallbackCount.get(), 1, "writer internal callback must be chained and fire exactly once");
+      assertTrue(internalFiredBeforeDurable.get(), "internal callback must fire before durable completion");
+      assertSame(internalException.get(), boom, "internal callback must receive the exact exception");
+      assertSame(expectCause(durable), boom, "durable future must be settled with the callback failure");
+      assertSame(expectVeniceException(dispatcher::flush).getCause(), boom, "callback failure must become sticky");
+    } finally {
+      dispatcher.stop();
+    }
+  }
+
   /**
    * Asserts the durable continuation ran on a VSP-owned completion pool thread rather than the JDK common pool
    * (the old {@code CompletableFuture.runAsync} behavior). The completion pool names its daemon threads with the

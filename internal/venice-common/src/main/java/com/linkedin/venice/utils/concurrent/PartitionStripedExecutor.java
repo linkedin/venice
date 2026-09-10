@@ -40,10 +40,21 @@ import org.apache.logging.log4j.Logger;
 public final class PartitionStripedExecutor {
   private static final Logger LOGGER = LogManager.getLogger(PartitionStripedExecutor.class);
 
-  /** How often a blocked submitter re-checks for shutdown while waiting for queue space. */
-  private static final long OFFER_POLL_MS = 100;
-
   private final ThreadPoolExecutor[] stripes;
+
+  /**
+   * One private lifecycle monitor per stripe, shared only with that stripe's {@link BlockingAdmissionHandler}
+   * and its {@link SignalingBlockingQueue}. A blocked admission's shutdown-state check and nonblocking
+   * {@code offer} happen atomically under this monitor (see {@link StripeLifecycleMonitor#admit}), and
+   * {@link #shutdown()}/{@link #shutdownNow()} take the same monitor around the stripe's state transition
+   * (and, for {@code shutdownNow()}, its drain) before signaling it. This linearizes a racing admission
+   * against a forced shutdown: a successful offer either happens strictly before the drain snapshot (and is
+   * returned as pending by {@code shutdownNow()}) or is rejected because the stripe is already shut down; it
+   * can never be offered after the drain and silently stranded. The same monitor also carries the
+   * capacity-available signal a worker raises when it dequeues a task, so a blocked admission is woken the
+   * instant a slot frees rather than after a fixed polling interval.
+   */
+  private final StripeLifecycleMonitor[] lifecycleMonitors;
 
   public PartitionStripedExecutor(int stripeCount, int queueCapacity, String threadNamePrefix) {
     this(stripeCount, queueCapacity, threadNamePrefix, null);
@@ -68,16 +79,19 @@ public final class PartitionStripedExecutor {
       throw new IllegalArgumentException("queueCapacity must be positive, got " + queueCapacity);
     }
     this.stripes = new ThreadPoolExecutor[stripeCount];
+    this.lifecycleMonitors = new StripeLifecycleMonitor[stripeCount];
     for (int i = 0; i < stripeCount; i++) {
       String stripeName = threadNamePrefix + "-" + i;
+      StripeLifecycleMonitor monitor = new StripeLifecycleMonitor();
+      this.lifecycleMonitors[i] = monitor;
       ThreadPoolExecutor stripe = new ThreadPoolExecutor(
           1,
           1,
           0L,
           TimeUnit.MILLISECONDS,
-          new LinkedBlockingQueue<>(queueCapacity),
+          new SignalingBlockingQueue(queueCapacity, monitor),
           new DaemonThreadFactory(stripeName),
-          new BlockingAdmissionHandler(stripeName));
+          new BlockingAdmissionHandler(stripeName, monitor));
       this.stripes[i] = stripe;
       if (stripeObserver != null) {
         stripeObserver.accept(stripe, i);
@@ -137,8 +151,15 @@ public final class PartitionStripedExecutor {
 
   /** Graceful shutdown: stops accepting new tasks; already-queued tasks still run. */
   public void shutdown() {
-    for (ThreadPoolExecutor stripe: stripes) {
-      stripe.shutdown();
+    for (int i = 0; i < stripes.length; i++) {
+      // Take the stripe lifecycle monitor around the state transition so a concurrent blocked admission cannot
+      // offer into a stripe that has just been shut down: it will observe the shutdown under the same monitor.
+      // Signal under the monitor after the transition so an admission parked waiting for capacity wakes,
+      // re-checks the shutdown state, and rejects rather than hanging.
+      synchronized (lifecycleMonitors[i]) {
+        stripes[i].shutdown();
+        lifecycleMonitors[i].signalAll();
+      }
     }
   }
 
@@ -148,8 +169,15 @@ public final class PartitionStripedExecutor {
    */
   public List<Runnable> shutdownNow() {
     List<Runnable> pending = new ArrayList<>();
-    for (ThreadPoolExecutor stripe: stripes) {
-      pending.addAll(stripe.shutdownNow());
+    for (int i = 0; i < stripes.length; i++) {
+      // Transition and drain under the stripe lifecycle monitor so the drain snapshot linearizes against any
+      // racing blocked admission: a task the admission offered before this point is captured here and returned
+      // as pending; an admission that has not offered yet will observe the shutdown and be rejected instead.
+      // Signal under the monitor after the drain so a parked admission wakes and rejects.
+      synchronized (lifecycleMonitors[i]) {
+        pending.addAll(stripes[i].shutdownNow());
+        lifecycleMonitors[i].signalAll();
+      }
     }
     return pending;
   }
@@ -171,43 +199,142 @@ public final class PartitionStripedExecutor {
 
   /**
    * Blocks the submitting thread until queue space is available instead of running the task inline or
-   * dropping it. Wakes periodically to observe shutdown, and translates interruption into a rejection.
+   * dropping it, and translates interruption into a rejection.
    *
    * <p>When a stripe queue is full the handler logs a warning naming the stripe so the mechanism layer
    * keeps the operational visibility callers previously relied on, then blocks (it never runs the task on
    * the caller thread and never drops it).</p>
+   *
+   * <p>The blocking loop lives in {@link StripeLifecycleMonitor#admit}: the shutdown-state check and the
+   * nonblocking {@code queue.offer(task)} are performed together under the stripe's lifecycle monitor, the
+   * same monitor {@link #shutdown()} and {@link #shutdownNow()} hold while they transition (and drain). This
+   * makes a racing admission and a forced shutdown linearize: either this admission wins the monitor first and
+   * its offer lands strictly before {@code shutdownNow()}'s drain snapshot (so the task is returned to that
+   * caller as pending), or {@code shutdownNow()} wins first and this admission then observes the shutdown and
+   * rejects. The task can therefore never be offered <em>after</em> the drain and be silently stranded. When
+   * the queue is full the admission parks on the monitor (releasing it), so a concurrent shutdown can still
+   * transition or drain; a worker dequeue or a shutdown signals the monitor to wake it immediately.</p>
    */
   private static class BlockingAdmissionHandler implements RejectedExecutionHandler {
     private final String stripeName;
+    private final StripeLifecycleMonitor monitor;
 
-    BlockingAdmissionHandler(String stripeName) {
+    BlockingAdmissionHandler(String stripeName, StripeLifecycleMonitor monitor) {
       this.stripeName = stripeName;
+      this.monitor = monitor;
     }
 
     @Override
     public void rejectedExecution(Runnable task, ThreadPoolExecutor executor) {
-      if (executor.isShutdown()) {
-        throw new RejectedExecutionException("Stripe executor has been shut down");
-      }
       BlockingQueue<Runnable> queue = executor.getQueue();
       LOGGER.warn("Queue full for stripe {}, blocking submitter. Queue size: {}", stripeName, queue.size());
       try {
-        while (!queue.offer(task, OFFER_POLL_MS, TimeUnit.MILLISECONDS)) {
-          if (executor.isShutdown()) {
-            throw new RejectedExecutionException("Stripe executor has been shut down");
-          }
-        }
-        // The offer won a race, but a concurrent shutdownNow() may have already drained the queue and
-        // returned its snapshot without this task. If we are now shut down and the task is still queued
-        // (not yet taken by a graceful-draining worker), pull it back out and reject it so it is never
-        // silently stranded. If a draining worker already claimed it, remove() fails and we let it run.
-        if (executor.isShutdown() && queue.remove(task)) {
-          throw new RejectedExecutionException("Stripe executor has been shut down");
-        }
+        monitor.admit(executor, queue, task);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new RejectedExecutionException("Interrupted while waiting for stripe queue space", e);
       }
+    }
+  }
+
+  /**
+   * Per-stripe lifecycle monitor shared by the stripe's {@link BlockingAdmissionHandler}, its
+   * {@link SignalingBlockingQueue}, and {@link #shutdown()}/{@link #shutdownNow()}. It coordinates blocked
+   * admissions with capacity-freeing dequeues and lifecycle transitions using a single guarded condition.
+   *
+   * <p>{@code signalGeneration} is the guarded state: every event that a blocked admission might care about
+   * (a dequeue freeing a slot, or a shutdown transition) advances it under this monitor and wakes all
+   * waiters via {@link #signalAll()}. A blocked admission captures the generation while it still holds the
+   * monitor and its {@code offer} has just failed, then parks until the generation advances. Because the
+   * failed offer and the ensuing wait are atomic under this monitor, and every signal also holds it, a
+   * freed-slot or shutdown signal between them can never be lost.</p>
+   */
+  private static final class StripeLifecycleMonitor {
+    /** Advanced under this monitor on every dequeue that frees a slot and on every shutdown transition. */
+    private long signalGeneration;
+
+    /**
+     * Blocks until {@code task} is admitted to {@code queue} or {@code executor} is shut down. The whole
+     * check-offer-park loop runs under this monitor so it is atomic with {@link #signalAll()} and with the
+     * shutdown transition/drain guarded by the same monitor.
+     *
+     * @throws RejectedExecutionException if the stripe is (or becomes) shut down before admission
+     * @throws InterruptedException if the caller is interrupted while parked waiting for capacity
+     */
+    synchronized void admit(ThreadPoolExecutor executor, BlockingQueue<Runnable> queue, Runnable task)
+        throws InterruptedException {
+      while (true) {
+        if (executor.isShutdown()) {
+          throw new RejectedExecutionException("Stripe executor has been shut down");
+        }
+        if (queue.offer(task)) {
+          return;
+        }
+        // Queue full: park until a dequeue frees a slot or a shutdown transitions the stripe, both of which
+        // advance the generation under this same monitor. Wait until the generation moves past the value we
+        // captured while holding the monitor; the guarded loop tolerates spurious wakeups and, together with
+        // the atomic offer-then-capture above, prevents a lost wakeup.
+        long awaitedGeneration = signalGeneration + 1;
+        while (signalGeneration < awaitedGeneration) {
+          wait();
+        }
+      }
+    }
+
+    /** Advances the signal and wakes every blocked admission. Callers may already hold this monitor. */
+    synchronized void signalAll() {
+      signalGeneration++;
+      notifyAll();
+    }
+  }
+
+  /**
+   * A bounded {@link LinkedBlockingQueue} that signals its stripe's {@link StripeLifecycleMonitor} whenever a
+   * worker dequeues a task, so a blocked admission is woken the instant a slot frees instead of after a fixed
+   * polling interval. It overrides only the worker's dequeue paths ({@code take}, timed and no-arg
+   * {@code poll}); {@code shutdownNow()}'s drain does its own signaling after transitioning under the monitor.
+   *
+   * <p>The signal is raised only <em>after</em> the {@code super} dequeue returns, i.e. after the queue's
+   * internal take lock has been released, so this queue never acquires the lifecycle monitor while still
+   * holding an internal queue lock. That keeps the global lock order (lifecycle monitor before any internal
+   * queue lock) acyclic and avoids deadlock against a {@code shutdownNow()} that drains while holding the
+   * monitor.</p>
+   */
+  private static final class SignalingBlockingQueue extends LinkedBlockingQueue<Runnable> {
+    private static final long serialVersionUID = 1L;
+
+    /** Transient: never serialized in practice, and the monitor is not itself {@link java.io.Serializable}. */
+    private final transient StripeLifecycleMonitor monitor;
+
+    SignalingBlockingQueue(int capacity, StripeLifecycleMonitor monitor) {
+      super(capacity);
+      this.monitor = monitor;
+    }
+
+    @Override
+    public Runnable take() throws InterruptedException {
+      Runnable task = super.take();
+      // A slot just freed. Signal only now that super.take() has released the internal take lock.
+      monitor.signalAll();
+      return task;
+    }
+
+    @Override
+    public Runnable poll(long timeout, TimeUnit unit) throws InterruptedException {
+      Runnable task = super.poll(timeout, unit);
+      if (task != null) {
+        monitor.signalAll();
+      }
+      return task;
+    }
+
+    @Override
+    public Runnable poll() {
+      Runnable task = super.poll();
+      if (task != null) {
+        monitor.signalAll();
+      }
+      return task;
     }
   }
 }
