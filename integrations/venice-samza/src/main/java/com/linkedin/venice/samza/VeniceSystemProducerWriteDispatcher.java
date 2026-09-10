@@ -65,8 +65,8 @@ class VeniceSystemProducerWriteDispatcher {
 
   /**
    * Routes {@code command} to the stripe for its Venice partition and returns the durable future without waiting for
-   * the writer. A stopped-dispatcher rejection fails only this submission and is not sticky, so a normal stop never
-   * poisons a later {@link #flush()}; any failure while still accepting is recorded sticky.
+   * the writer. Stopped-dispatcher and interrupted-admission rejections fail only this submission; other failures
+   * while still accepting are recorded sticky.
    */
   VeniceSystemProducerWriteCommand.DurableWriteFuture dispatch(VeniceSystemProducerWriteCommand command) {
     checkForFailure();
@@ -84,7 +84,9 @@ class VeniceSystemProducerWriteDispatcher {
           kernel.submit(partition, () -> execute(command));
         } catch (RejectedExecutionException rejection) {
           if (accepting.get()) {
-            recordSticky(rejection);
+            if (!(rejection.getCause() instanceof InterruptedException)) {
+              recordSticky(rejection);
+            }
             runDurableCompletion(command.finishSubmission(rejection));
           } else {
             runDurableCompletion(

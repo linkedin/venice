@@ -390,6 +390,71 @@ public class VeniceSystemProducerWriteDispatcherTest {
   }
 
   @Test
+  public void interruptedAdmissionFailsOnlyCommandAndDoesNotBecomeSticky() throws Exception {
+    AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
+    CountDownLatch workerEntered = new CountDownLatch(1);
+    CountDownLatch releaseWorker = new CountDownLatch(1);
+    AtomicInteger putCount = new AtomicInteger();
+    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
+      if (putCount.incrementAndGet() == 1) {
+        workerEntered.countDown();
+        assertTrue(releaseWorker.await(AWAIT_SECONDS, TimeUnit.SECONDS));
+      }
+      return null;
+    });
+
+    VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 1, 1, "s");
+    Thread blocked = null;
+    try {
+      VeniceSystemProducerWriteCommand.DurableWriteFuture first = dispatcher.dispatch(putCommand(0));
+      assertTrue(workerEntered.await(AWAIT_SECONDS, TimeUnit.SECONDS));
+      VeniceSystemProducerWriteCommand.DurableWriteFuture second = dispatcher.dispatch(putCommand(0));
+
+      AtomicReference<VeniceSystemProducerWriteCommand.DurableWriteFuture> interrupted = new AtomicReference<>();
+      AtomicBoolean interruptRestored = new AtomicBoolean();
+      CountDownLatch interruptedReturned = new CountDownLatch(1);
+      blocked = new Thread(() -> {
+        interrupted.set(dispatcher.dispatch(putCommand(0)));
+        interruptRestored.set(Thread.currentThread().isInterrupted());
+        interruptedReturned.countDown();
+      });
+      blocked.start();
+      assertFalse(
+          interruptedReturned.await(NEGATIVE_CHECK_MS, TimeUnit.MILLISECONDS),
+          "third admission must block on the full queue");
+
+      blocked.interrupt();
+      assertTrue(
+          interruptedReturned.await(AWAIT_SECONDS, TimeUnit.SECONDS),
+          "interrupted admission must return without waiting for queue capacity");
+      Throwable rejection = expectCause(interrupted.get().getSubmissionFuture());
+      assertTrue(rejection instanceof RejectedExecutionException);
+      assertTrue(rejection.getCause() instanceof InterruptedException);
+      assertSame(expectCause(interrupted.get()), rejection);
+      assertTrue(interruptRestored.get(), "interrupted admission must restore the caller's interrupt flag");
+      assertEquals(putCount.get(), 1, "the rejected command must not reach the writer");
+
+      releaseWorker.countDown();
+      first.getSubmissionFuture().get(AWAIT_SECONDS, TimeUnit.SECONDS);
+      second.getSubmissionFuture().get(AWAIT_SECONDS, TimeUnit.SECONDS);
+      VeniceSystemProducerWriteCommand.DurableWriteFuture later = dispatcher.dispatch(putCommand(0));
+      later.getSubmissionFuture().get(AWAIT_SECONDS, TimeUnit.SECONDS);
+      dispatcher.flush();
+      assertEquals(putCount.get(), 3, "later writes must proceed after caller-local interruption");
+    } finally {
+      if (blocked != null) {
+        blocked.interrupt();
+      }
+      releaseWorker.countDown();
+      if (blocked != null) {
+        blocked.join(TimeUnit.SECONDS.toMillis(AWAIT_SECONDS));
+      }
+      dispatcher.stop();
+    }
+  }
+
+  @Test
   public void kernelRejectionRacingStopFailsCleanStoppedNotSticky() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch routingEntered = new CountDownLatch(1);

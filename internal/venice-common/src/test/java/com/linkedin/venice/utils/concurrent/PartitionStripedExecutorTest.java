@@ -157,6 +157,7 @@ public class PartitionStripedExecutorTest {
     CountDownLatch workerStarted = new CountDownLatch(1);
     AtomicReference<Throwable> thrown = new AtomicReference<>();
     AtomicBoolean interruptFlag = new AtomicBoolean(false);
+    AtomicBoolean rejectedTaskRan = new AtomicBoolean(false);
     CountDownLatch finished = new CountDownLatch(1);
     try {
       executor.submit(0, () -> {
@@ -168,7 +169,7 @@ public class PartitionStripedExecutorTest {
 
       Thread submitter = new Thread(() -> {
         try {
-          executor.submit(0, () -> {});
+          executor.submit(0, () -> rejectedTaskRan.set(true));
         } catch (Throwable t) {
           thrown.set(t);
           interruptFlag.set(Thread.currentThread().isInterrupted());
@@ -182,8 +183,18 @@ public class PartitionStripedExecutorTest {
 
       assertTrue(finished.await(AWAIT_SECONDS, TimeUnit.SECONDS), "interrupted submit never returned");
       assertNotNull(thrown.get(), "interrupted admission did not throw");
-      assertTrue(thrown.get() instanceof RuntimeException, "expected RuntimeException, got " + thrown.get());
+      assertTrue(
+          thrown.get() instanceof RejectedExecutionException,
+          "expected RejectedExecutionException, got " + thrown.get());
+      assertTrue(
+          thrown.get().getCause() instanceof InterruptedException,
+          "interrupted admission must retain InterruptedException as its direct cause");
       assertTrue(interruptFlag.get(), "interrupt flag was not restored");
+
+      release.countDown();
+      executor.shutdown();
+      assertTrue(executor.awaitTermination(AWAIT_SECONDS, TimeUnit.SECONDS));
+      assertFalse(rejectedTaskRan.get(), "an interrupted, rejected task must never run");
     } finally {
       release.countDown();
       executor.shutdownNow();
