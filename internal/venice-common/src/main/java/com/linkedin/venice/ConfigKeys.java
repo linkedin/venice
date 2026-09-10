@@ -3595,6 +3595,13 @@ public class ConfigKeys {
       "controller.use.multi.region.real.time.topic.switcher.enabled";
 
   /**
+   * Maximum time in seconds for a multi-region Version Swap Message broadcast, including partition acknowledgements
+   * across all regions. Default is 120 seconds.
+   */
+  public static final String CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS =
+      "controller.version.swap.broadcast.timeout.seconds";
+
+  /**
    * Number of consecutive cycles to wait before removing a replica that does not have a corresponding entry in local
    * customized view cache before removing it from lag monitor. e.g. if this config is set to 10, and we are using the
    * default sleep interval of 60 seconds then we will only remove the replica from lag monitor after at least 600

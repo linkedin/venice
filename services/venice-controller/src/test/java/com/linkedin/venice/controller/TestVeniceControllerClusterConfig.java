@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
@@ -38,6 +39,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -643,6 +645,23 @@ public class TestVeniceControllerClusterConfig {
     baseProps.setProperty(CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS, "12345");
     clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
     assertEquals(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs(), 12345L);
+  }
+
+  public void testVersionSwapBroadcastTimeoutSeconds() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(
+        clusterConfig.getVersionSwapBroadcastTimeoutSeconds(),
+        DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS);
+
+    baseProps.setProperty(CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS, "180");
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getVersionSwapBroadcastTimeoutSeconds(), 180);
+
+    baseProps.setProperty(CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS, "0");
+    assertThrows(
+        ConfigurationException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(baseProps)));
   }
 
   @Test

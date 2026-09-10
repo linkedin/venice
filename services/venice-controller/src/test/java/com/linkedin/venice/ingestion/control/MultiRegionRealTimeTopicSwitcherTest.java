@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
@@ -155,7 +156,8 @@ public class MultiRegionRealTimeTopicSwitcherTest {
             veniceProperties,
             pubSubTopicRepository,
             brokerMap,
-            localDc));
+            localDc,
+            ConfigConstants.DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS));
     doReturn(deterministicGenerationId).when(switcher).getVersionSwapGenerationId();
 
     // Act: trigger transmitVersionSwapMessage which will delegate to overridden broadcastVersionSwap
@@ -338,6 +340,23 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     Assert.expectThrows(TimeoutException.class, () -> switcher.getRemainingTimeInMs(System.nanoTime() - 1));
   }
 
+  @Test
+  public void testRejectsNonPositiveBroadcastTimeout() {
+    Properties props = new Properties();
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
+
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> new MultiRegionRealTimeTopicSwitcher(
+            mock(TopicManager.class),
+            mock(VeniceWriterFactory.class),
+            new VeniceProperties(props),
+            pubSubTopicRepository,
+            Collections.emptyMap(),
+            "dc_local",
+            0));
+  }
+
   private MultiRegionRealTimeTopicSwitcher newSwitcher(
       TopicManager topicManager,
       VeniceWriterFactory writerFactory,
@@ -351,7 +370,8 @@ public class MultiRegionRealTimeTopicSwitcherTest {
         new VeniceProperties(props),
         pubSubTopicRepository,
         brokerMap,
-        localDc);
+        localDc,
+        ConfigConstants.DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS);
   }
 
   private static Version version(String storeName, int number, int partitionCount) {

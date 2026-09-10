@@ -627,7 +627,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           commonConfig.getProps(),
           pubSubTopicRepository,
           activeActiveRealTimeSourceFabricBrokerUrlMap,
-          localRegionName);
+          localRegionName,
+          commonConfig.getVersionSwapBroadcastTimeoutSeconds());
     } else {
       this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
           topicManagerRepository.getLocalTopicManager(),
