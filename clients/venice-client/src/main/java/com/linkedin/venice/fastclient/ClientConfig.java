@@ -146,7 +146,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     for (RequestType requestType: RequestType.values()) {
       clientStatsMap.put(
           requestType,
-          FastClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
+          FastClientStats.getClientStats(
+              this.metricsRepository,
+              this.statsPrefix,
+              storeName,
+              requestType,
+              builder.dualReadEnabled,
+              builder.storeLoadControllerEnabled));
     }
     this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
     this.specificValueClass = builder.specificValueClass;
