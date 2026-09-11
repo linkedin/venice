@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -701,6 +702,42 @@ public class VeniceChangelogConsumerImplTest {
 
     reporterThread.start();
     reporterThread.interrupt();
+  }
+
+  @Test
+  public void testMetricReportingThreadSurvivesRecordStatsFailure() {
+    // Keep the interval short so a surviving loop completes several cycles well within the test timeout.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    doThrow(new NumberFormatException("Simulated failure while computing stats")).when(mockPubSubConsumer)
+        .getAssignment();
+
+    VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
+        veniceChangelogConsumer.getHeartbeatReporterThread();
+    try {
+      reporterThread.start();
+      /**
+       * Require a second cycle rather than a single one: the first invocation is recorded before the
+       * exception finishes unwinding, so asserting on it alone could observe a thread that is already
+       * terminating. A second call only happens if the loop resumed.
+       */
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Mockito.verify(mockPubSubConsumer, atLeast(2)).getAssignment());
+      assertTrue(
+          reporterThread.isAlive(),
+          "Reporter thread must stay alive after recordStats throws, otherwise lag reporting stops permanently.");
+    } finally {
+      reporterThread.interrupt();
+    }
   }
 
   @Test
