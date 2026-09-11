@@ -25,56 +25,65 @@ import java.util.function.IntToDoubleFunction;
  *
  * <p>This strategy keeps latency as the signal for <em>which</em> group is fast, but changes <em>how</em> that
  * signal is used. Instead of a winner-take-all tie-break it computes a per-group target <em>share</em> and does
- * a weighted-random draw. Each group's share interpolates between an even split and a
- * latency-proportional split as aggregate utilization rises:
+ * a weighted-random draw. The amount of skew is driven by how far apart the groups' latencies are, so the
+ * strategy behaves as a best-effort latency equaliser: while every group is fast it routes evenly, and as one
+ * group's latency pulls ahead of the others it sheds traffic off that group and onto the faster ones, using
+ * request share as the lever to pull the groups back toward a common latency.
+ *
+ * <p>Think of each group's latency as a function of the request rate it receives: flat while the group has
+ * ample headroom, bending to linear, then climbing steeply as it approaches saturation. Different groups bend
+ * at different rates (a weaker group's curve rises sooner). The strategy reads only the latency each group is
+ * currently producing — its position on that curve — and steers share away from the groups that have climbed
+ * highest, which lowers their latency and raises the fast groups' latency until the curves meet.
  *
  * <pre>
- *   strength(g) = 1 / max(latency(g), MIN_LATENCY_MS)                // fast (low-latency) group => higher strength
- *   u           = clamp01( aggregate read-quota utilization )         // in [0, 1]
- *   skew        = 0                                        if u &lt;= evenUntilUtilization   // stay-even knob
- *                 1                                        if u &gt;= fullSkewAtUtilization   // full-skew knob
- *                 ((u - evenUntil) / (fullSkew - evenUntil))^m   otherwise                   // ramp between knobs
+ *   strength(g) = 1 / max(latency(g), MIN_LATENCY_MS)                     // fast (low-latency) group => stronger
+ *   ratio       = max(latency) / min(latency)   over measured groups      // 1.0 == perfectly even latency
+ *   skew        = 0                                          if ratio &lt;= evenUntilLatencyRatio  // stay-even knob
+ *                 1                                          if ratio &gt;= fullSkewAtLatencyRatio  // full-skew knob
+ *                 ((ratio - evenUntil) / (fullSkew - evenUntil))^m  otherwise                     // ramp between
  *   share(g)    = (1 - skew) * (1 / G)  +  skew * strength(g) / sum(strength)
- *   share(g)    = max(share(g), PROBE_FLOOR_FRACTION * (1 / G))       // never fully starve a group
+ *   share(g)    = max(share(g), PROBE_FLOOR_FRACTION * (1 / G))           // never fully starve a group
  * </pre>
  *
  * <ul>
  *   <li><b>latency(g)</b> — the group's measured average response time
- *       ({@link HelixGroupStats#getGroupResponseWaitingTimeAvg}). This is the <em>only</em> per-group signal the
- *       strategy needs: the faster group is simply the one whose measured latency is lower. There is no
- *       configured per-group capacity or read-quota allocation — the "strength" of a group is inferred from what
- *       it actually delivers. A group that has not served anything yet (latency {@code <= 0}) is treated as
- *       neutral (average strength) so it is neither flooded nor starved before it has been measured.</li>
- *   <li><b>u</b> — aggregate read-quota utilization: total admitted read capacity across the cluster divided by
- *       the total read quota. It is an <em>aggregate</em> signal (independent of how traffic is split across
- *       groups), so it decides only <em>how much</em> to skew, never <em>which</em> group to skew toward. When
- *       there is ample headroom ({@code u} small) routing is essentially even; as the cluster fills
- *       ({@code u} toward 1) routing shifts toward the faster groups. Until a real utilization signal is wired
- *       in, {@link #NO_UTILIZATION_SIGNAL} reports {@code 0} and the strategy stays even at every load.</li>
- *   <li><b>1 / G (even split)</b> — the low-utilization target. Spreading evenly while there is headroom keeps
- *       every group's read-quota consumption low, avoids the over-concentration that pushes a single group to
- *       its 429 ceiling, and keeps every group probed so its latency measurement stays fresh.</li>
- *   <li><b>evenUntilUtilization (stay-even knob)</b> — the utilization threshold up to which routing stays fully
- *       even regardless of the latency spread. Below it {@code skew == 0}, so every group gets exactly
- *       {@code 1 / G}. Raising it lets the cluster run even for longer before it reacts to latency; lowering it
- *       makes the strategy start protecting the faster groups earlier.</li>
- *   <li><b>fullSkewAtUtilization (full-skew knob)</b> — the utilization threshold at (and above) which routing
- *       reaches its full latency-proportional split ({@code skew == 1}). Between the two knobs the skew ramps
- *       from 0 to 1. Lowering it makes the cluster reach maximum protection before it is fully saturated;
- *       leaving it at 1 reserves full skew for the saturation point.</li>
+ *       ({@link HelixGroupStats#getGroupResponseWaitingTimeAvg}). This is the <em>only</em> signal the strategy
+ *       needs — both <em>which</em> group is fast (lower latency => higher strength) and <em>how much</em> to
+ *       skew (the spread across groups). There is no configured per-group capacity, read-quota allocation, or
+ *       aggregate utilisation input: the strength of a group is inferred purely from what it currently delivers.
+ *       A group that has not served anything yet (latency {@code <= 0}) is treated as neutral (average strength)
+ *       and is excluded from the spread, so it is neither flooded nor starved before it has been measured.</li>
+ *   <li><b>ratio (latency spread)</b> — the ratio of the slowest to the fastest measured group. It is
+ *       {@code 1.0} when the groups are perfectly balanced and grows as they diverge. Because it is a
+ *       <em>relative</em> measure it needs no absolute latency target and travels across stores with very
+ *       different baselines; and when every group is uniformly slow (all balanced, ratio near {@code 1}) it
+ *       correctly reports "nothing to correct" and leaves routing even, since skewing could not lower the
+ *       common latency.</li>
+ *   <li><b>1 / G (even split)</b> — the balanced target. Spreading evenly while the groups are close keeps every
+ *       group's read-quota consumption low, avoids the over-concentration that pushes a single group to its 429
+ *       ceiling, and keeps every group probed so its latency measurement stays fresh.</li>
+ *   <li><b>evenUntilLatencyRatio (stay-even knob)</b> — the latency spread up to which routing stays fully even.
+ *       While the slowest group is within this factor of the fastest ({@code ratio <= evenUntilLatencyRatio})
+ *       the spread is treated as noise and {@code skew == 0}. Lowering it makes the strategy react to smaller
+ *       imbalances; raising it tolerates a wider spread before it starts steering.</li>
+ *   <li><b>fullSkewAtLatencyRatio (full-skew knob)</b> — the latency spread at (and above) which routing reaches
+ *       its full latency-proportional split ({@code skew == 1}). Between the two knobs the skew ramps from 0 to
+ *       1 as the spread widens.</li>
  *   <li><b>m (in-band ramp exponent)</b> — shapes the ramp <em>between</em> the two knobs. {@code m == 1} is a
- *       straight linear ramp; {@code m > 1} keeps the ramp gentle just past {@code evenUntilUtilization} and
- *       steepens it near {@code fullSkewAtUtilization}. It only affects the transition band, not the flat
- *       even / full-skew regions.</li>
- *   <li><b>PROBE_FLOOR_FRACTION</b> — a floor that guarantees every group keeps a small share even at full
- *       utilization, so the slower groups are never fully starved and the router keeps observing their latency.
- *       This is what makes the latency signal self-correcting: routing more traffic to a fast group raises its
- *       latency and lowers its inferred strength, so the groups converge toward equal latency rather than one
- *       group being driven past its ceiling.</li>
+ *       straight linear ramp; {@code m > 1} keeps the ramp gentle just past {@code evenUntilLatencyRatio} and
+ *       steepens it near {@code fullSkewAtLatencyRatio}. It only affects the transition band.</li>
+ *   <li><b>PROBE_FLOOR_FRACTION</b> — a floor that guarantees every group keeps a small share even at full skew,
+ *       so the slower groups are never fully starved and the router keeps observing their latency. This is what
+ *       closes the loop: routing more traffic to a fast group raises its latency and less to a slow group lowers
+ *       its latency, so the groups converge toward equal latency rather than one being driven past its
+ *       ceiling.</li>
  * </ul>
  *
- * <p>Trading a small, within-SLO increase in average / p99 latency for the avoidance of read-quota breaches
- * (429s) is the explicit design goal.
+ * <p>The equalisation is <em>best effort</em>: a pure {@code 1/latency} weighting relieves an imbalance rather
+ * than perfectly erasing it, so with a large capacity gap the slower groups settle above the fastest but well
+ * below where even routing would have left them. Trading a small, within-SLO increase in average / p99 latency
+ * for the avoidance of read-quota breaches (429s) is the explicit design goal.
  *
  * <p>The counter-leak protection via {@link TimeoutProcessor} and the synchronized in-flight accounting are
  * preserved from {@link HelixGroupLeastLoadedStrategy}; the in-flight counters are kept for leak protection and
@@ -84,24 +93,20 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
   public static final int MAX_ALLOWED_GROUP = 100;
 
   /**
-   * Fallback utilization signal used when no aggregate read-quota utilization is wired in yet: utilization is
-   * reported as {@code 0}, so {@code u^m} is {@code 0} and the strategy spreads evenly at every load. This makes
-   * the safe default behaviour identical to plain even routing until a real utilization signal is provided.
+   * Default stay-even threshold, expressed as a latency spread ratio (slowest / fastest measured group): while
+   * the spread is at or below this factor the groups are considered balanced and routing stays fully even
+   * (skew {@code == 0}). {@code 1.2} means "stay even until the slowest group is more than 20% slower than the
+   * fastest".
    */
-  public static final DoubleSupplier NO_UTILIZATION_SIGNAL = () -> 0.0;
+  public static final double DEFAULT_EVEN_UNTIL_LATENCY_RATIO = 1.2;
 
   /**
-   * Default stay-even threshold: routing stays fully even (skew {@code == 0}) while aggregate utilization is at
-   * or below this fraction, so the cluster ignores the latency spread while it still has ample headroom.
+   * Default full-skew threshold, expressed as a latency spread ratio: at (and above) this factor the routing
+   * reaches its full latency-proportional split (skew {@code == 1}). Between
+   * {@link #DEFAULT_EVEN_UNTIL_LATENCY_RATIO} and this the skew ramps from 0 to 1 as the spread widens.
+   * {@code 2.0} means "reach full skew once the slowest group is at least twice the fastest".
    */
-  public static final double DEFAULT_EVEN_UNTIL_UTILIZATION = 0.7;
-
-  /**
-   * Default full-skew threshold: at (and above) this aggregate utilization the routing reaches its full
-   * latency-proportional split (skew {@code == 1}). Between {@link #DEFAULT_EVEN_UNTIL_UTILIZATION} and this the
-   * skew ramps from 0 to 1.
-   */
-  public static final double DEFAULT_FULL_SKEW_AT_UTILIZATION = 1.0;
+  public static final double DEFAULT_FULL_SKEW_AT_LATENCY_RATIO = 2.0;
 
   /**
    * Default in-band ramp exponent {@code m}: shapes the skew ramp between the stay-even and full-skew thresholds.
@@ -129,9 +134,8 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
   private final Map<Long, Pair<Integer, TimeoutProcessor.TimeoutFuture>> requestTimeoutFutureMap = new HashMap<>();
   private final HelixGroupStats helixGroupStats;
   private final IntToDoubleFunction latencyProvider;
-  private final DoubleSupplier utilizationSupplier;
-  private final double evenUntilUtilization;
-  private final double fullSkewAtUtilization;
+  private final double evenUntilLatencyRatio;
+  private final double fullSkewAtLatencyRatio;
   private final double interpolationExponent;
   private final DoubleSupplier randomSupplier;
 
@@ -144,25 +148,22 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
         timeoutInMS,
         helixGroupStats,
         helixGroupStats::getGroupResponseWaitingTimeAvg,
-        NO_UTILIZATION_SIGNAL,
-        DEFAULT_EVEN_UNTIL_UTILIZATION,
-        DEFAULT_FULL_SKEW_AT_UTILIZATION,
+        DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
         DEFAULT_INTERPOLATION_EXPONENT,
         () -> ThreadLocalRandom.current().nextDouble());
   }
 
   /**
-   * @param latencyProvider       maps a group id to its measured average response time in milliseconds; a
+   * @param latencyProvider        maps a group id to its measured average response time in milliseconds; a
    *                              non-positive value means the group has not been measured yet and is treated as
-   *                              neutral (average strength).
-   * @param utilizationSupplier    supplies the aggregate read-quota utilization in {@code [0, 1]}; values are
-   *                              clamped. This decides only how much to skew, not which group to skew toward.
-   * @param evenUntilUtilization   stay-even threshold: routing stays fully even while utilization is at or below
-   *                              this fraction. Must be in {@code [0, 1)} and strictly less than
-   *                              {@code fullSkewAtUtilization}.
-   * @param fullSkewAtUtilization  full-skew threshold: routing reaches its full latency-proportional split at or
-   *                              above this fraction. Must be in {@code (0, 1]} and strictly greater than
-   *                              {@code evenUntilUtilization}.
+   *                              neutral (average strength) and excluded from the spread.
+   * @param evenUntilLatencyRatio  stay-even threshold as a latency spread ratio (slowest / fastest): routing
+   *                              stays fully even while the spread is at or below this factor. Must be
+   *                              {@code >= 1} and strictly less than {@code fullSkewAtLatencyRatio}.
+   * @param fullSkewAtLatencyRatio full-skew threshold as a latency spread ratio: routing reaches its full
+   *                              latency-proportional split at or above this factor. Must be strictly greater
+   *                              than {@code evenUntilLatencyRatio}.
    * @param interpolationExponent  the {@code m} exponent shaping the skew ramp between the two thresholds
    *                              ({@code 1.0} = linear).
    * @param randomSupplier         supplies a uniform random double in [0, 1); injectable so tests can be
@@ -173,24 +174,21 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
       long timeoutInMS,
       HelixGroupStats helixGroupStats,
       IntToDoubleFunction latencyProvider,
-      DoubleSupplier utilizationSupplier,
-      double evenUntilUtilization,
-      double fullSkewAtUtilization,
+      double evenUntilLatencyRatio,
+      double fullSkewAtLatencyRatio,
       double interpolationExponent,
       DoubleSupplier randomSupplier) {
-    if (!(evenUntilUtilization >= 0.0 && evenUntilUtilization < fullSkewAtUtilization
-        && fullSkewAtUtilization <= 1.0)) {
+    if (!(evenUntilLatencyRatio >= 1.0 && evenUntilLatencyRatio < fullSkewAtLatencyRatio)) {
       throw new VeniceException(
-          "Require 0 <= evenUntilUtilization < fullSkewAtUtilization <= 1, but received evenUntilUtilization="
-              + evenUntilUtilization + ", fullSkewAtUtilization=" + fullSkewAtUtilization);
+          "Require 1 <= evenUntilLatencyRatio < fullSkewAtLatencyRatio, but received evenUntilLatencyRatio="
+              + evenUntilLatencyRatio + ", fullSkewAtLatencyRatio=" + fullSkewAtLatencyRatio);
     }
     this.timeoutProcessor = timeoutProcessor;
     this.timeoutInMS = timeoutInMS;
     this.helixGroupStats = helixGroupStats;
     this.latencyProvider = latencyProvider;
-    this.utilizationSupplier = utilizationSupplier;
-    this.evenUntilUtilization = evenUntilUtilization;
-    this.fullSkewAtUtilization = fullSkewAtUtilization;
+    this.evenUntilLatencyRatio = evenUntilLatencyRatio;
+    this.fullSkewAtLatencyRatio = fullSkewAtLatencyRatio;
     this.interpolationExponent = interpolationExponent;
     this.randomSupplier = randomSupplier;
   }
@@ -236,7 +234,7 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
    * not affect the resulting distribution.
    */
   private int pickWeightedGroup(int groupCount, int startGroupId) {
-    double skew = skewFactor();
+    double skew = latencySkew(groupCount);
     double evenShare = 1.0 / groupCount;
     double floor = PROBE_FLOOR_FRACTION * evenShare;
     // Pre-pass: total inferred strength and the neutral strength used for not-yet-measured groups.
@@ -316,19 +314,38 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
   }
 
   /**
-   * The skew factor in {@code [0, 1]}: {@code 0} at or below {@code evenUntilUtilization} (stay fully even),
-   * {@code 1} at or above {@code fullSkewAtUtilization} (full latency-proportional split), and a ramp shaped by
-   * the in-band exponent {@code m} in between.
+   * The skew factor in {@code [0, 1]} derived from the current latency spread across measured groups:
+   * {@code 0} while the slowest group is within {@code evenUntilLatencyRatio} of the fastest (treat the spread
+   * as noise, stay even), {@code 1} once the spread reaches {@code fullSkewAtLatencyRatio} (full
+   * latency-proportional split), and a ramp shaped by the in-band exponent {@code m} in between. Groups that
+   * have not been measured yet ({@code latency <= 0}) are excluded from the spread; fewer than two measured
+   * groups means there is no spread to act on, so routing stays even.
    */
-  private double skewFactor() {
-    double utilization = utilizationSupplier.getAsDouble();
-    if (utilization <= evenUntilUtilization) {
+  private double latencySkew(int groupCount) {
+    double minLatency = Double.MAX_VALUE;
+    double maxLatency = 0.0;
+    int measured = 0;
+    for (int g = 0; g < groupCount; ++g) {
+      double latency = latencyProvider.applyAsDouble(g);
+      if (latency <= 0.0) {
+        continue;
+      }
+      double clamped = Math.max(latency, MIN_LATENCY_MS);
+      minLatency = Math.min(minLatency, clamped);
+      maxLatency = Math.max(maxLatency, clamped);
+      ++measured;
+    }
+    if (measured < 2) {
       return 0.0;
     }
-    if (utilization >= fullSkewAtUtilization) {
+    double ratio = maxLatency / minLatency;
+    if (ratio <= evenUntilLatencyRatio) {
+      return 0.0;
+    }
+    if (ratio >= fullSkewAtLatencyRatio) {
       return 1.0;
     }
-    double position = (utilization - evenUntilUtilization) / (fullSkewAtUtilization - evenUntilUtilization);
+    double position = (ratio - evenUntilLatencyRatio) / (fullSkewAtLatencyRatio - evenUntilLatencyRatio);
     return interpolationExponent == 1.0 ? position : Math.pow(position, interpolationExponent);
   }
 
