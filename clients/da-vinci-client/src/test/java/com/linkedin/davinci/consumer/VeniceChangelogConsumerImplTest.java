@@ -704,6 +704,35 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testMetricReportingThreadSurvivesRecordStatsFailure() {
+    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    doThrow(new NumberFormatException("Simulated failure while computing stats")).when(mockPubSubConsumer)
+        .getAssignment();
+
+    VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
+        veniceChangelogConsumer.getHeartbeatReporterThread();
+    try {
+      reporterThread.start();
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Mockito.verify(mockPubSubConsumer, atLeastOnce()).getAssignment());
+      assertTrue(
+          reporterThread.isAlive(),
+          "Reporter thread must stay alive after recordStats throws, otherwise lag reporting stops permanently.");
+    } finally {
+      reporterThread.interrupt();
+    }
+  }
+
+  @Test
   public void testChunkingSuccess() throws NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
 
