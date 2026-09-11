@@ -167,6 +167,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private final VeniceWriterHook writerHook;
+  // Non-null only for async STREAM dispatch; null keeps the fully-inline legacy path.
+  private VeniceSystemProducerWriteDispatcher writeDispatcher = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
@@ -452,6 +454,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     if (this.isStarted) {
       return;
     }
+    ValidatedWriteDispatcherConfig validatedDispatcherConfig = validateWriteDispatcherConfig();
     this.isStarted = true;
 
     setupClientsAndReInitProvider();
@@ -508,7 +511,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
-
+    this.writeDispatcher = maybeCreateWriteDispatcher(validatedDispatcherConfig);
     if (pushMonitor.isPresent()) {
       /**
        * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
@@ -549,34 +552,45 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   @Override
   public synchronized void stop() {
     this.isStarted = false;
-    Utils.closeQuietlyWithErrorLogged(veniceWriter);
-    if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
-      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      switch (pushMonitor.get().getCurrentStatus().getRootStatus()) {
-        case COMPLETED:
-          LOGGER.info("Push job for {} is COMPLETED.", topicName);
-          break;
-        case END_OF_PUSH_RECEIVED:
-          LOGGER.info("Batch load for {} has finished.", topicName);
-          break;
-        case ERROR:
-          LOGGER.info("Push job for {} encountered error.", topicName);
-          break;
-        default:
-          LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
-          /**
-           * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
-           * the containers send kill requests to controller at the same time to avoid hammering on controller.
-           */
-          Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
-          this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
-          LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
+    // Drain in-flight writes before closing the writer; absorb interrupts during cleanup and restore after.
+    boolean interrupted = Thread.interrupted();
+    try {
+      if (writeDispatcher != null) {
+        interrupted |= writeDispatcher.stop();
       }
-      Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
+      Utils.closeQuietlyWithErrorLogged(veniceWriter);
+      if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
+        String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+        switch (pushMonitor.get().getCurrentStatus().getRootStatus()) {
+          case COMPLETED:
+            LOGGER.info("Push job for {} is COMPLETED.", topicName);
+            break;
+          case END_OF_PUSH_RECEIVED:
+            LOGGER.info("Batch load for {} has finished.", topicName);
+            break;
+          case ERROR:
+            LOGGER.info("Push job for {} encountered error.", topicName);
+            break;
+          default:
+            LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
+            /**
+             * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
+             * the containers send kill requests to controller at the same time to avoid hammering on controller.
+             */
+            Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
+            this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
+            LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
+        }
+        Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
+      }
+      Utils.closeQuietlyWithErrorLogged(this.controllerClient);
+      hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
+      d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
     }
-    Utils.closeQuietlyWithErrorLogged(this.controllerClient);
-    hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
 
   @Override
@@ -632,7 +646,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
     }
 
-    send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
+    CompletableFuture<Void> submitted = send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
+    VeniceSystemProducerWriteCommand.awaitSubmission(submitted);
   }
 
   /**
@@ -675,11 +690,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       valueObject = objectWithTimestamp.getObject();
     }
 
-    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-
     if (valueObject == null) {
-      getInternalWriter().delete(serializedKey, logicalTimestamp, new CompletableFutureCallback(completableFuture));
-      return completableFuture;
+      return dispatchWrite(VeniceSystemProducerWriteCommand.delete(serializedKey, logicalTimestamp));
     }
 
     Schema valueObjectSchema = getSchemaFromObject(valueObject);
@@ -706,35 +718,105 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     int derivedSchemaId = valueSchemaIdPair.getSecond();
 
     if (derivedSchemaId == -1) {
-      getInternalWriter().put(
-          serializedKey,
-          serializedValue,
-          valueSchemaId,
-          logicalTimestamp,
-          new CompletableFutureCallback(completableFuture));
-    } else {
-      if (!isWriteComputeEnabled) {
-        throw new SamzaException(
-            "Cannot write partial update record to Venice store " + storeName + " "
-                + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
-      }
-      getInternalWriter().update(
-          serializedKey,
-          serializedValue,
-          valueSchemaId,
-          derivedSchemaId,
-          logicalTimestamp,
-          new CompletableFutureCallback(completableFuture));
+      return dispatchWrite(
+          VeniceSystemProducerWriteCommand.put(serializedKey, serializedValue, valueSchemaId, logicalTimestamp));
     }
-    return completableFuture;
+    if (!isWriteComputeEnabled) {
+      throw new SamzaException(
+          "Cannot write partial update record to Venice store " + storeName + " "
+              + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
+    }
+    return dispatchWrite(
+        VeniceSystemProducerWriteCommand
+            .update(serializedKey, serializedValue, valueSchemaId, derivedSchemaId, logicalTimestamp));
   }
 
   public CompletableFuture<Void> put(Object keyObject, Object valueObject) {
-    return send(keyObject, valueObject);
+    CompletableFuture<Void> future = send(keyObject, valueObject);
+    VeniceSystemProducerWriteCommand.awaitSubmission(future);
+    return future;
   }
 
   public CompletableFuture<Void> delete(Object keyObject) {
-    return send(keyObject, null);
+    CompletableFuture<Void> future = send(keyObject, null);
+    VeniceSystemProducerWriteCommand.awaitSubmission(future);
+    return future;
+  }
+
+  /** Async STREAM dispatch through the striped executor when a dispatcher exists, else the inline writer-callback path. */
+  private CompletableFuture<Void> dispatchWrite(VeniceSystemProducerWriteCommand command) {
+    VeniceSystemProducerWriteDispatcher dispatcher = this.writeDispatcher;
+    if (dispatcher == null) {
+      CompletableFuture<Void> future = new CompletableFuture<>();
+      command.submit(getInternalWriter(), new CompletableFutureCallback(future));
+      return future;
+    }
+    return dispatcher.dispatch(command);
+  }
+
+  /** Validated STREAM async-dispatch config, returned by value so a restart cannot leave stale validated state. */
+  static final class ValidatedWriteDispatcherConfig {
+    final int workerCount;
+    final int queueCapacity;
+
+    ValidatedWriteDispatcherConfig(int workerCount, int queueCapacity) {
+      this.workerCount = workerCount;
+      this.queueCapacity = queueCapacity;
+    }
+  }
+
+  /**
+   * Validates STREAM async-dispatch config up front so an operator error fails start() instead of silent inline
+   * fallback. Returns {@code null} for the fully-inline path (non-STREAM push or worker count 0 kill switch).
+   */
+  ValidatedWriteDispatcherConfig validateWriteDispatcherConfig() {
+    if (!Version.PushType.STREAM.equals(pushType)) {
+      return null;
+    }
+    int workerCount = getIntConfig(
+        VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG,
+        VeniceSystemProducerWriteDispatcher.DEFAULT_WORKER_COUNT);
+    if (workerCount < 0) {
+      throw new SamzaException(
+          "Invalid " + VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG + ": " + workerCount
+              + " (must be >= 0; 0 disables async dispatch)");
+    }
+    if (workerCount == 0) {
+      return null;
+    }
+    int queueCapacity = getIntConfig(
+        VeniceSystemProducerWriteDispatcher.WORKER_QUEUE_CAPACITY_CONFIG,
+        VeniceSystemProducerWriteDispatcher.DEFAULT_WORKER_QUEUE_CAPACITY);
+    if (queueCapacity <= 0) {
+      throw new SamzaException(
+          "Invalid " + VeniceSystemProducerWriteDispatcher.WORKER_QUEUE_CAPACITY_CONFIG + ": " + queueCapacity
+              + " (must be > 0)");
+    }
+    return new ValidatedWriteDispatcherConfig(workerCount, queueCapacity);
+  }
+
+  /** Creates the async write dispatcher from the validated config, or returns null (fully inline) when it is null. */
+  private VeniceSystemProducerWriteDispatcher maybeCreateWriteDispatcher(ValidatedWriteDispatcherConfig validated) {
+    if (validated == null) {
+      return null;
+    }
+    return new VeniceSystemProducerWriteDispatcher(
+        veniceWriter,
+        validated.workerCount,
+        validated.queueCapacity,
+        storeName);
+  }
+
+  private int getIntConfig(String key, int defaultValue) {
+    String value = additionalConfigs.get(key);
+    if (value == null) {
+      return defaultValue;
+    }
+    try {
+      return Integer.parseInt(value.trim());
+    } catch (NumberFormatException e) {
+      throw new SamzaException("Invalid integer for config " + key + ": '" + value + "'", e);
+    }
   }
 
   /**
@@ -744,7 +826,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    getInternalWriter().flush();
+    if (writeDispatcher != null) {
+      writeDispatcher.flush();
+    } else {
+      getInternalWriter().flush();
+    }
   }
 
   private static Schema getSchemaFromObject(Object object) {

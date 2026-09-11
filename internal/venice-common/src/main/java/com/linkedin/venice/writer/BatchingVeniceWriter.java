@@ -220,6 +220,15 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     getVeniceWriter().flush();
   }
 
+  /**
+   * Delegates partition routing to the underlying writer, serializing the key exactly as this batching
+   * writer does before buffering so striped dispatch and the produce path agree on the partition.
+   */
+  @Override
+  public int getPartitionId(K key) {
+    return getVeniceWriter().getPartitionId(getKeySerializer().serialize(getTopicName(), key));
+  }
+
   @Override
   public void close(boolean gracefulClose) {
     isRunning.set(false);
