@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
@@ -119,6 +120,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
@@ -718,6 +720,7 @@ public class VeniceControllerClusterConfig {
 
   private final boolean backupVersionReplicaReductionEnabled;
   private final boolean useMultiRegionRealTimeTopicSwitcher;
+  private final int versionSwapBroadcastTimeoutSeconds;
   private final Set<String> activeActiveRealTimeSourceFabrics;
 
   private final boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
@@ -1357,6 +1360,11 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
     this.useMultiRegionRealTimeTopicSwitcher =
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
+    this.versionSwapBroadcastTimeoutSeconds = props
+        .getInt(CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS, DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS);
+    if (versionSwapBroadcastTimeoutSeconds <= 0) {
+      throw new ConfigurationException(CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS + " must be greater than 0.");
+    }
     this.isAdminOperationSystemStoreEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED, false);
 
@@ -2590,6 +2598,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isUseMultiRegionRealTimeTopicSwitcherEnabled() {
     return useMultiRegionRealTimeTopicSwitcher;
+  }
+
+  public int getVersionSwapBroadcastTimeoutSeconds() {
+    return versionSwapBroadcastTimeoutSeconds;
   }
 
   public Set<String> getActiveActiveRealTimeSourceFabrics() {

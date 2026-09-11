@@ -20,6 +20,8 @@ public class ConfigConstants {
   public static final long DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS =
       TimeUnit.MINUTES.toSeconds(30);
 
+  public static final int DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS = 120;
+
   public static final String CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY = "cluster_resource_weight";
 
   /**
