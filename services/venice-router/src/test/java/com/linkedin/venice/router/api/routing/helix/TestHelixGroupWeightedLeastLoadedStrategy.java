@@ -428,7 +428,6 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   public void testOneSlowHostShedsTrafficAsRpsRises() {
     double[] hiddenCapacity = { 16800.0, 16800.0, 8400.0 };
     int slowGroup = 2;
-    int groupCount = hiddenCapacity.length;
 
     StagedRun run =
         runStagedScenario("One slow host - group 2 is half the capacity (16.8k/16.8k/8.4k)", hiddenCapacity);
@@ -763,14 +762,12 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   private static final class StagedRun {
     final int[] stageLoads;
     final double[] latencyRatio;
-    final double[] skew;
     final int[][] routed;
     final double[][] servedLatency;
 
-    StagedRun(int[] stageLoads, double[] latencyRatio, double[] skew, int[][] routed, double[][] servedLatency) {
+    StagedRun(int[] stageLoads, double[] latencyRatio, int[][] routed, double[][] servedLatency) {
       this.stageLoads = stageLoads;
       this.latencyRatio = latencyRatio;
-      this.skew = skew;
       this.routed = routed;
       this.servedLatency = servedLatency;
     }
@@ -802,7 +799,6 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     int[][] routedByStage = new int[STAGED_LOADS.length][];
     double[][] latencyByStage = new double[STAGED_LOADS.length][];
     double[] ratioByStage = new double[STAGED_LOADS.length];
-    double[] skewByStage = new double[STAGED_LOADS.length];
     List<String[]> tableRows = new ArrayList<>();
     long nextRequestId = 0;
 
@@ -854,7 +850,6 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
       routedByStage[stage] = routed;
       latencyByStage[stage] = servedLatency;
       ratioByStage[stage] = ratio;
-      skewByStage[stage] = skew;
     }
 
     logTable(
@@ -864,7 +859,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
             "req spread (max-min)", "avg latency / group (ms)", "total avg (ms)" },
         tableRows);
 
-    return new StagedRun(STAGED_LOADS, ratioByStage, skewByStage, routedByStage, latencyByStage);
+    return new StagedRun(STAGED_LOADS, ratioByStage, routedByStage, latencyByStage);
   }
 
   private static String join(double[] values, double scale, String perFormat) {
