@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferPooledByteBufAllocator;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.meta.Version;
@@ -323,7 +324,38 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     if (clientOrigin) {
       admissionController.releaseClient();
     }
+    logTransferFootprint(ctx, blobTransferRequest);
     ctx.fireChannelInactive();
+  }
+
+  /**
+   * Records what the dedicated allocator holds at the moment a transfer releases its slot, alongside the
+   * concurrency that produced it. Sampling the allocator on its own would leave the two figures unrelated,
+   * because concurrency moves between samples; pairing them here makes the per-transfer footprint derivable,
+   * which is what a memory-based admission limit has to be sized against.
+   * <p>
+   * This runs once per finished transfer rather than per request, and blob transfer only serves replica
+   * bootstraps, so it does not sit on a hot path.
+   */
+  private void logTransferFootprint(ChannelHandlerContext ctx, BlobTransferPayload blobTransferRequest) {
+    // Reporting must never interfere with the transfer itself. channelInactive still has to reach
+    // ctx.fireChannelInactive() so the rest of the pipeline is torn down.
+    try {
+      String allocatorUsage = BlobTransferPooledByteBufAllocator.describeUsage(ctx.alloc());
+      if (allocatorUsage == null || blobTransferRequest == null) {
+        return;
+      }
+      // Both numbers are read after this transfer released its own slot and its own buffers, so the
+      // count and the memory describe the same set of still-running transfers and can be divided.
+      LOGGER.info(
+          "Blob transfer sender finished serving {}, concurrentTransfers={}/{}, {}",
+          blobTransferRequest.getFullResourceName(),
+          globalConcurrentTransferRequests.get(),
+          maxAllowedConcurrentSnapshotUsers,
+          allocatorUsage);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to log the blob transfer footprint", e);
+    }
   }
 
   private boolean isAdmittedClientOrigin(ChannelHandlerContext ctx) {

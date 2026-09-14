@@ -232,7 +232,8 @@ public class TestClientOriginServerBlobTransfer {
         20,
         2 * 1024 * 1024,
         25,
-        acceptClientRequest);
+        acceptClientRequest,
+        false);
 
     NettyFileTransferClient client = new NettyFileTransferClient(
         port,
@@ -246,7 +247,8 @@ public class TestClientOriginServerBlobTransfer {
         blobTransferStats,
         Optional.of(clientSslFactory),
         () -> notifier,
-        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()),
+        false);
 
     BlobFinder peerFinder = mock(BlobFinder.class);
     BlobPeersDiscoveryResponse discoveryResponse = new BlobPeersDiscoveryResponse();

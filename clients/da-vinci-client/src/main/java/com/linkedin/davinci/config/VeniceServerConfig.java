@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SE
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_NETTY_WORKER_THREADS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
@@ -692,6 +693,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int snapshotRetentionTimeInMin;
   private final int maxConcurrentSnapshotUser;
   private final long blobTransferMaxChunkSizeBytes;
+  private final boolean blobTransferDedicatedAllocatorEnabled;
   private final int blobTransferMaxTimeoutInMin;
   private final int blobReceiveMaxTimeoutInMin;
   private final int blobReceiveReaderIdleTimeInSeconds;
@@ -844,6 +846,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     // (e.g. "512KB") in config sources.
     blobTransferMaxChunkSizeBytes =
         serverProperties.getSizeInBytes(BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES, 2 * 1024 * 1024L);
+    blobTransferDedicatedAllocatorEnabled =
+        serverProperties.getBoolean(BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED, false);
     blobTransferMaxTimeoutInMin = serverProperties.getInt(BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN, 60);
     blobReceiveMaxTimeoutInMin = serverProperties.getInt(BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN, 20);
     blobReceiveReaderIdleTimeInSeconds = serverProperties.getInt(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 60);
@@ -1457,6 +1461,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getBlobTransferMaxChunkSizeBytes() {
     return blobTransferMaxChunkSizeBytes;
+  }
+
+  public boolean isBlobTransferDedicatedAllocatorEnabled() {
+    return blobTransferDedicatedAllocatorEnabled;
   }
 
   public boolean isServerAcceptClientBlobRequestEnabled() {

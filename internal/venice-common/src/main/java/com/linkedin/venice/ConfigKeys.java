@@ -2292,6 +2292,12 @@ public class ConfigKeys {
   // size, so this config only caps the ceiling; it does not change the 16KB floor. Tune this down to keep large
   // chunks poolable by Netty's heap arena (see io.netty.allocator.maxOrder) at the cost of more, smaller writes.
   public static final String BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES = "blob.transfer.max.chunk.size.bytes";
+  // this is a config to decide whether blob transfer channels allocate their buffers from a Netty
+  // PooledByteBufAllocator of their own rather than from the process-wide default one they share with every other
+  // Netty user. A dedicated allocator reports how much heap and direct memory blob transfer holds, which the shared
+  // allocator cannot attribute to any single component. It is built with the same page size and max order as the
+  // default allocator, so the chunk size, and therefore which allocations are poolable, stays the same either way.
+  public static final String BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED = "blob.transfer.dedicated.allocator.enabled";
   // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
   // many
   // replicas can be concurrently receiving blobs for a host globally.

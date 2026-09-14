@@ -155,7 +155,8 @@ public class TestNettyP2PBlobTransferManager {
         20,
         2 * 1024 * 1024,
         25,
-        true);
+        true,
+        false);
     client = Mockito.spy(
         new NettyFileTransferClient(
             port,
@@ -169,7 +170,8 @@ public class TestNettyP2PBlobTransferManager {
             blobTransferStats,
             sslFactory,
             () -> notifier,
-            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name())));
+            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()),
+            false));
     finder = mock(BlobFinder.class);
     manager = new NettyP2PBlobTransferManager(
         server,
@@ -626,7 +628,8 @@ public class TestNettyP2PBlobTransferManager {
             blobTransferStats,
             sslFactory,
             null,
-            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name())));
+            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()),
+            false));
 
     P2PBlobTransferService newServer = new P2PBlobTransferService(
         port,
@@ -640,7 +643,8 @@ public class TestNettyP2PBlobTransferManager {
         20,
         2 * 1024 * 1024,
         25,
-        true);
+        true,
+        false);
 
     NettyP2PBlobTransferManager newManager = new NettyP2PBlobTransferManager(
         newServer,

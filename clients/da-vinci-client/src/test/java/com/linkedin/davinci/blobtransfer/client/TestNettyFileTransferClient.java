@@ -40,7 +40,8 @@ public class TestNettyFileTransferClient {
         mock(AggBlobTransferStats.class),
         Optional.<SSLFactory>empty(),
         () -> null, // notifierSupplier
-        LogContext.forTests("test"));
+        LogContext.forTests("test"),
+        false); // dedicatedAllocatorEnabled
   }
 
   private static int countWorkerThreads(NettyFileTransferClient client) {

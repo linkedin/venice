@@ -2,10 +2,12 @@ package com.linkedin.davinci.blobtransfer.server;
 
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferAclHandler;
+import com.linkedin.davinci.blobtransfer.BlobTransferPooledByteBufAllocator;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
@@ -33,6 +35,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       Math.max(4, Runtime.getRuntime().availableProcessors() / 5);
 
   private final ServerBootstrap serverBootstrap;
+  private final PooledByteBufAllocator byteBufAllocator;
   private EventLoopGroup bossGroup;
   private EventLoopGroup workerGroup;
   private final int port;
@@ -55,9 +58,12 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       int maxAllowedConcurrentSnapshotUsers,
       long maxChunkSizeBytes,
       int clientCapacityPercent,
-      boolean serverAcceptClientBlobRequestEnabled) {
+      boolean serverAcceptClientBlobRequestEnabled,
+      boolean dedicatedAllocatorEnabled) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
+    this.byteBufAllocator = BlobTransferPooledByteBufAllocator
+        .create("sender", dedicatedAllocatorEnabled, BLOB_TRANSFER_SERVER_NETTY_WORKER_THREAD_COUNT);
     this.blobSnapshotManager = blobSnapshotManager;
 
     Class<? extends ServerChannel> socketChannelClass = NioServerSocketChannel.class;
@@ -100,7 +106,18 @@ public class P2PBlobTransferService extends AbstractVeniceService {
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
-        .childOption(ChannelOption.TCP_NODELAY, true);
+        .childOption(ChannelOption.TCP_NODELAY, true)
+        // Accepted connections carry the snapshot bytes, so the allocator belongs on the child channels. The
+        // listening channel this bootstrap's option() calls configure never allocates data buffers.
+        .childOption(ChannelOption.ALLOCATOR, byteBufAllocator);
+  }
+
+  /**
+   * The allocator the accepted connections allocate from, which is {@link PooledByteBufAllocator#DEFAULT} unless a
+   * dedicated one is enabled.
+   */
+  public PooledByteBufAllocator getByteBufAllocator() {
+    return byteBufAllocator;
   }
 
   @Override
