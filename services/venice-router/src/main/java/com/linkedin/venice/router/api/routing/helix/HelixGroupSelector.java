@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 
@@ -29,13 +30,26 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
       MetricsRepository metricsRepository,
       HelixInstanceConfigRepository instanceConfigRepository,
       HelixGroupSelectionStrategyEnum strategyEnum,
-      TimeoutProcessor timeoutProcessor) {
+      TimeoutProcessor timeoutProcessor,
+      double evenUntilLatencyRatio,
+      double fullSkewAtLatencyRatio,
+      double skewRampExponent) {
     this.helixGroupStats = new HelixGroupStats(metricsRepository);
     this.instanceConfigRepository = instanceConfigRepository;
     Class<? extends HelixGroupSelectionStrategy> strategyClass = strategyEnum.getStrategyClass();
     if (strategyClass.equals(HelixGroupLeastLoadedStrategy.class)) {
       this.selectionStrategy =
           new HelixGroupLeastLoadedStrategy(timeoutProcessor, HELIX_GROUP_COUNTER_TIMEOUT_MS, helixGroupStats);
+    } else if (strategyClass.equals(HelixGroupWeightedLeastLoadedStrategy.class)) {
+      this.selectionStrategy = new HelixGroupWeightedLeastLoadedStrategy(
+          timeoutProcessor,
+          HELIX_GROUP_COUNTER_TIMEOUT_MS,
+          helixGroupStats,
+          helixGroupStats::getGroupResponseWaitingTimeAvg,
+          evenUntilLatencyRatio,
+          fullSkewAtLatencyRatio,
+          skewRampExponent,
+          () -> ThreadLocalRandom.current().nextDouble());
     } else {
       try {
         this.selectionStrategy = strategyClass.getDeclaredConstructor().newInstance();

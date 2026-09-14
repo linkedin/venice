@@ -1495,6 +1495,32 @@ public class ConfigKeys {
   public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY =
       "router.helix.assisted.routing.group.selection.strategy";
 
+  /**
+   * Stay-even threshold for the {@literal LATENCY_EQUALIZED} Helix group selection strategy, expressed as a
+   * latency spread ratio (slowest / fastest measured group): while the spread is at or below this factor the
+   * strategy routes evenly. Must be {@code >= 1} and strictly less than
+   * {@link #ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO}. Only consumed when the group selection strategy is
+   * {@literal LATENCY_EQUALIZED}.
+   */
+  public static final String ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO =
+      "router.helix.group.even.until.latency.ratio";
+
+  /**
+   * Full-skew threshold for the {@literal LATENCY_EQUALIZED} Helix group selection strategy, expressed as a
+   * latency spread ratio: at (and above) this factor the strategy reaches its full latency-proportional split.
+   * Must be strictly greater than {@link #ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO}. Only consumed when the
+   * group selection strategy is {@literal LATENCY_EQUALIZED}.
+   */
+  public static final String ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO =
+      "router.helix.group.full.skew.at.latency.ratio";
+
+  /**
+   * In-band ramp exponent {@code m} for the {@literal LATENCY_EQUALIZED} Helix group selection strategy: shapes
+   * the skew ramp between the stay-even and full-skew thresholds ({@code 1.0} is linear). Only consumed when the
+   * group selection strategy is {@literal LATENCY_EQUALIZED}.
+   */
+  public static final String ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT = "router.helix.group.skew.ramp.exponent";
+
   public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
   /**
