@@ -1,8 +1,10 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
@@ -33,6 +35,13 @@ import org.testng.annotations.Test;
 public class ChangelogClientConfigTest {
   private static final String GLOBAL_STORE = "global_store";
 
+  @SuppressWarnings("rawtypes")
+  private static ChangelogClientConfig newGlobalConfig() {
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(TestUtils.getPubSubClientConfigsWithFallbackEnabled());
+    return new ChangelogClientConfig(GLOBAL_STORE).setConsumerProperties(consumerProperties);
+  }
+
   /**
    * Deterministic (single-threaded) regression test.
    *
@@ -47,7 +56,7 @@ public class ChangelogClientConfigTest {
   @Test
   @SuppressWarnings("rawtypes")
   public void testCloneConfigDoesNotShareInnerClientConfig() {
-    ChangelogClientConfig global = new ChangelogClientConfig(GLOBAL_STORE);
+    ChangelogClientConfig global = newGlobalConfig();
 
     ChangelogClientConfig clone1 = ChangelogClientConfig.cloneConfig(global).setStoreName("store_A");
     ChangelogClientConfig clone2 = ChangelogClientConfig.cloneConfig(global).setStoreName("store_B");
@@ -68,7 +77,7 @@ public class ChangelogClientConfigTest {
 
   @Test
   public void testBackgroundReporterThreadSleepIntervalCloned() {
-    ChangelogClientConfig global = new ChangelogClientConfig(GLOBAL_STORE);
+    ChangelogClientConfig global = newGlobalConfig();
 
     // Default should be 60
     Assert.assertEquals(global.getBackgroundReporterThreadSleepIntervalInSeconds(), 60L);
@@ -109,7 +118,7 @@ public class ChangelogClientConfigTest {
   public void testCloneConfigIsThreadSafe() throws InterruptedException {
     final int numThreads = 20;
 
-    ChangelogClientConfig global = new ChangelogClientConfig(GLOBAL_STORE);
+    ChangelogClientConfig global = newGlobalConfig();
 
     ChangelogClientConfig[] clones = new ChangelogClientConfig[numThreads];
     String[] expectedNames = new String[numThreads];

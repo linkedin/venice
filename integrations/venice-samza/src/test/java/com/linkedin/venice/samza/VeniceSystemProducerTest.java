@@ -2,6 +2,7 @@ package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
@@ -35,6 +36,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
@@ -48,12 +50,14 @@ import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.SamzaException;
 import org.apache.samza.config.Config;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
@@ -72,6 +76,11 @@ public class VeniceSystemProducerTest {
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
             .setFactory(mock(VeniceSystemFactory.class))
+            .setSamzaConfig(
+                new MapConfig(
+                    Collections.singletonMap(
+                        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+                        ApacheKafkaProducerAdapterFactory.class.getName())))
             .setVeniceChildD2ZkHost("zookeeper.com:2181")
             .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
             .setPrimaryControllerD2ServiceName("ChildController")
@@ -142,6 +151,11 @@ public class VeniceSystemProducerTest {
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
             .setFactory(mock(VeniceSystemFactory.class))
+            .setSamzaConfig(
+                new MapConfig(
+                    Collections.singletonMap(
+                        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+                        ApacheKafkaProducerAdapterFactory.class.getName())))
             .setVeniceChildD2ZkHost("zookeeper.com:2181")
             .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
             .setPrimaryControllerD2ServiceName("ChildController")
@@ -171,6 +185,9 @@ public class VeniceSystemProducerTest {
     assertNotNull(resultantVeniceWriter);
     assertEquals(resultantVeniceWriter, veniceWriterMock);
     assertEquals(capturedProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS), "venice-kafka.db:2023");
+    assertEquals(
+        capturedProperties.getProperty(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS),
+        ApacheKafkaProducerAdapterFactory.class.getName());
     assertEquals(capturedVwo.getTopicName(), "test_store_v1");
     if (pushType != Version.PushType.BATCH && pushType != Version.PushType.STREAM_REPROCESSING) {
       // invoke create venice write without partition count

@@ -49,9 +49,11 @@ public class TestFabricBuildout {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private Properties originalPubSubAdapterFactorySystemProperties;
 
   @BeforeClass
   public void setUp() {
+    originalPubSubAdapterFactorySystemProperties = ServiceFactory.setPubSubClientConfigsAsSystemProperties();
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     Properties serverProperties = new Properties();
@@ -79,6 +81,13 @@ public class TestFabricBuildout {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
+    restorePubSubAdapterFactorySystemProperties();
+  }
+
+  private void restorePubSubAdapterFactorySystemProperties() {
+    if (originalPubSubAdapterFactorySystemProperties != null) {
+      ServiceFactory.restorePubSubClientConfigsSystemProperties(originalPubSubAdapterFactorySystemProperties);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

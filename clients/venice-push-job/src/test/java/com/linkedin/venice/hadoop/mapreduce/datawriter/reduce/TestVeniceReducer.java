@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.reduce;
 
+import static com.linkedin.venice.ConfigKeys.PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
@@ -52,6 +54,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
@@ -123,6 +126,8 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
   private VeniceProperties getTestProps() {
     Properties props = new Properties();
+    props.putAll(TestUtils.getPubSubApacheKafkaAdapterFactoryConfigs());
+    props.put(PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY, PUBSUB_CLIENT_CONFIG_PREFIX);
     props.put(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
     props.put(VALUE_SCHEMA_ID_PROP, 1);
     props.put(VENICE_PUSH_DESTINATION_PUBSUB_BROKER, "localhost:8090"); /* Destination Kafka cluster */

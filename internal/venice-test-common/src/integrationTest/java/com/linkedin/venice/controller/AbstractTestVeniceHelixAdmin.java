@@ -330,6 +330,7 @@ class AbstractTestVeniceHelixAdmin {
 
   Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = TestUtils.getPropertiesForControllerConfig();
+    properties.putAll(ServiceFactory.getPubSubClientConfigs());
     properties.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
     properties.put(DELAY_TO_REBALANCE_MS, 0);
     properties.put(KAFKA_REPLICATION_FACTOR, 1);

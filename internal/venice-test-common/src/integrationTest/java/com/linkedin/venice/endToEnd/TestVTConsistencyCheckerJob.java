@@ -24,6 +24,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -48,6 +49,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemStream;
 import org.apache.spark.sql.Dataset;
@@ -143,6 +145,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       // 2. RT writes from both DCs via Samza
       VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDatacenters.get(0).getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -162,6 +165,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
 
       VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDatacenters.get(1).getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -205,6 +209,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       // 5. Send more RT writes after injection to advance HW and make the scenario more realistic
       VeniceSystemProducer postInjectionProducer = new VeniceSystemProducer(
           new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setSamzaConfig(new MapConfig(childDatacenters.get(0).getPubSubClientProperties()))
               .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
@@ -235,6 +240,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       File outputDir = new File(tempRoot, "output");
       try {
         Properties jobProps = new Properties();
+        jobProps.putAll(ServiceFactory.getPubSubClientConfigs());
         jobProps.setProperty(
             VTConsistencyCheckerJob.DC0_BROKER_URL,
             childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());

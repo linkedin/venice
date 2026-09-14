@@ -1,6 +1,7 @@
 package com.linkedin.venice.heartbeat;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INITIAL_DELAY_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INTERVAL_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG;
@@ -61,7 +62,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
         heartbeatKafkaTopicName,
         partitionerConfig,
-        getVeniceWriterProperties(sslProperties, kafkaUrl),
+        getVeniceWriterProperties(sslProperties, kafkaUrl, properties),
         partitionNum);
     Schema heartbeatKeySchema = getHeartbeatKeySchema(controllerClient, retryAttempts, heartbeatStoreName);
     Map<Integer, Schema> valueSchemasById =
@@ -91,12 +92,21 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     return defaultPushJobHeartbeatSender;
   }
 
-  private Properties getVeniceWriterProperties(Optional<Properties> sslProperties, String kafkaBootstrapUrl) {
+  private Properties getVeniceWriterProperties(
+      Optional<Properties> sslProperties,
+      String kafkaBootstrapUrl,
+      VeniceProperties jobProperties) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrl);
 
     if (sslProperties.isPresent()) {
       veniceWriterProperties.putAll(sslProperties.get());
+    }
+    // Forward the pub-sub producer adapter factory class so the heartbeat VeniceWriterFactory can resolve
+    // it; the factory fails fast otherwise (there is no implicit default).
+    if (jobProperties.containsKey(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS)) {
+      veniceWriterProperties
+          .put(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS, jobProperties.getString(PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS));
     }
     return veniceWriterProperties;
   }

@@ -3,6 +3,10 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
@@ -120,8 +124,65 @@ public class ServiceFactory {
   /**
    * @return an instance of {@link PubSubClientsFactory}
    */
-  static PubSubClientsFactory getPubSubClientsFactory() {
+  public static PubSubClientsFactory getPubSubClientsFactory() {
     return PUBSUB_BROKER_FACTORY.getClientsFactory();
+  }
+
+  /**
+   * Resolves the pub-sub adapter factory class configs from the configured pub-sub backend (selected via the
+   * {@code pubSubBrokerFactory} system property) instead of hard-coding a specific implementation. Tests use this so
+   * the suite exercises whatever client configs the pub-sub backend under test exposes.
+   *
+   * @return a {@link Properties} carrying the producer, consumer, admin, and source-of-truth-admin adapter factory
+   *         class names exposed by the configured backend.
+   */
+  public static Properties getPubSubClientConfigs() {
+    PubSubClientsFactory clientsFactory = getPubSubClientsFactory();
+    String adminAdapterFactoryClass = clientsFactory.getAdminAdapterFactory().getClass().getName();
+    Properties properties = new Properties();
+    properties.setProperty(
+        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+        clientsFactory.getProducerAdapterFactory().getClass().getName());
+    properties.setProperty(
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        clientsFactory.getConsumerAdapterFactory().getClass().getName());
+    properties.setProperty(PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, adminAdapterFactoryClass);
+    properties.setProperty(PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS, adminAdapterFactoryClass);
+    return properties;
+  }
+
+  /**
+   * Publishes the configured backend's pub-sub adapter factory class configs as JVM system properties so components
+   * that read from {@link System#getProperties()} (e.g. the admin tool) pick them up.
+   *
+   * @return the prior values of the affected system properties, to be passed to
+   *         {@link #restorePubSubClientConfigsSystemProperties(Properties)} for cleanup.
+   */
+  public static Properties setPubSubClientConfigsAsSystemProperties() {
+    Properties originalProperties = new Properties();
+    Properties factoryConfigs = getPubSubClientConfigs();
+    for (String key: factoryConfigs.stringPropertyNames()) {
+      String originalValue = System.getProperty(key);
+      if (originalValue != null) {
+        originalProperties.setProperty(key, originalValue);
+      }
+      System.setProperty(key, factoryConfigs.getProperty(key));
+    }
+    return originalProperties;
+  }
+
+  /**
+   * Restores the system properties previously mutated by {@link #setPubSubClientConfigsAsSystemProperties()}.
+   */
+  public static void restorePubSubClientConfigsSystemProperties(Properties originalProperties) {
+    for (String key: getPubSubClientConfigs().stringPropertyNames()) {
+      if (originalProperties.containsKey(key)) {
+        System.setProperty(key, originalProperties.getProperty(key));
+      } else {
+        System.clearProperty(key);
+      }
+    }
+    originalProperties.clear();
   }
 
   /**
