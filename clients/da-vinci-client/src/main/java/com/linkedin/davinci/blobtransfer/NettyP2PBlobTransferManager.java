@@ -82,7 +82,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // Each replica issues exactly one blob-transfer request at a time.
   // That request tries a chain of peers (one host after another until success or all peers fail).
   // Declared as the concrete type so the pool's active and queued counts are readable: the queue is unbounded,
-  // so its depth is the only signal that demand exceeded the fixed pool size rather than matching it.
+  // so its depth is the only signal that demand exceeded the fixed pool size rather than matching it. Those
+  // counts describe the executor, not the transfers: a worker hands the fetch to a Netty event loop and returns,
+  // so the pool can read idle while peer transfers are still streaming.
   private final ThreadPoolExecutor replicaBlobFetchExecutor;
   // Status tracking manager is responsible for coordinating blob transfer cancellations
   private final BlobTransferStatusTrackingManager statusTrackingManager;
@@ -391,10 +393,12 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   /**
-   * Records what the dedicated allocator holds at the moment a replica's transfer settles, alongside the
-   * concurrency that produced it. Sampling the allocator on its own would leave the two figures unrelated,
-   * because concurrency moves between samples; pairing them here makes the per-transfer footprint derivable,
-   * which is what a memory-based admission limit has to be sized against.
+   * Records what the dedicated allocator holds at the moment a replica's transfer settles, alongside how busy
+   * the fetch executor is. Both figures are allocator-wide and executor-wide samples of the instant they are
+   * read: the memory covers every replica this receiver is serving, and the executor counts describe worker
+   * threads rather than transfers, so neither is this replica's own footprint and one cannot be divided by the
+   * other. What the pair is good for is bounding how much a receiver holds while a known amount of work is in
+   * flight, which is the envelope a memory-based admission limit has to be sized against.
    * <p>
    * This runs once per replica bootstrap, so it does not sit on a hot path.
    */
@@ -407,7 +411,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         return;
       }
       LOGGER.info(
-          "Blob transfer receiver finished fetching {}, succeeded={}, activeTransfers={}, queuedTransfers={}, {}",
+          "Blob transfer receiver finished fetching {}, succeeded={}, activeExecutorThreads={}, "
+              + "queuedExecutorTasks={}, {}",
           replicaId,
           throwable == null,
           replicaBlobFetchExecutor.getActiveCount(),

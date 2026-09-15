@@ -144,8 +144,8 @@ public class NettyFileTransferClient {
     // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
     clientBootstrap
         .option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(64 * 1024, 512 * 1024, 1 << 20));
-    // RCVBUF_ALLOCATOR above decides how large each read buffer is; ALLOCATOR decides which pool it comes from. One
-    // arena per event-loop thread keeps the arena-to-thread mapping the same as Netty's own default sizing.
+    // RCVBUF_ALLOCATOR above decides how large each read buffer is; ALLOCATOR decides which pool it comes from.
+    // Size the arena count to this client's event loop pool rather than to Netty's process-wide cores * 2 default.
     this.byteBufAllocator =
         BlobTransferPooledByteBufAllocator.create("receiver", dedicatedAllocatorEnabled, resolvedWorkerThreadCount);
     clientBootstrap.option(ChannelOption.ALLOCATOR, byteBufAllocator);

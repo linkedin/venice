@@ -126,13 +126,19 @@ public class TestBlobTransferPooledByteBufAllocator {
     ByteBuf hugeBuffer = allocator.directBuffer(allocator.metric().chunkSize() * 2);
     try {
       String usage = BlobTransferPooledByteBufAllocator.describeUsage(allocator);
-      assertTrue(usage.contains("directHugeAllocations=1"), usage);
-      assertTrue(usage.contains("heapHugeAllocations=0"), usage);
+      assertTrue(usage.contains("directHugeAllocationsTotal=1"), usage);
+      assertTrue(usage.contains("heapHugeAllocationsTotal=0"), usage);
       assertFalse(
           usage.contains("usedDirectMemory=0"),
           "A huge allocation must still count against the total: " + usage);
     } finally {
       hugeBuffer.release();
     }
+
+    // The huge counter is cumulative, so it keeps reporting the allocation after the memory itself is gone. Pinning
+    // that here stops anyone reading it as a count of what the allocator is holding right now.
+    String usageAfterRelease = BlobTransferPooledByteBufAllocator.describeUsage(allocator);
+    assertTrue(usageAfterRelease.contains("directHugeAllocationsTotal=1"), usageAfterRelease);
+    assertTrue(usageAfterRelease.contains("usedDirectMemory=0"), usageAfterRelease);
   }
 }

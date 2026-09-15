@@ -330,9 +330,11 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
   /**
    * Records what the dedicated allocator holds at the moment a transfer releases its slot, alongside the
-   * concurrency that produced it. Sampling the allocator on its own would leave the two figures unrelated,
-   * because concurrency moves between samples; pairing them here makes the per-transfer footprint derivable,
-   * which is what a memory-based admission limit has to be sized against.
+   * concurrency that produced it. Both figures are whole-pool samples of the instant they are read: the memory
+   * covers every channel this sender is serving, not the one being logged, so it is not this transfer's own
+   * footprint and cannot be divided by the count to produce one. What the pair is good for is bounding how much
+   * a sender holds while a known number of transfers is in flight, which is the envelope a memory-based
+   * admission limit has to be sized against.
    * <p>
    * This runs once per finished transfer rather than per request, and blob transfer only serves replica
    * bootstraps, so it does not sit on a hot path.
@@ -345,8 +347,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       if (allocatorUsage == null || blobTransferRequest == null) {
         return;
       }
-      // Both numbers are read after this transfer released its own slot and its own buffers, so the
-      // count and the memory describe the same set of still-running transfers and can be divided.
+      // The count covers the server-origin transfers the limit below gates, so it excludes any client-origin
+      // transfer that is holding buffers in the same pool the memory figures describe.
       LOGGER.info(
           "Blob transfer sender finished serving {}, concurrentTransfers={}/{}, {}",
           blobTransferRequest.getFullResourceName(),
