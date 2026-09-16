@@ -342,12 +342,20 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       if (allocatorUsage == null || blobTransferRequest == null) {
         return;
       }
-      // Server-origin transfers only. Client-origin ones are gated separately and are off by default.
+      // Server-origin and client-origin transfers are admitted against separate budgets and a transfer is counted in
+      // exactly one of them, so they sum to the population the memory figures cover. The total has no single
+      // denominator, which is why both components are reported.
+      int serverOriginTransfers = globalConcurrentTransferRequests.get();
+      int clientOriginTransfers = admissionController == null ? 0 : admissionController.getClientInFlight();
+      int maxClientTransfers = admissionController == null ? 0 : admissionController.getMaxClientTransfers();
       LOGGER.info(
-          "Blob transfer sender finished serving {}, concurrentTransfers={}/{}, {}",
+          "Blob transfer sender finished serving {}, concurrentTransfers={} (serverOrigin={}/{}, clientOrigin={}/{}), {}",
           blobTransferRequest.getFullResourceName(),
-          globalConcurrentTransferRequests.get(),
+          serverOriginTransfers + clientOriginTransfers,
+          serverOriginTransfers,
           maxAllowedConcurrentSnapshotUsers,
+          clientOriginTransfers,
+          maxClientTransfers,
           allocatorUsage);
     } catch (Exception e) {
       LOGGER.warn("Failed to log the blob transfer footprint", e);

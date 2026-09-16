@@ -233,7 +233,10 @@ public class TestClientOriginServerBlobTransfer {
         2 * 1024 * 1024,
         25,
         acceptClientRequest,
-        false);
+        // Enable the dedicated allocator so the sender's footprint logging actually runs here. This is the only
+        // test with a non-null admission controller, so it is the only place the client-origin branch of that
+        // logging executes; with the default allocator describeUsage() returns null and it is skipped entirely.
+        true);
 
     NettyFileTransferClient client = new NettyFileTransferClient(
         port,
@@ -248,7 +251,7 @@ public class TestClientOriginServerBlobTransfer {
         Optional.of(clientSslFactory),
         () -> notifier,
         LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()),
-        false);
+        true);
 
     BlobFinder peerFinder = mock(BlobFinder.class);
     BlobPeersDiscoveryResponse discoveryResponse = new BlobPeersDiscoveryResponse();
