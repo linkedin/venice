@@ -2021,7 +2021,7 @@ public class VeniceWriterUnitTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testGetPartitionIdRoutesDeterministicallyAndUnsupportedWritersFailLoudly() {
+  public void testGetPartitionIdForSerializedKeyRoutesDeterministicallyAndUnsupportedWritersFailLoudly() {
     int partitionCount = 8;
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(anyString(), anyInt(), any(), any(), any(), any()))
@@ -2032,20 +2032,24 @@ public class VeniceWriterUnitTest {
 
     for (byte[] key: new byte[][] { "alpha".getBytes(), "beta".getBytes(), "gamma".getBytes(), "delta-key".getBytes(),
         "0123456789".getBytes() }) {
-      int first = writer.getPartitionId(key);
+      int first = writer.getPartitionIdForSerializedKey(key);
       assertTrue(first >= 0 && first < partitionCount, "Partition must be within [0, partitionCount)");
-      assertEquals(writer.getPartitionId(key), first, "Routing must be deterministic for a given key");
+      assertEquals(
+          writer.getPartitionIdForSerializedKey(key),
+          first,
+          "Routing must be deterministic for a given serialized key");
     }
 
     AbstractVeniceWriter<Object, Object, Object> unsupportedWriter = mock(AbstractVeniceWriter.class);
-    when(unsupportedWriter.getPartitionId(any())).thenCallRealMethod();
-    UnsupportedOperationException exception =
-        Assert.expectThrows(UnsupportedOperationException.class, () -> unsupportedWriter.getPartitionId("any-key"));
+    when(unsupportedWriter.getPartitionIdForSerializedKey(any())).thenCallRealMethod();
+    UnsupportedOperationException exception = Assert.expectThrows(
+        UnsupportedOperationException.class,
+        () -> unsupportedWriter.getPartitionIdForSerializedKey("any-key".getBytes()));
     assertTrue(exception.getMessage().startsWith("Partition routing is not implemented for "));
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testBatchingVeniceWriterGetPartitionIdDelegatesToInternalWriterRouting() {
+  public void testBatchingVeniceWriterGetPartitionIdForSerializedKeyDelegatesToInternalWriterRouting() {
     int partitionCount = 16;
     String topic = "batching_routing_rt";
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
@@ -2058,20 +2062,18 @@ public class VeniceWriterUnitTest {
         mockedProducer);
     VeniceKafkaSerializer keySerializer = new StringSerializer();
 
-    // Exercise the real delegation via mock: stub only the collaborators it delegates to.
+    // Exercise the real delegation via mock: stub only the underlying writer.
     BatchingVeniceWriter<String, byte[], byte[]> batchingWriter = mock(BatchingVeniceWriter.class);
     when(batchingWriter.getVeniceWriter()).thenReturn(internalWriter);
-    when(batchingWriter.getKeySerializer()).thenReturn(keySerializer);
-    when(batchingWriter.getTopicName()).thenReturn(topic);
-    when(batchingWriter.getPartitionId(any())).thenCallRealMethod();
+    when(batchingWriter.getPartitionIdForSerializedKey(any())).thenCallRealMethod();
 
     Set<Integer> observedPartitions = new HashSet<>();
     for (int i = 0; i < 256; i++) {
       String key = "member-" + i;
-      int delegated = batchingWriter.getPartitionId(key);
-      // Delegation must route on the SERIALIZED key bytes, not the raw object.
-      int expected = internalWriter.getPartitionId(keySerializer.serialize(topic, key));
-      assertEquals(delegated, expected, "Batching getPartitionId must match its internal writer's routing");
+      byte[] serializedKey = keySerializer.serialize(topic, key);
+      int delegated = batchingWriter.getPartitionIdForSerializedKey(serializedKey);
+      int expected = internalWriter.getPartitionIdForSerializedKey(serializedKey);
+      assertEquals(delegated, expected, "Batching routing must match its internal writer");
       assertTrue(delegated >= 0 && delegated < partitionCount, "Partition must be within [0, partitionCount)");
       observedPartitions.add(delegated);
     }

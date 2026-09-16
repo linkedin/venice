@@ -35,7 +35,7 @@ class VeniceSystemProducerWriteDispatcher {
 
   private static final long SHUTDOWN_AWAIT_SECONDS = 60;
 
-  private final PartitionStripedExecutor kernel;
+  private final PartitionStripedExecutor partitionExecutor;
   private final AbstractVeniceWriter<byte[], byte[], byte[]> writer;
   private final String storeName;
 
@@ -58,7 +58,8 @@ class VeniceSystemProducerWriteDispatcher {
       String storeName) {
     this.writer = writer;
     this.storeName = storeName;
-    this.kernel = new PartitionStripedExecutor(workerCount, queueCapacity, "venice-samza-writer-" + storeName);
+    this.partitionExecutor =
+        new PartitionStripedExecutor(workerCount, queueCapacity, "venice-samza-writer-" + storeName);
     this.completionExecutor = Executors
         .newFixedThreadPool(workerCount, new DaemonThreadFactory("venice-samza-writer-completion-" + storeName));
   }
@@ -66,7 +67,8 @@ class VeniceSystemProducerWriteDispatcher {
   /**
    * Routes {@code command} to the stripe for its Venice partition and returns the durable future without waiting for
    * the writer. Stopped-dispatcher and interrupted-admission rejections fail only this submission; other failures
-   * while still accepting are recorded sticky.
+   * while still accepting are recorded sticky. Compatibility callers that await submission rethrow the original
+   * runtime failure; asynchronous callers observe it through the returned future and the next flush.
    */
   VeniceSystemProducerWriteCommand.DurableWriteFuture dispatch(VeniceSystemProducerWriteCommand command) {
     checkForFailure();
@@ -79,9 +81,9 @@ class VeniceSystemProducerWriteDispatcher {
         return command.getDurableFuture();
       }
       try {
-        int partition = writer.getPartitionId(command.getKey());
+        int partition = writer.getPartitionIdForSerializedKey(command.getKey());
         try {
-          kernel.submit(partition, () -> execute(command));
+          partitionExecutor.submit(partition, () -> execute(command));
         } catch (RejectedExecutionException rejection) {
           if (accepting.get()) {
             if (!(rejection.getCause() instanceof InterruptedException)) {
@@ -108,6 +110,7 @@ class VeniceSystemProducerWriteDispatcher {
     }
   }
 
+  /** Worker failures settle the command and sticky state because they cannot be rethrown across the thread boundary. */
   private void execute(VeniceSystemProducerWriteCommand command) {
     try {
       command.submit(writer, new ForwardingProducerCallback(command));
@@ -174,12 +177,12 @@ class VeniceSystemProducerWriteDispatcher {
    * fence and flushing, so a callback-driven retry that re-admits cannot deadlock the flush.
    */
   void flush() {
-    int stripes = kernel.getStripeCount();
+    int stripes = partitionExecutor.getStripeCount();
     CountDownLatch fence = new CountDownLatch(stripes);
     admissionLock.writeLock().lock();
     try {
       for (int stripe = 0; stripe < stripes; stripe++) {
-        kernel.executeOnStripe(stripe, fence::countDown);
+        partitionExecutor.executeOnStripe(stripe, fence::countDown);
       }
     } finally {
       admissionLock.writeLock().unlock();
@@ -209,12 +212,12 @@ class VeniceSystemProducerWriteDispatcher {
       stopped = true;
     }
     accepting.set(false);
-    kernel.shutdown();
+    partitionExecutor.shutdown();
     boolean interrupted = false;
     boolean terminated = false;
     while (!terminated) {
       try {
-        terminated = kernel.awaitTermination(SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS);
+        terminated = partitionExecutor.awaitTermination(SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS);
         if (!terminated) {
           LOGGER.warn("Still draining VeniceSystemProducer write workers for store {}", storeName);
         }

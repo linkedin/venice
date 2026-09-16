@@ -90,14 +90,14 @@ public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
   public abstract void flush();
 
   /**
-   * Returns the partition id that {@code key} maps to under this writer's partitioner. Writers used for
-   * partition-striped dispatch must override this with their exact eventual write route.
+   * Returns the partition id for an already-serialized key. Writers used for partition-striped dispatch must override
+   * this with their exact eventual write route.
    *
-   * @param key the (typed) key to route
+   * @param serializedKey the serialized key bytes to route
    * @return a non-negative partition id
    * @throws UnsupportedOperationException if this writer does not expose partition routing
    */
-  public int getPartitionId(K key) {
+  public int getPartitionIdForSerializedKey(byte[] serializedKey) {
     throw new UnsupportedOperationException("Partition routing is not implemented for " + getClass().getName());
   }
 }

@@ -35,7 +35,7 @@ import org.testng.annotations.Test;
 
 /**
  * Deterministic tests for {@link VeniceSystemProducerWriteDispatcher} with a latch-blockable mocked
- * {@link AbstractVeniceWriter}; kernel-level guarantees are covered in {@code PartitionStripedExecutorTest}.
+ * {@link AbstractVeniceWriter}; executor-level guarantees are covered in {@code PartitionStripedExecutorTest}.
  */
 public class VeniceSystemProducerWriteDispatcherTest {
   private static final int AWAIT_SECONDS = 10;
@@ -56,7 +56,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     CountDownLatch putEntered = new CountDownLatch(1);
     CountDownLatch releasePut = new CountDownLatch(1);
     AtomicReference<PubSubProducerCallback> callbackRef = new AtomicReference<>();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       callbackRef.set(invocation.getArgument(4));
       putEntered.countDown();
@@ -90,7 +90,8 @@ public class VeniceSystemProducerWriteDispatcherTest {
     CountDownLatch releasePartition0 = new CountDownLatch(1);
     CountDownLatch partition1Reached = new CountDownLatch(1);
     AtomicInteger partition0PutCount = new AtomicInteger();
-    when(writer.getPartitionId(any())).thenAnswer(invocation -> (int) ((byte[]) invocation.getArgument(0))[0]);
+    when(writer.getPartitionIdForSerializedKey(any()))
+        .thenAnswer(invocation -> (int) ((byte[]) invocation.getArgument(0))[0]);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       int partition = (int) ((byte[]) invocation.getArgument(0))[0];
       if (partition == 0) {
@@ -128,7 +129,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   public void synchronousWriterFailureBecomesStickyAndSurfaces() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     VeniceException boom = new VeniceException("synchronous put failure");
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenThrow(boom);
 
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
@@ -148,7 +149,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   public void partitionRoutingFailureBecomesStickyAndSurfaces() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     RuntimeException boom = new RuntimeException("partition routing failure");
-    when(writer.getPartitionId(any())).thenThrow(boom);
+    when(writer.getPartitionIdForSerializedKey(any())).thenThrow(boom);
 
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
     try {
@@ -168,7 +169,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   public void asynchronousCallbackFailureBecomesStickyAndSurfaces() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<PubSubProducerCallback> callbackRef = new AtomicReference<>();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       callbackRef.set(invocation.getArgument(4));
       return null;
@@ -193,7 +194,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch putEntered = new CountDownLatch(1);
     CountDownLatch releasePut = new CountDownLatch(1);
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       putEntered.countDown();
       assertTrue(releasePut.await(AWAIT_SECONDS, TimeUnit.SECONDS));
@@ -229,7 +230,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     AtomicReference<PubSubProducerCallback> callbackRef = new AtomicReference<>();
     CountDownLatch flushEntered = new CountDownLatch(1);
     CountDownLatch releaseFlush = new CountDownLatch(1);
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       callbackRef.set(invocation.getArgument(4));
       return null;
@@ -272,7 +273,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     CountDownLatch releaseWorker = new CountDownLatch(1);
     AtomicInteger putCount = new AtomicInteger();
     AtomicBoolean forcedInterrupt = new AtomicBoolean();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       if (putCount.getAndIncrement() == 0) {
         workerEntered.countDown();
@@ -315,7 +316,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   public void synchronousWriterErrorCompletesFuturesStickyAndRethrowsOnWorker() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     FatalTestError fatal = new FatalTestError();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenThrow(fatal);
 
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
@@ -332,7 +333,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   @Test
   public void stopDrainsWorkersWithoutClosingWriterAndIsIdempotent() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenReturn(null);
 
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
@@ -354,7 +355,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     CountDownLatch workerEntered = new CountDownLatch(1);
     CountDownLatch releaseWorker = new CountDownLatch(1);
     AtomicInteger putCount = new AtomicInteger();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       if (putCount.getAndIncrement() == 0) {
         workerEntered.countDown();
@@ -395,7 +396,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     CountDownLatch workerEntered = new CountDownLatch(1);
     CountDownLatch releaseWorker = new CountDownLatch(1);
     AtomicInteger putCount = new AtomicInteger();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       if (putCount.incrementAndGet() == 1) {
         workerEntered.countDown();
@@ -455,12 +456,12 @@ public class VeniceSystemProducerWriteDispatcherTest {
   }
 
   @Test
-  public void kernelRejectionRacingStopFailsCleanStoppedNotSticky() throws Exception {
+  public void partitionExecutorRejectionRacingStopFailsCleanStoppedNotSticky() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch routingEntered = new CountDownLatch(1);
     CountDownLatch releaseRouting = new CountDownLatch(1);
     AtomicBoolean firstRouting = new AtomicBoolean(true);
-    when(writer.getPartitionId(any())).thenAnswer(invocation -> {
+    when(writer.getPartitionIdForSerializedKey(any())).thenAnswer(invocation -> {
       if (firstRouting.compareAndSet(true, false)) {
         routingEntered.countDown();
         assertTrue(releaseRouting.await(AWAIT_SECONDS, TimeUnit.SECONDS));
@@ -489,7 +490,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
       assertEquals(racedCause.getMessage(), "VeniceSystemProducer write dispatcher is stopped");
       assertTrue(
           racedCause.getCause() instanceof RejectedExecutionException,
-          "clean stopped rejection must carry the kernel RejectedExecutionException as its cause");
+          "clean stopped rejection must carry the partition executor rejection as its cause");
       verify(writer, never()).put(any(), any(), anyInt(), anyLong(), any());
 
       VeniceSystemProducerWriteCommand.DurableWriteFuture later = dispatcher.dispatch(putCommand(0));
@@ -508,7 +509,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   public void synchronousCallbackBeforeSubmissionRunsDurableContinuationOffWorker() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<Thread> workerThread = new AtomicReference<>();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       workerThread.set(Thread.currentThread());
       PubSubProducerCallback callback = invocation.getArgument(4);
@@ -550,7 +551,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     AtomicReference<Thread> workerThread = new AtomicReference<>();
     VeniceException boom = new VeniceException("sync failure");
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       workerThread.set(Thread.currentThread());
       throw boom;
@@ -592,7 +593,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     CountDownLatch workerEntered = new CountDownLatch(1);
     CountDownLatch releaseWorker = new CountDownLatch(1);
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(writer.put(any(), any(), anyInt(), anyLong(), any())).thenAnswer(invocation -> {
       workerEntered.countDown();
       assertTrue(releaseWorker.await(AWAIT_SECONDS, TimeUnit.SECONDS));
@@ -629,7 +630,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   public void routingErrorSettlesFuturesStickyAndRethrowsToCaller() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
     FatalTestError fatal = new FatalTestError();
-    when(writer.getPartitionId(any())).thenThrow(fatal);
+    when(writer.getPartitionIdForSerializedKey(any())).thenThrow(fatal);
 
     VeniceSystemProducerWriteDispatcher dispatcher = new VeniceSystemProducerWriteDispatcher(writer, 4, 100, "s");
     try {
@@ -653,7 +654,7 @@ public class VeniceSystemProducerWriteDispatcherTest {
   @Test
   public void writerInternalCallbackIsChainedBeforeDurableCompletion() throws Exception {
     AbstractVeniceWriter<byte[], byte[], byte[]> writer = mockWriter();
-    when(writer.getPartitionId(any())).thenReturn(0);
+    when(writer.getPartitionIdForSerializedKey(any())).thenReturn(0);
 
     AtomicReference<PubSubProducerCallback> suppliedCallback = new AtomicReference<>();
     AtomicReference<CompletableFuture<Void>> durableRef = new AtomicReference<>();

@@ -37,6 +37,33 @@ import org.apache.logging.log4j.Logger;
 public class PartitionedProducerExecutor {
   private static final Logger LOGGER = LogManager.getLogger(PartitionedProducerExecutor.class);
 
+  /** Blocks the caller until the callback-pool queue has space, throwing once the pool is shutting down. */
+  private static class BlockingRejectionHandler implements RejectedExecutionHandler {
+    private static final long OFFER_TIMEOUT_MS = 100;
+    private final String poolName;
+
+    BlockingRejectionHandler(String poolName) {
+      this.poolName = poolName;
+    }
+
+    @Override
+    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+      BlockingQueue<Runnable> queue = executor.getQueue();
+      LOGGER.warn("Queue full for {}, blocking caller. Queue size: {}", poolName, queue.size());
+      try {
+        while (!executor.isShutdown()) {
+          if (queue.offer(r, OFFER_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            return;
+          }
+        }
+        throw new RejectedExecutionException("Executor has been shutdown");
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RejectedExecutionException("Interrupted while waiting for queue space", e);
+      }
+    }
+  }
+
   private final PartitionStripedExecutor workers; // null if workerCount=0
   private final ThreadPoolExecutor callbackExecutor; // null if callbackThreadCount=0
   private final int workerCount;
@@ -281,32 +308,4 @@ public class PartitionedProducerExecutor {
     return workersTerminated && callbackTerminated;
   }
 
-  /**
-   * Blocks the caller until the callback-pool queue has space, throwing once the pool is shutting down.
-   */
-  private static class BlockingRejectionHandler implements RejectedExecutionHandler {
-    private static final long OFFER_TIMEOUT_MS = 100;
-    private final String poolName;
-
-    BlockingRejectionHandler(String poolName) {
-      this.poolName = poolName;
-    }
-
-    @Override
-    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-      BlockingQueue<Runnable> queue = executor.getQueue();
-      LOGGER.warn("Queue full for {}, blocking caller. Queue size: {}", poolName, queue.size());
-      try {
-        while (!executor.isShutdown()) {
-          if (queue.offer(r, OFFER_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            return;
-          }
-        }
-        throw new RejectedExecutionException("Executor has been shutdown");
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new RejectedExecutionException("Interrupted while waiting for queue space", e);
-      }
-    }
-  }
 }

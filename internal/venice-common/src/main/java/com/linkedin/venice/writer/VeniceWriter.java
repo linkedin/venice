@@ -2787,13 +2787,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return partitioner.getPartitionId(key, numberOfPartitions);
   }
 
-  /**
-   * Computes the Venice partition for {@code key} by serializing it with this writer's key serializer and
-   * applying the configured partitioner. Enables partition-stable striped dispatch upstream of the writer.
-   */
   @Override
-  public int getPartitionId(K key) {
-    return getPartition(keySerializer.serialize(topicName, key));
+  public int getPartitionIdForSerializedKey(byte[] serializedKey) {
+    return getPartition(serializedKey);
   }
 
   /**

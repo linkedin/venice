@@ -735,7 +735,7 @@ public class VeniceSystemProducerTest {
   @Test(timeOut = 30_000)
   public void streamBatchingWriterDispatchFlushAndStopPreserveBehavior() {
     BatchingVeniceWriter<byte[], byte[], byte[]> batchingWriter = mock(BatchingVeniceWriter.class);
-    when(batchingWriter.getPartitionId(any())).thenReturn(0);
+    when(batchingWriter.getPartitionIdForSerializedKey(any())).thenReturn(0);
     when(batchingWriter.put(any(), any(), anyInt(), anyLong(), any()))
         .thenReturn(CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
 
