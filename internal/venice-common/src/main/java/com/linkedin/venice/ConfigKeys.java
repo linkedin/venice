@@ -2292,17 +2292,12 @@ public class ConfigKeys {
   // size, so this config only caps the ceiling; it does not change the 16KB floor. Tune this down to keep large
   // chunks poolable by Netty's heap arena (see io.netty.allocator.maxOrder) at the cost of more, smaller writes.
   public static final String BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES = "blob.transfer.max.chunk.size.bytes";
-  // this is a config to decide whether blob transfer channels allocate their buffers from a Netty
-  // PooledByteBufAllocator of their own rather than from the process-wide default one they share with every other
-  // Netty user. A dedicated allocator reports how much heap and direct memory blob transfer's own pooled buffers
-  // hold, which the shared allocator cannot attribute to any single component. It is built with the same page size
-  // and max order as the default allocator, so the chunk size, and therefore which allocations are poolable, stays
-  // the same either way.
-  // The sender and receiver pools are additive to the default one, which does not shrink to make room for them, and
-  // a pool never releases the first chunk it reserves in each arena. The floor that adds is one chunk per arena per
-  // buffer type at each end, which is negligible at the 128KB chunk that -Dio.netty.allocator.maxOrder=4 produces
-  // and hundreds of MB at Netty's stock 16MB chunk. Do not enable this on a deployment that does not set that
-  // property; the chunk size the allocator logs on startup is what confirms which one a host ended up with.
+  // this is a config to decide whether blob transfer channels allocate from a Netty PooledByteBufAllocator of their
+  // own rather than the process-wide default, so their memory usage becomes attributable to blob transfer. The chunk
+  // size is unchanged, so the same allocations stay poolable either way.
+  // The two pools are additive to the default one and never release the first chunk they reserve per arena, which is
+  // negligible at the 128KB chunk -Dio.netty.allocator.maxOrder=4 produces and hundreds of MB at Netty's stock 16MB
+  // chunk, so do not enable this where that property is unset.
   public static final String BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED = "blob.transfer.dedicated.allocator.enabled";
   // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
   // many

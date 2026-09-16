@@ -40,9 +40,8 @@ public class P2PBlobTransferConfig {
   private final int clientCapacityPercent;
   // Whether the server accepts client-origin (e.g. Stateful CDC) blob transfer requests.
   private final boolean serverAcceptClientBlobRequestEnabled;
-  // Whether the sender and receiver channels allocate from a Netty PooledByteBufAllocator of their own instead of
-  // the process-wide default one, so their heap and direct memory usage is reported separately from every other
-  // Netty user in the process.
+  // Whether the sender and receiver channels allocate from a Netty PooledByteBufAllocator of their own rather than
+  // the process-wide default, so their memory usage is attributable to blob transfer.
   private final boolean dedicatedAllocatorEnabled;
 
   public P2PBlobTransferConfig(

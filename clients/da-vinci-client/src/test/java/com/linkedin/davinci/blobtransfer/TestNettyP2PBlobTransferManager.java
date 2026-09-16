@@ -51,6 +51,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.buffer.PoolArenaMetric;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.io.IOException;
 import java.io.InputStream;
@@ -383,6 +385,110 @@ public class TestNettyP2PBlobTransferManager {
     verifyFileTransferSuccess(expectOffsetRecord);
     Mockito.verify(versionedBlobTransferStats)
         .recordBlobTransferRequest(TEST_STORE, TEST_VERSION, VENICE_SERVER, SUCCESS);
+  }
+
+  /**
+   * Runs a real transfer with the dedicated allocator enabled at both ends. Asserting that both pools recorded
+   * allocations is what catches a silent misconfiguration: installing the allocator with {@code option()} rather than
+   * {@code childOption()} on the sender, or sizing an arena count to zero, leaves the transfer working while the pool
+   * that is supposed to be reporting it stays empty.
+   */
+  @Test
+  public void testDedicatedAllocatorCarriesARealTransferAtBothEnds() throws Exception {
+    // Preparation
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Collections.singletonList("localhost"));
+    response.setServerHostNames(Collections.singleton("localhost"));
+    response.setSourceAware(true);
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+    snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
+
+    // The fixture wires both ends to the process-wide default allocator, so replace them with a pair that has the
+    // flag on. tearDown() closes whatever `manager` holds at the end of the method.
+    manager.close();
+    GlobalChannelTrafficShapingHandler trafficHandler = getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
+    int port = TestUtils.getFreePort();
+    P2PBlobTransferService dedicatedServer = new P2PBlobTransferService(
+        port,
+        tmpSnapshotDir.toString(),
+        30,
+        blobSnapshotManager,
+        trafficHandler,
+        blobTransferStats,
+        sslFactory,
+        aclHandler,
+        20,
+        2 * 1024 * 1024,
+        25,
+        true,
+        true);
+    NettyFileTransferClient dedicatedClient = new NettyFileTransferClient(
+        port,
+        tmpPartitionDir.toString(),
+        storageMetadataService,
+        30,
+        60,
+        30,
+        Math.max(4, Runtime.getRuntime().availableProcessors() / 5),
+        trafficHandler,
+        blobTransferStats,
+        sslFactory,
+        () -> notifier,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()),
+        true);
+    manager = new NettyP2PBlobTransferManager(
+        dedicatedServer,
+        dedicatedClient,
+        finder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        5,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+    manager.start();
+
+    // Execution
+    manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+        .toCompletableFuture()
+        .get(1, TimeUnit.MINUTES);
+
+    // Verification: the bytes still arrive intact, and both dedicated pools carried them.
+    verifyFileTransferSuccess(expectOffsetRecord);
+    Assert.assertNotSame(dedicatedServer.getByteBufAllocator(), PooledByteBufAllocator.DEFAULT);
+    Assert.assertNotSame(dedicatedClient.getByteBufAllocator(), PooledByteBufAllocator.DEFAULT);
+    Assert.assertTrue(
+        totalAllocations(dedicatedServer.getByteBufAllocator()) > 0,
+        "The sender's dedicated pool recorded no allocation, so the snapshot bytes came from somewhere else and "
+            + "nothing it reports would be attributable to blob transfer.");
+    Assert.assertTrue(
+        totalAllocations(dedicatedClient.getByteBufAllocator()) > 0,
+        "The receiver's dedicated pool recorded no allocation, so the transferred bytes came from somewhere else and "
+            + "nothing it reports would be attributable to blob transfer.");
+  }
+
+  /** Cumulative allocation count across every arena, which Netty never decrements on release. */
+  private static long totalAllocations(PooledByteBufAllocator allocator) {
+    long total = 0;
+    for (PoolArenaMetric arena: allocator.metric().heapArenas()) {
+      total += arena.numAllocations();
+    }
+    for (PoolArenaMetric arena: allocator.metric().directArenas()) {
+      total += arena.numAllocations();
+    }
+    return total;
   }
 
   /**

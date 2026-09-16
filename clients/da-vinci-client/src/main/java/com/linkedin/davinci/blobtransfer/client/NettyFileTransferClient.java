@@ -421,6 +421,15 @@ public class NettyFileTransferClient {
     return activeChannels.get(replicaId);
   }
 
+  /**
+   * How many replicas currently hold a transfer channel. Unlike the fetch executor's active count, this stays
+   * elevated for as long as bytes are streaming: a fetch worker hands off to a Netty event loop and returns
+   * within milliseconds, while the channel lives until the transfer ends.
+   */
+  public int getInFlightTransferCount() {
+    return activeChannels.size();
+  }
+
   public void close() {
     workerGroup.shutdownGracefully();
     hostConnectExecutorService.shutdown();
