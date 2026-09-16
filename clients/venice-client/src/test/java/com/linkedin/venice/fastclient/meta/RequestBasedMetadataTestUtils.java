@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.common.callback.Callback;
+import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -74,9 +75,22 @@ public class RequestBasedMetadataTestUtils {
       boolean firstConnWarmupFails,
       boolean isMetadataConnWarmupEnabled,
       ScheduledExecutorService metadataRefreshExecutor) {
+    return getMockClientConfig(
+        storeName,
+        isMetadataConnWarmupEnabled,
+        metadataRefreshExecutor,
+        getMockR2Client(firstConnWarmupFails));
+  }
+
+  /** Overload that lets a test supply its own r2Client, e.g. to control how replicas answer DICTIONARY requests. */
+  public static ClientConfig getMockClientConfig(
+      String storeName,
+      boolean isMetadataConnWarmupEnabled,
+      ScheduledExecutorService metadataRefreshExecutor,
+      Client r2Client) {
     ClientConfig clientConfig = mock(ClientConfig.class);
     ClusterStats clusterStats = new ClusterStats(new MetricsRepository(), storeName);
-    doReturn(getMockR2Client(firstConnWarmupFails)).when(clientConfig).getR2Client();
+    doReturn(r2Client).when(clientConfig).getR2Client();
     doReturn(1L).when(clientConfig).getMetadataRefreshIntervalInSeconds();
     doReturn(1L).when(clientConfig).getMetadataConnWarmupTimeoutInSeconds();
     doReturn(isMetadataConnWarmupEnabled).when(clientConfig).isMetadataConnWarmupEnabled();
@@ -90,10 +104,35 @@ public class RequestBasedMetadataTestUtils {
   }
 
   /**
-   * This r2Client is used for warmup conns to instances as part of metadata update
+   * Variant of {@link #getMockR2Client(boolean)} whose DICTIONARY endpoint is only served by {@code servingReplica};
+   * every other replica answers 404. Pass {@code null} to have every replica answer 404.
+   */
+  public static Client getMockR2ClientWithDictionaryOnlyOn(String servingReplica) {
+    Client r2Client = mock(Client.class);
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      callback.getValueFuture().complete(null);
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(
+                argument -> argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())),
+            any(Callback.class));
+    if (servingReplica == null) {
+      stubDictionaryFetchNotFound(r2Client);
+    } else {
+      stubDictionaryFetchOnlyServedBy(r2Client, servingReplica);
+    }
+    return r2Client;
+  }
+
+  /**
+   * This r2Client is used for warmup conns to instances as part of metadata update, and for the replica-targeted
+   * DICTIONARY fetch.
    */
   public static Client getMockR2Client(boolean firstConnWarmupFails) {
     Client r2Client = mock(Client.class);
+    stubDictionaryFetch(r2Client);
     if (!firstConnWarmupFails) {
       doAnswer(invocation -> {
         R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
@@ -135,6 +174,74 @@ public class RequestBasedMetadataTestUtils {
               any(Callback.class));
     }
     return r2Client;
+  }
+
+  /** Any replica serves the dictionary successfully. */
+  static void stubDictionaryFetch(Client r2Client) {
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      callback.getValueFuture().complete(new TransportClientResponse(0, CompressionStrategy.NO_OP, DICTIONARY));
+      return null;
+    }).when(r2Client).restRequest(argThat(RequestBasedMetadataTestUtils::isDictionaryRequest), any(Callback.class));
+  }
+
+  /**
+   * Only {@code servingReplica} holds the dictionary; every other replica answers 404, which the transport layer
+   * surfaces as a null response. This reproduces the production topology where the cluster-wide server D2 pool is far
+   * larger than the replica set of a given store-version.
+   */
+  static void stubDictionaryFetchOnlyServedBy(Client r2Client, String servingReplica) {
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      callback.getValueFuture().complete(new TransportClientResponse(0, CompressionStrategy.NO_OP, DICTIONARY));
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(argument -> isDictionaryRequest(argument) && argument.getURI().getPath().contains(servingReplica)),
+            any(Callback.class));
+
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      // The transport layer maps HTTP 404 to a null response.
+      callback.getValueFuture().complete(null);
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(argument -> isDictionaryRequest(argument) && !argument.getURI().getPath().contains(servingReplica)),
+            any(Callback.class));
+  }
+
+  /** Every replica answers 200 but with an empty body. */
+  public static Client getMockR2ClientWithEmptyDictionary() {
+    Client r2Client = mock(Client.class);
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      callback.getValueFuture().complete(null);
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(
+                argument -> argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())),
+            any(Callback.class));
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      callback.getValueFuture().complete(new TransportClientResponse(0, CompressionStrategy.NO_OP, new byte[0]));
+      return null;
+    }).when(r2Client).restRequest(argThat(RequestBasedMetadataTestUtils::isDictionaryRequest), any(Callback.class));
+    return r2Client;
+  }
+
+  /** No replica holds the dictionary: every DICTIONARY request is answered with a 404 (null response). */
+  static void stubDictionaryFetchNotFound(Client r2Client) {
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      callback.getValueFuture().complete(null);
+      return null;
+    }).when(r2Client).restRequest(argThat(RequestBasedMetadataTestUtils::isDictionaryRequest), any(Callback.class));
+  }
+
+  private static boolean isDictionaryRequest(RestRequest request) {
+    return request.getURI().getPath().contains("/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/");
   }
 
   public static D2TransportClient getMockD2TransportClient(
@@ -186,11 +293,6 @@ public class RequestBasedMetadataTestUtils {
     CompletableFuture<TransportClientResponse> completableMetadataFuture2 = CompletableFuture.completedFuture(
         new TransportClientResponse(metadataResponseSchemaId + 1, CompressionStrategy.NO_OP, newMetadataBody));
 
-    TransportClientResponse transportClientDictionaryResponse =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, DICTIONARY);
-    CompletableFuture<TransportClientResponse> completableDictionaryFuture =
-        CompletableFuture.completedFuture(transportClientDictionaryResponse);
-
     if (changeMetadata) {
       when(d2TransportClient.get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName)))
           .thenReturn(completableMetadataFuture, completableMetadataFuture2);
@@ -198,9 +300,6 @@ public class RequestBasedMetadataTestUtils {
       when(d2TransportClient.get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName)))
           .thenReturn(completableMetadataFuture);
     }
-    doReturn(completableDictionaryFuture).when(d2TransportClient)
-        .get(eq(QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION));
-
     return d2TransportClient;
   }
 
