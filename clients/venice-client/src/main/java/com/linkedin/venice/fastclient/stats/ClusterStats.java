@@ -73,7 +73,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.versionUpdateFailureCount = MetricEntityStateBase.create(
         STORE_VERSION_UPDATE_FAILURE_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.VERSION_UPDATE_FAILURE,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -82,7 +82,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.currentVersionNumber = AsyncMetricEntityStateBase.create(
         STORE_VERSION_CURRENT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.CURRENT_VERSION,
         Collections.singletonList(
             new AsyncGauge(
@@ -96,7 +96,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.blockedInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.BLOCKED_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -105,7 +105,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.unhealthyInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.UNHEALTHY_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -114,7 +114,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.overloadedInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.OVERLOADED_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
