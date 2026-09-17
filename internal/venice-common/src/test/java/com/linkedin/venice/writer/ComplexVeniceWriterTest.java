@@ -91,6 +91,9 @@ public class ComplexVeniceWriterTest {
         UnsupportedOperationException.class,
         () -> complexVeniceWriter.update(IGNORED_BYTES, IGNORED_BYTES, 1, 1, null));
     Assert.assertThrows(UnsupportedOperationException.class, () -> complexVeniceWriter.delete(IGNORED_BYTES, null));
+    Assert.assertThrows(
+        UnsupportedOperationException.class,
+        () -> complexVeniceWriter.getPartitionIdForSerializedKey(IGNORED_BYTES));
   }
 
   @Test
