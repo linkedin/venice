@@ -2,6 +2,8 @@ package com.linkedin.davinci.blobtransfer.client;
 
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.stats.AggBlobTransferStats;
@@ -9,6 +11,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.util.concurrent.EventExecutor;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +31,11 @@ public class TestNettyFileTransferClient {
   private static final int EXPECTED_THREAD_PRIORITY = 4;
 
   private NettyFileTransferClient createClient(int nettyWorkerThreadCount) throws Exception {
+    return createClient(nettyWorkerThreadCount, false);
+  }
+
+  private NettyFileTransferClient createClient(int nettyWorkerThreadCount, boolean dedicatedAllocatorEnabled)
+      throws Exception {
     return new NettyFileTransferClient(
         0, // serverPort
         Utils.getTempDataDirectory().getAbsolutePath(), // baseDir (auto-registered for deletion on JVM exit)
@@ -40,11 +48,37 @@ public class TestNettyFileTransferClient {
         mock(AggBlobTransferStats.class),
         Optional.<SSLFactory>empty(),
         () -> null, // notifierSupplier
-        LogContext.forTests("test"));
+        LogContext.forTests("test"),
+        dedicatedAllocatorEnabled);
   }
 
   private static int countWorkerThreads(NettyFileTransferClient client) {
     return (int) StreamSupport.stream(client.workerGroup.spliterator(), false).count();
+  }
+
+  @Test
+  public void testDedicatedAllocatorFlagReachesTheChannelAllocator() throws Exception {
+    // The config is the only thing standing between blob transfer and the process-wide pool, so pin both sides of
+    // it here: the constructor flag is what the channels end up allocating from.
+    NettyFileTransferClient dedicated = createClient(MIN_NETTY_WORKER_THREADS, true);
+    try {
+      assertNotSame(
+          dedicated.getByteBufAllocator(),
+          PooledByteBufAllocator.DEFAULT,
+          "Enabling the flag should give the client a pool of its own");
+    } finally {
+      dedicated.close();
+    }
+
+    NettyFileTransferClient shared = createClient(MIN_NETTY_WORKER_THREADS, false);
+    try {
+      assertSame(
+          shared.getByteBufAllocator(),
+          PooledByteBufAllocator.DEFAULT,
+          "With the flag off the client should keep using the allocator Netty would have picked anyway");
+    } finally {
+      shared.close();
+    }
   }
 
   @Test

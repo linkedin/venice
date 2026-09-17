@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
+import com.linkedin.davinci.blobtransfer.BlobTransferPooledByteBufAllocator;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -17,6 +18,7 @@ import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.AdaptiveRecvByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -85,6 +87,7 @@ public class NettyFileTransferClient {
   private final ExecutorService hostConnectExecutorService;
   private final ScheduledExecutorService connectTimeoutScheduler;
   private final ExecutorService checksumValidationExecutorService;
+  private final PooledByteBufAllocator byteBufAllocator;
 
   // A map to contain the connectable and unconnectable hosts for saving effort on reconnection
   // format: host -> timestamp of the last connection attempt
@@ -111,7 +114,8 @@ public class NettyFileTransferClient {
       AggBlobTransferStats aggBlobTransferStats,
       Optional<SSLFactory> sslFactory,
       Supplier<VeniceNotifier> notifierSupplier,
-      LogContext logContext) {
+      LogContext logContext,
+      boolean dedicatedAllocatorEnabled) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -140,6 +144,11 @@ public class NettyFileTransferClient {
     // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
     clientBootstrap
         .option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(64 * 1024, 512 * 1024, 1 << 20));
+    // RCVBUF_ALLOCATOR above decides how large each read buffer is; ALLOCATOR decides which pool it comes from.
+    // Size the arena count to this client's event loop pool rather than to Netty's process-wide cores * 2 default.
+    this.byteBufAllocator =
+        BlobTransferPooledByteBufAllocator.create("receiver", dedicatedAllocatorEnabled, resolvedWorkerThreadCount);
+    clientBootstrap.option(ChannelOption.ALLOCATOR, byteBufAllocator);
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
@@ -175,6 +184,14 @@ public class NettyFileTransferClient {
             "Venice-BlobTransfer-Checksum-Validation-Executor-Service",
             BLOB_TRANSFER_CLIENT_THREAD_PRIORITY,
             logContext));
+  }
+
+  /**
+   * The allocator the client channels allocate from, which is {@link PooledByteBufAllocator#DEFAULT} unless a
+   * dedicated one is enabled.
+   */
+  public PooledByteBufAllocator getByteBufAllocator() {
+    return byteBufAllocator;
   }
 
   /**
@@ -402,6 +419,15 @@ public class NettyFileTransferClient {
    */
   public Channel getActiveChannel(String replicaId) {
     return activeChannels.get(replicaId);
+  }
+
+  /**
+   * How many replicas currently hold a transfer channel. Unlike the fetch executor's active count, this stays
+   * elevated for as long as bytes are streaming: a fetch worker hands off to a Netty event loop and returns
+   * within milliseconds, while the channel lives until the transfer ends.
+   */
+  public int getInFlightTransferCount() {
+    return activeChannels.size();
   }
 
   public void close() {

@@ -40,6 +40,9 @@ public class P2PBlobTransferConfig {
   private final int clientCapacityPercent;
   // Whether the server accepts client-origin (e.g. Stateful CDC) blob transfer requests.
   private final boolean serverAcceptClientBlobRequestEnabled;
+  // Whether the sender and receiver channels allocate from a Netty PooledByteBufAllocator of their own rather than
+  // the process-wide default, so their memory usage is attributable to blob transfer.
+  private final boolean dedicatedAllocatorEnabled;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -59,7 +62,8 @@ public class P2PBlobTransferConfig {
       int maxConcurrentBlobReceiveReplicas,
       int p2pTransferClientNettyWorkerThreadCount,
       int clientCapacityPercent,
-      boolean serverAcceptClientBlobRequestEnabled) {
+      boolean serverAcceptClientBlobRequestEnabled,
+      boolean dedicatedAllocatorEnabled) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -78,6 +82,7 @@ public class P2PBlobTransferConfig {
     this.p2pTransferClientNettyWorkerThreadCount = p2pTransferClientNettyWorkerThreadCount;
     this.clientCapacityPercent = clientCapacityPercent;
     this.serverAcceptClientBlobRequestEnabled = serverAcceptClientBlobRequestEnabled;
+    this.dedicatedAllocatorEnabled = dedicatedAllocatorEnabled;
   }
 
   public int getP2pTransferServerPort() {
@@ -150,5 +155,9 @@ public class P2PBlobTransferConfig {
 
   public boolean isServerAcceptClientBlobRequestEnabled() {
     return serverAcceptClientBlobRequestEnabled;
+  }
+
+  public boolean isDedicatedAllocatorEnabled() {
+    return dedicatedAllocatorEnabled;
   }
 }

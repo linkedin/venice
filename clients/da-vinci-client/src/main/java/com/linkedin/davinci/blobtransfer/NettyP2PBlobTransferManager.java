@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
@@ -82,7 +81,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   private final String baseDir;
   // Each replica issues exactly one blob-transfer request at a time.
   // That request tries a chain of peers (one host after another until success or all peers fail).
-  private final ExecutorService replicaBlobFetchExecutor;
+  // Declared as the concrete type so the pool's queue depth is readable: the queue is unbounded, so its depth is
+  // the only signal that demand exceeded the fixed pool size. The pool's active count is not a transfer count — a
+  // worker hands the fetch to a Netty event loop and returns while the transfer is still streaming.
+  private final ThreadPoolExecutor replicaBlobFetchExecutor;
   // Status tracking manager is responsible for coordinating blob transfer cancellations
   private final BlobTransferStatusTrackingManager statusTrackingManager;
 
@@ -122,6 +124,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       BlobTransferTableFormat tableFormat) throws VenicePeersNotFoundException {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     CompletableFuture<InputStream> perPartitionTransferFuture = new CompletableFuture<>();
+    // Attaching to the future the caller receives covers every completion path, including the peer discovery
+    // failures below that complete it before a fetch is ever submitted.
+    perPartitionTransferFuture.whenComplete((inputStream, throwable) -> logTransferFootprint(replicaId, throwable));
 
     // Register the transfer with the status tracking manager
     statusTrackingManager.startedTransfer(replicaId);
@@ -381,6 +386,34 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           source,
           status,
           e);
+    }
+  }
+
+  /**
+   * Records what the dedicated allocator holds as a replica's transfer settles, alongside how much work the
+   * receiver has in flight. Both are whole-receiver samples of the instant they are read, so neither is this
+   * replica's own footprint and one cannot be divided by the other. {@code inFlightTransfers} may still count the
+   * transfer being logged, because its removal and the chain that completes the future this callback is attached
+   * to are both registered on the per-host future, whose dependent order is unspecified.
+   */
+  private void logTransferFootprint(String replicaId, Throwable throwable) {
+    // This runs from a whenComplete callback whose derived future is discarded, so an escaping
+    // exception would be swallowed without a trace. Report it instead.
+    try {
+      String allocatorUsage = BlobTransferPooledByteBufAllocator.describeUsage(nettyClient.getByteBufAllocator());
+      if (allocatorUsage == null) {
+        return;
+      }
+      LOGGER.info(
+          "Blob transfer receiver finished fetching {}, succeeded={}, inFlightTransfers={}, "
+              + "queuedExecutorTasks={}, {}",
+          replicaId,
+          throwable == null,
+          nettyClient.getInFlightTransferCount(),
+          replicaBlobFetchExecutor.getQueue().size(),
+          allocatorUsage);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to log the blob transfer footprint", e);
     }
   }
 
