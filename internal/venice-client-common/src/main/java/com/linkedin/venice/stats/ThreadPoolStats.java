@@ -67,7 +67,7 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     queuedTasksCountMetric = MetricEntityStateBase.create(
         ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_DISTRIBUTION.getMetricEntity(),
         otelData.getOtelRepository(),
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ThreadPoolTehutiMetricNameEnum.QUEUED_TASK_COUNT,
         Arrays.asList(new Avg(), new Max()),
         otelData.getBaseDimensionsMap(),

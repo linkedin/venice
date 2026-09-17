@@ -170,7 +170,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       healthyRequestMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_COUNT_DVC.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.HEALTHY_REQUEST,
           Collections.singletonList(healthyRequestRate),
           baseDimensionsMap,
@@ -178,7 +178,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       unhealthyRequestMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_COUNT_DVC.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.UNHEALTHY_REQUEST,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -188,7 +188,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       healthyLatencyMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_TIME_DVC.getMetricEntity(),
           otelRepository,
-          this::registerSensorWithDetailedPercentiles,
+          (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
           BasicClientTehutiMetricName.HEALTHY_REQUEST_LATENCY,
           Arrays.asList(
               new Avg(),
@@ -200,7 +200,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       unhealthyLatencyMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_TIME_DVC.getMetricEntity(),
           otelRepository,
-          this::registerSensorWithDetailedPercentiles,
+          (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
           BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY,
           Arrays.asList(
               new Avg(),
@@ -218,7 +218,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       requestKeyCount = MetricEntityStateBase.create(
           BasicClientMetricEntity.REQUEST_KEY_COUNT_DVC.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
           Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
           baseDimensionsMap,
@@ -226,7 +226,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       successResponseKeyCount = MetricEntityStateBase.create(
           BasicClientMetricEntity.RESPONSE_KEY_COUNT_DVC.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
           Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
           baseDimensionsMap,
@@ -235,7 +235,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       healthyRequestMetric = MetricEntityStateThreeEnums.create(
           BasicClientMetricEntity.CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.HEALTHY_REQUEST,
           Collections.singletonList(healthyRequestRate),
           baseDimensionsMap,
@@ -245,7 +245,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       unhealthyRequestMetric = MetricEntityStateThreeEnums.create(
           BasicClientMetricEntity.CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.UNHEALTHY_REQUEST,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -256,7 +256,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       healthyLatencyMetric = MetricEntityStateFourEnums.create(
           BasicClientMetricEntity.CALL_TIME.getMetricEntity(),
           otelRepository,
-          this::registerSensorWithDetailedPercentiles,
+          (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
           BasicClientTehutiMetricName.HEALTHY_REQUEST_LATENCY,
           Arrays.asList(
               new Avg(),
@@ -271,7 +271,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       unhealthyLatencyMetric = MetricEntityStateFourEnums.create(
           BasicClientMetricEntity.CALL_TIME.getMetricEntity(),
           otelRepository,
-          this::registerSensorWithDetailedPercentiles,
+          (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
           BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY,
           Arrays.asList(
               new Avg(),
@@ -291,7 +291,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       requestKeyCount = MetricEntityStateBase.create(
           BasicClientMetricEntity.REQUEST_KEY_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
           Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
           baseDimensionsMap,
@@ -299,7 +299,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       successResponseKeyCount = MetricEntityStateBase.create(
           BasicClientMetricEntity.RESPONSE_KEY_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
           Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
           baseDimensionsMap,

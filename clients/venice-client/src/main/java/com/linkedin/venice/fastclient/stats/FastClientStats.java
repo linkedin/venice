@@ -142,7 +142,7 @@ public class FastClientStats extends ClientStats {
     this.noAvailableReplicaRequestCount = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -152,7 +152,7 @@ public class FastClientStats extends ClientStats {
       this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
           FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -161,7 +161,7 @@ public class FastClientStats extends ClientStats {
       this.rejectionRatio = MetricEntityStateOneEnum.create(
           FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           FastClientTehutiMetricName.REJECTION_RATIO,
           Arrays.asList(new Avg(), new Max()),
           baseDimensionsMap,
@@ -177,7 +177,7 @@ public class FastClientStats extends ClientStats {
     this.longTailRetry = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -185,7 +185,7 @@ public class FastClientStats extends ClientStats {
     this.errorRetry = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.ERROR_RETRY_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -194,7 +194,7 @@ public class FastClientStats extends ClientStats {
     this.retryRequestWin = MetricEntityStateBase.create(
         RETRY_REQUEST_WIN_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.RETRY_REQUEST_WIN,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -205,7 +205,7 @@ public class FastClientStats extends ClientStats {
     this.retryFanoutSize = MetricEntityStateOneEnum.create(
         REQUEST_FANOUT_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.RETRY_FANOUT_SIZE,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -214,7 +214,7 @@ public class FastClientStats extends ClientStats {
     this.originalFanoutSize = MetricEntityStateOneEnum.create(
         REQUEST_FANOUT_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.FANOUT_SIZE,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -242,7 +242,7 @@ public class FastClientStats extends ClientStats {
     this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
         METADATA_STALENESS_DURATION.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
         Collections.singletonList(
             new AsyncGauge(
