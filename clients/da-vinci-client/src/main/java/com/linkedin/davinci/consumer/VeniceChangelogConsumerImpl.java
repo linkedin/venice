@@ -1248,7 +1248,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     public void run() {
       while (!Thread.interrupted()) {
         try {
-          recordStats(getLastHeartbeatPerPartition(), changeCaptureStats, getTopicAssignment());
+          try {
+            recordStats(getLastHeartbeatPerPartition(), changeCaptureStats, getTopicAssignment());
+          } catch (Exception e) {
+            // This thread is started at most once per consumer and is never restarted, so letting an
+            // exception escape would silently stop heartbeat lag and consuming version reporting for the
+            // remaining lifetime of the consumer. Skip this cycle and retry on the next one instead.
+            LOGGER.error("Failed to record change capture stats. Skipping this reporting cycle.", e);
+          }
           TimeUnit.SECONDS.sleep(changelogClientConfig.getBackgroundReporterThreadSleepIntervalInSeconds());
         } catch (InterruptedException e) {
           LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);
