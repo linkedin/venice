@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -28,6 +29,8 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.common.callback.Callback;
+import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -45,9 +48,11 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,6 +66,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.http.HttpStatus;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -465,6 +471,155 @@ public class RequestBasedMetadataTest {
     }
   }
 
+  /**
+   * The DICTIONARY request must be sent to a replica that actually hosts the store-version (taken from the routing
+   * table in the metadata response), not load balanced over the cluster-wide server D2 service. Sending it through
+   * D2 lets it land on any of the servers in the cluster, the vast majority of which do not hold this store-version
+   * and answer 404.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetchTargetsReplicaHostingTheStoreVersion() throws Exception {
+    String storeName = "testStore";
+    Client r2Client = RequestBasedMetadataTestUtils.getMockR2ClientWithDictionaryOnlyOn(REPLICA1_NAME);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    doReturn(CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)))
+        .when(d2TransportClient)
+        .get(eq(metadataPath));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+
+      assertEquals(
+          requestBasedMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION),
+          RequestBasedMetadataTestUtils.getZstdVeniceCompressor(storeName));
+
+      // The dictionary must never be requested over the cluster-wide D2 service.
+      verify(d2TransportClient, times(0))
+          .get(eq(QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION));
+
+      ArgumentCaptor<RestRequest> captor = ArgumentCaptor.forClass(RestRequest.class);
+      verify(r2Client, atLeastOnce()).restRequest(captor.capture(), any(Callback.class));
+      Set<String> dictionaryTargets = new HashSet<>();
+      for (RestRequest request: captor.getAllValues()) {
+        String path = request.getURI().getPath();
+        if (path.contains("/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/")) {
+          dictionaryTargets.add(path.substring(0, path.indexOf('/')));
+        }
+      }
+      assertFalse(dictionaryTargets.isEmpty(), "expected at least one replica-targeted DICTIONARY request");
+      Set<String> replicasOfTheVersion = new HashSet<>(Arrays.asList(REPLICA1_NAME, REPLICA2_NAME));
+      assertTrue(
+          replicasOfTheVersion.containsAll(dictionaryTargets),
+          "DICTIONARY requests must only target replicas of the store-version, but went to: " + dictionaryTargets);
+    }
+  }
+
+  /**
+   * A replica that does not hold the store-version locally answers 404, which the transport layer surfaces as a null
+   * response. That must be retried against another replica rather than dereferenced.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetchRetriesAnotherReplicaOn404() throws Exception {
+    String storeName = "testStore";
+    // Only REPLICA2 holds the dictionary; REPLICA1 404s.
+    Client r2Client = RequestBasedMetadataTestUtils.getMockR2ClientWithDictionaryOnlyOn(REPLICA2_NAME);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)))
+        .when(d2TransportClient)
+        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+
+      assertEquals(
+          requestBasedMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION),
+          RequestBasedMetadataTestUtils.getZstdVeniceCompressor(storeName),
+          "the dictionary should have been fetched from the replica that holds it");
+    }
+  }
+
+  /**
+   * When every replica answers 404 the dictionary future must be completed exceptionally with the real cause, rather
+   * than silently dropped and left to expire against the 10s dictionary-fetch timeout. Dropping it produced a
+   * misleading "could not complete in time" error that made a routing bug look like a slow server.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetch404IsNotMaskedAsATimeout() throws Exception {
+    String storeName = "testStore";
+    Client r2Client = RequestBasedMetadataTestUtils.getMockR2ClientWithDictionaryOnlyOn(null);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)))
+        .when(d2TransportClient)
+        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+
+      long startTimeMs = System.currentTimeMillis();
+      try {
+        requestBasedMetadata.updateCache(true);
+        Assert.fail("expected the dictionary fetch to fail when no replica serves the dictionary");
+      } catch (Exception e) {
+        String stackTrace = ExceptionUtils.stackTraceToString(e);
+        assertTrue(
+            stackTrace.contains("Received 404 while fetching zstd compression dictionary"),
+            "the underlying 404 must be preserved as the cause instead of being dropped, got: " + stackTrace);
+        assertFalse(
+            stackTrace.contains("TimeoutException"),
+            "a 404 must not be masked as a dictionary fetch timeout, got: " + stackTrace);
+        assertFalse(
+            stackTrace.contains("NullPointerException"),
+            "a 404 must not be dereferenced as a null response, got: " + stackTrace);
+      }
+      long elapsedMs = System.currentTimeMillis() - startTimeMs;
+      assertTrue(
+          elapsedMs < 10 * Time.MS_PER_SECOND,
+          "the fetch must fail fast rather than expire against the 10s dictionary timeout, took: " + elapsedMs + "ms");
+    }
+  }
+
+  /** A 200 response carrying an empty body must also fail the future rather than caching an unusable dictionary. */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetchRejectsEmptyBody() throws Exception {
+    String storeName = "testStore";
+    Client r2Client = RequestBasedMetadataTestUtils.getMockR2ClientWithEmptyDictionary();
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)))
+        .when(d2TransportClient)
+        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      try {
+        requestBasedMetadata.updateCache(true);
+        Assert.fail("expected an empty dictionary body to fail the refresh");
+      } catch (Exception e) {
+        assertTrue(
+            ExceptionUtils.stackTraceToString(e).contains("empty zstd compression dictionary"),
+            "expected the empty-dictionary cause to be preserved, got: " + ExceptionUtils.stackTraceToString(e));
+      }
+    }
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testMetadataForwardCompat() throws IOException, InterruptedException {
     String storeName = "testStore";
@@ -646,13 +801,6 @@ public class RequestBasedMetadataTest {
         CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION + 1));
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respV1, respV2).when(d2TransportClient).get(eq(metadataPath));
-    // Dictionary fetch is best-effort; succeed for both versions.
-    TransportClientResponse dictResp =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPathV1 = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
-    String dictPathV2 = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + (CURRENT_VERSION + 1);
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathV1));
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathV2));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
@@ -699,11 +847,7 @@ public class RequestBasedMetadataTest {
     CompletableFuture<TransportClientResponse> recoveryFuture =
         CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION));
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
-    String dictionaryPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
-    TransportClientResponse dictResp =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
     doReturn(failingFuture, recoveryFuture).when(d2TransportClient).get(eq(metadataPath));
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictionaryPath));
 
     // NOTE: this test intentionally bypasses start() to keep the path under examination minimal — we want to drive
     // exactly one updateCache() and inspect the deferred callback list. Production refresh() also sets isReady=true,
@@ -747,10 +891,6 @@ public class RequestBasedMetadataTest {
             .buildMetadataResponse(CURRENT_VERSION, ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN));
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respVeniceOnly, respDualEarlyReturn).when(d2TransportClient).get(eq(metadataPath));
-    TransportClientResponse dictResp =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
@@ -794,10 +934,6 @@ public class RequestBasedMetadataTest {
         .completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION, unknownWireValue));
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respUnknown).when(d2TransportClient).get(eq(metadataPath));
-    TransportClientResponse dictResp =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
@@ -837,10 +973,6 @@ public class RequestBasedMetadataTest {
             .buildMetadataResponse(CURRENT_VERSION, ExternalStorageReadMode.EXTERNAL_ONLY, StorageMode.DUAL_WRITE));
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respInternal, respDualWrite).when(d2TransportClient).get(eq(metadataPath));
-    TransportClientResponse dictResp =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
@@ -886,10 +1018,6 @@ public class RequestBasedMetadataTest {
             unknownWireValue));
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respUnknown).when(d2TransportClient).get(eq(metadataPath));
-    TransportClientResponse dictResp =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPath = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPath));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
@@ -936,13 +1064,6 @@ public class RequestBasedMetadataTest {
             .buildMetadataResponse(nextVersion, ExternalStorageReadMode.EXTERNAL_ONLY, StorageMode.DUAL_WRITE));
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respInitial, respDeferred, respAdopted).when(d2TransportClient).get(eq(metadataPath));
-    // Dictionary fetch is best-effort; succeed for both versions.
-    TransportClientResponse dictResp =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, RequestBasedMetadataTestUtils.DICTIONARY);
-    String dictPathCurrent = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION;
-    String dictPathNext = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + nextVersion;
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathCurrent));
-    doReturn(CompletableFuture.completedFuture(dictResp)).when(d2TransportClient).get(eq(dictPathNext));
 
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
