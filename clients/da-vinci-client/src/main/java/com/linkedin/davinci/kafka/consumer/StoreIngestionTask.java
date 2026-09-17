@@ -4167,6 +4167,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *       push is in progress (i.e., {@code store.getCurrentVersion() < this version}). Already-
    *       current and backup versions skip verification, since their EOP was already processed in
    *       a prior lifecycle and a re-emit (e.g., re-ingestion from snapshot) shouldn't re-fire it.</li>
+   *   <li>The version topic (or its native-replication source) has compaction enabled. Its surviving
+   *       records need not match the original producer count, even while a deferred swap leaves
+   *       the version in the FUTURE role.</li>
    * </ul>
    */
   void verifyBatchPushRecordCount(PartitionConsumptionState pcs, PubSubMessageHeaders headers) {
@@ -4192,6 +4195,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * prior lifecycle and shouldn't be re-judged on any re-emit / re-ingestion path.
      */
     if (versionRole != VersionRole.FUTURE) {
+      return;
+    }
+
+    if (isBatchPushTopicCompactionEnabled()) {
+      LOGGER.info(
+          "Skipping batch record count and HLL verification for replica {}: compaction enabled on version topic or its replication source",
+          pcs.getReplicaId());
       return;
     }
 
@@ -4271,6 +4281,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long storeCreatedTime = store.getCreatedTime();
     long versionCreatedTime = storeVersion.getCreatedTime();
     return storeCreatedTime > 0 && versionCreatedTime > 0 && versionCreatedTime < storeCreatedTime;
+  }
+
+  protected boolean isBatchPushTopicCompactionEnabled() {
+    // Refresh at EOP: a cached false may predate regional push completion and compaction enablement.
+    // This is a policy exemption, not evidence that the cleaner ran. Do not hide metadata failures.
+    return topicManagerRepository.getLocalTopicManager().getTopicConfigWithRetry(versionTopic).isLogCompacted();
   }
 
   protected void processStartOfIncrementalPush(
