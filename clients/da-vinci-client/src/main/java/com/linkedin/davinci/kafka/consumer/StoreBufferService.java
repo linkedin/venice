@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS;
 import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
@@ -37,8 +38,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -63,11 +66,18 @@ import org.apache.logging.log4j.Logger;
  */
 public class StoreBufferService extends AbstractStoreBufferService {
   private static final Logger LOGGER = LogManager.getLogger(StoreBufferService.class);
+  private static final long STALL_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30);
   private final int drainerNum;
   private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
   private ExecutorService executorService;
   private final List<StoreBufferDrainer> drainerList = new ArrayList<>();
   private final long bufferCapacityPerDrainer;
+  private final long blockedDrainerThresholdMs;
+  /**
+   * Deliberately not the metrics thread: with {@code metricsRepository == null} no gauge is ever polled, and a
+   * monitor that only runs when metrics happen to be enabled is not a monitor.
+   */
+  private ScheduledExecutorService stalledDrainerMonitor;
 
   private final RecordHandler leaderRecordHandler;
   private final StoreBufferServiceStats storeBufferServiceStats;
@@ -86,7 +96,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LogContext logContext,
       MetricsRepository metricsRepository,
       boolean sorted,
-      String clusterName) {
+      String clusterName,
+      long blockedDrainerThresholdMs) {
     this(
         drainerNum,
         bufferCapacityPerDrainer,
@@ -96,7 +107,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
         logContext,
         metricsRepository,
         sorted,
-        clusterName);
+        clusterName,
+        blockedDrainerThresholdMs);
   }
 
   /**
@@ -118,7 +130,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
         logContext,
         null,
         true,
-        null);
+        null,
+        TimeUnit.MINUTES.toMillis(5));
   }
 
   /**
@@ -137,9 +150,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LogContext logContext,
       MetricsRepository metricsRepository,
       boolean sorted,
-      String clusterName) {
+      String clusterName,
+      long blockedDrainerThresholdMs) {
     this.logContext = logContext;
     this.drainerNum = drainerNum;
+    this.blockedDrainerThresholdMs = blockedDrainerThresholdMs;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
     for (int cur = 0; cur < drainerNum; ++cur) {
@@ -157,7 +172,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
             this::getTotalMemoryUsage,
             this::getTotalRemainingMemory,
             this::getMaxMemoryUsagePerDrainer,
-            this::getMinMemoryUsagePerDrainer);
+            this::getMinMemoryUsagePerDrainer,
+            this::getMaxDrainerBlockedTimeMs);
     /*
      * {@link #getDrainerIndexForConsumerRecord} hashes the topic name and partition to determine a drainer. Due to the
      * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
@@ -392,6 +408,23 @@ public class StoreBufferService extends AbstractStoreBufferService {
       drainerList.add(drainer);
     }
     this.executorService.shutdown();
+    if (blockedDrainerThresholdMs > 0) {
+      this.stalledDrainerMonitor = Executors.newSingleThreadScheduledExecutor(
+          new DaemonThreadFactory(isSorted ? "Stalled-drainer-monitor-sorted" : "Stalled-drainer-monitor", logContext));
+      this.stalledDrainerMonitor.scheduleAtFixedRate(() -> {
+        try {
+          reportStalledDrainers();
+        } catch (Throwable t) {
+          // A throw here would silently cancel all future runs, disabling the monitor for the process lifetime.
+          LOGGER.error("Stalled drainer check failed", t);
+        }
+      }, STALL_CHECK_INTERVAL_MS, STALL_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    } else {
+      LOGGER.info(
+          "Stalled drainer monitor is off because {} is {}; the blocked-time metric is still reported.",
+          SERVER_BLOCKED_DRAINER_THRESHOLD_MS,
+          blockedDrainerThresholdMs);
+    }
     isStarted = true;
     return true;
   }
@@ -400,6 +433,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public void stopInner() throws Exception {
     // Graceful shutdown
     isStarted = false;
+    if (this.stalledDrainerMonitor != null) {
+      this.stalledDrainerMonitor.shutdownNow();
+    }
     drainerList.forEach(drainer -> drainer.stop());
     if (this.executorService != null) {
       this.executorService.shutdownNow();
@@ -423,6 +459,65 @@ public class StoreBufferService extends AbstractStoreBufferService {
       totalRemaining += queue.remainingMemoryCapacityInByte();
     }
     return totalRemaining;
+  }
+
+  StoreBufferDrainer getDrainer(int drainerIndex) {
+    return drainerList.get(drainerIndex);
+  }
+
+  /**
+   * Longest time any drainer has been holding a single queue node, or 0 when none is holding one. A drainer
+   * parked in {@link BlockingQueue#take()} is excluded: that is where nearly every drainer on a healthy host
+   * sits at any instant, so "waiting" says nothing, while holding one node for any length of time does.
+   */
+  public long getMaxDrainerBlockedTimeMs() {
+    long now = System.currentTimeMillis();
+    long maxBlockedMs = 0;
+    for (StoreBufferDrainer drainer: drainerList) {
+      long startedAtMs = drainer.getProcessingStartedAtMs();
+      if (startedAtMs != 0) {
+        maxBlockedMs = Math.max(maxBlockedMs, now - startedAtMs);
+      }
+    }
+    return maxBlockedMs;
+  }
+
+  /**
+   * Logs any drainer that has held one queue node past the threshold. Reporting only; nothing here interrupts
+   * or reroutes a drainer, and a drainer wedged inside a native storage call cannot be recovered in-process
+   * anyway. The point is to name the offending topic-partition while the host is still running, since the
+   * storage engine's own log is destroyed when the store-version is retired.
+   */
+  void reportStalledDrainers() {
+    if (blockedDrainerThresholdMs <= 0) {
+      return;
+    }
+    long now = System.currentTimeMillis();
+    for (int i = 0; i < drainerList.size(); i++) {
+      StoreBufferDrainer drainer = drainerList.get(i);
+      long startedAtMs = drainer.getProcessingStartedAtMs();
+      if (startedAtMs == 0 || now - startedAtMs < blockedDrainerThresholdMs) {
+        continue;
+      }
+      PubSubTopicPartition heldPartition = drainer.getCurrentTopicPartition();
+      /**
+       * The drainer may have finished that node between the read above and here, in which case the elapsed
+       * time belongs to work that already completed.
+       */
+      if (!drainer.markStallReported(startedAtMs)) {
+        continue;
+      }
+      LOGGER.error(
+          "Drainer {} has been holding topic-partition: {} for {} ms; its queue holds {} of {} bytes. Every "
+              + "partition hashing to this drainer has stopped persisting, and the producer callbacks waiting to "
+              + "hand it work will block once that queue is full. Collect this host's storage engine log before "
+              + "the store-version is retired; it is the only record of why the write stopped.",
+          i,
+          heldPartition,
+          now - startedAtMs,
+          blockingQueueArr.get(i).getMemoryUsage(),
+          bufferCapacityPerDrainer);
+    }
   }
 
   @Override
@@ -819,13 +914,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord}
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
-  private static class StoreBufferDrainer implements Runnable {
+  static class StoreBufferDrainer implements Runnable {
     private static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;
     private final ConcurrentMap<PubSubTopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
     private final StoreBufferServiceStats stats;
+    /**
+     * Zero while parked in {@link BlockingQueue#take()} with nothing to do; otherwise when the node currently
+     * being held was taken. An idle drainer is indistinguishable from a healthy one, so only time spent holding
+     * a node is a fault signal.
+     */
+    private final AtomicLong processingStartedAtMs = new AtomicLong(0);
+    private final AtomicLong reportedStallAtMs = new AtomicLong(0);
+    private volatile PubSubTopicPartition currentTopicPartition = null;
 
     public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex, StoreBufferServiceStats stats) {
       this.blockingQueue = blockingQueue;
@@ -835,6 +938,27 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     public void stop() {
       isRunning.set(false);
+    }
+
+    long getProcessingStartedAtMs() {
+      return processingStartedAtMs.get();
+    }
+
+    PubSubTopicPartition getCurrentTopicPartition() {
+      return currentTopicPartition;
+    }
+
+    /**
+     * Returns true at most once per stall, and only while this drainer is still holding the node it took at
+     * {@code startedAtMs}. Called only from the monitor thread, so the two reads need no atomicity between
+     * them.
+     */
+    boolean markStallReported(long startedAtMs) {
+      if (reportedStallAtMs.get() == startedAtMs || processingStartedAtMs.get() != startedAtMs) {
+        return false;
+      }
+      reportedStallAtMs.set(startedAtMs);
+      return true;
     }
 
     @Override
@@ -859,6 +983,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
               OpenTelemetryMetricsSetup.sanitizeStoreName(ingestionTask != null ? ingestionTask.getStoreName() : null);
 
           long startTime = System.currentTimeMillis();
+          currentTopicPartition = consumerRecord.getTopicPartition();
+          processingStartedAtMs.set(startTime);
 
           if (node instanceof CommandQueueNode) {
             processCommand(
@@ -940,6 +1066,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
           } else {
             break;
           }
+        } finally {
+          /**
+           * Also covers the three early {@code continue} branches above; without it they would leave the marker
+           * set and report a drainer that is in fact looping normally as stalled.
+           */
+          processingStartedAtMs.set(0);
         }
       }
       LOGGER.info("Current StoreBufferDrainer {} stopped", drainerIndex);

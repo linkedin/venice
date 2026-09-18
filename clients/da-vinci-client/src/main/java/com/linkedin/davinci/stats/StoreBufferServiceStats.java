@@ -28,7 +28,7 @@ import java.util.function.LongSupplier;
 public class StoreBufferServiceStats extends AbstractVeniceStats {
   enum TehutiMetricName implements TehutiMetricNameEnum {
     TOTAL_MEMORY_USAGE, TOTAL_REMAINING_MEMORY, MAX_MEMORY_USAGE_PER_WRITER, MIN_MEMORY_USAGE_PER_WRITER,
-    INTERNAL_PROCESSING_LATENCY, INTERNAL_PROCESSING_ERROR;
+    MAX_BLOCKED_TIME_PER_WRITER, INTERNAL_PROCESSING_LATENCY, INTERNAL_PROCESSING_ERROR;
   }
 
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -56,7 +56,8 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
       LongSupplier totalMemoryUsageSupplier,
       LongSupplier totalRemainingMemorySupplier,
       LongSupplier maxMemoryUsagePerDrainerSupplier,
-      LongSupplier minMemoryUsagePerDrainerSupplier) {
+      LongSupplier minMemoryUsagePerDrainerSupplier,
+      LongSupplier maxDrainerBlockedTimeSupplier) {
     super(metricsRepository, metricNamePrefix);
 
     VeniceDrainerType bufferType = sorted ? VeniceDrainerType.SORTED : VeniceDrainerType.UNSORTED;
@@ -67,11 +68,11 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
             .build();
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
-    // All 4 memory metrics share the same dimension set {CLUSTER_NAME, STORE_BUFFER_SERVICE_TYPE},
-    // so baseAttributes built from any one of them is valid for all four.
+    // The async gauges below all share the dimension set {CLUSTER_NAME, STORE_BUFFER_SERVICE_TYPE},
+    // so baseAttributes built from any one of them is valid for all of them.
     this.baseAttributes = otelData.getBaseAttributes();
 
-    // Memory metrics (#1-4): joint Tehuti+OTel AsyncGauge.
+    // Joint Tehuti+OTel AsyncGauge.
     // Return values are intentionally discarded — the gauge callback is registered internally
     // by the Tehuti sensor and OTel SDK during create(). No per-recording state is needed.
     registerMemoryGauge(
@@ -90,6 +91,10 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN,
         TehutiMetricName.MIN_MEMORY_USAGE_PER_WRITER,
         minMemoryUsagePerDrainerSupplier);
+    registerMemoryGauge(
+        StoreBufferServiceOtelMetricEntity.BLOCKED_TIME_PER_WRITER_MAX,
+        TehutiMetricName.MAX_BLOCKED_TIME_PER_WRITER,
+        maxDrainerBlockedTimeSupplier);
   }
 
   private void registerMemoryGauge(

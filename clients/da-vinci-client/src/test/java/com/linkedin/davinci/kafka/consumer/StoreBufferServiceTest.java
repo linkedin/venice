@@ -3,9 +3,11 @@ package com.linkedin.davinci.kafka.consumer;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -42,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -458,5 +461,103 @@ public class StoreBufferServiceTest {
     Assert.assertTrue(failedFuture.isCompletedExceptionally());
 
     bufferService.stop();
+  }
+
+  private StoreBufferService newBufferServiceWithStallMonitor(long thresholdMs) {
+    return new StoreBufferService(1, 10000, 1000, false, null, mockMetricRepo, true, "test-cluster", thresholdMs);
+  }
+
+  @Test
+  public void testIdleDrainersAreNotReportedAsBlocked() throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(1);
+    bufferService.start();
+    try {
+      /**
+       * With nothing queued the drainer sits in take(), which is where nearly every drainer on a healthy host
+       * sits at any instant. Counting that as blocked time would report an entire idle pool as stalled.
+       */
+      Assert.assertEquals(bufferService.getMaxDrainerBlockedTimeMs(), 0);
+      bufferService.reportStalledDrainers();
+      Assert.assertFalse(bufferService.getDrainer(0).markStallReported(0), "An idle drainer must never be reportable");
+    } finally {
+      bufferService.stop();
+    }
+  }
+
+  @Test
+  public void testStalledDrainerIsReportedOncePerStall() throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(50);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    CountDownLatch releaseDrainer = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      releaseDrainer.await();
+      return null;
+    }).when(mockTask).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("test_topic") + "_v1");
+    PubSubTopicPartition heldPartition = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    DefaultPubSubMessage held = new ImmutablePubSubMessage(key, value, heldPartition, mockPosition, 0, 0);
+
+    bufferService.start();
+    try {
+      bufferService.putConsumerRecord(held, mockTask, null, 1, "blah", 0L);
+      long deadline = System.currentTimeMillis() + SECONDS.toMillis(10);
+      while (bufferService.getMaxDrainerBlockedTimeMs() == 0) {
+        Assert.assertTrue(System.currentTimeMillis() < deadline, "Drainer never picked up the queued record");
+        Thread.sleep(10);
+      }
+      Thread.sleep(100);
+
+      StoreBufferService.StoreBufferDrainer drainer = bufferService.getDrainer(0);
+      long startedAtMs = drainer.getProcessingStartedAtMs();
+      Assert.assertEquals(drainer.getCurrentTopicPartition(), heldPartition);
+      Assert.assertTrue(bufferService.getMaxDrainerBlockedTimeMs() >= 100, "Blocked time should reflect the stall");
+
+      Assert.assertTrue(drainer.markStallReported(startedAtMs), "First observation of a stall must report");
+      Assert.assertFalse(
+          drainer.markStallReported(startedAtMs),
+          "The same stall must not be reported again on every later poll");
+    } finally {
+      releaseDrainer.countDown();
+      bufferService.stop();
+    }
+  }
+
+  @Test
+  public void testStallMonitorIsOffWhenThresholdIsNotPositive() throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(-1);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    CountDownLatch releaseDrainer = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      releaseDrainer.await();
+      return null;
+    }).when(mockTask).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("test_topic") + "_v1");
+    PubSubTopicPartition heldPartition = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    DefaultPubSubMessage held = new ImmutablePubSubMessage(key, value, heldPartition, mockPosition, 0, 0);
+
+    bufferService.start();
+    try {
+      bufferService.putConsumerRecord(held, mockTask, null, 1, "blah", 0L);
+      long deadline = System.currentTimeMillis() + SECONDS.toMillis(10);
+      while (bufferService.getMaxDrainerBlockedTimeMs() == 0) {
+        Assert.assertTrue(System.currentTimeMillis() < deadline, "Drainer never picked up the queued record");
+        Thread.sleep(10);
+      }
+      Thread.sleep(100);
+
+      StoreBufferService.StoreBufferDrainer drainer = bufferService.getDrainer(0);
+      long startedAtMs = drainer.getProcessingStartedAtMs();
+      // The metric keeps working while the monitor is off; only the check and its logging stop.
+      Assert.assertTrue(bufferService.getMaxDrainerBlockedTimeMs() >= 100);
+      bufferService.reportStalledDrainers();
+      Assert.assertTrue(
+          drainer.markStallReported(startedAtMs),
+          "A disabled monitor must not have consumed the one report this stall is allowed");
+    } finally {
+      releaseDrainer.countDown();
+      bufferService.stop();
+    }
   }
 }
