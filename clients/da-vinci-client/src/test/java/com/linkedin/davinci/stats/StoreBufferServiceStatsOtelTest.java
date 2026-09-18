@@ -63,6 +63,7 @@ public class StoreBufferServiceStatsOtelTest {
     AtomicLong totalRemaining = new AtomicLong(9000L);
     AtomicLong maxPerWriter = new AtomicLong(500L);
     AtomicLong minPerWriter = new AtomicLong(100L);
+    AtomicLong maxBlockedTime = new AtomicLong(0L);
 
     new StoreBufferServiceStats(
         metricsRepository,
@@ -72,7 +73,8 @@ public class StoreBufferServiceStatsOtelTest {
         totalUsage::get,
         totalRemaining::get,
         maxPerWriter::get,
-        minPerWriter::get);
+        minPerWriter::get,
+        maxBlockedTime::get);
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -101,7 +103,8 @@ public class StoreBufferServiceStatsOtelTest {
         () -> 500L,
         () -> 9500L,
         () -> 250L,
-        () -> 50L);
+        () -> 50L,
+        () -> 0L);
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -364,7 +367,8 @@ public class StoreBufferServiceStatsOtelTest {
         () -> 100L,
         () -> 900L,
         () -> 50L,
-        () -> 10L);
+        () -> 10L,
+        () -> 0L);
     stats.recordInternalProcessingLatency(10, "test-store");
     stats.recordInternalProcessingError("test-store");
     stats.recordInternalProcessingLatency(20, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
@@ -380,7 +384,8 @@ public class StoreBufferServiceStatsOtelTest {
         () -> 100L,
         () -> 900L,
         () -> 50L,
-        () -> 10L);
+        () -> 10L,
+        () -> 0L);
   }
 
   private Attributes buildStoreAttrs(String storeName) {
