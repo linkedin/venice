@@ -4,20 +4,55 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
+import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import java.time.Duration;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ReadOnlyStoreRepositoryTest {
+  @DataProvider
+  public Object[][] encryptionKeys() {
+    return new Object[][] { { "urn:test:key:1" }, { "" }, { null } };
+  }
+
+  @Test(dataProvider = "encryptionKeys")
+  public void testEncryptionKeyLookupUsesLocalMetadata(String keyUrn) {
+    Store store = mock(Store.class);
+    doReturn(keyUrn).when(store).getPubSubEncryptionKeyUrn();
+    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class, CALLS_REAL_METHODS);
+    doReturn(store).when(repository).getStoreOrThrow("existing");
+    doThrow(new VeniceNoStoreException("missing")).when(repository).getStoreOrThrow("missing");
+
+    assertEquals(repository.getPubSubEncryptionKeyUrn("existing"), keyUrn);
+    assertNull(repository.getPubSubEncryptionKeyUrn("missing"));
+    verify(repository, never()).getStore(anyString());
+    verify(repository, never()).refreshOneStore(anyString());
+  }
+
+  @Test
+  public void testEncryptionKeyLookupPropagatesRepositoryFailure() {
+    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class, CALLS_REAL_METHODS);
+    IllegalStateException failure = new IllegalStateException("repository unavailable");
+    doThrow(failure).when(repository).getStoreOrThrow("store");
+
+    assertSame(expectThrows(IllegalStateException.class, () -> repository.getPubSubEncryptionKeyUrn("store")), failure);
+  }
+
   @Test
   public void testWaitVersion() {
     Store store = mock(Store.class);

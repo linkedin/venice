@@ -8,6 +8,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,6 +35,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,6 +51,28 @@ import org.testng.annotations.Test;
 
 public class TestVeniceHelixAdminWithoutCluster {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  @Test
+  public void testEncryptionKeyLookupAcrossLocalClusterRepositories() {
+    VeniceDistClusterControllerStateModelFactory factory = mock(VeniceDistClusterControllerStateModelFactory.class);
+    doCallRealMethod().when(factory).getPubSubEncryptionKeyUrn(anyString());
+    VeniceControllerStateModel uninitialized = mock(VeniceControllerStateModel.class);
+    VeniceControllerStateModel initialized = mock(VeniceControllerStateModel.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(Optional.empty()).when(uninitialized).getResources();
+    doReturn(Optional.of(resources)).when(initialized).getResources();
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(Arrays.asList(uninitialized, initialized)).when(factory).getAllModels();
+    doReturn("urn:test:key:1").when(repository).getPubSubEncryptionKeyUrn("store");
+
+    Assert.assertEquals(factory.getPubSubEncryptionKeyUrn("store"), "urn:test:key:1");
+    Assert.assertNull(factory.getPubSubEncryptionKeyUrn("missing"));
+    doReturn(Collections.emptyList()).when(factory).getAllModels();
+    Assert.assertNull(factory.getPubSubEncryptionKeyUrn("store"));
+    verify(repository, never()).getStore(anyString());
+    verify(repository, never()).refreshOneStore(anyString());
+  }
 
   @Test
   public void canMergeNewHybridConfigValuesToOldStore() {

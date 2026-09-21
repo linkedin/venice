@@ -17,6 +17,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -58,11 +59,13 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -76,6 +79,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -96,6 +101,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -182,6 +188,29 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
+
+  @Test
+  public void testLocalEncryptionKeyLookupReachesProducer() {
+    Store store = mock(Store.class);
+    doReturn("urn:test:key:1").when(store).getPubSubEncryptionKeyUrn();
+    doReturn(store).when(mockMetadataRepo).getStoreOrThrow("store");
+    doThrow(new VeniceNoStoreException("missing")).when(mockMetadataRepo).getStoreOrThrow("missing");
+    doCallRealMethod().when(mockMetadataRepo).getPubSubEncryptionKeyUrn(anyString());
+    Function<String, String> lookup = kafkaStoreIngestionService.getPubSubContext().getPubSubEncryptionKeyUrnLookup();
+    assertEquals(lookup.apply("store"), "urn:test:key:1");
+    assertNull(lookup.apply("missing"));
+
+    ArgumentCaptor<PubSubProducerAdapterContext> captor = ArgumentCaptor.forClass(PubSubProducerAdapterContext.class);
+    doReturn(mock(PubSubProducerAdapter.class)).when(mockPubSubClientsFactory.getProducerAdapterFactory())
+        .create(captor.capture());
+    try (VeniceWriter writer = kafkaStoreIngestionService.getVeniceWriterFactory()
+        .createVeniceWriter(new VeniceWriterOptions.Builder("store_v1").setPartitionCount(1).build())) {
+      assertSame(captor.getValue().getPubSubEncryptionKeyUrnLookup(), lookup);
+      assertEquals(captor.getValue().getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+    }
+    verify(mockMetadataRepo, never()).getStore(anyString());
+    verify(mockMetadataRepo, never()).refreshOneStore(anyString());
+  }
 
   private void setupMockConfig() {
     mockVeniceConfigLoader = mock(VeniceConfigLoader.class);

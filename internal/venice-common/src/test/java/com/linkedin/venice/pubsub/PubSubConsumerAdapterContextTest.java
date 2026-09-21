@@ -2,6 +2,8 @@ package com.linkedin.venice.pubsub;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -10,6 +12,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Properties;
+import java.util.function.Function;
 import org.testng.annotations.Test;
 
 
@@ -18,6 +21,7 @@ public class PubSubConsumerAdapterContextTest {
   public void testPubSubConsumerAdapterContextBuilderWithAllFields() {
     VeniceProperties props = new VeniceProperties(new Properties());
     PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
+    Function<String, String> keyLookup = storeName -> "urn:test:key:1";
     PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName("test-consumer")
         .setPubSubBrokerAddress("localhost:1234")
         .setVeniceProperties(props)
@@ -27,6 +31,7 @@ public class PubSubConsumerAdapterContextTest {
         .setIsOffsetCollectionEnabled(true)
         .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
         .setPubSubPositionTypeRegistry(registry)
+        .setPubSubEncryptionKeyUrnLookup(keyLookup)
         .build();
 
     assertNotNull(context.getConsumerName());
@@ -38,6 +43,17 @@ public class PubSubConsumerAdapterContextTest {
     assertTrue(context.isOffsetCollectionEnabled());
     assertNotNull(context.getPubSubMessageDeserializer());
     assertEquals(context.getPubSubPositionTypeRegistry(), registry);
+    assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+  }
+
+  @Test
+  public void testEncryptionKeyLookupIsOptional() {
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress("localhost:1234")
+            .setVeniceProperties(VeniceProperties.empty())
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+            .build();
+    assertNull(context.getPubSubEncryptionKeyUrnLookup());
   }
 
   @Test

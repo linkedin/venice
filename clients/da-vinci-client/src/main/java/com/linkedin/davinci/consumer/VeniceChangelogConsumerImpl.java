@@ -174,9 +174,39 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubMessageDeserializer pubSubMessageDeserializer,
       long consumerSequenceIdStartingValue,
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    this(
+        changelogClientConfig,
+        pubSubConsumer,
+        pubSubMessageDeserializer,
+        consumerSequenceIdStartingValue,
+        veniceChangelogConsumerClientFactory,
+        null);
+  }
+
+  VeniceChangelogConsumerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory,
+      String consumerName) {
+    this(
+        changelogClientConfig,
+        pubSubConsumer,
+        pubSubMessageDeserializer,
+        Utils.getCurrentTimeInNanosForSeeding(),
+        veniceChangelogConsumerClientFactory,
+        consumerName);
+  }
+
+  private VeniceChangelogConsumerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      long consumerSequenceIdStartingValue,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory,
+      String consumerName) {
     Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
     this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
-    this.pubSubConsumer = pubSubConsumer;
     PubSubContext pubSubContext = changelogClientConfig.getPubSubContext();
     this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
@@ -201,6 +231,23 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           clientRegionName,
           totalRegionCount);
     }
+
+    changelogClientConfig.getConsumerProperties()
+        .put(
+            CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
+            String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
+    NativeMetadataRepository repository = NativeMetadataRepository.getInstance(
+        changelogClientConfig.getInnerClientConfig(),
+        new VeniceProperties(changelogClientConfig.getConsumerProperties()),
+        null);
+    this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
+    this.pubSubConsumer = pubSubConsumer != null || consumerName == null
+        ? pubSubConsumer
+        : VeniceChangelogConsumerClientFactory.getPubSubConsumer(
+            changelogClientConfig,
+            pubSubMessageDeserializer,
+            consumerName,
+            name -> storeRepository.getPubSubEncryptionKeyUrn(name));
 
     seekExecutorService = Executors.newFixedThreadPool(
         10,
@@ -271,16 +318,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         startTimestamp,
         consumerSequenceIdStartingValue);
 
-    changelogClientConfig.getConsumerProperties()
-        .put(
-            CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
-            String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
-    NativeMetadataRepository repository = NativeMetadataRepository.getInstance(
-        changelogClientConfig.getInnerClientConfig(),
-        new VeniceProperties(changelogClientConfig.getConsumerProperties()),
-        null);
     repository.start();
-    this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
       this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(storeRepository, storeName, valueClass);

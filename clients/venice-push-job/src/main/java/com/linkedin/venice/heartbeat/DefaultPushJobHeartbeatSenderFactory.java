@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -62,7 +63,8 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         heartbeatKafkaTopicName,
         partitionerConfig,
         getVeniceWriterProperties(sslProperties, kafkaUrl),
-        partitionNum);
+        partitionNum,
+        storeName -> heartbeatStoreName.equals(storeName) ? storeInfo.getPubSubEncryptionKeyUrn() : null);
     Schema heartbeatKeySchema = getHeartbeatKeySchema(controllerClient, retryAttempts, heartbeatStoreName);
     Map<Integer, Schema> valueSchemasById =
         getHeartbeatValueSchemas(controllerClient, retryAttempts, heartbeatStoreName);
@@ -126,13 +128,23 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       PartitionerConfig partitionerConfig,
       Properties veniceWriterProperties,
       int partitionNum) {
+    return getVeniceWriter(heartbeatKafkaTopicName, partitionerConfig, veniceWriterProperties, partitionNum, null);
+  }
+
+  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
+      String heartbeatKafkaTopicName,
+      PartitionerConfig partitionerConfig,
+      Properties veniceWriterProperties,
+      int partitionNum,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(partitionerConfig.getPartitionerParams());
     VenicePartitioner venicePartitioner = PartitionUtils
         .getVenicePartitioner(partitionerConfig.getPartitionerClass(), new VeniceProperties(partitionerProperties));
-    return new VeniceWriterFactory(veniceWriterProperties).createVeniceWriter(
-        new VeniceWriterOptions.Builder(heartbeatKafkaTopicName).setPartitioner(venicePartitioner)
-            .setPartitionCount(partitionNum)
-            .build());
+    return new VeniceWriterFactory(veniceWriterProperties, null, null, null, pubSubEncryptionKeyUrnLookup)
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(heartbeatKafkaTopicName).setPartitioner(venicePartitioner)
+                .setPartitionCount(partitionNum)
+                .build());
   }
 }

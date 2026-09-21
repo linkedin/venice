@@ -96,6 +96,19 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     return clusterToStateModelsMap.values();
   }
 
+  String getPubSubEncryptionKeyUrn(String storeName) {
+    for (VeniceControllerStateModel model: getAllModels()) {
+      Optional<HelixVeniceClusterResources> resources = model.getResources();
+      if (resources.isPresent()) {
+        String keyUrn = resources.get().getStoreMetadataRepository().getPubSubEncryptionKeyUrn(storeName);
+        if (keyUrn != null) {
+          return keyUrn;
+        }
+      }
+    }
+    return null;
+  }
+
   /**
    * Close all {@code VeniceControllerStateModel} created by the factory.
    */

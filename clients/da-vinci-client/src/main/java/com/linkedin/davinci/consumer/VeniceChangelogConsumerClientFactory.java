@@ -24,6 +24,7 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
@@ -119,11 +120,10 @@ public class VeniceChangelogConsumerClientFactory {
       } else {
         return new VeniceAfterImageConsumerImpl(
             newStoreChangelogClientConfig,
-            consumer != null
-                ? consumer
-                : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+            consumer,
             pubSubMessageDeserializer,
-            this);
+            this,
+            consumerName);
       }
 
     });
@@ -238,11 +238,20 @@ public class VeniceChangelogConsumerClientFactory {
       ChangelogClientConfig changelogClientConfig,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerName) {
+    return getPubSubConsumer(changelogClientConfig, pubSubMessageDeserializer, consumerName, null);
+  }
+
+  protected static PubSubConsumerAdapter getPubSubConsumer(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      String consumerName,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
     PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
         .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
         .setPubSubMessageDeserializer(pubSubMessageDeserializer)
         .setPubSubTopicRepository(changelogClientConfig.getPubSubContext().getPubSubTopicRepository())
         .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
+        .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
         .build();
     return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
   }

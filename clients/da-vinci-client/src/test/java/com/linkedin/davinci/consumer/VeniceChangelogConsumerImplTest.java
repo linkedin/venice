@@ -28,6 +28,8 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -37,6 +39,7 @@ import com.linkedin.davinci.kafka.consumer.TestPubSubTopic;
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.utils.ChunkAssembler;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -59,6 +62,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -122,6 +127,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -215,7 +221,60 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testAfterImageConsumerSeek() throws ExecutionException, InterruptedException {
+  public void testDefaultConsumerReceivesLocalEncryptionKeyLookup() {
+    changelogClientConfig.getConsumerProperties().put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "localhost:9092");
+    ChangelogClientConfig config = spy(changelogClientConfig);
+    PubSubConsumerAdapterFactory<PubSubConsumerAdapter> factory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(factory).when(config).getPubSubConsumerAdapterFactory();
+    ArgumentCaptor<PubSubConsumerAdapterContext> captor = ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    doReturn(mockPubSubConsumer).when(factory).create(captor.capture());
+    doReturn("urn:test:key:1").when(mockRepository).getPubSubEncryptionKeyUrn(storeName);
+
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        config,
+        null,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory,
+        "test-consumer")) {
+      consumer.storeRepository.clear();
+      consumer.setStoreRepository(mockRepository);
+      assertSame(consumer.pubSubConsumer, mockPubSubConsumer);
+      assertTrue(captor.getValue().getConsumerName().contains("test-consumer"));
+      assertEquals(captor.getValue().getPubSubEncryptionKeyUrnLookup().apply(storeName), "urn:test:key:1");
+      assertNull(captor.getValue().getPubSubEncryptionKeyUrnLookup().apply("missing"));
+      verify(mockRepository, never()).refreshOneStore(anyString());
+    }
+  }
+
+  @DataProvider
+  public Object[][] seekConsumerInjection() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test
+  public void testConsumerFactoryFailurePrecedesSchemaInitialization() {
+    changelogClientConfig.getConsumerProperties().put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "localhost:9092");
+    ChangelogClientConfig config = spy(changelogClientConfig);
+    PubSubConsumerAdapterFactory<PubSubConsumerAdapter> factory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(factory).when(config).getPubSubConsumerAdapterFactory();
+    VeniceException failure = new VeniceException("consumer creation failed");
+    doThrow(failure).when(factory).create(any(PubSubConsumerAdapterContext.class));
+
+    assertSame(
+        Assert.expectThrows(
+            VeniceException.class,
+            () -> new VeniceAfterImageConsumerImpl<>(
+                config,
+                null,
+                PubSubMessageDeserializer.createDefaultDeserializer(),
+                veniceChangelogConsumerClientFactory,
+                "test-consumer")),
+        failure);
+    verify(schemaReader, never()).getKeySchema();
+  }
+
+  @Test(dataProvider = "seekConsumerInjection")
+  public void testAfterImageConsumerSeek(boolean injectedSeekConsumer) throws ExecutionException, InterruptedException {
     MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
     MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
     doReturn(rmdSchema.toString()).when(rmdSchemaFromMultiSchemaResponse).getSchemaStr();
@@ -245,10 +304,16 @@ public class VeniceChangelogConsumerImplTest {
     seekRecordsMap.put(new PubSubTopicPartitionImpl(oldVersionTopic, 0), seekRecords);
     doReturn(seekRecordsMap).when(mockInternalSeekConsumer).poll(Mockito.anyLong());
 
+    changelogClientConfig.getConsumerProperties().put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "localhost:9092");
+    ChangelogClientConfig config = spy(changelogClientConfig);
+    PubSubConsumerAdapterFactory<PubSubConsumerAdapter> factory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(factory).when(config).getPubSubConsumerAdapterFactory();
+    ArgumentCaptor<PubSubConsumerAdapterContext> captor = ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    doReturn(mockInternalSeekConsumer).when(factory).create(captor.capture());
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
+        config,
         mockPubSubConsumer,
-        Lazy.of(() -> mockInternalSeekConsumer),
+        injectedSeekConsumer ? Lazy.of(() -> mockInternalSeekConsumer) : null,
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
@@ -261,6 +326,8 @@ public class VeniceChangelogConsumerImplTest {
     when(mockRepository.getStore(anyString())).thenReturn(store);
     when(store.getVersion(Mockito.anyInt())).thenReturn(mockVersion);
     when(store.isEnableReads()).thenReturn(true);
+    doReturn("urn:test:key:1").when(mockRepository).getPubSubEncryptionKeyUrn(storeName);
+    veniceChangelogConsumer.storeRepository.clear();
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
@@ -281,6 +348,12 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubPosition p11 = ApacheKafkaOffsetPosition.of(11L);
     Mockito.verify(mockPubSubConsumer).subscribe(eq(pubSubTopicPartition), eq(p11), eq(true));
+    if (!injectedSeekConsumer) {
+      assertEquals(captor.getValue().getPubSubEncryptionKeyUrnLookup().apply(storeName), "urn:test:key:1");
+      assertNull(captor.getValue().getPubSubEncryptionKeyUrnLookup().apply("missing"));
+      verify(mockRepository, never()).refreshOneStore(anyString());
+    }
+    veniceChangelogConsumer.close();
   }
 
   @Test

@@ -48,16 +48,22 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       PubSubConsumerAdapter consumer,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    this(changelogClientConfig, consumer, null, pubSubMessageDeserializer, veniceChangelogConsumerClientFactory, null);
+  }
+
+  VeniceAfterImageConsumerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter consumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory,
+      String consumerName) {
     this(
         changelogClientConfig,
         consumer,
-        Lazy.of(
-            () -> VeniceChangelogConsumerClientFactory.getPubSubConsumer(
-                changelogClientConfig,
-                pubSubMessageDeserializer,
-                changelogClientConfig.getStoreName() + "-" + "internal")),
+        null,
         pubSubMessageDeserializer,
-        veniceChangelogConsumerClientFactory);
+        veniceChangelogConsumerClientFactory,
+        consumerName);
   }
 
   protected VeniceAfterImageConsumerImpl(
@@ -66,8 +72,36 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       Lazy<PubSubConsumerAdapter> seekConsumer,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
-    super(changelogClientConfig, consumer, pubSubMessageDeserializer, veniceChangelogConsumerClientFactory);
-    internalSeekConsumer = seekConsumer;
+    this(
+        changelogClientConfig,
+        consumer,
+        seekConsumer,
+        pubSubMessageDeserializer,
+        veniceChangelogConsumerClientFactory,
+        null);
+  }
+
+  private VeniceAfterImageConsumerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter consumer,
+      Lazy<PubSubConsumerAdapter> seekConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory,
+      String consumerName) {
+    super(
+        changelogClientConfig,
+        consumer,
+        pubSubMessageDeserializer,
+        veniceChangelogConsumerClientFactory,
+        consumerName);
+    internalSeekConsumer = seekConsumer != null
+        ? seekConsumer
+        : Lazy.of(
+            () -> VeniceChangelogConsumerClientFactory.getPubSubConsumer(
+                changelogClientConfig,
+                pubSubMessageDeserializer,
+                changelogClientConfig.getStoreName() + "-" + "internal",
+                name -> storeRepository.getPubSubEncryptionKeyUrn(name)));
     versionSwapListener = new VersionSwapDataChangeListener<K, V>(
         this,
         storeRepository,

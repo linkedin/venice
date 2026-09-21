@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
@@ -19,6 +21,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
+import java.util.function.Function;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
@@ -38,6 +41,7 @@ public class VeniceWriterFactoryTest {
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").setPartitionCount(1).build())) {
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
+      assertNull(capturedProducerCtx.getPubSubEncryptionKeyUrnLookup());
       when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
       assertNotNull(veniceWriter);
       String capturedBrokerAddr = veniceWriter.getDestination();
@@ -59,7 +63,9 @@ public class VeniceWriterFactoryTest {
 
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, producerFactoryMock, null, null);
+    Function<String, String> keyLookup = storeName -> "urn:test:key:1";
+    VeniceWriterFactory veniceWriterFactory =
+        new VeniceWriterFactory(properties, producerFactoryMock, null, null, keyLookup);
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898")
             .setPartitionCount(1)
@@ -103,6 +109,9 @@ public class VeniceWriterFactoryTest {
 
       verify(producerFactoryMock, times(8)).create(any(PubSubProducerAdapterContext.class));
       assertTrue(veniceWriter.getProducerAdapter() instanceof PubSubProducerAdapterConcurrentDelegator);
+    }
+    for (PubSubProducerAdapterContext context: producerCtxCaptor.getAllValues()) {
+      assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
     }
   }
 

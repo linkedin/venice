@@ -56,6 +56,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -66,6 +67,7 @@ import org.testng.annotations.Test;
 public class KafkaConsumerServiceTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
+  private final Function<String, String> keyLookup = storeName -> "urn:test:key:1";
   private VeniceServerConfig mockVeniceServerConfig;
 
   @BeforeMethod(alwaysRun = true)
@@ -177,6 +179,7 @@ public class KafkaConsumerServiceTest {
     doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
     doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
     doReturn(pubSubTopicRepository).when(mockPubSubContext).getPubSubTopicRepository();
+    doReturn(keyLookup).when(mockPubSubContext).getPubSubEncryptionKeyUrnLookup();
 
     KafkaConsumerService consumerService = new KafkaConsumerService(
         poolType,
@@ -209,7 +212,7 @@ public class KafkaConsumerServiceTest {
   }
 
   @Test
-  public void testConsumerContextIncludesPubSubTopicRepository() {
+  public void testConsumerContextIncludesPubSubDependencies() {
     ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
         ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
@@ -229,6 +232,7 @@ public class KafkaConsumerServiceTest {
 
     Assert.assertFalse(contextCaptor.getAllValues().isEmpty(), "Factory should have been called");
     PubSubConsumerAdapterContext capturedContext = contextCaptor.getValue();
+    Assert.assertSame(capturedContext.getPubSubEncryptionKeyUrnLookup(), keyLookup);
     Assert.assertSame(
         capturedContext.getPubSubTopicRepository(),
         pubSubTopicRepository,

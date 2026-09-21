@@ -3,11 +3,16 @@ package com.linkedin.venice.helix;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.AssertJUnit.fail;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -17,10 +22,44 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class HelixReadOnlyStoreRepositoryAdapterTest {
+  @DataProvider
+  public Object[][] systemStoreTypes() {
+    return new Object[][] { { VeniceSystemStoreType.META_STORE }, { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE } };
+  }
+
+  @Test(dataProvider = "systemStoreTypes")
+  public void testEncryptionKeyLookupDoesNotRefresh(VeniceSystemStoreType systemStoreType) {
+    ReadOnlyStoreRepository regularRepository = mock(ReadOnlyStoreRepository.class);
+    HelixReadOnlyZKSharedSystemStoreRepository sharedRepository =
+        mock(HelixReadOnlyZKSharedSystemStoreRepository.class);
+    HelixReadOnlyStoreRepositoryAdapter adapter =
+        new HelixReadOnlyStoreRepositoryAdapter(sharedRepository, regularRepository, "test-cluster");
+    String keyUrn = "urn:test:key:1";
+    doReturn(keyUrn).when(regularRepository).getPubSubEncryptionKeyUrn("store");
+    assertEquals(adapter.getPubSubEncryptionKeyUrn("store"), keyUrn);
+    assertNull(adapter.getPubSubEncryptionKeyUrn("missing"));
+
+    String systemStoreName = systemStoreType.getSystemStoreName("store");
+    String sharedStoreName = systemStoreType.getZkSharedStoreName();
+    assertNull(adapter.getPubSubEncryptionKeyUrn(systemStoreName));
+    verify(sharedRepository, never()).getPubSubEncryptionKeyUrn(anyString());
+
+    doReturn(true).when(regularRepository).hasStore("store");
+    assertNull(adapter.getPubSubEncryptionKeyUrn(systemStoreName));
+    doReturn("urn:test:key:shared").when(sharedRepository).getPubSubEncryptionKeyUrn(sharedStoreName);
+    assertEquals(adapter.getPubSubEncryptionKeyUrn(systemStoreName), "urn:test:key:shared");
+
+    verify(regularRepository, never()).getStore(anyString());
+    verify(sharedRepository, never()).getStore(anyString());
+    verify(regularRepository, never()).refreshOneStore(anyString());
+    verify(sharedRepository, never()).refreshOneStore(anyString());
+  }
+
   @Test
   public void testStoreDeleteHandler() {
     HelixReadOnlyStoreRepositoryAdapter adapter = mock(HelixReadOnlyStoreRepositoryAdapter.class);

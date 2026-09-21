@@ -85,6 +85,18 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     return store;
   }
 
+  @Override
+  public String getPubSubEncryptionKeyUrn(String storeName) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (forwardToRegularRepository(systemStoreType)) {
+      return regularStoreRepository.getPubSubEncryptionKeyUrn(storeName);
+    }
+    if (!regularStoreRepository.hasStore(systemStoreType.extractRegularStoreName(storeName))) {
+      return null;
+    }
+    return systemStoreRepository.getPubSubEncryptionKeyUrn(systemStoreType.getZkSharedStoreName());
+  }
+
   // test only
   Set<StoreDataChangedListener> getListeners() {
     return Collections.unmodifiableSet(listeners);

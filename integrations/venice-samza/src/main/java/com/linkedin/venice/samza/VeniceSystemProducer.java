@@ -33,6 +33,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
@@ -148,6 +149,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private D2Client primaryControllerColoD2Client;
   private D2Client childColoD2Client;
   private ControllerClient controllerClient;
+  private StoreInfo storeInfo;
   // Optional D2Client instances that can be passed in constructor
   private Optional<D2Client> providedPrimaryControllerColoD2Client = Optional.empty();
 
@@ -328,7 +330,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     Properties finalWriterConfigs = new Properties();
     finalWriterConfigs.putAll(properties);
     finalWriterConfigs.putAll(additionalConfigs);
-    return new VeniceWriterFactory(finalWriterConfigs).createAbstractVeniceWriter(writerOptions);
+    return new VeniceWriterFactory(finalWriterConfigs, null, null, null, this::getPubSubEncryptionKeyUrn)
+        .createAbstractVeniceWriter(writerOptions);
+  }
+
+  String getPubSubEncryptionKeyUrn(String requestedStoreName) {
+    return storeInfo != null && storeName.equals(requestedStoreName) ? storeInfo.getPubSubEncryptionKeyUrn() : null;
   }
 
   protected void setupClientsAndReInitProvider() {
@@ -481,6 +488,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     StoreResponse storeResponse =
         (StoreResponse) controllerRequestWithRetry(() -> this.controllerClient.getStore(storeName), 2);
+    this.storeInfo = storeResponse.getStore();
     this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
 
     boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
