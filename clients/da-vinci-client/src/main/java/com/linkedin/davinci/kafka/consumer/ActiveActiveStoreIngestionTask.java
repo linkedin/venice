@@ -1778,12 +1778,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       rtPositionsByBroker.put(broker, pcs.getLeaderPosition(broker, shouldUseDivRtPosition));
     }
     if (leaderTopic.isRealTime() && rtPositionsByBroker.containsValue(PubSubSymbolicPosition.EARLIEST)) {
-      rtPositionsByBroker = calculateRtConsumptionStartPositions(pcs, leaderTopic, unreachableBrokers);
+      Map<String, PubSubPosition> fallbackRtPositions =
+          calculateRtConsumptionStartPositions(pcs, leaderTopic, unreachableBrokers);
+      for (String broker: leaderSourceBrokerAddresses) {
+        if (PubSubSymbolicPosition.EARLIEST.equals(rtPositionsByBroker.get(broker))
+            && fallbackRtPositions.containsKey(broker)) {
+          rtPositionsByBroker.put(broker, fallbackRtPositions.get(broker));
+        }
+      }
     }
     if (!unreachableBrokers.isEmpty()) {
       LOGGER.warn(
           "Failed to reach broker urls: {}, will schedule retry to compute upstream position and resubscribe!",
           unreachableBrokers);
+      rtPositionsByBroker.entrySet().removeIf(entry -> unreachableBrokers.contains(entry.getKey()));
     }
     // subscribe to the new upstream
     rtPositionsByBroker.forEach((brokerAddress, rtStartPosition) -> {
