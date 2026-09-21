@@ -1781,8 +1781,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       Map<String, PubSubPosition> fallbackRtPositions =
           calculateRtConsumptionStartPositions(pcs, leaderTopic, unreachableBrokers);
       for (String broker: leaderSourceBrokerAddresses) {
-        if (PubSubSymbolicPosition.EARLIEST.equals(rtPositionsByBroker.get(broker))) {
-          rtPositionsByBroker.put(broker, fallbackRtPositions.getOrDefault(broker, PubSubSymbolicPosition.EARLIEST));
+        if (PubSubSymbolicPosition.EARLIEST.equals(rtPositionsByBroker.get(broker))
+            && fallbackRtPositions.containsKey(broker)) {
+          rtPositionsByBroker.put(broker, fallbackRtPositions.get(broker));
         }
       }
     }
@@ -1790,6 +1791,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       LOGGER.warn(
           "Failed to reach broker urls: {}, will schedule retry to compute upstream position and resubscribe!",
           unreachableBrokers);
+      rtPositionsByBroker.entrySet().removeIf(entry -> unreachableBrokers.contains(entry.getKey()));
     }
     // subscribe to the new upstream
     rtPositionsByBroker.forEach((brokerAddress, rtStartPosition) -> {

@@ -6917,14 +6917,17 @@ public abstract class StoreIngestionTaskTest {
     fallbackRtPositions.put("dc-1", InMemoryPubSubPosition.of(999L));
     fallbackRtPositions.put("dc-2", InMemoryPubSubPosition.of(888L));
     fallbackRtPositions.put("dc-3", InMemoryPubSubPosition.of(500L));
-    doReturn(fallbackRtPositions).when(ingestionTask)
-        .calculateRtConsumptionStartPositions(eq(pcs), eq(rtTopic), anyList());
+    doAnswer(invocation -> {
+      List<CharSequence> unreachableBrokers = invocation.getArgument(2, List.class);
+      unreachableBrokers.add("dc-3");
+      return fallbackRtPositions;
+    }).when(ingestionTask).calculateRtConsumptionStartPositions(eq(pcs), eq(rtTopic), anyList());
 
     ingestionTask.preparePositionCheckpointAndStartConsumptionAsLeader(rtTopic, pcs, true);
 
     ArgumentCaptor<PubSubPosition> offsetCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
     ArgumentCaptor<String> brokerCaptor = ArgumentCaptor.forClass(String.class);
-    verify(ingestionTask, times(3))
+    verify(ingestionTask, times(2))
         .consumerSubscribe(eq(rtTopic), eq(pcs), offsetCaptor.capture(), brokerCaptor.capture());
 
     Map<String, PubSubPosition> startPositionsByBroker = new HashMap<>();
@@ -6936,7 +6939,7 @@ public abstract class StoreIngestionTaskTest {
 
     Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-1")).getInternalOffset(), 100L);
     Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-2")).getInternalOffset(), 200L);
-    Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-3")).getInternalOffset(), 500L);
+    Assert.assertFalse(startPositionsByBroker.containsKey("dc-3"));
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
