@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.List;
@@ -100,9 +101,15 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     for (VeniceControllerStateModel model: getAllModels()) {
       Optional<HelixVeniceClusterResources> resources = model.getResources();
       if (resources.isPresent()) {
-        String keyUrn = resources.get().getStoreMetadataRepository().getPubSubEncryptionKeyUrn(storeName);
-        if (keyUrn != null) {
-          return keyUrn;
+        HelixVeniceClusterResources clusterResources = resources.get();
+        try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createClusterReadLock()) {
+          if (model.getResources().orElse(null) != clusterResources) {
+            continue;
+          }
+          String keyUrn = clusterResources.getStoreMetadataRepository().getPubSubEncryptionKeyUrn(storeName);
+          if (keyUrn != null) {
+            return keyUrn;
+          }
         }
       }
     }

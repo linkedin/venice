@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -31,6 +32,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -44,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -60,16 +64,34 @@ public class TestVeniceHelixAdminWithoutCluster {
     VeniceControllerStateModel initialized = mock(VeniceControllerStateModel.class);
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    ReentrantReadWriteLock clusterLock = new ReentrantReadWriteLock();
+    ClusterLockManager lockManager = mock(ClusterLockManager.class);
+    doAnswer(invocation -> AutoCloseableLock.of(clusterLock.readLock())).when(lockManager).createClusterReadLock();
+    doReturn(lockManager).when(resources).getClusterLockManager();
     doReturn(Optional.empty()).when(uninitialized).getResources();
     doReturn(Optional.of(resources)).when(initialized).getResources();
     doReturn(repository).when(resources).getStoreMetadataRepository();
     doReturn(Arrays.asList(uninitialized, initialized)).when(factory).getAllModels();
-    doReturn("urn:test:key:1").when(repository).getPubSubEncryptionKeyUrn("store");
+    doAnswer(invocation -> {
+      Assert.assertEquals(clusterLock.getReadHoldCount(), 1);
+      return "store".equals(invocation.getArgument(0)) ? "urn:test:key:1" : null;
+    }).when(repository).getPubSubEncryptionKeyUrn(anyString());
 
     Assert.assertEquals(factory.getPubSubEncryptionKeyUrn("store"), "urn:test:key:1");
+    Assert.assertEquals(clusterLock.getReadHoldCount(), 0);
     Assert.assertNull(factory.getPubSubEncryptionKeyUrn("missing"));
+    Assert.assertEquals(clusterLock.getReadHoldCount(), 0);
     doReturn(Collections.emptyList()).when(factory).getAllModels();
     Assert.assertNull(factory.getPubSubEncryptionKeyUrn("store"));
+
+    doReturn(Collections.singletonList(initialized)).when(factory).getAllModels();
+    for (HelixVeniceClusterResources currentResources: new HelixVeniceClusterResources[] { null,
+        mock(HelixVeniceClusterResources.class) }) {
+      when(initialized.getResources()).thenReturn(Optional.of(resources), Optional.ofNullable(currentResources));
+      Assert.assertNull(factory.getPubSubEncryptionKeyUrn("store"));
+      Assert.assertEquals(clusterLock.getReadHoldCount(), 0);
+    }
+    verify(repository, times(1)).getPubSubEncryptionKeyUrn("store");
     verify(repository, never()).getStore(anyString());
     verify(repository, never()).refreshOneStore(anyString());
   }
