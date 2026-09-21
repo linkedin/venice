@@ -41,6 +41,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicMetadataFetcher.ValueAndExpiryTime;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -85,18 +86,18 @@ public class TopicMetadataFetcherTest {
   private PubSubConsumerAdapter consumerMock;
   private TopicManagerStats stats;
 
-  @Test
-  public void testConstructorPropagatesEncryptionKeyLookup() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testConstructorPropagatesEncryptionKeyLookup(boolean lookupEnabled) throws Exception {
     PubSubConsumerAdapterFactory<PubSubConsumerAdapter> factory = mock(PubSubConsumerAdapterFactory.class);
     when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumerMock);
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, pubSubClusterAddress);
     AtomicInteger lookups = new AtomicInteger();
     AtomicReference<String> keyUrn = new AtomicReference<>();
-    Function<String, String> keyLookup = storeName -> {
+    Function<String, String> keyLookup = lookupEnabled ? storeName -> {
       lookups.incrementAndGet();
       return keyUrn.get();
-    };
+    } : null;
     TopicManagerContext context =
         new TopicManagerContext.Builder().setPubSubAdminAdapterFactory(mock(PubSubAdminAdapterFactory.class))
             .setPubSubConsumerAdapterFactory(factory)
@@ -110,14 +111,22 @@ public class TopicMetadataFetcherTest {
     try (TopicMetadataFetcher fetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, adminMock)) {
       ArgumentCaptor<PubSubConsumerAdapterContext> captor = ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
       verify(factory, times(2)).create(captor.capture());
+      List<PubSubTopicPartitionInfo> partitions =
+          Collections.singletonList(new PubSubTopicPartitionInfo(pubSubTopic, 0, true));
+      when(consumerMock.partitionsFor(pubSubTopic)).thenReturn(partitions);
+      assertEquals(fetcher.getTopicPartitionInfo(pubSubTopic), partitions);
       assertEquals(lookups.get(), 0);
       for (PubSubConsumerAdapterContext consumerContext: captor.getAllValues()) {
         assertSame(consumerContext.getPubSubEncryptionKeyUrnLookup(), keyLookup);
-        assertNull(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"));
+        if (lookupEnabled) {
+          assertNull(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"));
+        }
       }
-      keyUrn.set("urn:test:key:1");
-      for (PubSubConsumerAdapterContext consumerContext: captor.getAllValues()) {
-        assertEquals(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+      if (lookupEnabled) {
+        keyUrn.set("urn:test:key:1");
+        for (PubSubConsumerAdapterContext consumerContext: captor.getAllValues()) {
+          assertEquals(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+        }
       }
     }
   }

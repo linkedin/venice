@@ -19,6 +19,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,8 +56,8 @@ public class VeniceWriterFactoryTest {
     }
   }
 
-  @Test
-  public void testVeniceWriterFactoryWithProducerCompressionDisabled() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceWriterFactoryWithProducerCompressionDisabled(boolean lookupEnabled) {
     PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMock = mock(PubSubProducerAdapterFactory.class);
     PubSubProducerAdapter producerAdapterMock = mock(PubSubProducerAdapter.class);
     ArgumentCaptor<PubSubProducerAdapterContext> producerCtxCaptor =
@@ -67,10 +68,10 @@ public class VeniceWriterFactoryTest {
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
     AtomicInteger lookups = new AtomicInteger();
     AtomicReference<String> keyUrn = new AtomicReference<>();
-    Function<String, String> keyLookup = storeName -> {
+    Function<String, String> keyLookup = lookupEnabled ? storeName -> {
       lookups.incrementAndGet();
       return keyUrn.get();
-    };
+    } : null;
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(properties, producerFactoryMock, null, null, keyLookup);
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
@@ -120,11 +121,15 @@ public class VeniceWriterFactoryTest {
     assertEquals(lookups.get(), 0);
     for (PubSubProducerAdapterContext context: producerCtxCaptor.getAllValues()) {
       assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
-      assertNull(context.getPubSubEncryptionKeyUrnLookup().apply("store"));
+      if (lookupEnabled) {
+        assertNull(context.getPubSubEncryptionKeyUrnLookup().apply("store"));
+      }
     }
-    keyUrn.set("urn:test:key:1");
-    for (PubSubProducerAdapterContext context: producerCtxCaptor.getAllValues()) {
-      assertEquals(context.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+    if (lookupEnabled) {
+      keyUrn.set("urn:test:key:1");
+      for (PubSubProducerAdapterContext context: producerCtxCaptor.getAllValues()) {
+        assertEquals(context.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+      }
     }
   }
 
