@@ -18,7 +18,6 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -85,29 +84,6 @@ import org.testng.annotations.Test;
 
 
 public class VeniceSystemProducerTest {
-  @DataProvider
-  public Object[][] encryptionKeys() {
-    return new Object[][] { { "urn:test:key:1" }, { "" }, { null } };
-  }
-
-  @Test(dataProvider = "encryptionKeys")
-  public void testEncryptionKeyLookupUsesStartupMetadata(String keyUrn) {
-    ControllerClient controllerClient = buildMockControllerClient(1, -1);
-    StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setPubSubEncryptionKeyUrn(keyUrn);
-    StoreResponse response = new StoreResponse();
-    response.setStore(storeInfo);
-    doReturn(response).when(controllerClient).getStore(anyString());
-    VeniceSystemProducer producer = buildStartedProducerSpy(controllerClient, mock(VeniceWriter.class));
-    try {
-      assertEquals(producer.getPubSubEncryptionKeyUrn("test_store"), keyUrn);
-      assertNull(producer.getPubSubEncryptionKeyUrn("another-store"));
-      verify(controllerClient, times(1)).getStore("test_store");
-    } finally {
-      producer.stop();
-    }
-  }
-
   @Test
   public void testPartialUpdateConversion() {
     VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(

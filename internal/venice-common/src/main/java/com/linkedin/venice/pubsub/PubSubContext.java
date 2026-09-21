@@ -62,6 +62,8 @@ public class PubSubContext {
   /**
    * Returns the optional local store-name to raw encryption-key URN lookup, or {@code null} if not configured.
    * The lookup returns {@code null} for a missing store; an unassigned key may be null or empty.
+   * Metadata may be unavailable during adapter construction; resolve keys when needed after initialization.
+   * A missing result must not be cached or interpreted as disabling encryption.
    * It must not refresh metadata or perform remote requests.
    */
   public Function<String, String> getPubSubEncryptionKeyUrnLookup() {

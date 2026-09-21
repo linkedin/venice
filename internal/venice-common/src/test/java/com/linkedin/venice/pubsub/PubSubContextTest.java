@@ -7,6 +7,7 @@ import static org.testng.Assert.assertSame;
 
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
@@ -19,7 +20,8 @@ public class PubSubContextTest {
     PubSubPositionTypeRegistry mockRegistry = Mockito.mock(PubSubPositionTypeRegistry.class);
     PubSubPositionDeserializer mockDeserializer = Mockito.mock(PubSubPositionDeserializer.class);
     PubSubTopicRepository mockTopicRepo = Mockito.mock(PubSubTopicRepository.class);
-    Function<String, String> keyLookup = storeName -> "urn:test:key:1";
+    AtomicReference<String> keyUrn = new AtomicReference<>();
+    Function<String, String> keyLookup = storeName -> keyUrn.get();
 
     PubSubContext context = new PubSubContext.Builder().setTopicManagerRepository(mockRepo)
         .setPubSubPositionTypeRegistry(mockRegistry)
@@ -33,6 +35,9 @@ public class PubSubContextTest {
     assertSame(context.getPubSubPositionDeserializer(), mockDeserializer);
     assertSame(context.getPubSubTopicRepository(), mockTopicRepo);
     assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+    assertNull(context.getPubSubEncryptionKeyUrnLookup().apply("store"));
+    keyUrn.set("urn:test:key:1");
+    assertEquals(context.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
   }
 
   @Test

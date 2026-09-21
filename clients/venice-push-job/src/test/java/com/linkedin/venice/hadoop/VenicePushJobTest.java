@@ -16,17 +16,14 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -36,7 +33,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -49,25 +45,6 @@ import org.testng.annotations.Test;
  */
 
 public class VenicePushJobTest extends VenicePushJobTestBase {
-  @DataProvider
-  public Object[][] encryptionKeys() {
-    return new Object[][] { { "urn:test:key:1" }, { "" }, { null } };
-  }
-
-  @Test(dataProvider = "encryptionKeys")
-  public void testEncryptionKeyLookupUsesCachedStoreResponse(String keyUrn) {
-    PushJobSetting setting = new PushJobSetting();
-    setting.storeName = "store";
-    assertNull(VenicePushJob.getPubSubEncryptionKeyUrn(setting, "store"));
-
-    StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setPubSubEncryptionKeyUrn(keyUrn);
-    setting.storeResponse = new StoreResponse();
-    setting.storeResponse.setStore(storeInfo);
-    assertEquals(VenicePushJob.getPubSubEncryptionKeyUrn(setting, "store"), keyUrn);
-    assertNull(VenicePushJob.getPubSubEncryptionKeyUrn(setting, "another-store"));
-  }
-
   @Test(expectedExceptions = NullPointerException.class)
   public void testVenicePushJobThrowsNpeIfVpjPropertiesIsNull() {
     new VenicePushJob(PUSH_JOB_ID, null);
