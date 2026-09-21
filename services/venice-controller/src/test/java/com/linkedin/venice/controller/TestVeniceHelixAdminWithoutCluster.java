@@ -60,6 +60,35 @@ public class TestVeniceHelixAdminWithoutCluster {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @DataProvider
+  public Object[][] encryptionClusters() {
+    return new Object[][] { { false, false }, { true, false }, { false, true }, { true, true } };
+  }
+
+  @Test(dataProvider = "encryptionClusters")
+  public void testEncryptionKeyLookupIsOnlyCreatedForEncryptionClusters(
+      boolean firstClusterEncrypted,
+      boolean secondClusterEncrypted) {
+    VeniceControllerClusterConfig firstConfig = mock(VeniceControllerClusterConfig.class);
+    VeniceControllerClusterConfig secondConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(firstClusterEncrypted).when(firstConfig).isEncryptionCluster();
+    doReturn(secondClusterEncrypted).when(secondConfig).isEncryptionCluster();
+    Map<String, VeniceControllerClusterConfig> configs = new HashMap<>();
+    configs.put("cluster-1", firstConfig);
+    configs.put("cluster-2", secondConfig);
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doReturn(new VeniceControllerMultiClusterConfig(configs)).when(admin).getMultiClusterConfigs();
+    doCallRealMethod().when(admin).createPubSubEncryptionKeyUrnLookup();
+
+    Function<String, String> lookup = admin.createPubSubEncryptionKeyUrnLookup();
+    if (firstClusterEncrypted || secondClusterEncrypted) {
+      Assert.assertNotNull(lookup);
+      Assert.assertNull(lookup.apply("store"));
+    } else {
+      Assert.assertNull(lookup);
+    }
+  }
+
+  @DataProvider
   public Object[][] encryptionKeys() {
     return new Object[][] { { "urn:test:key:1" }, { "" }, { null } };
   }

@@ -583,7 +583,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceComponent.CONTROLLER,
         logContext,
         multiClusterConfigs.getStoreChangeNotifierThreadPoolSize());
-    Function<String, String> pubSubEncryptionKeyUrnLookup = this::getPubSubEncryptionKeyUrn;
+    Function<String, String> pubSubEncryptionKeyUrnLookup = createPubSubEncryptionKeyUrnLookup();
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
             .setPubSubPositionTypeRegistry(commonConfig.getPubSubPositionTypeRegistry())
@@ -9469,6 +9469,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   AsyncStoreChangeNotifier getStoreChangeNotifier() {
     return asyncStoreChangeNotifier;
+  }
+
+  @VisibleForTesting
+  Function<String, String> createPubSubEncryptionKeyUrnLookup() {
+    VeniceControllerMultiClusterConfig configs = getMultiClusterConfigs();
+    return configs.getClusters()
+        .stream()
+        .anyMatch(cluster -> configs.getControllerConfig(cluster).isEncryptionCluster())
+            ? this::getPubSubEncryptionKeyUrn
+            : null;
   }
 
   private String getPubSubEncryptionKeyUrn(String storeName) {
