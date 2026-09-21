@@ -908,15 +908,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
     drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
-    /**
-     * Deliberately conservative: how long a drainer legitimately holds a single node is not yet measured, and
-     * monitoring makes it measurable. Five minutes clears the worst legitimate case by a wide
-     * margin, that being a write waiting behind the host-wide flush pool, where the slowest flush observed
-     * across tens of thousands of samples stayed under half a second. Alerting reads the blocked-time metric,
-     * which carries no threshold of its own and can therefore fire far earlier than this. A positive value
-     * controls when the log names the offending partition. Zero or a negative value disables the monitor,
-     * per-record stall tracking and blocked-time metrics at construction time.
-     */
+    // Nonpositive thresholds disable stall tracking, logging, and blocked-time metrics.
     blockedDrainerThresholdMs =
         serverProperties.getLong(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, TimeUnit.MINUTES.toMillis(5));
 

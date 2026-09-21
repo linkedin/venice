@@ -506,26 +506,40 @@ public class StoreBufferServiceTest {
     return pcs.getLastQueuedRecordPersistedFuture();
   }
 
-  @Test
-  public void testIdleDrainersAreNotReportedAsBlocked() throws Exception {
-    StoreBufferService bufferService = newBufferServiceWithStallMonitor(1, null);
-    bufferService.start();
-    try (StallLogCapture logs = new StallLogCapture()) {
-      Assert.assertEquals(bufferService.getMaxDrainerBlockedTimeMs(), 0);
-      bufferService.reportStalledDrainers();
-      Assert.assertTrue(logs.getStallReports().isEmpty());
-      Assert.assertNull(bufferService.getDrainer(0).getCurrentTopicPartition());
-    } finally {
-      bufferService.stop();
+  @DataProvider
+  public Object[][] idleStallThresholds() {
+    return new Object[][] { { 1L }, { 0L }, { -1L } };
+  }
+
+  @Test(dataProvider = "idleStallThresholds")
+  public void testIdleDrainersAreNotReportedAsBlocked(long thresholdMs) throws Exception {
+    try (AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build()) {
+      MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
+      try (StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, metricsRepository);
+          StallLogCapture logs = new StallLogCapture()) {
+        bufferService.start();
+        Assert.assertEquals(bufferService.getMaxDrainerBlockedTimeMs(), 0);
+        bufferService.reportStalledDrainers();
+        Assert.assertTrue(logs.getStallReports().isEmpty());
+        Assert.assertEquals(bufferService.getDrainer(0).getProcessingStartedAtMs(), 0);
+        Assert.assertNull(bufferService.getDrainer(0).getCurrentTopicPartition());
+        Assert.assertEquals(
+            metricsRepository.getMetric(".StoreBufferServiceSorted--max_blocked_time_per_writer.Gauge") != null,
+            thresholdMs > 0);
+        Assert.assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--total_memory_usage.Gauge"));
+        Assert.assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--total_remaining_memory.Gauge"));
+      } finally {
+        metricsRepository.close();
+      }
     }
   }
 
   @DataProvider
-  public Object[][] enabledStallThresholds() {
-    return new Object[][] { { 50L, true }, { HOURS.toMillis(1), false } };
+  public Object[][] stallReportingThresholds() {
+    return new Object[][] { { 50L, true }, { HOURS.toMillis(1), false }, { 0L, false }, { -1L, false } };
   }
 
-  @Test(dataProvider = "enabledStallThresholds")
+  @Test(dataProvider = "stallReportingThresholds")
   public void testStalledDrainerReportingAcrossEpisodesAndRestart(long thresholdMs, boolean reportExpected)
       throws Exception {
     StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, null);
@@ -559,13 +573,18 @@ public class StoreBufferServiceTest {
         CompletableFuture<Void> persisted = putRecordAndGetPersistedFuture(bufferService, mockTask, held);
         Assert.assertTrue(enteredDrainer.await(10, SECONDS), "Drainer never picked up the queued record");
         StoreBufferService.StoreBufferDrainer drainer = bufferService.getDrainer(episode == 2 ? 1 : 0);
-        Assert.assertTrue(drainer.getProcessingStartedAtMs() >= beforeEnqueueMs);
-        Assert.assertEquals(drainer.getCurrentTopicPartition(), heldPartition);
-
-        TestUtils.waitForNonDeterministicAssertion(
-            5,
-            SECONDS,
-            () -> Assert.assertTrue(bufferService.getMaxDrainerBlockedTimeMs() >= 50));
+        if (thresholdMs > 0) {
+          Assert.assertTrue(drainer.getProcessingStartedAtMs() >= beforeEnqueueMs);
+          Assert.assertEquals(drainer.getCurrentTopicPartition(), heldPartition);
+          TestUtils.waitForNonDeterministicAssertion(
+              5,
+              SECONDS,
+              () -> Assert.assertTrue(bufferService.getMaxDrainerBlockedTimeMs() >= 50));
+        } else {
+          Assert.assertEquals(drainer.getProcessingStartedAtMs(), 0);
+          Assert.assertNull(drainer.getCurrentTopicPartition(), "Disabled monitoring must not publish stall state");
+          Assert.assertEquals(bufferService.getMaxDrainerBlockedTimeMs(), 0);
+        }
         bufferService.reportStalledDrainers();
         List<String> reports = logs.getStallReports();
         int expectedReports = reportExpected ? episode + 1 : 0;
@@ -591,61 +610,6 @@ public class StoreBufferServiceTest {
     Assert.assertNull(bufferService.getDrainer(1).getCurrentTopicPartition());
     Assert.assertEquals(bufferService.getDrainer(1).getProcessingStartedAtMs(), 0);
     verify(mockedStats, times(3)).recordInternalProcessingLatency(anyLong(), any());
-  }
-
-  @DataProvider
-  public Object[][] disabledStallThresholds() {
-    return new Object[][] { { 0L }, { -1L } };
-  }
-
-  @Test(dataProvider = "disabledStallThresholds")
-  public void testStallMonitorIsOffWhenThresholdIsNotPositive(long thresholdMs) throws Exception {
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    CountDownLatch enteredDrainer = new CountDownLatch(1);
-    CountDownLatch releaseDrainer = new CountDownLatch(1);
-    doAnswer(invocation -> {
-      enteredDrainer.countDown();
-      Assert.assertTrue(releaseDrainer.await(10, SECONDS), "Drainer was not released");
-      return null;
-    }).when(mockTask).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
-
-    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic("disabled_stall_test_v1");
-    PubSubTopicPartition heldPartition = new PubSubTopicPartitionImpl(pubSubTopic, 1);
-    DefaultPubSubMessage held = new ImmutablePubSubMessage(key, value, heldPartition, mockPosition, 0, 0);
-
-    try (AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build()) {
-      MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
-      try (StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, metricsRepository);
-          StallLogCapture logs = new StallLogCapture()) {
-        bufferService.start();
-        try {
-          CompletableFuture<Void> persisted = putRecordAndGetPersistedFuture(bufferService, mockTask, held);
-          Assert.assertTrue(enteredDrainer.await(10, SECONDS), "Drainer never picked up the queued record");
-
-          StoreBufferService.StoreBufferDrainer drainer = bufferService.getDrainer(0);
-          Assert.assertEquals(drainer.getProcessingStartedAtMs(), 0);
-          Assert.assertNull(drainer.getCurrentTopicPartition(), "Disabled monitoring must not publish stall state");
-          Assert.assertEquals(bufferService.getMaxDrainerBlockedTimeMs(), 0);
-          bufferService.reportStalledDrainers();
-          Assert.assertTrue(logs.getStallReports().isEmpty());
-          Assert
-              .assertNull(metricsRepository.getMetric(".StoreBufferServiceSorted--max_blocked_time_per_writer.Gauge"));
-          Assert.assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--total_memory_usage.Gauge"));
-          Assert.assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--total_remaining_memory.Gauge"));
-
-          releaseDrainer.countDown();
-          persisted.get(10, SECONDS);
-        } finally {
-          releaseDrainer.countDown();
-          bufferService.stop();
-        }
-        Assert.assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--internal_processing_latency.Avg"));
-        Assert.assertEquals(bufferService.getDrainer(0).getProcessingStartedAtMs(), 0);
-        Assert.assertNull(bufferService.getDrainer(0).getCurrentTopicPartition());
-      } finally {
-        metricsRepository.close();
-      }
-    }
   }
 
   @Test
