@@ -40,6 +40,14 @@ public class ReadOnlyStoreRepositoryTest {
 
     assertEquals(repository.getPubSubEncryptionKeyUrn("existing"), keyUrn);
     assertNull(repository.getPubSubEncryptionKeyUrn("missing"));
+    if (keyUrn == null || keyUrn.isEmpty()) {
+      doReturn("urn:test:key:1").when(store).getPubSubEncryptionKeyUrn();
+      assertEquals(repository.getPubSubEncryptionKeyUrn("existing"), "urn:test:key:1");
+    }
+    Store lateStore = mock(Store.class);
+    doReturn("urn:test:key:2").when(lateStore).getPubSubEncryptionKeyUrn();
+    doReturn(lateStore).when(repository).getStoreOrThrow("missing");
+    assertEquals(repository.getPubSubEncryptionKeyUrn("missing"), "urn:test:key:2");
     verify(repository, never()).getStore(anyString());
     verify(repository, never()).refreshOneStore(anyString());
   }

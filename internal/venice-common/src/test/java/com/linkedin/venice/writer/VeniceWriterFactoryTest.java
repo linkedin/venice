@@ -21,6 +21,8 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
@@ -63,7 +65,12 @@ public class VeniceWriterFactoryTest {
 
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
-    Function<String, String> keyLookup = storeName -> "urn:test:key:1";
+    AtomicInteger lookups = new AtomicInteger();
+    AtomicReference<String> keyUrn = new AtomicReference<>();
+    Function<String, String> keyLookup = storeName -> {
+      lookups.incrementAndGet();
+      return keyUrn.get();
+    };
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(properties, producerFactoryMock, null, null, keyLookup);
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
@@ -110,8 +117,14 @@ public class VeniceWriterFactoryTest {
       verify(producerFactoryMock, times(8)).create(any(PubSubProducerAdapterContext.class));
       assertTrue(veniceWriter.getProducerAdapter() instanceof PubSubProducerAdapterConcurrentDelegator);
     }
+    assertEquals(lookups.get(), 0);
     for (PubSubProducerAdapterContext context: producerCtxCaptor.getAllValues()) {
       assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+      assertNull(context.getPubSubEncryptionKeyUrnLookup().apply("store"));
+    }
+    keyUrn.set("urn:test:key:1");
+    for (PubSubProducerAdapterContext context: producerCtxCaptor.getAllValues()) {
+      assertEquals(context.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
     }
   }
 

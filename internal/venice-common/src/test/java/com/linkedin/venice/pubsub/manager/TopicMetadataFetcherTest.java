@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -62,6 +63,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.mockito.ArgumentCaptor;
@@ -88,7 +91,12 @@ public class TopicMetadataFetcherTest {
     when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumerMock);
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, pubSubClusterAddress);
-    Function<String, String> keyLookup = storeName -> "urn:test:key:1";
+    AtomicInteger lookups = new AtomicInteger();
+    AtomicReference<String> keyUrn = new AtomicReference<>();
+    Function<String, String> keyLookup = storeName -> {
+      lookups.incrementAndGet();
+      return keyUrn.get();
+    };
     TopicManagerContext context =
         new TopicManagerContext.Builder().setPubSubAdminAdapterFactory(mock(PubSubAdminAdapterFactory.class))
             .setPubSubConsumerAdapterFactory(factory)
@@ -102,8 +110,14 @@ public class TopicMetadataFetcherTest {
     try (TopicMetadataFetcher fetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, adminMock)) {
       ArgumentCaptor<PubSubConsumerAdapterContext> captor = ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
       verify(factory, times(2)).create(captor.capture());
+      assertEquals(lookups.get(), 0);
       for (PubSubConsumerAdapterContext consumerContext: captor.getAllValues()) {
         assertSame(consumerContext.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+        assertNull(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"));
+      }
+      keyUrn.set("urn:test:key:1");
+      for (PubSubConsumerAdapterContext consumerContext: captor.getAllValues()) {
+        assertEquals(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
       }
     }
   }
