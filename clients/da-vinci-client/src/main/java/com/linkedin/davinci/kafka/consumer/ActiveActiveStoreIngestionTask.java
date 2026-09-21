@@ -1778,7 +1778,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       rtPositionsByBroker.put(broker, pcs.getLeaderPosition(broker, shouldUseDivRtPosition));
     }
     if (leaderTopic.isRealTime() && rtPositionsByBroker.containsValue(PubSubSymbolicPosition.EARLIEST)) {
-      rtPositionsByBroker = calculateRtConsumptionStartPositions(pcs, leaderTopic, unreachableBrokers);
+      Map<String, PubSubPosition> fallbackRtPositions =
+          calculateRtConsumptionStartPositions(pcs, leaderTopic, unreachableBrokers);
+      for (String broker: leaderSourceBrokerAddresses) {
+        if (PubSubSymbolicPosition.EARLIEST.equals(rtPositionsByBroker.get(broker))) {
+          rtPositionsByBroker.put(broker, fallbackRtPositions.getOrDefault(broker, PubSubSymbolicPosition.EARLIEST));
+        }
+      }
     }
     if (!unreachableBrokers.isEmpty()) {
       LOGGER.warn(

@@ -6888,6 +6888,57 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
+  @Test
+  public void testResubscribeAsLeaderPreservesValidDivPositionsWhenFallbackIsNeeded() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .preparePositionCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
+
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
+    PubSubTopic rtTopic = topicRepository.getTopic("test_rt");
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getReplicaId()).thenReturn("test_v1-1");
+    when(pcs.getPartition()).thenReturn(1);
+    when(ingestionTask.isGlobalRtDivEnabled()).thenReturn(true);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(true);
+    when(ingestionTask.getConsumptionSourceKafkaAddress(pcs))
+        .thenReturn(new HashSet<>(Arrays.asList("dc-1", "dc-2", "dc-3")));
+    when(pcs.getLeaderPosition("dc-1", true)).thenReturn(InMemoryPubSubPosition.of(100L));
+    when(pcs.getLeaderPosition("dc-2", true)).thenReturn(InMemoryPubSubPosition.of(200L));
+    when(pcs.getLeaderPosition("dc-3", true)).thenReturn(PubSubSymbolicPosition.EARLIEST);
+
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
+    when(offsetRecord.getLeaderTopic(any())).thenReturn(rtTopic);
+
+    Map<String, PubSubPosition> fallbackRtPositions = new HashMap<>();
+    fallbackRtPositions.put("dc-1", InMemoryPubSubPosition.of(999L));
+    fallbackRtPositions.put("dc-2", InMemoryPubSubPosition.of(888L));
+    fallbackRtPositions.put("dc-3", InMemoryPubSubPosition.of(500L));
+    doReturn(fallbackRtPositions).when(ingestionTask)
+        .calculateRtConsumptionStartPositions(eq(pcs), eq(rtTopic), anyList());
+
+    ingestionTask.preparePositionCheckpointAndStartConsumptionAsLeader(rtTopic, pcs, true);
+
+    ArgumentCaptor<PubSubPosition> offsetCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+    ArgumentCaptor<String> brokerCaptor = ArgumentCaptor.forClass(String.class);
+    verify(ingestionTask, times(3))
+        .consumerSubscribe(eq(rtTopic), eq(pcs), offsetCaptor.capture(), brokerCaptor.capture());
+
+    Map<String, PubSubPosition> startPositionsByBroker = new HashMap<>();
+    List<String> brokerAddresses = brokerCaptor.getAllValues();
+    List<PubSubPosition> positions = offsetCaptor.getAllValues();
+    for (int i = 0; i < brokerAddresses.size(); i++) {
+      startPositionsByBroker.put(brokerAddresses.get(i), positions.get(i));
+    }
+
+    Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-1")).getInternalOffset(), 100L);
+    Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-2")).getInternalOffset(), 200L);
+    Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-3")).getInternalOffset(), 500L);
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testResubscribeAsLeaderFromVersionTopic(boolean aaEnabled) throws InterruptedException {
     LeaderFollowerStoreIngestionTask ingestionTask =
