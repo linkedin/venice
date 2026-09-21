@@ -58,6 +58,30 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
       LongSupplier maxMemoryUsagePerDrainerSupplier,
       LongSupplier minMemoryUsagePerDrainerSupplier,
       LongSupplier maxDrainerBlockedTimeSupplier) {
+    this(
+        metricsRepository,
+        metricNamePrefix,
+        clusterName,
+        sorted,
+        totalMemoryUsageSupplier,
+        totalRemainingMemorySupplier,
+        maxMemoryUsagePerDrainerSupplier,
+        minMemoryUsagePerDrainerSupplier,
+        maxDrainerBlockedTimeSupplier,
+        true);
+  }
+
+  public StoreBufferServiceStats(
+      MetricsRepository metricsRepository,
+      String metricNamePrefix,
+      String clusterName,
+      boolean sorted,
+      LongSupplier totalMemoryUsageSupplier,
+      LongSupplier totalRemainingMemorySupplier,
+      LongSupplier maxMemoryUsagePerDrainerSupplier,
+      LongSupplier minMemoryUsagePerDrainerSupplier,
+      LongSupplier maxDrainerBlockedTimeSupplier,
+      boolean stallMonitoringEnabled) {
     super(metricsRepository, metricNamePrefix);
 
     VeniceDrainerType bufferType = sorted ? VeniceDrainerType.SORTED : VeniceDrainerType.UNSORTED;
@@ -91,10 +115,12 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN,
         TehutiMetricName.MIN_MEMORY_USAGE_PER_WRITER,
         minMemoryUsagePerDrainerSupplier);
-    registerMemoryGauge(
-        StoreBufferServiceOtelMetricEntity.BLOCKED_TIME_PER_WRITER_MAX,
-        TehutiMetricName.MAX_BLOCKED_TIME_PER_WRITER,
-        maxDrainerBlockedTimeSupplier);
+    if (stallMonitoringEnabled) {
+      registerMemoryGauge(
+          StoreBufferServiceOtelMetricEntity.BLOCKED_TIME_PER_WRITER_MAX,
+          TehutiMetricName.MAX_BLOCKED_TIME_PER_WRITER,
+          maxDrainerBlockedTimeSupplier);
+    }
   }
 
   private void registerMemoryGauge(

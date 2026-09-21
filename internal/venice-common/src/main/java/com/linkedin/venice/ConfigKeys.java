@@ -840,8 +840,8 @@ public class ConfigKeys {
    * node counts; a drainer waiting for work is idle, not stalled. Healthy drainers finish a node in
    * milliseconds, so this sits several orders of magnitude above normal.
    *
-   * Set to zero or a negative value to switch the monitor off. The per-drainer blocked-time metric is still
-   * reported in that case; only the background check and its logging stop.
+   * Defaults to 300000 ms. Set to zero or a negative value to disable the background monitor, per-record
+   * stall tracking and blocked-time metrics. This is read at construction time; changes require a restart.
    */
   public static final String SERVER_BLOCKED_DRAINER_THRESHOLD_MS = "server.blocked.drainer.threshold.ms";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =

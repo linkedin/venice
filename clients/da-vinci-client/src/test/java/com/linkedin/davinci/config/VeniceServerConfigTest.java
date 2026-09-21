@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_S
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
@@ -69,6 +70,19 @@ public class VeniceServerConfigTest {
     assertEquals(jvmArgs.size(), 2);
     assertEquals(jvmArgs.get(0), "-Xms256M");
     assertEquals(jvmArgs.get(1), "-Xmx256G");
+  }
+
+  @Test
+  public void testBlockedDrainerThresholdDefaultAndOverrides() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getBlockedDrainerThresholdMs(), 300000L);
+
+    for (long thresholdMs: new long[] { 50L, 0L, -1L }) {
+      props.setProperty(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, Long.toString(thresholdMs));
+      VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+      assertEquals(config.getBlockedDrainerThresholdMs(), thresholdMs);
+    }
   }
 
   @Test
