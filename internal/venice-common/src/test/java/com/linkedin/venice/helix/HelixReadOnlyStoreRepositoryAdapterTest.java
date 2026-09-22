@@ -12,6 +12,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.AssertJUnit.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -28,12 +29,20 @@ import org.testng.annotations.Test;
 
 public class HelixReadOnlyStoreRepositoryAdapterTest {
   @DataProvider
-  public Object[][] systemStoreTypes() {
-    return new Object[][] { { VeniceSystemStoreType.META_STORE }, { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE } };
+  public Object[][] systemStoreNames() {
+    return new Object[][] { { VeniceSystemStoreType.META_STORE.getSystemStoreName("store") },
+        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("store") },
+        { VeniceSystemStoreType.META_STORE.getZkSharedStoreName() },
+        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName() },
+        { VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix() },
+        { VeniceSystemStoreUtils.getParticipantStoreNameForCluster("test-cluster") },
+        { VeniceSystemStoreUtils.getPushJobDetailsStoreName() },
+        { VeniceSystemStoreUtils.getParentControllerMetadataStoreNameForCluster("test-cluster") },
+        { String.format(Store.SYSTEM_STORE_FORMAT, "other") } };
   }
 
-  @Test(dataProvider = "systemStoreTypes")
-  public void testEncryptionKeyLookupDoesNotRefresh(VeniceSystemStoreType systemStoreType) {
+  @Test(dataProvider = "systemStoreNames")
+  public void testEncryptionKeyLookupSkipsSystemStores(String systemStoreName) {
     ReadOnlyStoreRepository regularRepository = mock(ReadOnlyStoreRepository.class);
     HelixReadOnlyZKSharedSystemStoreRepository sharedRepository =
         mock(HelixReadOnlyZKSharedSystemStoreRepository.class);
@@ -44,16 +53,14 @@ public class HelixReadOnlyStoreRepositoryAdapterTest {
     assertEquals(adapter.getPubSubEncryptionKeyUrn("store"), keyUrn);
     assertNull(adapter.getPubSubEncryptionKeyUrn("missing"));
 
-    String systemStoreName = systemStoreType.getSystemStoreName("store");
-    String sharedStoreName = systemStoreType.getZkSharedStoreName();
-    assertNull(adapter.getPubSubEncryptionKeyUrn(systemStoreName));
-    verify(sharedRepository, never()).getPubSubEncryptionKeyUrn(anyString());
-
     doReturn(true).when(regularRepository).hasStore("store");
+    doReturn(keyUrn).when(regularRepository).getPubSubEncryptionKeyUrn(systemStoreName);
+    doReturn(keyUrn).when(sharedRepository).getPubSubEncryptionKeyUrn(anyString());
     assertNull(adapter.getPubSubEncryptionKeyUrn(systemStoreName));
-    doReturn("urn:test:key:shared").when(sharedRepository).getPubSubEncryptionKeyUrn(sharedStoreName);
-    assertEquals(adapter.getPubSubEncryptionKeyUrn(systemStoreName), "urn:test:key:shared");
 
+    verify(regularRepository, never()).getPubSubEncryptionKeyUrn(systemStoreName);
+    verify(regularRepository, never()).hasStore(anyString());
+    verify(sharedRepository, never()).getPubSubEncryptionKeyUrn(anyString());
     verify(regularRepository, never()).getStore(anyString());
     verify(sharedRepository, never()).getStore(anyString());
     verify(regularRepository, never()).refreshOneStore(anyString());

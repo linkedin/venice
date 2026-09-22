@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -87,14 +88,10 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
 
   @Override
   public String getPubSubEncryptionKeyUrn(String storeName) {
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (forwardToRegularRepository(systemStoreType)) {
-      return regularStoreRepository.getPubSubEncryptionKeyUrn(storeName);
-    }
-    if (!regularStoreRepository.hasStore(systemStoreType.extractRegularStoreName(storeName))) {
+    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
       return null;
     }
-    return systemStoreRepository.getPubSubEncryptionKeyUrn(systemStoreType.getZkSharedStoreName());
+    return regularStoreRepository.getPubSubEncryptionKeyUrn(storeName);
   }
 
   // test only
