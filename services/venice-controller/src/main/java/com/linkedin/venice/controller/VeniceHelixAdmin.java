@@ -8453,6 +8453,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * This is a no-op for adhoc (non-scheduled) repushes, when the {@link ConfigKeys#LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED}
    * config is disabled for the cluster, and when the store already satisfies the retention policy (so no redundant
    * store update / admin message is emitted). It never lowers a store's existing higher {@code numVersionsToPreserve}.
+   * Throws {@link VeniceNoStoreException} if the store does not exist, since the repush itself cannot proceed.
    */
   void updateBackupVersionRetentionBeforeLogCompaction(RepushJobRequest repushJobRequest) {
     if (repushJobRequest.getTriggerSource() != StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION) {
@@ -8466,11 +8467,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     Store store = getStore(clusterName, storeName);
     if (store == null) {
-      LOGGER.warn(
-          "[log-compaction] Skipping backup-version preservation for non-existent store: {} in cluster: {}",
-          storeName,
-          clusterName);
-      return;
+      throw new VeniceNoStoreException(storeName, clusterName);
     }
     BackupStrategy targetStrategy = clusterConfig.getLogCompactionBackupStrategy();
     UpdateStoreQueryParams params = computeBackupVersionRetentionUpdate(
