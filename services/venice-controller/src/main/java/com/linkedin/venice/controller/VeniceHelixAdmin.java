@@ -8410,7 +8410,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         getMultiClusterConfigs().getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
         "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
-      updateBackupVersionRetentionBeforeLogCompaction(repushJobRequest);
+      updateBackupVersionRetention(repushJobRequest);
       RepushJobResponse response = getCompactionManager().repushStore(repushJobRequest);
       getLogCompactionStatsMap().get(repushJobRequest.getClusterName())
           .recordRepushStoreCall(
@@ -8448,7 +8448,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * already uses the configured strategy. Throws {@link VeniceNoStoreException} if the store does not exist, since the
    * repush cannot proceed anyway.
    */
-  void updateBackupVersionRetentionBeforeLogCompaction(RepushJobRequest repushJobRequest) {
+  void updateBackupVersionRetention(RepushJobRequest repushJobRequest) {
     if (repushJobRequest.getTriggerSource() != StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION) {
       return;
     }
