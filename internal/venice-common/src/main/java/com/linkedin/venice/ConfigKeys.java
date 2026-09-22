@@ -505,20 +505,17 @@ public class ConfigKeys {
   public static final String LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD = "log.compaction.duplicate.key.threshold";
 
   /**
-   * Whether the controller should preserve a store's backup version through a scheduled log-compaction repush.
-   * When enabled, before triggering a scheduled repush the controller ensures the store uses the backup strategy
-   * configured by {@link #LOG_COMPACTION_BACKUP_STRATEGY} with at least 2 versions to preserve (current + 1 backup),
-   * so the existing backup is not deleted at repush start and survives a failed repush.
+   * When on, the controller moves a store to the {@link #LOG_COMPACTION_BACKUP_STRATEGY} strategy before a scheduled
+   * log-compaction repush, so the store's existing backup is not deleted at repush start and survives a failed repush.
    */
   public static final String LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED =
       "log.compaction.preserve.backup.version.enabled";
 
   /**
    * The {@link com.linkedin.venice.meta.BackupStrategy} (as its integer id, see
-   * {@link com.linkedin.venice.meta.BackupStrategy#getValue()}) that the controller applies to a store before a
-   * scheduled log-compaction repush when {@link #LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED} is on. Making this
-   * configurable lets the backup-preservation policy switch to a better strategy in the future without a code change.
-   * Defaults to {@link com.linkedin.venice.meta.BackupStrategy#KEEP_MIN_VERSIONS}.
+   * {@link com.linkedin.venice.meta.BackupStrategy#getValue()}) applied to a store before a scheduled log-compaction
+   * repush when {@link #LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED} is on. Configurable so the preservation policy
+   * can change without a code change. Defaults to {@link com.linkedin.venice.meta.BackupStrategy#KEEP_MIN_VERSIONS}.
    */
   public static final String LOG_COMPACTION_BACKUP_STRATEGY = "log.compaction.backup.strategy";
 

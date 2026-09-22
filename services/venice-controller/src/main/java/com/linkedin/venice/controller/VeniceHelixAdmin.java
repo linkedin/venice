@@ -8434,27 +8434,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return logCompactionStatsMap;
   }
 
-  /**
-   * Minimum number of versions a store must preserve (current + 1 backup) so that a good backup survives a scheduled
-   * log-compaction repush. Fixed policy value (not configurable).
-   */
+  /** Versions preserved (current + 1 backup) when flipping a store to {@link BackupStrategy#KEEP_MIN_VERSIONS}. */
   static final int MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION = 2;
 
   /**
-   * Before a scheduled log-compaction repush, ensure the store retains its existing backup version through the repush.
+   * Before a scheduled log-compaction repush, moves the store to the cluster-configured backup strategy so a good
+   * backup survives the repush. With {@link BackupStrategy#DELETE_ON_NEW_PUSH_START} the old backup is deleted at push
+   * start, so a failed repush can leave the store with none; {@link BackupStrategy#KEEP_MIN_VERSIONS} defers that
+   * deletion until the new push succeeds.
    * <p>
-   * A repush retires the store's current version. With {@link BackupStrategy#DELETE_ON_NEW_PUSH_START} the old backup
-   * is deleted at push start, so a failed repush can leave the store with no backup. Applying the cluster-configured
-   * backup strategy ({@link VeniceControllerClusterConfig#getLogCompactionBackupStrategy()}, default
-   * {@link BackupStrategy#KEEP_MIN_VERSIONS}) with at least {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION} versions to
-   * preserve defers deletion of the old backup until the new push succeeds. Making the strategy config-driven lets the
-   * preservation policy evolve without a code change.
-   * <p>
-   * This is a no-op for adhoc (non-scheduled) repushes, when the {@link ConfigKeys#LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED}
-   * config is disabled for the cluster, and when the store already uses the configured backup strategy (so no redundant
-   * store update / admin message is emitted). When flipping to {@link BackupStrategy#KEEP_MIN_VERSIONS} it also sets
-   * {@code numVersionsToPreserve} to {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION} (current + 1 backup).
-   * Throws {@link VeniceNoStoreException} if the store does not exist, since the repush itself cannot proceed.
+   * No-op for adhoc (non-scheduled) repushes, when
+   * {@link ConfigKeys#LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED} is disabled for the cluster, and when the store
+   * already uses the configured strategy. Throws {@link VeniceNoStoreException} if the store does not exist, since the
+   * repush cannot proceed anyway.
    */
   void updateBackupVersionRetentionBeforeLogCompaction(RepushJobRequest repushJobRequest) {
     if (repushJobRequest.getTriggerSource() != StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION) {
@@ -8485,13 +8477,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Computes the {@link UpdateStoreQueryParams} needed to move a store to the configured log-compaction backup
-   * strategy, or {@code null} if the store already uses it. The store's current backup strategy is the only signal:
-   * when it already matches {@code targetStrategy} nothing is changed (so no redundant admin message is emitted for
-   * stores that are already correct). When a change is needed the strategy is set, and if the target is
-   * {@link BackupStrategy#KEEP_MIN_VERSIONS} the {@code numVersionsToPreserve} is also set to
-   * {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION} (current + 1 backup); for any other target strategy the version
-   * count is left untouched.
+   * Returns the {@link UpdateStoreQueryParams} to move a store from {@code currentStrategy} to {@code targetStrategy},
+   * or {@code null} if they already match (the strategy is the only update signal, so already-correct stores are not
+   * re-written). When the target is {@link BackupStrategy#KEEP_MIN_VERSIONS}, {@code numVersionsToPreserve} is also set
+   * to {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION}; other targets leave the version count untouched.
    */
   static UpdateStoreQueryParams computeBackupVersionRetentionUpdate(
       BackupStrategy currentStrategy,
