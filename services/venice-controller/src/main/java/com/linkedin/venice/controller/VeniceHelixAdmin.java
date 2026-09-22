@@ -8451,8 +8451,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * preservation policy evolve without a code change.
    * <p>
    * This is a no-op for adhoc (non-scheduled) repushes, when the {@link ConfigKeys#LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED}
-   * config is disabled for the cluster, and when the store already satisfies the retention policy (so no redundant
-   * store update / admin message is emitted). It never lowers a store's existing higher {@code numVersionsToPreserve}.
+   * config is disabled for the cluster, and when the store already uses the configured backup strategy (so no redundant
+   * store update / admin message is emitted). When flipping to {@link BackupStrategy#KEEP_MIN_VERSIONS} it also sets
+   * {@code numVersionsToPreserve} to {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION} (current + 1 backup).
    * Throws {@link VeniceNoStoreException} if the store does not exist, since the repush itself cannot proceed.
    */
   void updateBackupVersionRetentionBeforeLogCompaction(RepushJobRequest repushJobRequest) {
@@ -8470,46 +8471,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
     BackupStrategy targetStrategy = clusterConfig.getLogCompactionBackupStrategy();
-    UpdateStoreQueryParams params = computeBackupVersionRetentionUpdate(
-        store.getBackupStrategy(),
-        store.getNumVersionsToPreserve(),
-        targetStrategy,
-        MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION);
+    UpdateStoreQueryParams params = computeBackupVersionRetentionUpdate(store.getBackupStrategy(), targetStrategy);
     if (params == null) {
       return;
     }
     LOGGER.info(
         "[log-compaction] Preserving backup version for store: {} in cluster: {} before scheduled repush by setting "
-            + "backup strategy {} with numVersionsToPreserve >= {}",
+            + "backup strategy {}",
         storeName,
         clusterName,
-        targetStrategy,
-        MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION);
+        targetStrategy);
     updateStore(clusterName, storeName, params);
   }
 
   /**
-   * Computes the {@link UpdateStoreQueryParams} needed to bring a store up to the log-compaction backup-retention
-   * policy (the {@code targetStrategy} with at least {@code targetMinVersionsToPreserve} versions to preserve), or
-   * {@code null} if the store already satisfies it. Only the fields that need to change are set, and an existing
-   * higher {@code numVersionsToPreserve} is never lowered.
+   * Computes the {@link UpdateStoreQueryParams} needed to move a store to the configured log-compaction backup
+   * strategy, or {@code null} if the store already uses it. The store's current backup strategy is the only signal:
+   * when it already matches {@code targetStrategy} nothing is changed (so no redundant admin message is emitted for
+   * stores that are already correct). When a change is needed the strategy is set, and if the target is
+   * {@link BackupStrategy#KEEP_MIN_VERSIONS} the {@code numVersionsToPreserve} is also set to
+   * {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION} (current + 1 backup); for any other target strategy the version
+   * count is left untouched.
    */
   static UpdateStoreQueryParams computeBackupVersionRetentionUpdate(
       BackupStrategy currentStrategy,
-      int currentNumVersionsToPreserve,
-      BackupStrategy targetStrategy,
-      int targetMinVersionsToPreserve) {
-    boolean needsStrategyUpdate = currentStrategy != targetStrategy;
-    boolean needsVersionCountUpdate = currentNumVersionsToPreserve < targetMinVersionsToPreserve;
-    if (!needsStrategyUpdate && !needsVersionCountUpdate) {
+      BackupStrategy targetStrategy) {
+    if (currentStrategy == targetStrategy) {
       return null;
     }
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    if (needsStrategyUpdate) {
-      params.setBackupStrategy(targetStrategy);
-    }
-    if (needsVersionCountUpdate) {
-      params.setNumVersionsToPreserve(targetMinVersionsToPreserve);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setBackupStrategy(targetStrategy);
+    if (targetStrategy == BackupStrategy.KEEP_MIN_VERSIONS) {
+      params.setNumVersionsToPreserve(MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION);
     }
     return params;
   }
