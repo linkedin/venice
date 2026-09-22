@@ -179,7 +179,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABL
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
-import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_BACKUP_MIN_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_BACKUP_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
@@ -307,11 +306,6 @@ import org.apache.logging.log4j.Logger;
 public class VeniceControllerClusterConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerClusterConfig.class);
   private static final String LIST_SEPARATOR = ",\\s*";
-  /**
-   * Default minimum {@code numVersionsToPreserve} (current + 1 backup) applied to a store before a scheduled
-   * log-compaction repush when backup-version preservation is enabled.
-   */
-  public static final int DEFAULT_LOG_COMPACTION_BACKUP_MIN_VERSIONS_TO_PRESERVE = 2;
 
   private final VeniceProperties props;
   private final String clusterName;
@@ -692,7 +686,6 @@ public class VeniceControllerClusterConfig {
   private final boolean isLogCompactionSchedulingEnabled;
   private final boolean isLogCompactionPreserveBackupVersionEnabled;
   private final BackupStrategy logCompactionBackupStrategy;
-  private final int logCompactionBackupMinVersionsToPreserve;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long logCompactionVersionStalenessThresholdMS;
@@ -1270,8 +1263,6 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED, false);
     this.logCompactionBackupStrategy = BackupStrategy
         .fromInt(props.getInt(LOG_COMPACTION_BACKUP_STRATEGY, BackupStrategy.KEEP_MIN_VERSIONS.getValue()));
-    this.logCompactionBackupMinVersionsToPreserve = props
-        .getInt(LOG_COMPACTION_BACKUP_MIN_VERSIONS_TO_PRESERVE, DEFAULT_LOG_COMPACTION_BACKUP_MIN_VERSIONS_TO_PRESERVE);
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
@@ -1442,7 +1433,6 @@ public class VeniceControllerClusterConfig {
     LOGGER.info("\tisLogCompactionSchedulingEnabled: {}", isLogCompactionSchedulingEnabled);
     LOGGER.info("\tisLogCompactionPreserveBackupVersionEnabled: {}", isLogCompactionPreserveBackupVersionEnabled);
     LOGGER.info("\tlogCompactionBackupStrategy: {}", logCompactionBackupStrategy);
-    LOGGER.info("\tlogCompactionBackupMinVersionsToPreserve: {}", logCompactionBackupMinVersionsToPreserve);
     LOGGER.info("\tlogCompactionThreadCount: {}", logCompactionThreadCount);
     LOGGER.info("\tlogCompactionIntervalMS: {}", logCompactionIntervalMS);
     LOGGER.info("\tlogCompactionVersionStalenessThresholdMS: {}", logCompactionVersionStalenessThresholdMS);
@@ -2579,10 +2569,6 @@ public class VeniceControllerClusterConfig {
 
   public BackupStrategy getLogCompactionBackupStrategy() {
     return logCompactionBackupStrategy;
-  }
-
-  public int getLogCompactionBackupMinVersionsToPreserve() {
-    return logCompactionBackupMinVersionsToPreserve;
   }
 
   public int getLogCompactionThreadCount() {

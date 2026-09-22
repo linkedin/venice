@@ -8435,15 +8435,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Minimum number of versions a store must preserve (current + 1 backup) so that a good backup survives a scheduled
+   * log-compaction repush. Fixed policy value (not configurable).
+   */
+  static final int MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION = 2;
+
+  /**
    * Before a scheduled log-compaction repush, ensure the store retains its existing backup version through the repush.
    * <p>
    * A repush retires the store's current version. With {@link BackupStrategy#DELETE_ON_NEW_PUSH_START} the old backup
    * is deleted at push start, so a failed repush can leave the store with no backup. Applying the cluster-configured
    * backup strategy ({@link VeniceControllerClusterConfig#getLogCompactionBackupStrategy()}, default
-   * {@link BackupStrategy#KEEP_MIN_VERSIONS}) with at least the configured minimum
-   * ({@link VeniceControllerClusterConfig#getLogCompactionBackupMinVersionsToPreserve()}, default 2) versions to
-   * preserve defers deletion of the old backup until the new push succeeds. Making the strategy and its minimum
-   * config-driven lets the preservation policy evolve without a code change.
+   * {@link BackupStrategy#KEEP_MIN_VERSIONS}) with at least {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION} versions to
+   * preserve defers deletion of the old backup until the new push succeeds. Making the strategy config-driven lets the
+   * preservation policy evolve without a code change.
    * <p>
    * This is a no-op for adhoc (non-scheduled) repushes, when the {@link ConfigKeys#LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED}
    * config is disabled for the cluster, and when the store already satisfies the retention policy (so no redundant
@@ -8468,12 +8473,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     BackupStrategy targetStrategy = clusterConfig.getLogCompactionBackupStrategy();
-    int targetMinVersionsToPreserve = clusterConfig.getLogCompactionBackupMinVersionsToPreserve();
     UpdateStoreQueryParams params = computeBackupVersionRetentionUpdate(
         store.getBackupStrategy(),
         store.getNumVersionsToPreserve(),
         targetStrategy,
-        targetMinVersionsToPreserve);
+        MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION);
     if (params == null) {
       return;
     }
@@ -8483,7 +8487,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeName,
         clusterName,
         targetStrategy,
-        targetMinVersionsToPreserve);
+        MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION);
     updateStore(clusterName, storeName, params);
   }
 

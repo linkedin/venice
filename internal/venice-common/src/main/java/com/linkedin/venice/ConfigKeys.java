@@ -507,9 +507,8 @@ public class ConfigKeys {
   /**
    * Whether the controller should preserve a store's backup version through a scheduled log-compaction repush.
    * When enabled, before triggering a scheduled repush the controller ensures the store uses the backup strategy
-   * configured by {@link #LOG_COMPACTION_BACKUP_STRATEGY} with at least
-   * {@link #LOG_COMPACTION_BACKUP_MIN_VERSIONS_TO_PRESERVE} versions to preserve, so the existing backup is not
-   * deleted at repush start and survives a failed repush.
+   * configured by {@link #LOG_COMPACTION_BACKUP_STRATEGY} with at least 2 versions to preserve (current + 1 backup),
+   * so the existing backup is not deleted at repush start and survives a failed repush.
    */
   public static final String LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED =
       "log.compaction.preserve.backup.version.enabled";
@@ -522,14 +521,6 @@ public class ConfigKeys {
    * Defaults to {@link com.linkedin.venice.meta.BackupStrategy#KEEP_MIN_VERSIONS}.
    */
   public static final String LOG_COMPACTION_BACKUP_STRATEGY = "log.compaction.backup.strategy";
-
-  /**
-   * The minimum {@code numVersionsToPreserve} the controller ensures on a store before a scheduled log-compaction
-   * repush when {@link #LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED} is on. An existing higher value is never
-   * lowered. Defaults to 2 (current + 1 backup).
-   */
-  public static final String LOG_COMPACTION_BACKUP_MIN_VERSIONS_TO_PRESERVE =
-      "log.compaction.backup.min.versions.to.preserve";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
