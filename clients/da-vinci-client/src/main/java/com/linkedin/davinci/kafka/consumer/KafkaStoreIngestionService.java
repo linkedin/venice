@@ -459,7 +459,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getLogContext(),
           metricsRepository,
           true,
-          serverConfig.getClusterName());
+          serverConfig.getClusterName(),
+          serverConfig.getBlockedDrainerThresholdMs());
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 

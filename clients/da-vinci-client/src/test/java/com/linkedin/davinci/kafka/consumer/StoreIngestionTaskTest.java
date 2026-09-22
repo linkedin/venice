@@ -522,7 +522,8 @@ public abstract class StoreIngestionTaskTest {
         null,
         mockMetricRepo,
         true,
-        "test-cluster");
+        "test-cluster",
+        TimeUnit.MINUTES.toMillis(5));
     storeBufferService.start();
   }
 

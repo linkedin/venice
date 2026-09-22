@@ -55,6 +55,14 @@ public class StoreBufferServiceOtelMetricEntityTest {
             "Minimum memory used by any single drainer writer",
             setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)));
     map.put(
+        StoreBufferServiceOtelMetricEntity.BLOCKED_TIME_PER_WRITER_MAX,
+        new MetricEntityExpectation(
+            "drainer.writer.blocked.max_time",
+            MetricType.ASYNC_GAUGE,
+            MetricUnit.MILLISECOND,
+            "Longest time any single drainer writer has been holding one queue node without returning",
+            setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)));
+    map.put(
         StoreBufferServiceOtelMetricEntity.PROCESSING_TIME,
         new MetricEntityExpectation(
             "drainer.record.processing.time",

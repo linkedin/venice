@@ -91,6 +91,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ACCEPT_CLIENT_
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_CLIENT_CAPACITY_PERCENT;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
@@ -355,6 +356,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Thread pool size of unsorted ingestion drainer when dedicatedDrainerQueue is enabled.
    */
   private final int drainerPoolSizeUnsortedInput;
+
+  private final long blockedDrainerThresholdMs;
 
   /**
    * Whether to queue writes into the {@link com.linkedin.davinci.kafka.consumer.StoreBufferService} after the
@@ -905,6 +908,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
     drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
+    // Nonpositive thresholds disable stall tracking, logging, and blocked-time metrics.
+    blockedDrainerThresholdMs =
+        serverProperties.getLong(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, TimeUnit.MINUTES.toMillis(5));
 
     storeWriterBufferAfterLeaderLogicEnabled =
         serverProperties.getBoolean(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, true);
@@ -1871,6 +1877,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getDrainerPoolSizeSortedInput() {
     return drainerPoolSizeSortedInput;
+  }
+
+  public long getBlockedDrainerThresholdMs() {
+    return blockedDrainerThresholdMs;
   }
 
   public int getDrainerPoolSizeUnsortedInput() {
