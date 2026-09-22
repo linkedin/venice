@@ -580,32 +580,47 @@ public class TestVeniceHelixAdminWithoutCluster {
 
   @DataProvider(name = "backupRetentionUpdateCases")
   public static Object[][] backupRetentionUpdateCases() {
-    // {currentStrategy, currentNumVersionsToPreserve, expectStrategyUpdate, expectVersionCountUpdate}
+    // {currentStrategy, currentNumVersions, targetStrategy, targetMinVersions, expectStrategyUpdate,
+    // expectVersionCountUpdate}
     return new Object[][] {
+        // --- Default policy: target KEEP_MIN_VERSIONS with min 2 ---
         // Already satisfied: KEEP_MIN_VERSIONS with exactly the minimum -> no-op.
-        { BackupStrategy.KEEP_MIN_VERSIONS, 2, false, false },
+        { BackupStrategy.KEEP_MIN_VERSIONS, 2, BackupStrategy.KEEP_MIN_VERSIONS, 2, false, false },
         // Already satisfied with a higher preserved count -> no-op, must not lower it.
-        { BackupStrategy.KEEP_MIN_VERSIONS, 3, false, false },
+        { BackupStrategy.KEEP_MIN_VERSIONS, 3, BackupStrategy.KEEP_MIN_VERSIONS, 2, false, false },
         // Wrong strategy but enough versions -> only flip strategy.
-        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 2, true, false },
+        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 2, BackupStrategy.KEEP_MIN_VERSIONS, 2, true, false },
         // Wrong strategy with a higher preserved count -> only flip strategy, don't lower.
-        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 5, true, false },
+        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 5, BackupStrategy.KEEP_MIN_VERSIONS, 2, true, false },
         // Right strategy but too few versions (boundary below minimum) -> only bump versions.
-        { BackupStrategy.KEEP_MIN_VERSIONS, 1, false, true },
+        { BackupStrategy.KEEP_MIN_VERSIONS, 1, BackupStrategy.KEEP_MIN_VERSIONS, 2, false, true },
         // Wrong strategy and too few versions -> set both.
-        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 1, true, true },
+        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 1, BackupStrategy.KEEP_MIN_VERSIONS, 2, true, true },
         // Degenerate zero preserved count -> set both.
-        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 0, true, true } };
+        { BackupStrategy.DELETE_ON_NEW_PUSH_START, 0, BackupStrategy.KEEP_MIN_VERSIONS, 2, true, true },
+
+        // --- Configurable policy: a different target strategy / higher min ---
+        // Target a different strategy (DELETE_ON_NEW_PUSH_START) with enough versions -> only flip strategy.
+        { BackupStrategy.KEEP_MIN_VERSIONS, 3, BackupStrategy.DELETE_ON_NEW_PUSH_START, 2, true, false },
+        // Target already matches the store's strategy but a higher configured min -> only bump versions.
+        { BackupStrategy.KEEP_MIN_VERSIONS, 2, BackupStrategy.KEEP_MIN_VERSIONS, 3, false, true },
+        // Target matches strategy and store already exceeds a higher configured min -> no-op.
+        { BackupStrategy.KEEP_MIN_VERSIONS, 5, BackupStrategy.KEEP_MIN_VERSIONS, 3, false, false } };
   }
 
   @Test(dataProvider = "backupRetentionUpdateCases")
   public void testComputeBackupVersionRetentionUpdate(
       BackupStrategy currentStrategy,
       int currentNumVersionsToPreserve,
+      BackupStrategy targetStrategy,
+      int targetMinVersionsToPreserve,
       boolean expectStrategyUpdate,
       boolean expectVersionCountUpdate) {
-    UpdateStoreQueryParams params =
-        VeniceHelixAdmin.computeBackupVersionRetentionUpdate(currentStrategy, currentNumVersionsToPreserve);
+    UpdateStoreQueryParams params = VeniceHelixAdmin.computeBackupVersionRetentionUpdate(
+        currentStrategy,
+        currentNumVersionsToPreserve,
+        targetStrategy,
+        targetMinVersionsToPreserve);
 
     if (!expectStrategyUpdate && !expectVersionCountUpdate) {
       Assert.assertNull(params, "No update expected when the store already satisfies the retention policy");
@@ -621,8 +636,8 @@ public class TestVeniceHelixAdminWithoutCluster {
     if (expectStrategyUpdate) {
       Assert.assertEquals(
           params.getBackupStrategy().get(),
-          BackupStrategy.KEEP_MIN_VERSIONS,
-          "Backup strategy should be set to KEEP_MIN_VERSIONS");
+          targetStrategy,
+          "Backup strategy should be set to the configured target strategy");
     }
 
     Assert.assertEquals(
@@ -632,8 +647,8 @@ public class TestVeniceHelixAdminWithoutCluster {
     if (expectVersionCountUpdate) {
       Assert.assertEquals(
           params.getNumVersionsToPreserve().get().intValue(),
-          VeniceHelixAdmin.MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION,
-          "numVersionsToPreserve should be bumped to the minimum required for log compaction");
+          targetMinVersionsToPreserve,
+          "numVersionsToPreserve should be bumped to the configured minimum");
     }
   }
 }

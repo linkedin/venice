@@ -8435,18 +8435,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Minimum number of versions a store must preserve (current + one backup) so that a good backup survives a
-   * scheduled log-compaction repush.
-   */
-  static final int MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION = 2;
-
-  /**
    * Before a scheduled log-compaction repush, ensure the store retains its existing backup version through the repush.
    * <p>
    * A repush retires the store's current version. With {@link BackupStrategy#DELETE_ON_NEW_PUSH_START} the old backup
-   * is deleted at push start, so a failed repush can leave the store with no backup. Setting
-   * {@link BackupStrategy#KEEP_MIN_VERSIONS} with at least {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION} versions to
-   * preserve defers deletion of the old backup until the new push succeeds.
+   * is deleted at push start, so a failed repush can leave the store with no backup. Applying the cluster-configured
+   * backup strategy ({@link VeniceControllerClusterConfig#getLogCompactionBackupStrategy()}, default
+   * {@link BackupStrategy#KEEP_MIN_VERSIONS}) with at least the configured minimum
+   * ({@link VeniceControllerClusterConfig#getLogCompactionBackupMinVersionsToPreserve()}, default 2) versions to
+   * preserve defers deletion of the old backup until the new push succeeds. Making the strategy and its minimum
+   * config-driven lets the preservation policy evolve without a code change.
    * <p>
    * This is a no-op for adhoc (non-scheduled) repushes, when the {@link ConfigKeys#LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED}
    * config is disabled for the cluster, and when the store already satisfies the retention policy (so no redundant
@@ -8458,7 +8455,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     String clusterName = repushJobRequest.getClusterName();
     String storeName = repushJobRequest.getStoreName();
-    if (!getMultiClusterConfigs().getControllerConfig(clusterName).isLogCompactionPreserveBackupVersionEnabled()) {
+    VeniceControllerClusterConfig clusterConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
+    if (!clusterConfig.isLogCompactionPreserveBackupVersionEnabled()) {
       return;
     }
     Store store = getStore(clusterName, storeName);
@@ -8469,8 +8467,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName);
       return;
     }
-    UpdateStoreQueryParams params =
-        computeBackupVersionRetentionUpdate(store.getBackupStrategy(), store.getNumVersionsToPreserve());
+    BackupStrategy targetStrategy = clusterConfig.getLogCompactionBackupStrategy();
+    int targetMinVersionsToPreserve = clusterConfig.getLogCompactionBackupMinVersionsToPreserve();
+    UpdateStoreQueryParams params = computeBackupVersionRetentionUpdate(
+        store.getBackupStrategy(),
+        store.getNumVersionsToPreserve(),
+        targetStrategy,
+        targetMinVersionsToPreserve);
     if (params == null) {
       return;
     }
@@ -8479,31 +8482,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             + "backup strategy {} with numVersionsToPreserve >= {}",
         storeName,
         clusterName,
-        BackupStrategy.KEEP_MIN_VERSIONS,
-        MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION);
+        targetStrategy,
+        targetMinVersionsToPreserve);
     updateStore(clusterName, storeName, params);
   }
 
   /**
    * Computes the {@link UpdateStoreQueryParams} needed to bring a store up to the log-compaction backup-retention
-   * policy ({@link BackupStrategy#KEEP_MIN_VERSIONS} with at least {@link #MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION}
-   * versions to preserve), or {@code null} if the store already satisfies it. Only the fields that need to change are
-   * set, and an existing higher {@code numVersionsToPreserve} is never lowered.
+   * policy (the {@code targetStrategy} with at least {@code targetMinVersionsToPreserve} versions to preserve), or
+   * {@code null} if the store already satisfies it. Only the fields that need to change are set, and an existing
+   * higher {@code numVersionsToPreserve} is never lowered.
    */
   static UpdateStoreQueryParams computeBackupVersionRetentionUpdate(
       BackupStrategy currentStrategy,
-      int currentNumVersionsToPreserve) {
-    boolean needsStrategyUpdate = currentStrategy != BackupStrategy.KEEP_MIN_VERSIONS;
-    boolean needsVersionCountUpdate = currentNumVersionsToPreserve < MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION;
+      int currentNumVersionsToPreserve,
+      BackupStrategy targetStrategy,
+      int targetMinVersionsToPreserve) {
+    boolean needsStrategyUpdate = currentStrategy != targetStrategy;
+    boolean needsVersionCountUpdate = currentNumVersionsToPreserve < targetMinVersionsToPreserve;
     if (!needsStrategyUpdate && !needsVersionCountUpdate) {
       return null;
     }
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     if (needsStrategyUpdate) {
-      params.setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS);
+      params.setBackupStrategy(targetStrategy);
     }
     if (needsVersionCountUpdate) {
-      params.setNumVersionsToPreserve(MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION);
+      params.setNumVersionsToPreserve(targetMinVersionsToPreserve);
     }
     return params;
   }
