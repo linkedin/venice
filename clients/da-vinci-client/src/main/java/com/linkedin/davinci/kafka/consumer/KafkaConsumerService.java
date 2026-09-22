@@ -165,6 +165,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         new PubSubConsumerAdapterContext.Builder().setVeniceProperties(properties)
             .setPubSubMessageDeserializer(pubSubContext.getPubSubMessageDeserializer())
             .setStoreChangeNotifier(pubSubContext.getStoreChangeNotifier())
+            .setPubSubEncryptionKeyUrnLookup(pubSubContext.getPubSubEncryptionKeyUrnLookup())
             .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
             .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
             .setPubSubTopicRepository(pubSubContext.getPubSubTopicRepository());

@@ -4,6 +4,7 @@ import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import java.util.function.Function;
 
 
 /**
@@ -17,6 +18,7 @@ public class PubSubContext {
   private final PubSubPositionDeserializer pubSubPositionDeserializer;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+  private final Function<String, String> pubSubEncryptionKeyUrnLookup;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final PubSubClientsFactory pubSubClientsFactory;
   private final boolean useCheckpointedPubSubPositionWithFallback;
@@ -27,6 +29,7 @@ public class PubSubContext {
     this.pubSubPositionDeserializer = builder.pubSubPositionDeserializer;
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
+    this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
     this.pubSubMessageDeserializer = builder.pubSubMessageDeserializer;
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
     this.useCheckpointedPubSubPositionWithFallback = builder.useCheckpointedPubSubPositionWithFallback;
@@ -56,6 +59,17 @@ public class PubSubContext {
     return asyncStoreChangeNotifier;
   }
 
+  /**
+   * Returns the optional local store-name to raw encryption-key URN lookup, or {@code null} if not configured.
+   * The lookup returns {@code null} for a missing store; an unassigned key may be null or empty.
+   * Metadata may be unavailable during adapter construction; resolve keys when needed after initialization.
+   * A missing result must not be cached or interpreted as disabling encryption.
+   * It must not refresh metadata or perform remote requests.
+   */
+  public Function<String, String> getPubSubEncryptionKeyUrnLookup() {
+    return pubSubEncryptionKeyUrnLookup;
+  }
+
   public PubSubMessageDeserializer getPubSubMessageDeserializer() {
     return pubSubMessageDeserializer;
   }
@@ -75,6 +89,7 @@ public class PubSubContext {
     private PubSubPositionDeserializer pubSubPositionDeserializer;
     private PubSubTopicRepository pubSubTopicRepository;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+    private Function<String, String> pubSubEncryptionKeyUrnLookup;
     private PubSubMessageDeserializer pubSubMessageDeserializer;
     private PubSubClientsFactory pubSubClientsFactory;
     private boolean useCheckpointedPubSubPositionWithFallback = true; // Default to true
@@ -101,6 +116,11 @@ public class PubSubContext {
 
     public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
       this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
+      return this;
+    }
+
+    public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
+      this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
       return this;
     }
 

@@ -4,7 +4,9 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.List;
@@ -94,6 +96,25 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
    */
   public Collection<VeniceControllerStateModel> getAllModels() {
     return clusterToStateModelsMap.values();
+  }
+
+  String getPubSubEncryptionKeyUrn(String storeName) {
+    for (VeniceControllerStateModel model: getAllModels()) {
+      Optional<HelixVeniceClusterResources> resources = model.getResources();
+      if (resources.isPresent()) {
+        HelixVeniceClusterResources clusterResources = resources.get();
+        try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createClusterReadLock()) {
+          if (model.getResources().orElse(null) != clusterResources) {
+            continue;
+          }
+          ReadOnlyStoreRepository repository = clusterResources.getStoreMetadataRepository();
+          if (repository.hasStore(storeName)) {
+            return repository.getPubSubEncryptionKeyUrn(storeName);
+          }
+        }
+      }
+    }
+    return null;
   }
 
   /**

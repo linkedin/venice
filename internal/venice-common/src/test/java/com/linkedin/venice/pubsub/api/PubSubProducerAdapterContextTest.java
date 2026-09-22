@@ -4,6 +4,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -12,12 +13,14 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.function.Function;
 import org.testng.annotations.Test;
 
 
 public class PubSubProducerAdapterContextTest {
   @Test
   public void testValidContextBuild() {
+    Function<String, String> keyLookup = storeName -> "urn:test:key:1";
     PubSubProducerAdapterContext context = new PubSubProducerAdapterContext.Builder().setProducerName("test-producer")
         .setBrokerAddress("localhost:9092")
         .setVeniceProperties(VeniceProperties.empty())
@@ -28,12 +31,14 @@ public class PubSubProducerAdapterContextTest {
         .setPubSubMessageSerializer(PubSubMessageSerializer.DEFAULT_PUBSUB_SERIALIZER)
         .setProducerCompressionEnabled(false)
         .setCompressionType("snappy")
+        .setPubSubEncryptionKeyUrnLookup(keyLookup)
         .build();
 
     assertTrue(context.getProducerName().contains("test-producer"));
     assertEquals(context.getBrokerAddress(), "localhost:9092");
     assertEquals(context.getCompressionType(), "none");
     assertFalse(context.isProducerCompressionEnabled());
+    assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
   }
 
   @Test
@@ -55,6 +60,7 @@ public class PubSubProducerAdapterContextTest {
     assertTrue(context.isProducerCompressionEnabled());
     assertNull(context.getMetricsRepository());
     assertNull(context.getPubSubTopicRepository());
+    assertNull(context.getPubSubEncryptionKeyUrnLookup());
     assertTrue(context.shouldValidateProducerConfigStrictly());
     assertNotNull(context.getPubSubSecurityProtocol());
     assertNotNull(context.getProducerName());

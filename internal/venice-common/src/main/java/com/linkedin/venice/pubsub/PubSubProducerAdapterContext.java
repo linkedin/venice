@@ -7,6 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Objects;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,6 +37,7 @@ public class PubSubProducerAdapterContext {
   private final boolean isProducerCompressionEnabled;
   private final String compressionType;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+  private final Function<String, String> pubSubEncryptionKeyUrnLookup;
 
   private PubSubProducerAdapterContext(Builder builder) {
     this.producerName = builder.producerName;
@@ -50,6 +52,7 @@ public class PubSubProducerAdapterContext {
     this.compressionType = builder.compressionType;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
+    this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
   }
 
   public String getProducerName() {
@@ -100,6 +103,11 @@ public class PubSubProducerAdapterContext {
     return asyncStoreChangeNotifier;
   }
 
+  /** @see PubSubContext#getPubSubEncryptionKeyUrnLookup() */
+  public Function<String, String> getPubSubEncryptionKeyUrnLookup() {
+    return pubSubEncryptionKeyUrnLookup;
+  }
+
   public static class Builder {
     private String producerName;
     private String brokerAddress;
@@ -113,6 +121,7 @@ public class PubSubProducerAdapterContext {
     private boolean isProducerCompressionEnabled = true;
     private String compressionType;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+    private Function<String, String> pubSubEncryptionKeyUrnLookup;
 
     public Builder setProducerName(String producerName) {
       this.producerName = producerName;
@@ -172,6 +181,11 @@ public class PubSubProducerAdapterContext {
 
     public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
       this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
+      return this;
+    }
+
+    public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
+      this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
       return this;
     }
 

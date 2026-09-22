@@ -3,6 +3,8 @@ package com.linkedin.venice.pubsub.manager;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.acl.VeniceComponent;
@@ -13,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.utils.LogContext;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.function.Function;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -47,6 +50,7 @@ public class TopicManagerContextTest {
 
   @Test
   public void testTopicManagerContext() {
+    Function<String, String> keyLookup = storeName -> "urn:test:key:1";
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubAdminAdapterFactory(pubSubAdminAdapterFactory)
             .setPubSubConsumerAdapterFactory(pubSubConsumerAdapterFactory)
@@ -60,6 +64,7 @@ public class TopicManagerContextTest {
             .setTopicMetadataFetcherConsumerPoolSize(topicMetadataFetcherConsumerPoolSize)
             .setTopicMetadataFetcherThreadPoolSize(topicMetadataFetcherThreadPoolSize)
             .setVeniceComponent(VeniceComponent.CONTROLLER)
+            .setPubSubEncryptionKeyUrnLookup(keyLookup)
             .setLogContext(LogContext.newBuilder().setComponentName(VeniceComponent.CONTROLLER.getName()).build())
             .build();
 
@@ -76,6 +81,7 @@ public class TopicManagerContextTest {
     assertEquals(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(), topicMetadataFetcherConsumerPoolSize);
     assertEquals(topicManagerContext.getTopicMetadataFetcherThreadPoolSize(), topicMetadataFetcherThreadPoolSize);
     assertEquals(topicManagerContext.getVeniceComponent(), VeniceComponent.CONTROLLER);
+    assertSame(topicManagerContext.getPubSubEncryptionKeyUrnLookup(), keyLookup);
   }
 
   // test invalid arguments
@@ -93,6 +99,8 @@ public class TopicManagerContextTest {
             .setTopicOffsetCheckIntervalMs(topicOffsetCheckIntervalMs)
             .setTopicMetadataFetcherConsumerPoolSize(topicMetadataFetcherConsumerPoolSize)
             .setTopicMetadataFetcherThreadPoolSize(topicMetadataFetcherThreadPoolSize);
+
+    assertNull(builder.build().getPubSubEncryptionKeyUrnLookup());
 
     // set admin adapter factory to null
     builder.setPubSubAdminAdapterFactory(null);

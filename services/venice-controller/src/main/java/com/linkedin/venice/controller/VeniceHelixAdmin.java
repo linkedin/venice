@@ -293,6 +293,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -582,6 +583,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceComponent.CONTROLLER,
         logContext,
         multiClusterConfigs.getStoreChangeNotifierThreadPoolSize());
+    Function<String, String> pubSubEncryptionKeyUrnLookup = createPubSubEncryptionKeyUrnLookup();
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
             .setPubSubPositionTypeRegistry(commonConfig.getPubSubPositionTypeRegistry())
@@ -593,6 +595,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .setTopicMetadataFetcherThreadPoolSize(commonConfig.getTopicManagerMetadataFetcherThreadPoolSize())
             .setVeniceComponent(VeniceComponent.CONTROLLER)
             .setStoreChangeNotifier(asyncStoreChangeNotifier)
+            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, getKafkaBootstrapServers(isSslToKafka()));
@@ -610,7 +613,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getProps().toProperties(),
         pubSubClientsFactory.getProducerAdapterFactory(),
         metricsRepository,
-        pubSubPositionTypeRegistry);
+        pubSubPositionTypeRegistry,
+        pubSubEncryptionKeyUrnLookup);
     if (!isParent() && commonConfig.isUseMultiRegionRealTimeTopicSwitcherEnabled()) {
       Map<String, String> childDataCenterKafkaUrlMap = multiClusterConfigs.getChildDataCenterKafkaUrlMap();
       String localRegionName = multiClusterConfigs.getRegionName();
@@ -9465,6 +9469,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   AsyncStoreChangeNotifier getStoreChangeNotifier() {
     return asyncStoreChangeNotifier;
+  }
+
+  @VisibleForTesting
+  Function<String, String> createPubSubEncryptionKeyUrnLookup() {
+    VeniceControllerMultiClusterConfig configs = getMultiClusterConfigs();
+    return configs.getClusters()
+        .stream()
+        .anyMatch(cluster -> configs.getControllerConfig(cluster).isEncryptionCluster())
+            ? this::getPubSubEncryptionKeyUrn
+            : null;
+  }
+
+  private String getPubSubEncryptionKeyUrn(String storeName) {
+    return controllerStateModelFactory == null
+        ? null
+        : controllerStateModelFactory.getPubSubEncryptionKeyUrn(storeName);
   }
 
 }

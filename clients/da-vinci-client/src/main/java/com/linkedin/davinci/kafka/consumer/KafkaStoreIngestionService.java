@@ -130,6 +130,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -293,11 +294,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     veniceWriterProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
     producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
+    Function<String, String> pubSubEncryptionKeyUrnLookup = metadataRepo::getPubSubEncryptionKeyUrn;
     this.veniceWriterFactory = new VeniceWriterFactory(
         veniceWriterProperties,
         producerAdapterFactory,
         metricsRepository,
-        serverConfig.getPubSubPositionTypeRegistry());
+        serverConfig.getPubSubPositionTypeRegistry(),
+        pubSubEncryptionKeyUrnLookup);
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
@@ -392,6 +395,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .setTopicMetadataFetcherConsumerPoolSize(serverConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
             .setVeniceComponent(component)
             .setStoreChangeNotifier(asyncStoreChangeNotifier)
+            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());
@@ -400,6 +404,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setPubSubPositionDeserializer(new PubSubPositionDeserializer(serverConfig.getPubSubPositionTypeRegistry()))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setStoreChangeNotifier(asyncStoreChangeNotifier)
+        .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
         .setPubSubMessageDeserializer(pubSubDeserializer)
         .setPubSubClientsFactory(pubSubClientsFactory)
         .setUseCheckpointedPubSubPositionWithFallback(serverConfig.isUseCheckpointedPubSubPositionWithFallbackEnabled())
