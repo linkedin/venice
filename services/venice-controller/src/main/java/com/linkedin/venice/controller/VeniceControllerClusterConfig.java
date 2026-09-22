@@ -182,6 +182,7 @@ import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
@@ -681,6 +682,7 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean isLogCompactionEnabled;
   private final boolean isLogCompactionSchedulingEnabled;
+  private final boolean isLogCompactionPreserveBackupVersionEnabled;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long logCompactionVersionStalenessThresholdMS;
@@ -1254,6 +1256,8 @@ public class VeniceControllerClusterConfig {
 
     this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
     this.isLogCompactionSchedulingEnabled = props.getBoolean(LOG_COMPACTION_SCHEDULING_ENABLED, false);
+    this.isLogCompactionPreserveBackupVersionEnabled =
+        props.getBoolean(LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED, false);
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
@@ -1422,6 +1426,7 @@ public class VeniceControllerClusterConfig {
     // Log compaction
     LOGGER.info("\tisLogCompactionEnabled: {}", isLogCompactionEnabled);
     LOGGER.info("\tisLogCompactionSchedulingEnabled: {}", isLogCompactionSchedulingEnabled);
+    LOGGER.info("\tisLogCompactionPreserveBackupVersionEnabled: {}", isLogCompactionPreserveBackupVersionEnabled);
     LOGGER.info("\tlogCompactionThreadCount: {}", logCompactionThreadCount);
     LOGGER.info("\tlogCompactionIntervalMS: {}", logCompactionIntervalMS);
     LOGGER.info("\tlogCompactionVersionStalenessThresholdMS: {}", logCompactionVersionStalenessThresholdMS);
@@ -2550,6 +2555,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isLogCompactionSchedulingEnabled() {
     return isLogCompactionEnabled && isLogCompactionSchedulingEnabled;
+  }
+
+  public boolean isLogCompactionPreserveBackupVersionEnabled() {
+    return isLogCompactionPreserveBackupVersionEnabled;
   }
 
   public int getLogCompactionThreadCount() {
