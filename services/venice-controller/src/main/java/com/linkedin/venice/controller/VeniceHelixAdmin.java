@@ -8410,7 +8410,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         getMultiClusterConfigs().getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
         "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
-      maybePreserveBackupVersionBeforeLogCompaction(repushJobRequest);
+      updateBackupVersionRetentionBeforeLogCompaction(repushJobRequest);
       RepushJobResponse response = getCompactionManager().repushStore(repushJobRequest);
       getLogCompactionStatsMap().get(repushJobRequest.getClusterName())
           .recordRepushStoreCall(
@@ -8454,7 +8454,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * config is disabled for the cluster, and when the store already satisfies the retention policy (so no redundant
    * store update / admin message is emitted). It never lowers a store's existing higher {@code numVersionsToPreserve}.
    */
-  void maybePreserveBackupVersionBeforeLogCompaction(RepushJobRequest repushJobRequest) {
+  void updateBackupVersionRetentionBeforeLogCompaction(RepushJobRequest repushJobRequest) {
     if (repushJobRequest.getTriggerSource() != StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION) {
       return;
     }
