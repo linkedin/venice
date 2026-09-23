@@ -505,6 +505,21 @@ public class ConfigKeys {
   public static final String LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD = "log.compaction.duplicate.key.threshold";
 
   /**
+   * When on, the controller moves a store to the {@link #LOG_COMPACTION_BACKUP_STRATEGY} strategy before a scheduled
+   * log-compaction repush, so the store's existing backup is not deleted at repush start and survives a failed repush.
+   */
+  public static final String LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED =
+      "log.compaction.preserve.backup.version.enabled";
+
+  /**
+   * The {@link com.linkedin.venice.meta.BackupStrategy} (as its integer id, see
+   * {@link com.linkedin.venice.meta.BackupStrategy#getValue()}) applied to a store before a scheduled log-compaction
+   * repush when {@link #LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED} is on. Configurable so the preservation policy
+   * can change without a code change. Defaults to {@link com.linkedin.venice.meta.BackupStrategy#KEEP_MIN_VERSIONS}.
+   */
+  public static final String LOG_COMPACTION_BACKUP_STRATEGY = "log.compaction.backup.strategy";
+
+  /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.
    *

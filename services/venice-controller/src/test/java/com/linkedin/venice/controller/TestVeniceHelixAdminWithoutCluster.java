@@ -16,9 +16,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -684,6 +686,58 @@ public class TestVeniceHelixAdminWithoutCluster {
       Assert.assertTrue(
           coercedFailure.getSuppressed().length >= 1,
           "Original strict failure should be attached as a suppressed exception, but none was found");
+    }
+  }
+
+  @DataProvider(name = "backupRetentionUpdateCases")
+  public static Object[][] backupRetentionUpdateCases() {
+    // {currentStrategy, targetStrategy, expectStrategyUpdate, expectVersionCountUpdate}
+    return new Object[][] {
+        // Already on the target strategy -> no-op, regardless of numVersionsToPreserve.
+        { BackupStrategy.KEEP_MIN_VERSIONS, BackupStrategy.KEEP_MIN_VERSIONS, false, false },
+        { BackupStrategy.DELETE_ON_NEW_PUSH_START, BackupStrategy.DELETE_ON_NEW_PUSH_START, false, false },
+        // Flip to KEEP_MIN_VERSIONS -> set strategy AND numVersionsToPreserve.
+        { BackupStrategy.DELETE_ON_NEW_PUSH_START, BackupStrategy.KEEP_MIN_VERSIONS, true, true },
+        // Flip to a non-KEEP_MIN_VERSIONS target -> set strategy only, leave version count untouched.
+        { BackupStrategy.KEEP_MIN_VERSIONS, BackupStrategy.DELETE_ON_NEW_PUSH_START, true, false } };
+  }
+
+  @Test(dataProvider = "backupRetentionUpdateCases")
+  public void testComputeBackupVersionRetentionUpdate(
+      BackupStrategy currentStrategy,
+      BackupStrategy targetStrategy,
+      boolean expectStrategyUpdate,
+      boolean expectVersionCountUpdate) {
+    UpdateStoreQueryParams params =
+        VeniceHelixAdmin.computeBackupVersionRetentionUpdate(currentStrategy, targetStrategy);
+
+    if (!expectStrategyUpdate && !expectVersionCountUpdate) {
+      Assert.assertNull(params, "No update expected when the store already uses the configured strategy");
+      return;
+    }
+
+    Assert.assertNotNull(params, "An update is expected when the store's strategy differs from the target");
+
+    Assert.assertEquals(
+        params.getBackupStrategy().isPresent(),
+        expectStrategyUpdate,
+        "Unexpected backupStrategy presence in the computed update");
+    if (expectStrategyUpdate) {
+      Assert.assertEquals(
+          params.getBackupStrategy().get(),
+          targetStrategy,
+          "Backup strategy should be set to the configured target strategy");
+    }
+
+    Assert.assertEquals(
+        params.getNumVersionsToPreserve().isPresent(),
+        expectVersionCountUpdate,
+        "numVersionsToPreserve should be set only when flipping to KEEP_MIN_VERSIONS");
+    if (expectVersionCountUpdate) {
+      Assert.assertEquals(
+          params.getNumVersionsToPreserve().get().intValue(),
+          VeniceHelixAdmin.MIN_BACKUP_VERSIONS_FOR_LOG_COMPACTION,
+          "numVersionsToPreserve should be set to the fixed log-compaction minimum");
     }
   }
 }

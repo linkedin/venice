@@ -179,9 +179,11 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABL
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_BACKUP_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
@@ -257,6 +259,7 @@ import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -681,6 +684,8 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean isLogCompactionEnabled;
   private final boolean isLogCompactionSchedulingEnabled;
+  private final boolean isLogCompactionPreserveBackupVersionEnabled;
+  private final BackupStrategy logCompactionBackupStrategy;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long logCompactionVersionStalenessThresholdMS;
@@ -1254,6 +1259,10 @@ public class VeniceControllerClusterConfig {
 
     this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
     this.isLogCompactionSchedulingEnabled = props.getBoolean(LOG_COMPACTION_SCHEDULING_ENABLED, false);
+    this.isLogCompactionPreserveBackupVersionEnabled =
+        props.getBoolean(LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED, false);
+    this.logCompactionBackupStrategy = BackupStrategy
+        .fromInt(props.getInt(LOG_COMPACTION_BACKUP_STRATEGY, BackupStrategy.KEEP_MIN_VERSIONS.getValue()));
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
@@ -1422,6 +1431,8 @@ public class VeniceControllerClusterConfig {
     // Log compaction
     LOGGER.info("\tisLogCompactionEnabled: {}", isLogCompactionEnabled);
     LOGGER.info("\tisLogCompactionSchedulingEnabled: {}", isLogCompactionSchedulingEnabled);
+    LOGGER.info("\tisLogCompactionPreserveBackupVersionEnabled: {}", isLogCompactionPreserveBackupVersionEnabled);
+    LOGGER.info("\tlogCompactionBackupStrategy: {}", logCompactionBackupStrategy);
     LOGGER.info("\tlogCompactionThreadCount: {}", logCompactionThreadCount);
     LOGGER.info("\tlogCompactionIntervalMS: {}", logCompactionIntervalMS);
     LOGGER.info("\tlogCompactionVersionStalenessThresholdMS: {}", logCompactionVersionStalenessThresholdMS);
@@ -2550,6 +2561,14 @@ public class VeniceControllerClusterConfig {
 
   public boolean isLogCompactionSchedulingEnabled() {
     return isLogCompactionEnabled && isLogCompactionSchedulingEnabled;
+  }
+
+  public boolean isLogCompactionPreserveBackupVersionEnabled() {
+    return isLogCompactionPreserveBackupVersionEnabled;
+  }
+
+  public BackupStrategy getLogCompactionBackupStrategy() {
+    return logCompactionBackupStrategy;
   }
 
   public int getLogCompactionThreadCount() {
