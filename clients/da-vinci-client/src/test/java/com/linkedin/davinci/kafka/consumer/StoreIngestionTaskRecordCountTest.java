@@ -2,10 +2,16 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.setField;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,7 +23,15 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.logger.TestLogAppender;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -36,10 +50,15 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.utils.LatencyUtils;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.mockito.MockedStatic;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -50,6 +69,8 @@ public class StoreIngestionTaskRecordCountTest {
   private static final long PRE_MIGRATION_VERSION_CREATED_TIME_MS = 1_000L;
   private static final long MIGRATION_STORE_CREATED_TIME_MS = 2_000L;
   private static final long DURING_MIGRATION_VERSION_CREATED_TIME_MS = 3_000L;
+  private static final long NOW_MS = 1_000_000L;
+  private static final long MIN_COMPACTION_LAG_MS = 10_000L;
 
   private static StoreIngestionTask buildSit(boolean failOnMismatchEnabled, AggVersionedIngestionStats statsMock)
       throws Exception {
@@ -105,6 +126,7 @@ public class StoreIngestionTaskRecordCountTest {
     setField(sit, "versionTopic", vt);
 
     configureTopicManager(sit, false);
+    configureStoreVersionState(sit, storeVersionState(1L));
     doCallRealMethod().when(sit).verifyBatchPushRecordCount(any(), any());
     // The self-invocation from verifyBatchPushRecordCount is intercepted by the mock, so wire it up too.
     doCallRealMethod().when(sit).isPreExistingMigrationCloneReplay(any());
@@ -112,14 +134,184 @@ public class StoreIngestionTaskRecordCountTest {
   }
 
   private static TopicManager configureTopicManager(StoreIngestionTask sit, boolean compacted) throws Exception {
+    return configureTopicManager(sit, compacted, 0L);
+  }
+
+  private static TopicManager configureTopicManager(StoreIngestionTask sit, boolean compacted, long minCompactionLagMs)
+      throws Exception {
     TopicManager topicManager = mock(TopicManager.class);
     PubSubTopicConfiguration config = mock(PubSubTopicConfiguration.class);
     doReturn(compacted).when(config).isLogCompacted();
+    doReturn(minCompactionLagMs).when(config).minLogCompactionLagMs();
     doReturn(config).when(topicManager).getTopicConfigWithRetry(any());
     TopicManagerRepository repository = mock(TopicManagerRepository.class);
     doReturn(topicManager).when(repository).getLocalTopicManager();
     setField(sit, "topicManagerRepository", repository);
     return topicManager;
+  }
+
+  private static StoreVersionState storeVersionState(long sopTimestamp) {
+    StoreVersionState state = new StoreVersionState();
+    state.startOfPushTimestamp = sopTimestamp;
+    state.endOfPushTimestamp = NOW_MS;
+    return state;
+  }
+
+  private static AbstractStorageEngine configureStoreVersionState(StoreIngestionTask sit, StoreVersionState state)
+      throws Exception {
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    doReturn(state).when(storageEngine).getStoreVersionState();
+    setField(sit, "storageEngine", storageEngine);
+    return storageEngine;
+  }
+
+  private static MockedStatic<LatencyUtils> withFixedTime() {
+    MockedStatic<LatencyUtils> time = mockStatic(LatencyUtils.class, CALLS_REAL_METHODS);
+    time.when(() -> LatencyUtils.getElapsedTimeFromMsToMs(anyLong()))
+        .thenAnswer(invocation -> NOW_MS - invocation.<Long>getArgument(0));
+    return time;
+  }
+
+  @DataProvider
+  public Object[][] compactionAgeCases() {
+    return new Object[][] { { false, MIN_COMPACTION_LAG_MS + 1, false }, { true, MIN_COMPACTION_LAG_MS - 1, false },
+        { true, MIN_COMPACTION_LAG_MS, true }, { true, MIN_COMPACTION_LAG_MS + 1, true } };
+  }
+
+  @Test(dataProvider = "compactionAgeCases")
+  public void testCompactionEligibilityUsesSopAgeNotYoungEop(boolean compacted, long sopAgeMs, boolean skip)
+      throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(true, stats, VersionRole.FUTURE, true, false);
+    TopicManager topicManager = configureTopicManager(sit, compacted, MIN_COMPACTION_LAG_MS);
+    AbstractStorageEngine storageEngine = configureStoreVersionState(sit, storeVersionState(NOW_MS - sopAgeMs));
+    PartitionConsumptionState pcs = pcsWithCountAndHll(0, 0);
+    // EOP has already been marked before the verifier is called.
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(NOW_MS).when(pcs).getEndOfPushTimestamp();
+
+    try (MockedStatic<LatencyUtils> ignored = withFixedTime()) {
+      if (skip) {
+        sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100));
+        verify(pcs, never()).getBatchPushRecordCount();
+        verify(pcs, never()).getEstimatedUniqueIngestedKeyCount();
+        verifyNoInteractions(stats);
+      } else {
+        expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100)));
+        verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+        verify(stats).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+      }
+    }
+    verify(topicManager).getTopicConfigWithRetry(any());
+    if (!compacted) {
+      verifyNoInteractions(storageEngine);
+    }
+  }
+
+  @DataProvider
+  public Object[][] invalidSopTimestamps() {
+    return new Object[][] { { null }, { 0L }, { -1L }, { NOW_MS + 1 } };
+  }
+
+  @Test(dataProvider = "invalidSopTimestamps")
+  public void testInvalidPersistedSopWarnsAndRetainsVerification(Long sopTimestamp) throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(true, stats);
+    configureTopicManager(sit, true, MIN_COMPACTION_LAG_MS);
+    configureStoreVersionState(sit, sopTimestamp == null ? null : storeVersionState(sopTimestamp));
+    TestLogAppender appender = new TestLogAppender("InvalidSopTimestampAppender", PatternLayout.createDefaultLayout());
+    appender.start();
+    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
+    logger.addAppender(appender);
+
+    try (MockedStatic<LatencyUtils> ignored = withFixedTime()) {
+      expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100)));
+      verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+      verify(stats).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+      assertTrue(appender.getLog().contains("invalid SOP timestamp " + (sopTimestamp == null ? 0 : sopTimestamp)));
+      assertTrue(appender.getLog().contains("Retaining record count verification."));
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testRestartUsesPersistedSopWithoutReplayingSop() throws Exception {
+    StoreVersionState persistedState = storeVersionState(NOW_MS - MIN_COMPACTION_LAG_MS);
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    // A newly constructed task reads saved version state without processing an SOP in this lifecycle.
+    StoreIngestionTask restartedSit = buildSit(true, stats, VersionRole.FUTURE, true, false);
+    configureStoreVersionState(restartedSit, persistedState);
+    configureTopicManager(restartedSit, true, MIN_COMPACTION_LAG_MS);
+    PartitionConsumptionState pcs = pcsWithCountAndHll(0, 0);
+
+    try (MockedStatic<LatencyUtils> ignored = withFixedTime()) {
+      restartedSit.verifyBatchPushRecordCount(pcs, headersWithPrc(100));
+    }
+
+    verify(restartedSit, never()).processStartOfPush(any(), any(), any());
+    verify(pcs, never()).getStartOfPushTimestamp();
+    verifyNoInteractions(stats);
+  }
+
+  @Test
+  public void testDuplicateSopDoesNotResetPersistedCompactionAge() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(true, stats, VersionRole.FUTURE, true, false);
+    configureTopicManager(sit, true, MIN_COMPACTION_LAG_MS);
+    AbstractStorageEngine storageEngine = configureStoreVersionState(sit, null);
+    AtomicReference<StoreVersionState> persisted = new AtomicReference<>();
+    doAnswer(invocation -> persisted.get()).when(storageEngine).getStoreVersionState();
+    StorageMetadataService metadata = mock(StorageMetadataService.class);
+    doAnswer(invocation -> {
+      Function<StoreVersionState, StoreVersionState> update = invocation.getArgument(1);
+      return persisted.updateAndGet(update::apply);
+    }).when(metadata).computeStoreVersionState(eq(TEST_TOPIC), any());
+    doReturn(metadata).when(sit).getStorageMetadataService();
+    doReturn(TEST_TOPIC).when(sit).getKafkaVersionTopic();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(mock(RocksDBServerConfig.class)).when(serverConfig).getRocksDBServerConfig();
+    doReturn(serverConfig).when(sit).getServerConfig();
+    doReturn(mock(IngestionNotificationDispatcher.class)).when(sit).getIngestionNotificationDispatcher();
+    doCallRealMethod().when(sit).processStartOfPush(any(), any(), any());
+    doCallRealMethod().when(sit).getNewStoreVersionState(anyLong(), anyBoolean(), any());
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = NOW_MS - MIN_COMPACTION_LAG_MS;
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageUnion = new StartOfPush();
+    PartitionConsumptionState pcs = pcsWithCountAndHll(0, 0);
+
+    sit.processStartOfPush(kme, controlMessage, pcs);
+    StoreVersionState originalState = persisted.get();
+    kme.producerMetadata.messageTimestamp = NOW_MS;
+    sit.processStartOfPush(kme, controlMessage, pcs);
+
+    assertSame(persisted.get(), originalState);
+    assertEquals(persisted.get().startOfPushTimestamp, NOW_MS - MIN_COMPACTION_LAG_MS);
+    try (MockedStatic<LatencyUtils> ignored = withFixedTime()) {
+      sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100));
+    }
+    verifyNoInteractions(stats);
+  }
+
+  @Test
+  public void testCompactionEnablementIsRefreshedAtEachEop() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(true, stats);
+    TopicManager topicManager = configureTopicManager(sit, false);
+    sit.verifyBatchPushRecordCount(pcsWithCount(100), headersWithPrc(100));
+
+    PubSubTopicConfiguration compactedConfig = mock(PubSubTopicConfiguration.class);
+    doReturn(true).when(compactedConfig).isLogCompacted();
+    doReturn(0L).when(compactedConfig).minLogCompactionLagMs();
+    doReturn(compactedConfig).when(topicManager).getTopicConfigWithRetry(any());
+    sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100));
+
+    verify(topicManager, times(2)).getTopicConfigWithRetry(any());
+    verify(stats, times(1)).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
   }
 
   @Test
