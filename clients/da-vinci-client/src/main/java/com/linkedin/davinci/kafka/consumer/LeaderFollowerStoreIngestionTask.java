@@ -1621,29 +1621,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return getPubSubBrokerAddressesFromTopicSwitch(topicSwitchWrapper);
   }
 
-  @Override
-  protected boolean isBatchPushTopicCompactionEnabled() {
-    if (super.isBatchPushTopicCompactionEnabled()) {
-      return true;
-    }
-    // The drainer counts records after successful local production, but NR forwards the original
-    // EOP/prc. Both leaders and local followers can therefore see an already-compacted source's
-    // survivors even when the local VT is not compacted. DaVinci only has local broker access.
-    if (!isNativeReplicationEnabled || isDaVinciClient) {
-      return false;
-    }
-    String sourceUrl = kafkaClusterUrlResolver != null
-        ? kafkaClusterUrlResolver.apply(nativeReplicationSourceVersionTopicKafkaURL)
-        : nativeReplicationSourceVersionTopicKafkaURL;
-    PubSubTopic sourceTopic = isDataRecovery && !isHybridMode()
-        ? pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, dataRecoverySourceVersionNumber))
-        : versionTopic;
-    if (Objects.equals(sourceUrl, localKafkaServer) && sourceTopic.equals(versionTopic)) {
-      return false;
-    }
-    return getTopicManager(sourceUrl).getTopicConfigWithRetry(sourceTopic).isLogCompacted();
-  }
-
   /**
    * This method gets the timestamp when consumption thread is about to process the "last" message in topic/partition;
    * note that when the function returns, new messages can be appended to the partition already, so it's not guaranteed

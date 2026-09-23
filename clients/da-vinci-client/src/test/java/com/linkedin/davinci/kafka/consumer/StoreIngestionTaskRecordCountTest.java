@@ -11,7 +11,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -31,7 +30,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -39,11 +37,9 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.server.VersionRole;
 import java.nio.ByteBuffer;
-import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.layout.PatternLayout;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -109,7 +105,6 @@ public class StoreIngestionTaskRecordCountTest {
     setField(sit, "versionTopic", vt);
 
     configureTopicManager(sit, false);
-    doCallRealMethod().when(sit).isBatchPushTopicCompactionEnabled();
     doCallRealMethod().when(sit).verifyBatchPushRecordCount(any(), any());
     // The self-invocation from verifyBatchPushRecordCount is intercepted by the mock, so wire it up too.
     doCallRealMethod().when(sit).isPreExistingMigrationCloneReplay(any());
@@ -169,79 +164,6 @@ public class StoreIngestionTaskRecordCountTest {
     setField(sit, "versionRole", VersionRole.BACKUP);
     sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100));
     verifyNoInteractions(topicManager);
-  }
-
-  @DataProvider
-  public Object[][] replicationCompactionPolicies() {
-    return new Object[][] { { true, false, false, true }, { false, true, false, true }, { false, false, false, false },
-        { true, false, true, true }, { false, true, true, false } };
-  }
-
-  @Test(dataProvider = "replicationCompactionPolicies")
-  public void testReplicationSourcePolicy(
-      boolean localCompacted,
-      boolean sourceCompacted,
-      boolean daVinci,
-      boolean skip) throws Exception {
-    LeaderFollowerStoreIngestionTask sit = buildReplicationSit(localCompacted, daVinci);
-    PubSubTopic topic = new PubSubTopicRepository().getTopic(TEST_TOPIC);
-    TopicManager remote = mock(TopicManager.class);
-    PubSubTopicConfiguration config = mock(PubSubTopicConfiguration.class);
-    doReturn(sourceCompacted).when(config).isLogCompacted();
-    doReturn(config).when(remote).getTopicConfigWithRetry(topic);
-    doReturn(remote).when(sit).getTopicManager("remote");
-
-    assertEquals(sit.isBatchPushTopicCompactionEnabled(), skip);
-    verify(remote, times(localCompacted || daVinci ? 0 : 1)).getTopicConfigWithRetry(topic);
-  }
-
-  @Test
-  public void testReplicationSourceConfigFailurePropagates() throws Exception {
-    LeaderFollowerStoreIngestionTask sit = buildReplicationSit(false, false);
-    TopicManager remote = mock(TopicManager.class);
-    doReturn(remote).when(sit).getTopicManager("remote");
-    VeniceException failure = new VeniceException("Source topic configuration unavailable");
-    doThrow(failure).when(remote).getTopicConfigWithRetry(any());
-    assertSame(expectThrows(VeniceException.class, sit::isBatchPushTopicCompactionEnabled), failure);
-  }
-
-  @Test
-  public void testResolvedLocalSourceIsNotQueriedTwice() throws Exception {
-    LeaderFollowerStoreIngestionTask sit = buildReplicationSit(false, false);
-    setField(sit, "kafkaClusterUrlResolver", (Function<String, String>) ignored -> "local");
-    assertFalse(sit.isBatchPushTopicCompactionEnabled());
-    verify(sit, never()).getTopicManager(any());
-  }
-
-  @Test
-  public void testDataRecoveryChecksOriginalSourceVersion() throws Exception {
-    LeaderFollowerStoreIngestionTask sit = buildReplicationSit(false, false);
-    setField(sit, "isDataRecovery", true);
-    setField(sit, "dataRecoverySourceVersionNumber", 2);
-    TopicManager remote = mock(TopicManager.class);
-    doReturn(remote).when(sit).getTopicManager("remote");
-    PubSubTopic sourceTopic = new PubSubTopicRepository().getTopic(TEST_STORE + "_v2");
-    PubSubTopicConfiguration config = mock(PubSubTopicConfiguration.class);
-    doReturn(true).when(config).isLogCompacted();
-    doReturn(config).when(remote).getTopicConfigWithRetry(sourceTopic);
-    assertTrue(sit.isBatchPushTopicCompactionEnabled());
-    verify(remote).getTopicConfigWithRetry(sourceTopic);
-  }
-
-  private static LeaderFollowerStoreIngestionTask buildReplicationSit(boolean localCompacted, boolean daVinci)
-      throws Exception {
-    LeaderFollowerStoreIngestionTask sit = mock(LeaderFollowerStoreIngestionTask.class);
-    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
-    setField(sit, "pubSubTopicRepository", topicRepository);
-    setField(sit, "versionTopic", topicRepository.getTopic(TEST_TOPIC));
-    setField(sit, "storeName", TEST_STORE);
-    setField(sit, "isNativeReplicationEnabled", true);
-    setField(sit, "isDaVinciClient", daVinci);
-    setField(sit, "localKafkaServer", "local");
-    setField(sit, "nativeReplicationSourceVersionTopicKafkaURL", "remote");
-    configureTopicManager(sit, localCompacted);
-    doCallRealMethod().when(sit).isBatchPushTopicCompactionEnabled();
-    return sit;
   }
 
   private static StoreIngestionTask buildSitOnViewTopic(AggVersionedIngestionStats statsMock) throws Exception {

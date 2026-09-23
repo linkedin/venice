@@ -4167,7 +4167,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *       push is in progress (i.e., {@code store.getCurrentVersion() < this version}). Already-
    *       current and backup versions skip verification, since their EOP was already processed in
    *       a prior lifecycle and a re-emit (e.g., re-ingestion from snapshot) shouldn't re-fire it.</li>
-   *   <li>The version topic (or its native-replication source) has compaction enabled. Its surviving
+   *   <li>The local version topic has compaction enabled. Its surviving
    *       records need not match the original producer count, even while a deferred swap leaves
    *       the version in the FUTURE role.</li>
    * </ul>
@@ -4198,9 +4198,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    if (isBatchPushTopicCompactionEnabled()) {
+    if (isLocalVersionTopicCompactionEnabled()) {
       LOGGER.info(
-          "Skipping batch record count and HLL verification for replica {}: compaction enabled on version topic or its replication source",
+          "Skipping batch record count and HLL verification for replica {}: compaction enabled on local version topic",
           pcs.getReplicaId());
       return;
     }
@@ -4283,9 +4283,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return storeCreatedTime > 0 && versionCreatedTime > 0 && versionCreatedTime < storeCreatedTime;
   }
 
-  protected boolean isBatchPushTopicCompactionEnabled() {
+  /**
+   * Reads the local version topic's current compaction configuration. The verifier treats enablement
+   * as a conservative exemption, not evidence that the cleaner has run.
+   */
+  private boolean isLocalVersionTopicCompactionEnabled() {
     // Refresh at EOP: a cached false may predate regional push completion and compaction enablement.
-    // This is a policy exemption, not evidence that the cleaner ran. Do not hide metadata failures.
+    // Do not hide metadata failures.
     return topicManagerRepository.getLocalTopicManager().getTopicConfigWithRetry(versionTopic).isLogCompacted();
   }
 
