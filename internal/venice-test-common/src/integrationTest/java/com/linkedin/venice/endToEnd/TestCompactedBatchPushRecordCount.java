@@ -40,7 +40,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Random;
+import java.util.SplittableRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.Config;
@@ -138,7 +138,11 @@ public class TestCompactedBatchPushRecordCount {
         // Force a size-based roll so the cleaner can process the preceding update segments.
         // Incompressible padding is needed: repeated characters compress below the segment size.
         byte[] paddingBytes = new byte[262144];
-        new Random(0).nextBytes(paddingBytes);
+        SplittableRandom random = new SplittableRandom(0);
+        ByteBuffer paddingBuffer = ByteBuffer.wrap(paddingBytes);
+        while (paddingBuffer.hasRemaining()) {
+          paddingBuffer.putLong(random.nextLong());
+        }
         String padding = Base64.getEncoder().encodeToString(paddingBytes);
         for (int i = 0; i < 12; i++) {
           writer.put("roll_marker", padding, 1).get();

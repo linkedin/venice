@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -69,6 +70,7 @@ public class TestStoreMigrationWithCompactedVersionTopic {
   private static final int PRODUCED_RECORD_COUNT = 200;
   private static final int UNIQUE_KEY_COUNT = 10;
   private static final int VALUE_PAYLOAD_SIZE = 12 * 1024;
+  private static final long MIN_COMPACTION_LAG_MS = 1;
   private static final List<String> INCOMPRESSIBLE_VALUES = createIncompressibleValues();
   private static final String FABRIC = "dc-0";
   private static final String KEY_SCHEMA = "\"string\"";
@@ -192,13 +194,25 @@ public class TestStoreMigrationWithCompactedVersionTopic {
         IntegrationTestPushUtils.getEopPartitionRecordCounts(sourceBroker, storeName, 1, 1);
     assertEquals(eopRecordCounts.get(0).longValue(), PRODUCED_RECORD_COUNT);
 
+    // Verification runs on the original, uncompacted push.
+    IntegrationTestPushUtils.assertBatchPushRecordCountSensors(
+        childRegion.getClusters().get(sourceClusterName).getVeniceServers(),
+        storeName,
+        true,
+        false);
+
     PubSubTopic versionTopic = PUBSUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
     TopicManager topicManager = childRegion.getLeaderController(sourceClusterName).getVeniceAdmin().getTopicManager();
-    topicManager.updateTopicCompactionPolicy(versionTopic, true, 1, Optional.of(TimeUnit.SECONDS.toMillis(1)));
-    TestUtils.waitForNonDeterministicAssertion(
-        30,
-        TimeUnit.SECONDS,
-        () -> assertTrue(topicManager.isTopicCompactionEnabled(versionTopic)));
+    topicManager.updateTopicCompactionPolicy(
+        versionTopic,
+        true,
+        MIN_COMPACTION_LAG_MS,
+        Optional.of(TimeUnit.SECONDS.toMillis(1)));
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      PubSubTopicConfiguration config = topicManager.getTopicConfigWithRetry(versionTopic);
+      assertTrue(config.isLogCompacted());
+      assertEquals(config.minLogCompactionLagMs().longValue(), MIN_COMPACTION_LAG_MS);
+    });
 
     TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
       int replayedRecordCount = getUserRecordCountBeforeEop(sourceBroker, versionTopic);
@@ -219,11 +233,12 @@ public class TestStoreMigrationWithCompactedVersionTopic {
       });
     }
 
+    // Compaction eligibility is established before migration, so replay skips both verification metrics.
     IntegrationTestPushUtils.assertBatchPushRecordCountSensors(
         childRegion.getClusters().get(destinationClusterName).getVeniceServers(),
         storeName,
         false,
-        true);
+        false);
 
     StoreMigrationTestUtil
         .completeMigration(parentControllerUrl, storeName, sourceClusterName, destinationClusterName, FABRIC);
@@ -277,6 +292,7 @@ public class TestStoreMigrationWithCompactedVersionTopic {
                 .build())) {
       consumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST, false);
       int userRecordCount = 0;
+      long sopTimestamp = 0;
       long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(10);
       while (System.currentTimeMillis() < deadline) {
         Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledRecords = consumer.poll(1000);
@@ -287,7 +303,14 @@ public class TestStoreMigrationWithCompactedVersionTopic {
           }
           KafkaMessageEnvelope envelope = message.getValue();
           ControlMessage controlMessage = (ControlMessage) envelope.payloadUnion;
+          if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_PUSH.getValue()) {
+            sopTimestamp = envelope.producerMetadata.messageTimestamp;
+          }
           if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+            assertTrue(sopTimestamp > 0, "Expected a valid SOP timestamp in the replayed topic");
+            assertTrue(
+                System.currentTimeMillis() - sopTimestamp >= MIN_COMPACTION_LAG_MS,
+                "Expected the replayed SOP to meet the minimum compaction lag before migration");
             return userRecordCount;
           }
         }
