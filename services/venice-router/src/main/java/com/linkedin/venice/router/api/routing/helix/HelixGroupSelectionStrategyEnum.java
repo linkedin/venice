@@ -10,11 +10,12 @@ public enum HelixGroupSelectionStrategyEnum {
    */
   LEAST_LOADED(HelixGroupLeastLoadedStrategy.class),
   /**
-   * This strategy is a best-effort latency equaliser: it routes evenly while the groups' measured latencies are
-   * close and progressively sheds traffic off the slower groups onto the faster ones as their latency spread
-   * widens, using measured latency as the only signal. See {@link HelixGroupWeightedLeastLoadedStrategy}.
+   * This strategy distributes load by weighting groups on their measured latency: it routes evenly while the
+   * groups' latencies are close and progressively weights traffic toward the lower-latency groups as their
+   * latency spread widens, using measured latency as the only signal. See
+   * {@link HelixGroupLatencyWeightedStrategy}.
    */
-  LATENCY_EQUALIZED(HelixGroupWeightedLeastLoadedStrategy.class);
+  LATENCY_WEIGHTED(HelixGroupLatencyWeightedStrategy.class);
 
   private final Class<? extends HelixGroupSelectionStrategy> strategyClass;
 

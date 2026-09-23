@@ -21,7 +21,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Integration-style tests for {@link HelixGroupWeightedLeastLoadedStrategy} that drive a stream of mock
+ * Integration-style tests for {@link HelixGroupLatencyWeightedStrategy} that drive a stream of mock
  * requests through the strategy and snapshot how many queries were routed to each group as the per-group
  * <em>measured latency</em> diverges.
  *
@@ -39,8 +39,8 @@ import org.testng.annotations.Test;
  * re-routes on that observed latency, and the loop is iterated to a fixed point. Randomness in the weighted
  * draw is made deterministic by injecting a seeded {@link Random}, so the snapshots are reproducible.
  */
-public class TestHelixGroupWeightedLeastLoadedStrategy {
-  private static final Logger LOGGER = LogManager.getLogger(TestHelixGroupWeightedLeastLoadedStrategy.class);
+public class TestHelixGroupLatencyWeightedStrategy {
+  private static final Logger LOGGER = LogManager.getLogger(TestHelixGroupLatencyWeightedStrategy.class);
   private static final long TIMEOUT_MS = 10000;
   private static final long SEED = 42;
 
@@ -68,13 +68,13 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
    * Build a weighted strategy that reads per-group latency from a live array with an injected seeded random. The
    * array is read live, so a scenario can mutate latency between batches and the strategy will observe it.
    */
-  private static HelixGroupWeightedLeastLoadedStrategy weightedStrategy(
+  private static HelixGroupLatencyWeightedStrategy weightedStrategy(
       double[] latency,
       double evenUntilLatencyRatio,
       double fullSkewAtLatencyRatio,
       double interpolationExponent,
       Random random) {
-    return new HelixGroupWeightedLeastLoadedStrategy(
+    return new HelixGroupLatencyWeightedStrategy(
         mockTimeoutProcessor(),
         TIMEOUT_MS,
         mock(HelixGroupStats.class),
@@ -86,14 +86,14 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   }
 
   /** Convenience overload using the strategy's default stay-even and full-skew latency-ratio thresholds. */
-  private static HelixGroupWeightedLeastLoadedStrategy weightedStrategy(
+  private static HelixGroupLatencyWeightedStrategy weightedStrategy(
       double[] latency,
       double interpolationExponent,
       Random random) {
     return weightedStrategy(
         latency,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
         interpolationExponent,
         random);
   }
@@ -171,7 +171,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     int measured = 0;
     for (double l: latency) {
       if (l > 0) {
-        double clamped = Math.max(l, HelixGroupWeightedLeastLoadedStrategy.MIN_LATENCY_MS);
+        double clamped = Math.max(l, HelixGroupLatencyWeightedStrategy.MIN_LATENCY_MS);
         min = Math.min(min, clamped);
         max = Math.max(max, clamped);
         measured++;
@@ -194,29 +194,29 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
 
   /**
    * The analytic realized share the strategy targets for the given measured latencies and knobs, matching
-   * {@link HelixGroupWeightedLeastLoadedStrategy}'s math (strength = 1/latency, latency-ratio skew, probe floor,
+   * {@link HelixGroupLatencyWeightedStrategy}'s math (strength = 1/latency, latency-ratio skew, probe floor,
    * reservoir normalisation). Used to (a) assert the strategy's actual routed distribution matches its model and
    * (b) find the environment's fixed point in the closed-loop scenarios.
    */
   private static double[] analyticShares(double[] latency, double m) {
     return analyticShares(
         latency,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
         m);
   }
 
   private static double[] analyticShares(double[] latency, double evenUntilRatio, double fullSkewRatio, double m) {
     int groupCount = latency.length;
     double even = 1.0 / groupCount;
-    double floor = HelixGroupWeightedLeastLoadedStrategy.PROBE_FLOOR_FRACTION * even;
+    double floor = HelixGroupLatencyWeightedStrategy.PROBE_FLOOR_FRACTION * even;
     double skew = skewFor(latencyRatio(latency), evenUntilRatio, fullSkewRatio, m);
 
     double sumMeasured = 0.0;
     int measured = 0;
     for (int g = 0; g < groupCount; g++) {
       if (latency[g] > 0) {
-        sumMeasured += 1.0 / Math.max(latency[g], HelixGroupWeightedLeastLoadedStrategy.MIN_LATENCY_MS);
+        sumMeasured += 1.0 / Math.max(latency[g], HelixGroupLatencyWeightedStrategy.MIN_LATENCY_MS);
         measured++;
       }
     }
@@ -226,7 +226,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     double totalStrength = 0.0;
     for (int g = 0; g < groupCount; g++) {
       strength[g] =
-          latency[g] > 0 ? 1.0 / Math.max(latency[g], HelixGroupWeightedLeastLoadedStrategy.MIN_LATENCY_MS) : neutral;
+          latency[g] > 0 ? 1.0 / Math.max(latency[g], HelixGroupLatencyWeightedStrategy.MIN_LATENCY_MS) : neutral;
       totalStrength += strength[g];
     }
 
@@ -256,10 +256,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     double evenShare = 1.0 / groupCount;
 
     int[] routed = routeAndFinish(
-        weightedStrategy(
-            latency,
-            HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
-            new Random(SEED)),
+        weightedStrategy(latency, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED)),
         groupCount,
         0,
         60000);
@@ -293,10 +290,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     int fastGroup = argMin(latency);
 
     int[] routed = routeAndFinish(
-        weightedStrategy(
-            latency,
-            HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
-            new Random(SEED)),
+        weightedStrategy(latency, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED)),
         groupCount,
         0,
         60000);
@@ -307,7 +301,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
         String.format("%.2f", latencyRatio(latency)),
         Arrays.toString(routed));
 
-    double[] expected = analyticShares(latency, HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+    double[] expected = analyticShares(latency, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
     for (int g = 0; g < groupCount; g++) {
       double share = routed[g] / 60000.0;
       Assert.assertTrue(
@@ -533,7 +527,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
         "reaching full skew at 1.5 sheds more slow-host traffic than the default ramp; full=" + fullSkewSlow
             + " default=" + defaultSlow);
     // No knob setting ever starves the slow host below its probe floor.
-    double floor = HelixGroupWeightedLeastLoadedStrategy.PROBE_FLOOR_FRACTION * even;
+    double floor = HelixGroupLatencyWeightedStrategy.PROBE_FLOOR_FRACTION * even;
     for (double slowShare: new double[] { defaultSlow, stayEvenSlow, fullSkewSlow }) {
       Assert.assertTrue(
           slowShare >= 0.5 * floor,
@@ -571,13 +565,13 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     // Hidden ground-truth capacity: group 2 is genuinely 2x stronger. The router never reads this array.
     double[] hiddenCapacity = { 10500.0, 10500.0, 21000.0 };
     double load = 42000.0; // saturate the cluster so the skew is fully exercised
-    double m = HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT;
+    double m = HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT;
 
     double[] measuredLatency = closedLoopLatency(
         hiddenCapacity,
         load,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
         m);
     Assert.assertNotNull(measuredLatency, "The latency-driven loop must reach a stable fixed point; did not converge");
 
@@ -784,9 +778,9 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     return runStagedScenario(
         scenario,
         hiddenCapacity,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+        HelixGroupLatencyWeightedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
   }
 
   private StagedRun runStagedScenario(
@@ -901,10 +895,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     double[] latency = { -1.0, -1.0, -1.0, -1.0 }; // nothing measured yet
 
     int[] routed = routeAndFinish(
-        weightedStrategy(
-            latency,
-            HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
-            new Random(SEED)),
+        weightedStrategy(latency, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED)),
         groupCount,
         0,
         60000);
@@ -931,10 +922,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     double evenShare = 1.0 / groupCount;
 
     int[] routed = routeAndFinish(
-        weightedStrategy(
-            latency,
-            HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
-            new Random(SEED)),
+        weightedStrategy(latency, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED)),
         groupCount,
         0,
         60000);
@@ -957,7 +945,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
 
   /**
    * The probe floor keeps even a very slow group alive at full skew: it always retains at least
-   * {@link HelixGroupWeightedLeastLoadedStrategy#PROBE_FLOOR_FRACTION} of the even share, so the router keeps
+   * {@link HelixGroupLatencyWeightedStrategy#PROBE_FLOOR_FRACTION} of the even share, so the router keeps
    * observing its latency and the signal stays live and self-correcting.
    */
   @Test
@@ -967,13 +955,10 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     double[] latency = { 20.0, 4000.0, 20.0 };
     int requestCount = 60000;
     double evenShare = 1.0 / groupCount;
-    double floor = HelixGroupWeightedLeastLoadedStrategy.PROBE_FLOOR_FRACTION * evenShare;
+    double floor = HelixGroupLatencyWeightedStrategy.PROBE_FLOOR_FRACTION * evenShare;
 
     int[] routed = routeAndFinish(
-        weightedStrategy(
-            latency,
-            HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
-            new Random(SEED)),
+        weightedStrategy(latency, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED)),
         groupCount,
         0,
         requestCount);
@@ -994,10 +979,7 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   public void testSingleGroupAlwaysSelected() {
     double[] latency = { 25.0 };
     int[] routed = routeAndFinish(
-        weightedStrategy(
-            latency,
-            HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
-            new Random(SEED)),
+        weightedStrategy(latency, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED)),
         1,
         0,
         1000);
@@ -1007,22 +989,22 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
   /** Failure path: an out-of-range group count is rejected. */
   @Test
   public void testInvalidGroupCountThrows() {
-    HelixGroupWeightedLeastLoadedStrategy strategy = weightedStrategy(
+    HelixGroupLatencyWeightedStrategy strategy = weightedStrategy(
         new double[] { 25.0 },
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
         new Random(SEED));
     Assert.assertThrows(VeniceException.class, () -> strategy.selectGroup(0, 0));
     Assert.assertThrows(
         VeniceException.class,
-        () -> strategy.selectGroup(0, HelixGroupWeightedLeastLoadedStrategy.MAX_ALLOWED_GROUP + 1));
+        () -> strategy.selectGroup(0, HelixGroupLatencyWeightedStrategy.MAX_ALLOWED_GROUP + 1));
   }
 
   /** Failure path: selecting a group twice for the same request id is a programming error and must be rejected. */
   @Test
   public void testDuplicateRequestIdThrows() {
-    HelixGroupWeightedLeastLoadedStrategy strategy = weightedStrategy(
+    HelixGroupLatencyWeightedStrategy strategy = weightedStrategy(
         new double[] { 25.0, 25.0, 25.0 },
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
         new Random(SEED));
     strategy.selectGroup(7, 3);
     Assert.assertThrows(VeniceException.class, () -> strategy.selectGroup(7, 3));
@@ -1084,10 +1066,8 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     int[] oldRouted = routeAndFinish(oldStrategy, groupCount, 0, requestCount);
 
     // --- Fix: new weighted strategy on the same latency vector; the 1.18x spread is inside the stay-even ratio. ---
-    HelixGroupWeightedLeastLoadedStrategy newStrategy = weightedStrategy(
-        measured,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT,
-        new Random(SEED));
+    HelixGroupLatencyWeightedStrategy newStrategy =
+        weightedStrategy(measured, HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED));
     int[] newRouted = routeAndFinish(newStrategy, groupCount, 0, requestCount);
 
     double oldFastShare = oldRouted[fastGroup] / (double) requestCount;

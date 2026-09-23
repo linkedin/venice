@@ -119,8 +119,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.router.api.RoutingComputationMode;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupLatencyWeightedStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
-import com.linkedin.venice.router.api.routing.helix.HelixGroupWeightedLeastLoadedStrategy;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.LogContext;
@@ -413,13 +413,13 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       }
       helixGroupEvenUntilLatencyRatio = props.getDouble(
           ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO,
-          HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO);
+          HelixGroupLatencyWeightedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO);
       helixGroupFullSkewAtLatencyRatio = props.getDouble(
           ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO,
-          HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO);
+          HelixGroupLatencyWeightedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO);
       helixGroupSkewRampExponent = props.getDouble(
           ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT,
-          HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+          HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
       systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
       routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
       httpClient5PoolSize = props.getInt(ROUTER_HTTP_CLIENT5_POOL_SIZE, 1);

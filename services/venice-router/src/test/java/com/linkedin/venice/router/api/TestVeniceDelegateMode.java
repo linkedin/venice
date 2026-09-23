@@ -33,9 +33,9 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupLatencyWeightedStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
-import com.linkedin.venice.router.api.routing.helix.HelixGroupWeightedLeastLoadedStrategy;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -763,9 +763,9 @@ public class TestVeniceDelegateMode {
         helixInstanceConfigRepository,
         HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
         mock(TimeoutProcessor.class),
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
-        HelixGroupWeightedLeastLoadedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+        HelixGroupLatencyWeightedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
     scatterMode.initHelixGroupSelector(helixGroupSelector);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode
