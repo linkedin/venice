@@ -38,13 +38,8 @@ public class EspressoHttp2FrameCodecBuilder extends Http2FrameCodecBuilder {
       Http2ConnectionDecoder decoder,
       Http2ConnectionEncoder encoder,
       Http2Settings initialSettings) {
-    EspressoHttp2FrameCodec codec = new EspressoHttp2FrameCodec(
-        encoder,
-        decoder,
-        initialSettings,
-        decoupleCloseAndGoAway(),
-        flushPreface(),
-        _canCreateStreams);
+    EspressoHttp2FrameCodec codec =
+        new EspressoHttp2FrameCodec(encoder, decoder, initialSettings, decoupleCloseAndGoAway(), _canCreateStreams);
     codec.gracefulShutdownTimeoutMillis(gracefulShutdownTimeoutMillis());
     return codec;
   }
