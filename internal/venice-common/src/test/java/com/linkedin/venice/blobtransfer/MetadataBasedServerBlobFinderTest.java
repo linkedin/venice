@@ -415,7 +415,8 @@ public class MetadataBasedServerBlobFinderTest {
         routingInfo,
         Collections.emptyMap(),
         150,
-        0);
+        0,
+        "");
     return SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$).serialize(record);
   }
 

@@ -22,6 +22,7 @@ public class MetadataResponse {
 
   public MetadataResponse() {
     this.responseRecord = new MetadataResponseRecord();
+    this.responseRecord.setMultiKeyLongTailRetryThresholdsInMs("");
   }
 
   public void setVersionMetadata(VersionProperties versionProperties) {
