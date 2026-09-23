@@ -549,7 +549,6 @@ public class TestAdminTool {
     RecordSerializer<MetadataResponseRecord> metadataResponseSerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MetadataResponseRecord.SCHEMA$);
     MetadataResponseRecord record = new MetadataResponseRecord();
-    record.setMultiKeyLongTailRetryThresholdsInMs("");
     record.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList("host1")));
     record.setVersions(Collections.singletonList(1));
     record.setHelixGroupInfo(Collections.emptyMap());
