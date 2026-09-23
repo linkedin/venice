@@ -45,6 +45,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -193,6 +194,7 @@ public class PushJobDetailsTest {
     HashMap<String, Double> metricsExpectedCountSinceLastMeasurement = new HashMap<>();
 
     PushType expectedPushType = isIncrementalPush ? PushType.INCREMENTAL : PushType.BATCH;
+    PushJobDetailsStatus expectedExecutionState = isSucceeded ? COMPLETED : PushJobDetailsStatus.ERROR;
     VenicePushJobStatus expectedPushStatus;
 
     if (isSucceeded) {
@@ -246,6 +248,12 @@ public class PushJobDetailsTest {
         .put(
             VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
             expectedPushStatus.getDimensionValue())
+        .put(
+            VeniceMetricsDimensions.VENICE_PUSH_JOB_DURATION_BUCKET.getDimensionNameInDefaultFormat(),
+            VenicePushJobDurationBucket.UNDER_SLA.getDimensionValue())
+        .put(
+            VeniceMetricsDimensions.VENICE_PUSH_JOB_EXECUTION_STATE.getDimensionNameInDefaultFormat(),
+            expectedExecutionState.getDimensionValue())
         .build();
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {

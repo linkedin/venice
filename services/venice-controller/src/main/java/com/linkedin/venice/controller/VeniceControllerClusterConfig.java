@@ -103,6 +103,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_JOB_SLA_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
@@ -338,6 +339,7 @@ public class VeniceControllerClusterConfig {
   private final double storageEngineOverheadRatio;
   private final long deprecatedJobTopicRetentionMs;
   private final long pushRetryCooldownMs;
+  private final long pushJobSlaMs;
 
   private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
@@ -797,6 +799,10 @@ public class VeniceControllerClusterConfig {
     this.pushRetryCooldownMs = props.getLong(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, TimeUnit.MINUTES.toMillis(10));
     if (pushRetryCooldownMs < 0) {
       throw new ConfigurationException(CONTROLLER_PUSH_RETRY_COOLDOWN_MS + " cannot be negative.");
+    }
+    this.pushJobSlaMs = props.getLong(CONTROLLER_PUSH_JOB_SLA_MS, TimeUnit.HOURS.toMillis(24));
+    if (pushJobSlaMs <= 0) {
+      throw new ConfigurationException(CONTROLLER_PUSH_JOB_SLA_MS + " must be greater than 0.");
     }
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
@@ -1602,6 +1608,10 @@ public class VeniceControllerClusterConfig {
 
   public long getPushRetryCooldownMs() {
     return pushRetryCooldownMs;
+  }
+
+  public long getPushJobSlaMs() {
+    return pushJobSlaMs;
   }
 
   public long getDelayToRebalanceMS() {
