@@ -121,7 +121,7 @@ ext.libraries = [
     mapreduceClientCore: "org.apache.hadoop:hadoop-mapreduce-client-core:${hadoopVersion}",
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
-    netty: 'io.netty:netty-all:4.1.79.Final',
+    netty: 'io.netty:netty-all:4.1.74.Final',
     opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
     opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
     opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
