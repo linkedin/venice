@@ -537,7 +537,8 @@ public class VeniceServer {
           serverConfig.getBlobTransferClientNettyWorkerThreadCount(),
           serverConfig.getBlobTransferClientCapacityPercent(),
           serverConfig.isServerAcceptClientBlobRequestEnabled(),
-          serverConfig.isBlobTransferDedicatedAllocatorEnabled());
+          serverConfig.isBlobTransferDedicatedAllocatorEnabled(),
+          serverConfig.getBlobTransferReceiverDirectMemoryThrottleThresholdBytes());
       VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
       VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
       if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {

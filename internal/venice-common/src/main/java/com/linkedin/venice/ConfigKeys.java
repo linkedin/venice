@@ -2324,6 +2324,19 @@ public class ConfigKeys {
   // negligible at the 128KB chunk -Dio.netty.allocator.maxOrder=4 produces and hundreds of MB at Netty's stock 16MB
   // chunk, so do not enable this where that property is unset.
   public static final String BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED = "blob.transfer.dedicated.allocator.enabled";
+  // this is a config to decide how much direct memory blob transfer may hold on the receiver before it stops starting
+  // new transfers and lets the replica bootstrap from the version topic instead. Zero disables the check.
+  // The reading is blob transfer's own allocator, so size this from what blob transfer holds rather than from
+  // -XX:MaxDirectMemorySize: a receiver charges roughly 1MB per streaming transfer, so a host running the default 20
+  // concurrent receives sits in the tens of MB. A ceiling in the hundreds of MB bounds the pathological case while
+  // leaving normal operation untouched.
+  // This caps blob transfer's own contribution. It cannot stop an allocation failure that another consumer drove the
+  // process into, because it does not read the process total.
+  // The receiver refuses to start when this is at or above MaxDirectMemorySize, which could never decline a transfer.
+  // It also has no effect unless blob.transfer.dedicated.allocator.enabled is on, since without it the only available
+  // reading describes every Netty user in the process rather than blob transfer.
+  public static final String BLOB_TRANSFER_RECEIVER_DIRECT_MEMORY_THROTTLE_THRESHOLD_BYTES =
+      "blob.transfer.receiver.direct.memory.throttle.threshold.bytes";
   // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
   // many
   // replicas can be concurrently receiving blobs for a host globally.

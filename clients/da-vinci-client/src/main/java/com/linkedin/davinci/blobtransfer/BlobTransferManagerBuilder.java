@@ -202,6 +202,7 @@ public class BlobTransferManagerBuilder {
           blobTransferConfig.getBaseDir(),
           getAggBlobTransferStats().getAggVersionedBlobTransferStats(),
           blobTransferConfig.getMaxConcurrentBlobReceiveReplicas(),
+          blobTransferConfig.getReceiverDirectMemoryThrottleThresholdBytes(),
           logContext);
 
       // start the P2P blob transfer manager
