@@ -4,9 +4,43 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 public class BatchGetConfigUtils {
+  private static final Pattern SERVER_RETRY_RANGE = Pattern.compile("([0-9]+)-\\s*([0-9]*):\\s*([0-9]+)");
+
+  /**
+   * Validate untrusted server policies without tightening the legacy local-client parser's semantics.
+   * Empty is an absence sentinel handled by the caller, not a valid range table.
+   */
+  public static TreeMap<Integer, Integer> parseServerMultiKeyRetryThresholds(String ranges) {
+    boolean hasUnboundedRange = false;
+    try {
+      for (String range: ranges.split(",\\s*", -1)) {
+        Matcher matcher = SERVER_RETRY_RANGE.matcher(range);
+        if (!matcher.matches()) {
+          throw new IllegalArgumentException("Malformed retry range");
+        }
+        int lower = Integer.parseInt(matcher.group(1));
+        String upper = matcher.group(2);
+        int delayMs = Integer.parseInt(matcher.group(3));
+        if (lower <= 0 || (!upper.isEmpty() && Integer.parseInt(upper) <= 0) || delayMs <= 0) {
+          throw new IllegalArgumentException("Key bounds and retry delays must be positive");
+        }
+        Math.multiplyExact(delayMs, 1000);
+        hasUnboundedRange |= upper.isEmpty();
+      }
+      if (!hasUnboundedRange) {
+        throw new IllegalArgumentException("An unbounded terminal range is required");
+      }
+      return parseRetryThresholdForBatchGet(ranges);
+    } catch (IllegalArgumentException | ArithmeticException e) {
+      throw new VeniceException("Invalid server multi-key retry thresholds: " + ranges, e);
+    }
+  }
+
   /**
    * The expected config format is like the following:
    * "1-10:20,11-50:50,51-200:80,201-:1000"

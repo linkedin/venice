@@ -170,7 +170,8 @@ public class RequestBasedMetadataTestUtils {
         routeMap,
         helixGroupMap,
         150,
-        ExternalStorageReadMode.VENICE_ONLY.getValue());
+        ExternalStorageReadMode.VENICE_ONLY.getValue(),
+        "");
 
     byte[] metadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
@@ -269,7 +270,8 @@ public class RequestBasedMetadataTestUtils {
         routeMap,
         helixGroupMap,
         150,
-        ExternalStorageReadMode.VENICE_ONLY.getValue());
+        ExternalStorageReadMode.VENICE_ONLY.getValue(),
+        "");
     return SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
   }
@@ -372,7 +374,8 @@ public class RequestBasedMetadataTestUtils {
         routeMap,
         helixGroupMap,
         150,
-        rawExternalStorageReadMode);
+        rawExternalStorageReadMode,
+        "");
     byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
     int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
@@ -416,7 +419,8 @@ public class RequestBasedMetadataTestUtils {
         routeMap,
         helixGroupMap,
         150,
-        ExternalStorageReadMode.EXTERNAL_ONLY.getValue());
+        ExternalStorageReadMode.EXTERNAL_ONLY.getValue(),
+        "");
     byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
     int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();

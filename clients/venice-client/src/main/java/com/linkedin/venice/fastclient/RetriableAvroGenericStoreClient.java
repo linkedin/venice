@@ -12,6 +12,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryPolicy;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Map;
@@ -23,6 +24,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -60,12 +62,26 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final RetryManager multiKeyLongTailRetryManager;
   private final TreeMap<Integer, Integer> batchGetLongTailRetryThresholdMap;
   private final TreeMap<Integer, Integer> computeLongTailRetryThresholdMap;
+  private final Supplier<MultiKeyLongTailRetryPolicy> serverRetryPolicy;
+  private final boolean batchGetRetryRangeExplicit;
+  private final boolean computeRetryRangeExplicit;
 
   public RetriableAvroGenericStoreClient(
       InternalAvroStoreClient<K, V> delegate,
       ClientConfig clientConfig,
       TimeoutProcessor timeoutProcessor) {
+    this(delegate, clientConfig, timeoutProcessor, () -> null);
+  }
+
+  public RetriableAvroGenericStoreClient(
+      InternalAvroStoreClient<K, V> delegate,
+      ClientConfig clientConfig,
+      TimeoutProcessor timeoutProcessor,
+      Supplier<MultiKeyLongTailRetryPolicy> serverRetryPolicy) {
     super(delegate, clientConfig);
+    this.serverRetryPolicy = serverRetryPolicy;
+    this.batchGetRetryRangeExplicit = clientConfig.isBatchGetRetryRangeExplicit();
+    this.computeRetryRangeExplicit = clientConfig.isComputeRetryRangeExplicit();
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
@@ -259,6 +275,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
+    if (keys.isEmpty()) {
+      super.streamingBatchGet(requestContext, keys, callback);
+      return;
+    }
     int longTailRetryThresholdForBatchGetInMicroSeconds =
         getLongTailRetryThresholdForBatchGetInMicroSeconds(keys.size());
     retryStreamingMultiKeyRequest(
@@ -278,6 +298,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
+    if (keys.isEmpty()) {
+      super.compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
+      return;
+    }
     int longTailRetryThresholdForComputeInMicroSeconds = getLongTailRetryThresholdForComputeInMicroSeconds(keys.size());
 
     retryStreamingMultiKeyRequest(
@@ -483,7 +507,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     if (longTailRetryThresholdForBatchGetInMicroSeconds > 0) {
       return longTailRetryThresholdForBatchGetInMicroSeconds;
     } else {
-      // Priority 2: Fall back to range-based config
+      MultiKeyLongTailRetryPolicy policy = batchGetRetryRangeExplicit ? null : serverRetryPolicy.get();
+      if (policy != null) {
+        return policy.getRetryThresholdInMicroSeconds(numKeys);
+      }
+      // Explicit local range, or the existing default when no server policy is available.
       Map.Entry<Integer, Integer> retryThresholdEntry = batchGetLongTailRetryThresholdMap.floorEntry(numKeys);
       if (retryThresholdEntry == null) {
         // This should never happen as the configuration will always have a continuous range starting from 1 to 500
@@ -496,6 +524,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   private int getLongTailRetryThresholdForComputeInMicroSeconds(int numKeys) {
+    MultiKeyLongTailRetryPolicy policy = computeRetryRangeExplicit ? null : serverRetryPolicy.get();
+    if (policy != null) {
+      return policy.getRetryThresholdInMicroSeconds(numKeys);
+    }
     Map.Entry<Integer, Integer> retryThresholdEntry = computeLongTailRetryThresholdMap.floorEntry(numKeys);
     if (retryThresholdEntry == null) {
       // This should never happen as the configuration will always have a continuous range starting from 1 to 500

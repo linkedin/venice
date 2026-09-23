@@ -104,7 +104,8 @@ public class ClientFactory {
            * Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
            * reduce the thread usage.
            */
-          storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor());
+          storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor(),
+          storeMetadata::getMultiKeyLongTailRetryPolicy);
     }
 
     InternalAvroStoreClient<K, V> loadControlClient = retryClient;
@@ -134,7 +135,8 @@ public class ClientFactory {
       retryClient = new RetriableAvroSpecificStoreClient<>(
           dispatchingStoreClient,
           clientConfig,
-          storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor());
+          storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor(),
+          storeMetadata::getMultiKeyLongTailRetryPolicy);
     }
 
     InternalAvroStoreClient<K, V> loadControlClient = retryClient;

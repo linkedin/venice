@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES;
@@ -49,6 +50,21 @@ import org.testng.annotations.Test;
 
 
 public class VeniceServerConfigTest {
+  @Test
+  public void testMultiKeyRetryPolicyConfig() {
+    Properties props = populatedBasicProperties();
+    assertEquals(
+        new VeniceServerConfig(new VeniceProperties(props)).getFastClientMultiKeyLongTailRetryThresholdsMs(),
+        "");
+    String ranges = "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
+    props.setProperty(SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS, ranges);
+    assertEquals(
+        new VeniceServerConfig(new VeniceProperties(props)).getFastClientMultiKeyLongTailRetryThresholdsMs(),
+        ranges);
+    props.setProperty(SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS, "1-:2147484");
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+  }
+
   private Properties populatedBasicProperties() {
     Properties props = new Properties();
     props.setProperty(CLUSTER_NAME, "test_cluster");

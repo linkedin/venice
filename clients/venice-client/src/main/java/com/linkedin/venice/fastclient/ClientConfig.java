@@ -76,6 +76,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
   private final String longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
+  private final boolean batchGetRetryRangeExplicit;
+  private final boolean computeRetryRangeExplicit;
   private final ClusterStats clusterStats;
   private final boolean isVsonStore;
   private final StoreMetadataFetchMode storeMetadataFetchMode;
@@ -243,6 +245,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
     this.longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
         builder.longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
+    this.batchGetRetryRangeExplicit = builder.batchGetRetryRangeExplicit;
+    this.computeRetryRangeExplicit = builder.computeRetryRangeExplicit;
     this.keySerializerFactory = Optional.ofNullable(builder.keySerializerFactory);
     this.valueDeserializerFactory = Optional.ofNullable(builder.valueDeserializerFactory);
   }
@@ -433,6 +437,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
   }
 
+  public boolean isBatchGetRetryRangeExplicit() {
+    return batchGetRetryRangeExplicit;
+  }
+
+  public boolean isComputeRetryRangeExplicit() {
+    return computeRetryRangeExplicit;
+  }
+
   public Optional<SerializerFactory<K>> getKeySerializerFactory() {
     return keySerializerFactory;
   }
@@ -471,6 +483,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
         LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_BATCH_GET_IN_MILLI_SECONDS;
 
+    private boolean batchGetRetryRangeExplicit;
+    private boolean computeRetryRangeExplicit;
     private boolean longTailRetryEnabledForCompute = false;
     private String longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
         LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_COMPUTE_IN_MILLI_SECONDS;
@@ -725,6 +739,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds) {
       this.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
           longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
+      this.batchGetRetryRangeExplicit = true;
       return this;
     }
 
@@ -732,6 +747,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         String longTailRangeBasedRetryThresholdForComputeInMilliSeconds) {
       this.longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
           longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
+      this.computeRetryRangeExplicit = true;
       return this;
     }
 
@@ -760,7 +776,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     public ClientConfigBuilder<K, V, T> clone() {
-      return new ClientConfigBuilder().setStoreName(storeName)
+      ClientConfigBuilder<K, V, T> copy = new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
           .setMetricsRepository(metricsRepository)
           .setStatsPrefix(statsPrefix)
@@ -806,6 +822,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setStoreLoadControllerAcceptMultiplier(storeLoadControllerAcceptMultiplier)
           .setKeySerializerFactory(keySerializerFactory)
           .setValueDeserializerFactory(valueDeserializerFactory);
+      // The setters above copy values, but must not turn implicit defaults into explicit overrides.
+      copy.batchGetRetryRangeExplicit = batchGetRetryRangeExplicit;
+      copy.computeRetryRangeExplicit = computeRetryRangeExplicit;
+      return copy;
     }
 
     public ClientConfig<K, V, T> build() {

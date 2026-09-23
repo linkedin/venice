@@ -16,13 +16,16 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.d2.balancer.D2Client;
@@ -81,6 +84,36 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class DispatchingAvroGenericStoreClientTest {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testEmptyRequestsThroughRetryChain(boolean compute, boolean streaming) throws Exception {
+    try {
+      setUpClient();
+      TimeoutProcessor timer = mock(TimeoutProcessor.class);
+      try (RetriableAvroGenericStoreClient retry =
+          new RetriableAvroGenericStoreClient(dispatchingAvroGenericStoreClient, clientConfig, timer, () -> {
+            throw new AssertionError("Empty requests must not look up a retry policy");
+          })) {
+        StatsAvroGenericStoreClient chain = new StatsAvroGenericStoreClient(retry, clientConfig);
+        Map<?, ?> result;
+        if (compute) {
+          ComputeRequestBuilder builder = chain.compute().project("name");
+          result = (Map<?, ?>) (streaming
+              ? builder.streamingExecute(Collections.emptySet())
+              : builder.execute(Collections.emptySet())).get();
+        } else {
+          result = (Map<?, ?>) (streaming
+              ? chain.streamingBatchGet(Collections.emptySet())
+              : chain.batchGet(Collections.emptySet())).get();
+        }
+        assertTrue(result.isEmpty());
+        verifyNoInteractions(timer);
+        verify(mockedTransportClient, never()).post(any(), any(), any());
+      }
+    } finally {
+      tearDown();
+    }
+  }
+
   private static final int TEST_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final Schema STORE_VALUE_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileAsString("TestRecord.avsc"));

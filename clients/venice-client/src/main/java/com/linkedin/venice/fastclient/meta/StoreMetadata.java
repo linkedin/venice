@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryPolicy;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -21,6 +22,14 @@ import java.util.concurrent.CompletableFuture;
  * to decide the healthiness of each replica.
  */
 public interface StoreMetadata extends SchemaReader {
+  /**
+   * Returns the current immutable compute/batch-get server policy, or null for local fallback.
+   * Custom metadata implementations remain source compatible and need not advertise a policy.
+   */
+  default MultiKeyLongTailRetryPolicy getMultiKeyLongTailRetryPolicy() {
+    return null;
+  }
+
   String getClusterName();
 
   String getStoreName();
