@@ -89,7 +89,7 @@ import java.util.function.IntToDoubleFunction;
  * preserved from {@link HelixGroupLeastLoadedStrategy}; the in-flight counters are kept for leak protection and
  * observability ({@link HelixGroupStats#recordGroupPendingRequest}) and do not influence the target share.
  */
-public class HelixGroupLatencyWeightedStrategy implements HelixGroupSelectionStrategy {
+public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStrategy {
   public static final int MAX_ALLOWED_GROUP = 100;
 
   /**
@@ -139,7 +139,7 @@ public class HelixGroupLatencyWeightedStrategy implements HelixGroupSelectionStr
   private final double interpolationExponent;
   private final DoubleSupplier randomSupplier;
 
-  public HelixGroupLatencyWeightedStrategy(
+  public HelixGroupLatencyAdaptiveStrategy(
       TimeoutProcessor timeoutProcessor,
       long timeoutInMS,
       HelixGroupStats helixGroupStats) {
@@ -169,7 +169,7 @@ public class HelixGroupLatencyWeightedStrategy implements HelixGroupSelectionStr
    * @param randomSupplier         supplies a uniform random double in [0, 1); injectable so tests can be
    *                              deterministic.
    */
-  public HelixGroupLatencyWeightedStrategy(
+  public HelixGroupLatencyAdaptiveStrategy(
       TimeoutProcessor timeoutProcessor,
       long timeoutInMS,
       HelixGroupStats helixGroupStats,

@@ -13,9 +13,9 @@ public enum HelixGroupSelectionStrategyEnum {
    * This strategy distributes load by weighting groups on their measured latency: it routes evenly while the
    * groups' latencies are close and progressively weights traffic toward the lower-latency groups as their
    * latency spread widens, using measured latency as the only signal. See
-   * {@link HelixGroupLatencyWeightedStrategy}.
+   * {@link HelixGroupLatencyAdaptiveStrategy}.
    */
-  LATENCY_WEIGHTED(HelixGroupLatencyWeightedStrategy.class);
+  LATENCY_ADAPTIVE(HelixGroupLatencyAdaptiveStrategy.class);
 
   private final Class<? extends HelixGroupSelectionStrategy> strategyClass;
 

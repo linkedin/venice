@@ -40,8 +40,8 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
     if (strategyClass.equals(HelixGroupLeastLoadedStrategy.class)) {
       this.selectionStrategy =
           new HelixGroupLeastLoadedStrategy(timeoutProcessor, HELIX_GROUP_COUNTER_TIMEOUT_MS, helixGroupStats);
-    } else if (strategyClass.equals(HelixGroupLatencyWeightedStrategy.class)) {
-      this.selectionStrategy = new HelixGroupLatencyWeightedStrategy(
+    } else if (strategyClass.equals(HelixGroupLatencyAdaptiveStrategy.class)) {
+      this.selectionStrategy = new HelixGroupLatencyAdaptiveStrategy(
           timeoutProcessor,
           HELIX_GROUP_COUNTER_TIMEOUT_MS,
           helixGroupStats,

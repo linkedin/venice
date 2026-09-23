@@ -12,7 +12,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONE
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.router.api.routing.helix.HelixGroupLatencyWeightedStrategy;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupLatencyAdaptiveStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -34,17 +34,17 @@ public class TestVeniceRouterConfig {
   public void helixGroupLatencyKnobsDefaultToStrategyConstants() {
     VeniceRouterConfig config = new VeniceRouterConfig(getPropertyBuilderWithBasicConfigsFilledIn().build());
     // Unset -> the group selection strategy stays the least-loaded default and the latency knobs fall back to the
-    // strategy's own defaults, so enabling LATENCY_WEIGHTED later needs no extra config.
+    // strategy's own defaults, so enabling LATENCY_ADAPTIVE later needs no extra config.
     assertEquals(config.getHelixGroupSelectionStrategy(), HelixGroupSelectionStrategyEnum.LEAST_LOADED);
     assertEquals(
         config.getHelixGroupEvenUntilLatencyRatio(),
-        HelixGroupLatencyWeightedStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO);
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO);
     assertEquals(
         config.getHelixGroupFullSkewAtLatencyRatio(),
-        HelixGroupLatencyWeightedStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO);
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO);
     assertEquals(
         config.getHelixGroupSkewRampExponent(),
-        HelixGroupLatencyWeightedStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT);
   }
 
   @Test
@@ -52,13 +52,13 @@ public class TestVeniceRouterConfig {
     VeniceProperties props = getPropertyBuilderWithBasicConfigsFilledIn()
         .put(
             ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY,
-            HelixGroupSelectionStrategyEnum.LATENCY_WEIGHTED.name())
+            HelixGroupSelectionStrategyEnum.LATENCY_ADAPTIVE.name())
         .put(ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO, 1.5)
         .put(ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO, 3.0)
         .put(ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT, 2.0)
         .build();
     VeniceRouterConfig config = new VeniceRouterConfig(props);
-    assertEquals(config.getHelixGroupSelectionStrategy(), HelixGroupSelectionStrategyEnum.LATENCY_WEIGHTED);
+    assertEquals(config.getHelixGroupSelectionStrategy(), HelixGroupSelectionStrategyEnum.LATENCY_ADAPTIVE);
     assertEquals(config.getHelixGroupEvenUntilLatencyRatio(), 1.5);
     assertEquals(config.getHelixGroupFullSkewAtLatencyRatio(), 3.0);
     assertEquals(config.getHelixGroupSkewRampExponent(), 2.0);
