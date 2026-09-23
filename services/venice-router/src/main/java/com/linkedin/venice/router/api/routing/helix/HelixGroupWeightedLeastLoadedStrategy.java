@@ -165,7 +165,7 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
    *                              latency-proportional split at or above this factor. Must be strictly greater
    *                              than {@code evenUntilLatencyRatio}.
    * @param interpolationExponent  the {@code m} exponent shaping the skew ramp between the two thresholds
-   *                              ({@code 1.0} = linear).
+   *                              ({@code 1.0} = linear). Must be strictly greater than {@code 0}.
    * @param randomSupplier         supplies a uniform random double in [0, 1); injectable so tests can be
    *                              deterministic.
    */
@@ -182,6 +182,11 @@ public class HelixGroupWeightedLeastLoadedStrategy implements HelixGroupSelectio
       throw new VeniceException(
           "Require 1 <= evenUntilLatencyRatio < fullSkewAtLatencyRatio, but received evenUntilLatencyRatio="
               + evenUntilLatencyRatio + ", fullSkewAtLatencyRatio=" + fullSkewAtLatencyRatio);
+    }
+    if (!(interpolationExponent > 0.0)) {
+      throw new VeniceException(
+          "Require interpolationExponent > 0 (a non-positive exponent would push skew outside [0, 1] and distort "
+              + "the share past full skew), but received interpolationExponent=" + interpolationExponent);
     }
     this.timeoutProcessor = timeoutProcessor;
     this.timeoutInMS = timeoutInMS;

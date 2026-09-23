@@ -1043,6 +1043,13 @@ public class TestHelixGroupWeightedLeastLoadedStrategy {
     Assert.assertThrows(
         VeniceException.class,
         () -> weightedStrategy(new double[] { 25.0, 25.0 }, 2.5, 2.0, 1.0, random));
+    // A non-positive ramp exponent would push skew outside [0, 1] and distort the share past full skew.
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 1.2, 2.0, 0.0, random));
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 1.2, 2.0, -1.0, random));
   }
 
   /**
