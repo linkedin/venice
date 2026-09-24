@@ -60,7 +60,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
           return new HelixLatencyAdaptiveGroupRoutingStrategy(
               instanceHealthMonitor,
               clientConfig.getMetricsRepository(),
-              getStoreName());
+              getStoreName(),
+              clientConfig.getHelixGroupEvenUntilLatencyRatio(),
+              clientConfig.getHelixGroupFullSkewAtLatencyRatio(),
+              clientConfig.getHelixGroupSkewRampExponent());
         }
         return clientConfig.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting()
             ? new HelixLeastLoadedGroupRoutingStrategy(

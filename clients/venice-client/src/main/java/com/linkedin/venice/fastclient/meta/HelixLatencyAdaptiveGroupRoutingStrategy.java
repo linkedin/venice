@@ -4,6 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.ThreadLocalRandom;
 
 
 /**
@@ -21,14 +22,44 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
   public HelixLatencyAdaptiveGroupRoutingStrategy(
       InstanceHealthMonitor instanceHealthMonitor,
       MetricsRepository metricsRepository,
-      String storeName) {
+      String storeName,
+      double evenUntilLatencyRatio,
+      double fullSkewAtLatencyRatio,
+      double skewRampExponent) {
     super(instanceHealthMonitor, metricsRepository, storeName);
-    this.selector = new LatencyAdaptiveGroupSelector(helixGroupStats::getGroupResponseWaitingTimeAvg);
+    this.selector = buildSelector(evenUntilLatencyRatio, fullSkewAtLatencyRatio, skewRampExponent);
   }
 
+  /** Uses the default latency-adaptive knobs. */
   HelixLatencyAdaptiveGroupRoutingStrategy(InstanceHealthMonitor monitor, HelixGroupStats helixGroupStats) {
+    this(
+        monitor,
+        helixGroupStats,
+        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT);
+  }
+
+  HelixLatencyAdaptiveGroupRoutingStrategy(
+      InstanceHealthMonitor monitor,
+      HelixGroupStats helixGroupStats,
+      double evenUntilLatencyRatio,
+      double fullSkewAtLatencyRatio,
+      double skewRampExponent) {
     super(monitor, helixGroupStats);
-    this.selector = new LatencyAdaptiveGroupSelector(helixGroupStats::getGroupResponseWaitingTimeAvg);
+    this.selector = buildSelector(evenUntilLatencyRatio, fullSkewAtLatencyRatio, skewRampExponent);
+  }
+
+  private LatencyAdaptiveGroupSelector buildSelector(
+      double evenUntilLatencyRatio,
+      double fullSkewAtLatencyRatio,
+      double skewRampExponent) {
+    return new LatencyAdaptiveGroupSelector(
+        helixGroupStats::getGroupResponseWaitingTimeAvg,
+        evenUntilLatencyRatio,
+        fullSkewAtLatencyRatio,
+        skewRampExponent,
+        () -> ThreadLocalRandom.current().nextDouble());
   }
 
   /**

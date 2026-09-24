@@ -14,6 +14,7 @@ import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -101,6 +102,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final double retryBudgetPercentage;
   private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
   private final boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+  private final double helixGroupEvenUntilLatencyRatio;
+  private final double helixGroupFullSkewAtLatencyRatio;
+  private final double helixGroupSkewRampExponent;
 
   private final MetricsRepository metricsRepository;
 
@@ -222,6 +226,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
     this.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting =
         builder.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+    this.helixGroupEvenUntilLatencyRatio = builder.helixGroupEvenUntilLatencyRatio;
+    this.helixGroupFullSkewAtLatencyRatio = builder.helixGroupFullSkewAtLatencyRatio;
+    this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;
     this.retryBudgetPercentage = builder.retryBudgetPercentage;
     if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
@@ -400,6 +407,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
   }
 
+  public double getHelixGroupEvenUntilLatencyRatio() {
+    return helixGroupEvenUntilLatencyRatio;
+  }
+
+  public double getHelixGroupFullSkewAtLatencyRatio() {
+    return helixGroupFullSkewAtLatencyRatio;
+  }
+
+  public double getHelixGroupSkewRampExponent() {
+    return helixGroupSkewRampExponent;
+  }
+
   public boolean isStoreLoadControllerEnabled() {
     return storeLoadControllerEnabled;
   }
@@ -491,6 +510,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
     private boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting = false;
+    private double helixGroupEvenUntilLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO;
+    private double helixGroupFullSkewAtLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO;
+    private double helixGroupSkewRampExponent = LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
     private boolean storeLoadControllerEnabled = false;
     private int storeLoadControllerWindowSizeInSec = 30;
     private int storeLoadControllerRejectionRatioUpdateIntervalInSec = 3;
@@ -685,6 +707,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setHelixGroupEvenUntilLatencyRatio(double helixGroupEvenUntilLatencyRatio) {
+      this.helixGroupEvenUntilLatencyRatio = helixGroupEvenUntilLatencyRatio;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupFullSkewAtLatencyRatio(double helixGroupFullSkewAtLatencyRatio) {
+      this.helixGroupFullSkewAtLatencyRatio = helixGroupFullSkewAtLatencyRatio;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupSkewRampExponent(double helixGroupSkewRampExponent) {
+      this.helixGroupSkewRampExponent = helixGroupSkewRampExponent;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> setStoreLoadControllerEnabled(boolean storeLoadControllerEnabled) {
       this.storeLoadControllerEnabled = storeLoadControllerEnabled;
       return this;
@@ -788,6 +825,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
           .setEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting(
               enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting)
+          .setHelixGroupEvenUntilLatencyRatio(helixGroupEvenUntilLatencyRatio)
+          .setHelixGroupFullSkewAtLatencyRatio(helixGroupFullSkewAtLatencyRatio)
+          .setHelixGroupSkewRampExponent(helixGroupSkewRampExponent)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
           .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)

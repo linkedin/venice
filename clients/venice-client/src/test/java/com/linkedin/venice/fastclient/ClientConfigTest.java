@@ -21,6 +21,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -278,6 +279,41 @@ public class ClientConfigTest {
 
     validateLongPointDataFromCounter(reader, 1, singleGetAttrs, "call_count", FAST_CLIENT.getMetricsPrefix());
     validateLongPointDataFromCounter(reader, 1, multiGetAttrs, "call_count", FAST_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
+  public void testHelixGroupLatencyAdaptiveKnobsDefaultToSelectorConstants() {
+    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().build();
+    assertEquals(
+        clientConfig.getHelixGroupEvenUntilLatencyRatio(),
+        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        0.0);
+    assertEquals(
+        clientConfig.getHelixGroupFullSkewAtLatencyRatio(),
+        LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        0.0);
+    assertEquals(
+        clientConfig.getHelixGroupSkewRampExponent(),
+        LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT,
+        0.0);
+  }
+
+  @Test
+  public void testHelixGroupLatencyAdaptiveKnobsAreOverridableAndClonePreservesThem() {
+    ClientConfig.ClientConfigBuilder builder =
+        getClientConfigWithMinimumRequiredInputs().setHelixGroupEvenUntilLatencyRatio(1.5)
+            .setHelixGroupFullSkewAtLatencyRatio(3.0)
+            .setHelixGroupSkewRampExponent(2.0);
+    ClientConfig clientConfig = builder.build();
+    assertEquals(clientConfig.getHelixGroupEvenUntilLatencyRatio(), 1.5, 0.0);
+    assertEquals(clientConfig.getHelixGroupFullSkewAtLatencyRatio(), 3.0, 0.0);
+    assertEquals(clientConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
+
+    // The builder clone (used by ClientFactory) must carry the overridden knobs through.
+    ClientConfig clonedConfig = builder.clone().build();
+    assertEquals(clonedConfig.getHelixGroupEvenUntilLatencyRatio(), 1.5, 0.0);
+    assertEquals(clonedConfig.getHelixGroupFullSkewAtLatencyRatio(), 3.0, 0.0);
+    assertEquals(clonedConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
   }
 
   @Test
