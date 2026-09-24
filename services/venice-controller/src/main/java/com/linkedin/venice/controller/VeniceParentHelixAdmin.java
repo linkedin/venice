@@ -3761,8 +3761,22 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName) {
-    return false;
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName) {
+    String storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
+    Optional<StoreConfig> storeConfig = getStoreConfigRepo().getStoreConfig(storeName);
+    if (!storeConfig.isPresent() || !storeConfig.get().isDeleting()
+        || !clusterName.equals(storeConfig.get().getCluster())) {
+      return false;
+    }
+    Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
+    if (store != null && (store.isMigrating() || !store.getVersions().isEmpty()
+        || (!VeniceSystemStoreUtils.isUserSystemStore(storeName)
+            && (store.isEnableReads() || store.isEnableWrites())))) {
+      return false;
+    }
+    // Store deletion waits for RT removal before dropping StoreConfig. Permit cleanup while that tombstone exists,
+    // but only after local version removal and the existing cross-fabric hybrid-version safety checks.
+    return getVeniceHelixAdmin().isRTTopicDeletionPermittedByAllControllers(clusterName, rtTopicName);
   }
 
   /**

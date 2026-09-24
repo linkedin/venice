@@ -6,6 +6,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -20,6 +21,8 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -558,6 +561,41 @@ public class TestTopicCleanupService {
     topicCleanupService.cleanupVeniceTopics();
 
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName, "_rt"));
+  }
+
+  @Test
+  public void testParentDeletesMarkedRTBeforeStoreConfigIsRemoved() {
+    String storeName = "pending_store_deletion";
+    String clusterName = "cluster0";
+    PubSubTopic rt = getPubSubTopic(storeName, "_rt");
+    StoreConfig storeConfig = new StoreConfig(storeName);
+    storeConfig.setCluster(clusterName);
+    storeConfig.setDeleting(true);
+    doReturn(Optional.of(storeConfig)).when(storeConfigRepository).getStoreConfig(storeName);
+    doReturn(Collections.singletonMap(rt, 1000L)).when(topicManager).getAllTopicRetentions();
+
+    VeniceParentHelixAdmin parent = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin internalAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(true).when(parent).isParent();
+    doReturn(topicManager).when(parent).getTopicManager();
+    doReturn(storeConfigRepository).when(parent).getStoreConfigRepo();
+    doReturn(internalAdmin).when(parent).getVeniceHelixAdmin();
+    doReturn(clusterName).when(parent).discoverCluster(storeName);
+    doReturn(true).when(parent).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(true).when(internalAdmin).isRTTopicDeletionPermittedByAllControllers(clusterName, rt.getName());
+    doCallRealMethod().when(parent).isRTTopicDeletionPermittedByAllControllers(clusterName, rt.getName());
+    TopicCleanupService parentCleanup = new TopicCleanupService(
+        parent,
+        veniceControllerMultiClusterConfig,
+        pubSubTopicRepository,
+        topicCleanupServiceStats,
+        pubSubClientsFactory);
+
+    parentCleanup.cleanupVeniceTopics();
+
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry(rt);
+    verify(internalAdmin).isRTTopicDeletionPermittedByAllControllers(clusterName, rt.getName());
+    assertTrue(storeConfigRepository.getStoreConfig(storeName).isPresent());
   }
 
   @Test
