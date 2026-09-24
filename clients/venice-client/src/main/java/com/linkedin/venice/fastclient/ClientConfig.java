@@ -101,7 +101,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final InstanceHealthMonitor instanceHealthMonitor;
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
-  private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
   private final HelixGroupRoutingStrategyType helixGroupRoutingStrategyType;
   private final double helixGroupEvenUntilLatencyRatio;
   private final double helixGroupFullSkewAtLatencyRatio;
@@ -223,16 +222,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     } else {
       this.instanceHealthMonitor = builder.instanceHealthMonitor;
     }
-    this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
-        builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
-    if (builder.helixGroupRoutingStrategyType != null) {
-      this.helixGroupRoutingStrategyType = builder.helixGroupRoutingStrategyType;
-    } else {
-      // Back-compat: fall back to the deprecated least-loaded flag (default true => LEAST_LOADED).
-      this.helixGroupRoutingStrategyType = builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting
-          ? HelixGroupRoutingStrategyType.LEAST_LOADED
-          : HelixGroupRoutingStrategyType.ROUND_ROBIN;
-    }
+    this.helixGroupRoutingStrategyType = builder.helixGroupRoutingStrategyType == null
+        ? HelixGroupRoutingStrategyType.LEAST_LOADED
+        : builder.helixGroupRoutingStrategyType;
     this.helixGroupEvenUntilLatencyRatio = builder.helixGroupEvenUntilLatencyRatio;
     this.helixGroupFullSkewAtLatencyRatio = builder.helixGroupFullSkewAtLatencyRatio;
     this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
@@ -406,15 +398,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return retryBudgetPercentage;
   }
 
-  /**
-   * @deprecated use {@link #getHelixGroupRoutingStrategyType()} instead; retained for back-compat and only consulted
-   *             when the strategy type is left unset.
-   */
-  @Deprecated
-  public boolean isEnableLeastLoadedRoutingStrategyForHelixGroupRouting() {
-    return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
-  }
-
   public HelixGroupRoutingStrategyType getHelixGroupRoutingStrategyType() {
     return helixGroupRoutingStrategyType;
   }
@@ -520,8 +503,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
     private double retryBudgetPercentage = 0.1d;
 
-    private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
-    private HelixGroupRoutingStrategyType helixGroupRoutingStrategyType = null;
+    private HelixGroupRoutingStrategyType helixGroupRoutingStrategyType = HelixGroupRoutingStrategyType.LEAST_LOADED;
     private double helixGroupEvenUntilLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO;
     private double helixGroupFullSkewAtLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO;
     private double helixGroupSkewRampExponent = LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
@@ -706,17 +688,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    /**
-     * @deprecated use {@link #setHelixGroupRoutingStrategyType} instead. When the strategy type is set this flag is
-     *             ignored; it is only consulted for back-compat when the type is left unset.
-     */
-    @Deprecated
-    public ClientConfigBuilder<K, V, T> setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
-        boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting) {
-      this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = enableLeastLoadedRoutingStrategyForHelixGroupRouting;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> setHelixGroupRoutingStrategyType(
         HelixGroupRoutingStrategyType helixGroupRoutingStrategyType) {
       this.helixGroupRoutingStrategyType = helixGroupRoutingStrategyType;
@@ -838,7 +809,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setInstanceHealthMonitor(instanceHealthMonitor)
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
-          .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
           .setHelixGroupRoutingStrategyType(helixGroupRoutingStrategyType)
           .setHelixGroupEvenUntilLatencyRatio(helixGroupEvenUntilLatencyRatio)
           .setHelixGroupFullSkewAtLatencyRatio(helixGroupFullSkewAtLatencyRatio)

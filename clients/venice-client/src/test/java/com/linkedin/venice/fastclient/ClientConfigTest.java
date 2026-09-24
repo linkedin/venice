@@ -332,21 +332,10 @@ public class ClientConfigTest {
   }
 
   @Test
-  public void testHelixGroupRoutingStrategyTypeEnumOverridesDeprecatedBoolean() {
-    // Enum is set to LATENCY_ADAPTIVE while the legacy least-loaded flag is left at its default (true): enum wins.
+  public void testHelixGroupRoutingStrategyTypeCanBeSetToRoundRobin() {
     ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs()
         .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.ROUND_ROBIN)
-        .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(true)
         .build();
-    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.ROUND_ROBIN);
-  }
-
-  @Test
-  public void testHelixGroupRoutingStrategyTypeFallsBackToDeprecatedBooleanWhenUnset() {
-    // No enum set: disabling the legacy least-loaded flag must resolve to ROUND_ROBIN for back-compat.
-    ClientConfig clientConfig =
-        getClientConfigWithMinimumRequiredInputs().setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(false)
-            .build();
     assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.ROUND_ROBIN);
   }
 
