@@ -2329,6 +2329,14 @@ public class ConfigKeys {
   // replicas can be concurrently receiving blobs for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS =
       "blob.transfer.max.concurrent.blob.receive.replicas";
+  // this is a config to cap how many replicas may hold a blob transfer receive channel at the same time. It bounds a
+  // different quantity than BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS above, which sizes the fetch executor's
+  // thread pool: a fetch worker hands the transfer to a Netty event loop and returns within milliseconds, so the pool
+  // is free again long before the bytes stop arriving, and in-flight channels can outnumber its threads several times
+  // over. The receiver's direct memory scales with the channels that are streaming, so this is the one that bounds it.
+  // A value of 0 or less leaves the count unbounded.
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_IN_FLIGHT_RECEIVE_REPLICAS =
+      "blob.transfer.max.concurrent.in.flight.receive.replicas";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max file receive timeout time in minutes in client side.

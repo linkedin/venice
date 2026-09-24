@@ -351,6 +351,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     return statusTrackingManager;
   }
 
+  @Override
+  public int getInFlightReceiveCount() {
+    return nettyClient.getInFlightTransferCount();
+  }
+
   /**
    * Basd on the transfer time, store name, version, and partition, update the blob transfer file receive stats
    * @param transferTime the transfer time in seconds
@@ -390,28 +395,27 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   /**
-   * Records what the dedicated allocator holds as a replica's transfer settles, alongside how much work the
-   * receiver has in flight. Both are whole-receiver samples of the instant they are read, so neither is this
-   * replica's own footprint and one cannot be divided by the other. {@code inFlightTransfers} may still count the
-   * transfer being logged, because its removal and the chain that completes the future this callback is attached
-   * to are both registered on the per-host future, whose dependent order is unspecified.
+   * Records how much work the receiver has in flight as a replica's transfer settles, and what the dedicated
+   * allocator holds when blob transfer is running one. Each is a whole-receiver sample of the instant it is read,
+   * so neither is this replica's own footprint and one cannot be divided by the other. {@code inFlightTransfers}
+   * may still count the transfer being logged, because its removal and the chain that completes the future this
+   * callback is attached to are both registered on the per-host future, whose dependent order is unspecified.
    */
   private void logTransferFootprint(String replicaId, Throwable throwable) {
     // This runs from a whenComplete callback whose derived future is discarded, so an escaping
     // exception would be swallowed without a trace. Report it instead.
     try {
+      // Null whenever blob transfer shares the process-wide allocator, where the numbers would describe every other
+      // consumer too. The in-flight counts stand on their own, so drop only the allocator clause.
       String allocatorUsage = BlobTransferPooledByteBufAllocator.describeUsage(nettyClient.getByteBufAllocator());
-      if (allocatorUsage == null) {
-        return;
-      }
       LOGGER.info(
           "Blob transfer receiver finished fetching {}, succeeded={}, inFlightTransfers={}, "
-              + "queuedExecutorTasks={}, {}",
+              + "queuedExecutorTasks={}{}",
           replicaId,
           throwable == null,
           nettyClient.getInFlightTransferCount(),
           replicaBlobFetchExecutor.getQueue().size(),
-          allocatorUsage);
+          allocatorUsage == null ? "" : ", " + allocatorUsage);
     } catch (Exception e) {
       LOGGER.warn("Failed to log the blob transfer footprint", e);
     }
