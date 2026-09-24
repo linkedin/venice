@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api.routing.helix;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
+import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
@@ -90,54 +91,32 @@ import java.util.function.IntToDoubleFunction;
  * observability ({@link HelixGroupStats#recordGroupPendingRequest}) and do not influence the target share.
  */
 public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStrategy {
-  public static final int MAX_ALLOWED_GROUP = 100;
+  public static final int MAX_ALLOWED_GROUP = LatencyAdaptiveGroupSelector.MAX_ALLOWED_GROUP;
 
-  /**
-   * Default stay-even threshold, expressed as a latency spread ratio (slowest / fastest measured group): while
-   * the spread is at or below this factor the groups are considered balanced and routing stays fully even
-   * (skew {@code == 0}). {@code 1.2} means "stay even until the slowest group is more than 20% slower than the
-   * fastest".
-   */
-  public static final double DEFAULT_EVEN_UNTIL_LATENCY_RATIO = 1.2;
+  /** @see LatencyAdaptiveGroupSelector#DEFAULT_EVEN_UNTIL_LATENCY_RATIO */
+  public static final double DEFAULT_EVEN_UNTIL_LATENCY_RATIO =
+      LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO;
 
-  /**
-   * Default full-skew threshold, expressed as a latency spread ratio: at (and above) this factor the routing
-   * reaches its full latency-proportional split (skew {@code == 1}). Between
-   * {@link #DEFAULT_EVEN_UNTIL_LATENCY_RATIO} and this the skew ramps from 0 to 1 as the spread widens.
-   * {@code 2.0} means "reach full skew once the slowest group is at least twice the fastest".
-   */
-  public static final double DEFAULT_FULL_SKEW_AT_LATENCY_RATIO = 2.0;
+  /** @see LatencyAdaptiveGroupSelector#DEFAULT_FULL_SKEW_AT_LATENCY_RATIO */
+  public static final double DEFAULT_FULL_SKEW_AT_LATENCY_RATIO =
+      LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO;
 
-  /**
-   * Default in-band ramp exponent {@code m}: shapes the skew ramp between the stay-even and full-skew thresholds.
-   * {@code 1.0} is a linear ramp; values &gt; 1 keep the ramp gentle just past the stay-even threshold and
-   * steepen it near the full-skew threshold. It only affects the transition band.
-   */
-  public static final double DEFAULT_INTERPOLATION_EXPONENT = 1.0;
+  /** @see LatencyAdaptiveGroupSelector#DEFAULT_INTERPOLATION_EXPONENT */
+  public static final double DEFAULT_INTERPOLATION_EXPONENT =
+      LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
 
-  /**
-   * Lower bound applied to a group's measured latency before inverting it into a strength, so a group reporting
-   * a near-zero latency cannot be assigned an unbounded strength (and thus flood-routed).
-   */
-  public static final double MIN_LATENCY_MS = 1.0;
+  /** @see LatencyAdaptiveGroupSelector#MIN_LATENCY_MS */
+  public static final double MIN_LATENCY_MS = LatencyAdaptiveGroupSelector.MIN_LATENCY_MS;
 
-  /**
-   * The minimum share every group retains, expressed as a fraction of the even share {@code 1 / G}. It keeps a
-   * slow group from being fully starved at high utilization so the router keeps observing its latency and the
-   * latency signal stays live and self-correcting.
-   */
-  public static final double PROBE_FLOOR_FRACTION = 0.05;
+  /** @see LatencyAdaptiveGroupSelector#PROBE_FLOOR_FRACTION */
+  public static final double PROBE_FLOOR_FRACTION = LatencyAdaptiveGroupSelector.PROBE_FLOOR_FRACTION;
 
   private final int[] counters = new int[MAX_ALLOWED_GROUP];
   private final TimeoutProcessor timeoutProcessor;
   private final long timeoutInMS;
   private final Map<Long, Pair<Integer, TimeoutProcessor.TimeoutFuture>> requestTimeoutFutureMap = new HashMap<>();
   private final HelixGroupStats helixGroupStats;
-  private final IntToDoubleFunction latencyProvider;
-  private final double evenUntilLatencyRatio;
-  private final double fullSkewAtLatencyRatio;
-  private final double interpolationExponent;
-  private final DoubleSupplier randomSupplier;
+  private final LatencyAdaptiveGroupSelector selector;
 
   public HelixGroupLatencyAdaptiveStrategy(
       TimeoutProcessor timeoutProcessor,
@@ -178,24 +157,15 @@ public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStr
       double fullSkewAtLatencyRatio,
       double interpolationExponent,
       DoubleSupplier randomSupplier) {
-    if (!(evenUntilLatencyRatio >= 1.0 && evenUntilLatencyRatio < fullSkewAtLatencyRatio)) {
-      throw new VeniceException(
-          "Require 1 <= evenUntilLatencyRatio < fullSkewAtLatencyRatio, but received evenUntilLatencyRatio="
-              + evenUntilLatencyRatio + ", fullSkewAtLatencyRatio=" + fullSkewAtLatencyRatio);
-    }
-    if (!(interpolationExponent > 0.0)) {
-      throw new VeniceException(
-          "Require interpolationExponent > 0 (a non-positive exponent would push skew outside [0, 1] and distort "
-              + "the share past full skew), but received interpolationExponent=" + interpolationExponent);
-    }
     this.timeoutProcessor = timeoutProcessor;
     this.timeoutInMS = timeoutInMS;
     this.helixGroupStats = helixGroupStats;
-    this.latencyProvider = latencyProvider;
-    this.evenUntilLatencyRatio = evenUntilLatencyRatio;
-    this.fullSkewAtLatencyRatio = fullSkewAtLatencyRatio;
-    this.interpolationExponent = interpolationExponent;
-    this.randomSupplier = randomSupplier;
+    this.selector = new LatencyAdaptiveGroupSelector(
+        latencyProvider,
+        evenUntilLatencyRatio,
+        fullSkewAtLatencyRatio,
+        interpolationExponent,
+        randomSupplier);
   }
 
   @Override
@@ -233,125 +203,12 @@ public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStr
   }
 
   /**
-   * Weighted-random reservoir selection across all groups. Each group is adopted with probability
-   * {@code share(g) / cumulativeShare}, yielding a final selection probability proportional to {@code share(g)}
-   * in a single pass. The scan starts at {@code startGroupId} purely to avoid biasing toward group 0; it does
-   * not affect the resulting distribution.
+   * Delegates to the shared {@link LatencyAdaptiveGroupSelector}, which performs a weighted-random reservoir draw
+   * whose skew adapts to the current latency spread across groups. The router applies no group exclusion, so it never
+   * excludes a group ({@code excludedGroupId == -1}).
    */
   private int pickWeightedGroup(int groupCount, int startGroupId) {
-    double skew = latencySkew(groupCount);
-    double evenShare = 1.0 / groupCount;
-    double floor = PROBE_FLOOR_FRACTION * evenShare;
-    // Pre-pass: total inferred strength and the neutral strength used for not-yet-measured groups.
-    double neutralStrength = neutralStrength(groupCount);
-    double totalStrength = totalStrength(groupCount, neutralStrength);
-
-    double cumulativeShare = 0.0;
-    int selectedGroup = -1;
-    for (int i = 0; i < groupCount; ++i) {
-      int currentGroup = (i + startGroupId) % groupCount;
-      double share = shareForGroup(currentGroup, evenShare, floor, skew, neutralStrength, totalStrength);
-      if (share <= 0.0) {
-        continue;
-      }
-      cumulativeShare += share;
-      if (randomSupplier.getAsDouble() * cumulativeShare < share) {
-        selectedGroup = currentGroup;
-      }
-    }
-    // Every share collapsed to zero (should not happen given the probe floor): fall back to the scan start so
-    // the request is still routed somewhere rather than dropped.
-    return selectedGroup < 0 ? startGroupId : selectedGroup;
-  }
-
-  /**
-   * The target share for a group:
-   * {@code max( (1 - skew) * evenShare + skew * strength(g) / totalStrength, floor )}. The floor keeps a slow
-   * group from being fully starved so its latency stays observable.
-   */
-  private double shareForGroup(
-      int groupId,
-      double evenShare,
-      double floor,
-      double skew,
-      double neutralStrength,
-      double totalStrength) {
-    double strengthShare = totalStrength > 0 ? strength(groupId, neutralStrength) / totalStrength : evenShare;
-    double share = (1.0 - skew) * evenShare + skew * strengthShare;
-    return Math.max(share, floor);
-  }
-
-  /**
-   * A group's inferred strength: the reciprocal of its measured latency (faster => stronger). A group that has
-   * not been measured yet (non-positive latency) is treated as neutral so it is neither flooded nor starved
-   * before there is data.
-   */
-  private double strength(int groupId, double neutralStrength) {
-    double latency = latencyProvider.applyAsDouble(groupId);
-    if (latency <= 0.0) {
-      return neutralStrength;
-    }
-    return 1.0 / Math.max(latency, MIN_LATENCY_MS);
-  }
-
-  /** The mean strength of the already-measured groups, used as the strength of not-yet-measured groups. */
-  private double neutralStrength(int groupCount) {
-    double sum = 0.0;
-    int measured = 0;
-    for (int g = 0; g < groupCount; ++g) {
-      double latency = latencyProvider.applyAsDouble(g);
-      if (latency > 0.0) {
-        sum += 1.0 / Math.max(latency, MIN_LATENCY_MS);
-        ++measured;
-      }
-    }
-    // No group measured yet: any positive constant works since every group then gets the same neutral strength,
-    // which reduces the strength term to an even split.
-    return measured > 0 ? sum / measured : 1.0;
-  }
-
-  private double totalStrength(int groupCount, double neutralStrength) {
-    double total = 0.0;
-    for (int g = 0; g < groupCount; ++g) {
-      total += strength(g, neutralStrength);
-    }
-    return total;
-  }
-
-  /**
-   * The skew factor in {@code [0, 1]} derived from the current latency spread across measured groups:
-   * {@code 0} while the slowest group is within {@code evenUntilLatencyRatio} of the fastest (treat the spread
-   * as noise, stay even), {@code 1} once the spread reaches {@code fullSkewAtLatencyRatio} (full
-   * latency-proportional split), and a ramp shaped by the in-band exponent {@code m} in between. Groups that
-   * have not been measured yet ({@code latency <= 0}) are excluded from the spread; fewer than two measured
-   * groups means there is no spread to act on, so routing stays even.
-   */
-  private double latencySkew(int groupCount) {
-    double minLatency = Double.MAX_VALUE;
-    double maxLatency = 0.0;
-    int measured = 0;
-    for (int g = 0; g < groupCount; ++g) {
-      double latency = latencyProvider.applyAsDouble(g);
-      if (latency <= 0.0) {
-        continue;
-      }
-      double clamped = Math.max(latency, MIN_LATENCY_MS);
-      minLatency = Math.min(minLatency, clamped);
-      maxLatency = Math.max(maxLatency, clamped);
-      ++measured;
-    }
-    if (measured < 2) {
-      return 0.0;
-    }
-    double ratio = maxLatency / minLatency;
-    if (ratio <= evenUntilLatencyRatio) {
-      return 0.0;
-    }
-    if (ratio >= fullSkewAtLatencyRatio) {
-      return 1.0;
-    }
-    double position = (ratio - evenUntilLatencyRatio) / (fullSkewAtLatencyRatio - evenUntilLatencyRatio);
-    return interpolationExponent == 1.0 ? position : Math.pow(position, interpolationExponent);
+    return selector.selectGroup(groupCount, startGroupId);
   }
 
   private void timeoutRequest(long requestId, int groupId, boolean cancelTimeoutFuture) {

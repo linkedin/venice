@@ -56,6 +56,12 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   private AbstractClientRoutingStrategy getRoutingStrategy(ClientRoutingStrategyType clientRoutingStrategyType) {
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
+        if (clientConfig.isEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting()) {
+          return new HelixLatencyAdaptiveGroupRoutingStrategy(
+              instanceHealthMonitor,
+              clientConfig.getMetricsRepository(),
+              getStoreName());
+        }
         return clientConfig.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting()
             ? new HelixLeastLoadedGroupRoutingStrategy(
                 instanceHealthMonitor,
