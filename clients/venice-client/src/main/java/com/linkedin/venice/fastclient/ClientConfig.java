@@ -101,6 +101,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
   private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+  private final boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
 
   private final MetricsRepository metricsRepository;
 
@@ -227,6 +228,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
     this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
         builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+    this.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting =
+        builder.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;
     this.retryBudgetPercentage = builder.retryBudgetPercentage;
     if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
@@ -405,6 +408,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
   }
 
+  public boolean isEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting() {
+    return enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+  }
+
   public boolean isStoreLoadControllerEnabled() {
     return storeLoadControllerEnabled;
   }
@@ -496,6 +503,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private double retryBudgetPercentage = 0.1d;
 
     private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
+    private boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting = false;
     private boolean storeLoadControllerEnabled = false;
     private int storeLoadControllerWindowSizeInSec = 30;
     private int storeLoadControllerRejectionRatioUpdateIntervalInSec = 3;
@@ -693,6 +701,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting(
+        boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting) {
+      this.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting =
+          enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> setStoreLoadControllerEnabled(boolean storeLoadControllerEnabled) {
       this.storeLoadControllerEnabled = storeLoadControllerEnabled;
       return this;
@@ -795,6 +810,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
           .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
+          .setEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting(
+              enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
           .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)
