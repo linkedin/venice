@@ -7,14 +7,13 @@ import io.tehuti.metrics.MetricsRepository;
 
 
 /**
- * A latency-adaptive helix group routing strategy. Instead of the winner-take-all least-loaded selection, it does a
- * weighted-random draw across groups whose skew adapts to how far apart the groups' measured latencies are: while the
- * groups are close it routes evenly, and as one group's latency pulls ahead it steers share onto the faster groups. The
- * selection math is shared with the router via {@link LatencyAdaptiveGroupSelector}.
+ * Latency-adaptive Helix group routing strategy for the fast client. Instead of winner-take-all least-loaded selection
+ * it does a latency-driven weighted-random draw across groups, sharing the selection math with the router via
+ * {@link LatencyAdaptiveGroupSelector}.
  *
- * <p>Latency is sourced from {@link HelixGroupStats#getGroupResponseWaitingTimeAvg}, populated by
- * {@link HelixGroupRoutingStrategy#trackRequest} (multi-key, non-retry requests). A group with no datapoint yet
- * ({@code latency <= 0}) is treated as neutral so it is neither flooded nor starved before it has been measured.
+ * <p>Latency comes from {@link HelixGroupStats#getGroupResponseWaitingTimeAvg}, populated by
+ * {@link HelixGroupRoutingStrategy#trackRequest} (multi-key, non-retry requests). A group with no datapoint yet is
+ * treated as neutral so it is neither flooded nor starved before it has been measured.
  */
 public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingStrategy {
   private final LatencyAdaptiveGroupSelector selector;
