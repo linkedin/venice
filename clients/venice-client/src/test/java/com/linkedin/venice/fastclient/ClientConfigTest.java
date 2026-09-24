@@ -15,6 +15,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.fastclient.meta.HelixGroupRoutingStrategyType;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -314,6 +315,47 @@ public class ClientConfigTest {
     assertEquals(clonedConfig.getHelixGroupEvenUntilLatencyRatio(), 1.5, 0.0);
     assertEquals(clonedConfig.getHelixGroupFullSkewAtLatencyRatio(), 3.0, 0.0);
     assertEquals(clonedConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
+  }
+
+  @Test
+  public void testHelixGroupRoutingStrategyTypeDefaultsToLeastLoaded() {
+    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().build();
+    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LEAST_LOADED);
+  }
+
+  @Test
+  public void testHelixGroupRoutingStrategyTypeExplicitSetWins() {
+    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs()
+        .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE)
+        .build();
+    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
+  }
+
+  @Test
+  public void testHelixGroupRoutingStrategyTypeEnumOverridesDeprecatedBoolean() {
+    // Enum is set to LATENCY_ADAPTIVE while the legacy least-loaded flag is left at its default (true): enum wins.
+    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs()
+        .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.ROUND_ROBIN)
+        .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(true)
+        .build();
+    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.ROUND_ROBIN);
+  }
+
+  @Test
+  public void testHelixGroupRoutingStrategyTypeFallsBackToDeprecatedBooleanWhenUnset() {
+    // No enum set: disabling the legacy least-loaded flag must resolve to ROUND_ROBIN for back-compat.
+    ClientConfig clientConfig =
+        getClientConfigWithMinimumRequiredInputs().setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(false)
+            .build();
+    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.ROUND_ROBIN);
+  }
+
+  @Test
+  public void testHelixGroupRoutingStrategyTypeClonePreservesIt() {
+    ClientConfig.ClientConfigBuilder builder = getClientConfigWithMinimumRequiredInputs()
+        .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
+    ClientConfig clonedConfig = builder.clone().build();
+    assertEquals(clonedConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
   }
 
   @Test

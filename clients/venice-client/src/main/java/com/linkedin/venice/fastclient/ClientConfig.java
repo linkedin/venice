@@ -8,6 +8,7 @@ import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
+import com.linkedin.venice.fastclient.meta.HelixGroupRoutingStrategyType;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
@@ -101,7 +102,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
   private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
-  private final boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+  private final HelixGroupRoutingStrategyType helixGroupRoutingStrategyType;
   private final double helixGroupEvenUntilLatencyRatio;
   private final double helixGroupFullSkewAtLatencyRatio;
   private final double helixGroupSkewRampExponent;
@@ -224,8 +225,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
     this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
         builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
-    this.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting =
-        builder.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+    if (builder.helixGroupRoutingStrategyType != null) {
+      this.helixGroupRoutingStrategyType = builder.helixGroupRoutingStrategyType;
+    } else {
+      // Back-compat: fall back to the deprecated least-loaded flag (default true => LEAST_LOADED).
+      this.helixGroupRoutingStrategyType = builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting
+          ? HelixGroupRoutingStrategyType.LEAST_LOADED
+          : HelixGroupRoutingStrategyType.ROUND_ROBIN;
+    }
     this.helixGroupEvenUntilLatencyRatio = builder.helixGroupEvenUntilLatencyRatio;
     this.helixGroupFullSkewAtLatencyRatio = builder.helixGroupFullSkewAtLatencyRatio;
     this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
@@ -399,12 +406,17 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return retryBudgetPercentage;
   }
 
+  /**
+   * @deprecated use {@link #getHelixGroupRoutingStrategyType()} instead; retained for back-compat and only consulted
+   *             when the strategy type is left unset.
+   */
+  @Deprecated
   public boolean isEnableLeastLoadedRoutingStrategyForHelixGroupRouting() {
     return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
   }
 
-  public boolean isEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting() {
-    return enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+  public HelixGroupRoutingStrategyType getHelixGroupRoutingStrategyType() {
+    return helixGroupRoutingStrategyType;
   }
 
   public double getHelixGroupEvenUntilLatencyRatio() {
@@ -509,7 +521,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private double retryBudgetPercentage = 0.1d;
 
     private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
-    private boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting = false;
+    private HelixGroupRoutingStrategyType helixGroupRoutingStrategyType = null;
     private double helixGroupEvenUntilLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO;
     private double helixGroupFullSkewAtLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO;
     private double helixGroupSkewRampExponent = LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
@@ -694,16 +706,20 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    /**
+     * @deprecated use {@link #setHelixGroupRoutingStrategyType} instead. When the strategy type is set this flag is
+     *             ignored; it is only consulted for back-compat when the type is left unset.
+     */
+    @Deprecated
     public ClientConfigBuilder<K, V, T> setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
         boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting) {
       this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = enableLeastLoadedRoutingStrategyForHelixGroupRouting;
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting(
-        boolean enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting) {
-      this.enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting =
-          enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting;
+    public ClientConfigBuilder<K, V, T> setHelixGroupRoutingStrategyType(
+        HelixGroupRoutingStrategyType helixGroupRoutingStrategyType) {
+      this.helixGroupRoutingStrategyType = helixGroupRoutingStrategyType;
       return this;
     }
 
@@ -823,8 +839,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
           .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
-          .setEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting(
-              enableLatencyAdaptiveRoutingStrategyForHelixGroupRouting)
+          .setHelixGroupRoutingStrategyType(helixGroupRoutingStrategyType)
           .setHelixGroupEvenUntilLatencyRatio(helixGroupEvenUntilLatencyRatio)
           .setHelixGroupFullSkewAtLatencyRatio(helixGroupFullSkewAtLatencyRatio)
           .setHelixGroupSkewRampExponent(helixGroupSkewRampExponent)

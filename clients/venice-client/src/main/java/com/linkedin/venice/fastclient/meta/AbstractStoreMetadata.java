@@ -49,28 +49,38 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     this.instanceHealthMonitor = clientConfig.getInstanceHealthMonitor();
     this.storeName = clientConfig.getStoreName();
     ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
-    LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, storeName);
+    LOGGER.info(
+        "Chose the following routing strategy: {} (helix group sub-strategy: {}) for store: {}",
+        clientRoutingStrategyType,
+        clientConfig.getHelixGroupRoutingStrategyType(),
+        storeName);
     this.routingStrategy = getRoutingStrategy(clientRoutingStrategyType);
   }
 
   private AbstractClientRoutingStrategy getRoutingStrategy(ClientRoutingStrategyType clientRoutingStrategyType) {
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
-        if (clientConfig.isEnableLatencyAdaptiveRoutingStrategyForHelixGroupRouting()) {
-          return new HelixLatencyAdaptiveGroupRoutingStrategy(
-              instanceHealthMonitor,
-              clientConfig.getMetricsRepository(),
-              getStoreName(),
-              clientConfig.getHelixGroupEvenUntilLatencyRatio(),
-              clientConfig.getHelixGroupFullSkewAtLatencyRatio(),
-              clientConfig.getHelixGroupSkewRampExponent());
-        }
-        return clientConfig.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting()
-            ? new HelixLeastLoadedGroupRoutingStrategy(
+        switch (clientConfig.getHelixGroupRoutingStrategyType()) {
+          case LATENCY_ADAPTIVE:
+            return new HelixLatencyAdaptiveGroupRoutingStrategy(
                 instanceHealthMonitor,
                 clientConfig.getMetricsRepository(),
-                getStoreName())
-            : new HelixGroupRoutingStrategy(instanceHealthMonitor, clientConfig.getMetricsRepository(), getStoreName());
+                getStoreName(),
+                clientConfig.getHelixGroupEvenUntilLatencyRatio(),
+                clientConfig.getHelixGroupFullSkewAtLatencyRatio(),
+                clientConfig.getHelixGroupSkewRampExponent());
+          case LEAST_LOADED:
+            return new HelixLeastLoadedGroupRoutingStrategy(
+                instanceHealthMonitor,
+                clientConfig.getMetricsRepository(),
+                getStoreName());
+          case ROUND_ROBIN:
+          default:
+            return new HelixGroupRoutingStrategy(
+                instanceHealthMonitor,
+                clientConfig.getMetricsRepository(),
+                getStoreName());
+        }
       case LEAST_LOADED:
         return new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
       default:
