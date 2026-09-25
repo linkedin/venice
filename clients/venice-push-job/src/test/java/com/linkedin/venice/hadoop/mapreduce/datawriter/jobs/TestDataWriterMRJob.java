@@ -213,14 +213,15 @@ public class TestDataWriterMRJob {
     setting.pubSubEncryptionKeyUrn = null;
 
     Properties props = new Properties();
-    props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
 
     DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
     dataWriterMRJob.configure(new VeniceProperties(props), setting);
     JobConf jobConf = dataWriterMRJob.getJobConf();
 
-    // The key shares the pubsub.* pass-through prefix, so without an explicit clear it would survive
-    // into the task config and encrypt a store whose metadata says it is unencrypted.
+    // HADOOP_PREFIX is stripped and re-applied to the job conf, so it reaches any key name regardless of
+    // how the key is named. Without an explicit clear the caller's value would reach the reducers and
+    // encrypt a store whose metadata says it is unencrypted.
     assertNull(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN));
   }
 
@@ -230,7 +231,7 @@ public class TestDataWriterMRJob {
     setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
 
     Properties props = new Properties();
-    props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
 
     DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
     dataWriterMRJob.configure(new VeniceProperties(props), setting);

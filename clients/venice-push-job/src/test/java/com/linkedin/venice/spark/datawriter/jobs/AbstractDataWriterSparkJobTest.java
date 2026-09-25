@@ -917,15 +917,16 @@ public class AbstractDataWriterSparkJobTest {
     setting.pubSubEncryptionKeyUrn = null;
 
     Properties properties = new Properties();
-    properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
 
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
-      // The key shares the pubsub.* pass-through prefix, which is applied after the store-derived value is
-      // written, so without an explicit clear the caller's value would reach the tasks and encrypt a store
-      // whose metadata says it is unencrypted.
+      // SPARK_DATA_WRITER_CONF_PREFIX is stripped and re-applied to the RuntimeConfig after the
+      // store-derived value is written, so it reaches any key name regardless of how the key is named.
+      // Without an explicit clear the caller's value would reach the tasks and encrypt a store whose
+      // metadata says it is unencrypted.
       Assert.assertFalse(jobConf.getOption(PUB_SUB_ENCRYPTION_KEY_URN).isDefined());
     }
   }
@@ -939,7 +940,7 @@ public class AbstractDataWriterSparkJobTest {
     setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
 
     Properties properties = new Properties();
-    properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);

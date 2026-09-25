@@ -391,10 +391,10 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         PASS_THROUGH_CONFIG_PREFIXES,
         SPARK_DATA_WRITER_CONF_PREFIX);
 
-    // pubsub.encryption.key.urn is driver-owned and derived from store metadata, but it shares the pubsub.*
-    // pass-through prefix. Set or clear it unconditionally after the pass-through so a caller-supplied value
-    // cannot override the store-derived URN, and so no value survives for an unencrypted store. Clearing also
-    // matters because the SparkSession is reused across jobs and its runtime config is broadcast to tasks.
+    // The encryption key URN is driver-owned and derived from store metadata. Its name is outside every
+    // pass-through prefix, but SPARK_DATA_WRITER_CONF_PREFIX lets a caller write any key name, so set or
+    // clear it unconditionally after the copying above and let store metadata win. Clearing also matters
+    // because the SparkSession is reused across jobs and its runtime config is broadcast to the tasks.
     if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
       jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     } else {
