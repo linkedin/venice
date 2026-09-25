@@ -39,6 +39,7 @@ public class VeniceWriterFactory {
   private final String defaultBrokerAddress;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final Function<String, String> pubSubEncryptionKeyUrnLookup;
+  private final boolean producerEncryptionEnabled;
 
   public VeniceWriterFactory(Properties properties) {
     this(properties, null, null, null);
@@ -63,8 +64,25 @@ public class VeniceWriterFactory {
       MetricsRepository metricsRepository,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       Function<String, String> pubSubEncryptionKeyUrnLookup) {
+    this(
+        properties,
+        producerAdapterFactory,
+        metricsRepository,
+        pubSubPositionTypeRegistry,
+        pubSubEncryptionKeyUrnLookup,
+        true);
+  }
+
+  public VeniceWriterFactory(
+      Properties properties,
+      PubSubProducerAdapterFactory producerAdapterFactory,
+      MetricsRepository metricsRepository,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      Function<String, String> pubSubEncryptionKeyUrnLookup,
+      boolean producerEncryptionEnabled) {
     this.metricsRepository = metricsRepository;
     this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
+    this.producerEncryptionEnabled = producerEncryptionEnabled;
     this.veniceProperties = new VeniceProperties(properties);
     this.defaultBrokerAddress = lookupBrokerAddress(veniceProperties);
     if (metricsRepository != null) {
@@ -124,6 +142,7 @@ public class VeniceWriterFactory {
             .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
             .setPubSubMessageSerializer(options.getPubSubMessageSerializer())
             .setProducerCompressionEnabled(options.isProducerCompressionEnabled())
+            .setProducerEncryptionEnabled(producerEncryptionEnabled)
             .setPubSubPositionTypeRegistry(pubSubPositionTypeRegistry);
 
     Supplier<PubSubProducerAdapter> producerAdapterSupplier =

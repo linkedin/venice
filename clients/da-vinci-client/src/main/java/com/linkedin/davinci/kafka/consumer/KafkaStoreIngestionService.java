@@ -244,6 +244,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ScheduledExecutorService idleStoreIngestionTaskKillerExecutor;
 
   private final VeniceWriterFactory veniceWriterFactory;
+  private final VeniceWriterFactory encryptedVeniceWriterFactory;
   private final MetricsRepository metricsRepository;
 
   private final HeartbeatMonitoringService heartbeatMonitoringService;
@@ -300,7 +301,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         producerAdapterFactory,
         metricsRepository,
         serverConfig.getPubSubPositionTypeRegistry(),
-        pubSubEncryptionKeyUrnLookup);
+        pubSubEncryptionKeyUrnLookup,
+        false);
+    this.encryptedVeniceWriterFactory = new VeniceWriterFactory(
+        veniceWriterProperties,
+        producerAdapterFactory,
+        metricsRepository,
+        serverConfig.getPubSubPositionTypeRegistry(),
+        pubSubEncryptionKeyUrnLookup,
+        true);
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
@@ -511,6 +520,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     DiskUsage diskUsage = new DiskUsage(serverConfig.getDataBasePath(), serverConfig.getDiskFullThreshold());
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader, veniceWriterFactory);
+    VeniceViewWriterFactory encryptedViewWriterFactory =
+        new VeniceViewWriterFactory(veniceConfigLoader, encryptedVeniceWriterFactory);
 
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
@@ -547,6 +558,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setPubSubContext(pubSubContext)
         .setVeniceWriterFactory(veniceWriterFactory)
+        .setEncryptedVeniceWriterFactory(encryptedVeniceWriterFactory)
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setSchemaRepository(schemaRepo)
@@ -564,6 +576,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setMetaStoreWriter(metaStoreWriter)
         .setCompressorFactory(compressorFactory)
         .setVeniceViewWriterFactory(viewWriterFactory)
+        .setEncryptedVeniceViewWriterFactory(encryptedViewWriterFactory)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)

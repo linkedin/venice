@@ -57,6 +57,24 @@ public class VeniceWriterFactoryTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testProducerEncryptionFlag(boolean producerEncryptionEnabled) {
+    PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMock = mock(PubSubProducerAdapterFactory.class);
+    PubSubProducerAdapter producerAdapterMock = mock(PubSubProducerAdapter.class);
+    ArgumentCaptor<PubSubProducerAdapterContext> producerCtxCaptor =
+        ArgumentCaptor.forClass(PubSubProducerAdapterContext.class);
+    when(producerFactoryMock.create(producerCtxCaptor.capture())).thenReturn(producerAdapterMock);
+
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
+    VeniceWriterFactory veniceWriterFactory =
+        new VeniceWriterFactory(properties, producerFactoryMock, null, null, null, producerEncryptionEnabled);
+    try (VeniceWriter ignored = veniceWriterFactory
+        .createVeniceWriter(new VeniceWriterOptions.Builder("store_v1").setPartitionCount(1).build())) {
+      assertEquals(producerCtxCaptor.getValue().isProducerEncryptionEnabled(), producerEncryptionEnabled);
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testVeniceWriterFactoryWithProducerCompressionDisabled(boolean lookupEnabled) {
     PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMock = mock(PubSubProducerAdapterFactory.class);
     PubSubProducerAdapter producerAdapterMock = mock(PubSubProducerAdapter.class);
