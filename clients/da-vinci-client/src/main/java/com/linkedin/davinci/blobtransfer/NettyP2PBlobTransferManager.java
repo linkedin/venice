@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_THREAD_PRIORITY;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
 import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.ALL_HOSTS_FAILED;
 import static com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason.NO_CANDIDATES;
@@ -107,7 +108,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         60L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor", logContext));
+        new DaemonThreadFactory(
+            "Venice-BlobTransfer-Replica-Blob-Fetch-Executor",
+            BLOB_TRANSFER_THREAD_PRIORITY,
+            logContext));
     this.statusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
   }
 
