@@ -186,6 +186,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -2812,6 +2813,14 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException("Source version has chunking enabled while chunking is disabled in store config.");
       }
     }
+
+    if (storeResponse.getStore().isEncryptionEnabled()) {
+      if (StringUtils.isBlank(storeResponse.getStore().getPubSubEncryptionKeyUrn())) {
+        throw new VeniceException(
+            "Store is encryption enabled but the pubSubEncryptionKeyUrn is not set in the store config.");
+      }
+      jobSetting.pubSubEncryptionKeyUrn = storeResponse.getStore().getPubSubEncryptionKeyUrn();
+    }
   }
 
   private Map<String, Integer> getCurrentStoreVersions(StoreResponse storeResponse) {
@@ -3004,7 +3013,13 @@ public class VenicePushJob implements AutoCloseable {
 
   synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(PushJobSetting pushJobSetting) {
     if (veniceWriter == null) {
-      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
+      Properties veniceWriterProperties = getVeniceWriterProperties(pushJobSetting);
+      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(
+          veniceWriterProperties,
+          null,
+          null,
+          null,
+          PubSubEncryptionUtils.getKeyUrnLookup(pushJobSetting.pubSubEncryptionKeyUrn));
       Properties partitionerProperties = new Properties();
       partitionerProperties.putAll(pushJobSetting.partitionerParams);
       VenicePartitioner partitioner = PartitionUtils
