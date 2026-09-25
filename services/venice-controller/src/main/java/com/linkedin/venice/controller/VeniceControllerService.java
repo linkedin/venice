@@ -180,16 +180,14 @@ public class VeniceControllerService extends AbstractVeniceService {
       this.admin = internalAdmin;
       LOGGER.info("Controller works as a child controller.");
     }
-    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader =
-        getProtocolSchemaReader(
-            routerClientConfig,
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName());
+    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = getProtocolSchemaReader(
+        routerClientConfig,
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName());
     getProtocolSchemaReader(
         routerClientConfig,
         AvroProtocolDefinition.PUSH_JOB_DETAILS,
-        VeniceSystemStoreUtils.getPushJobDetailsStoreName())
-        .ifPresent(pushJobDetailsSerializer::setSchemaReader);
+        VeniceSystemStoreUtils.getPushJobDetailsStoreName()).ifPresent(pushJobDetailsSerializer::setSchemaReader);
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
 
@@ -268,8 +266,8 @@ public class VeniceControllerService extends AbstractVeniceService {
       return Optional.empty();
     }
     try {
-      return Optional.of(
-          getSchemaReader(ClientConfig.cloneConfig(routerClientConfig.get()).setStoreName(systemStoreName), null));
+      return Optional
+          .of(getSchemaReader(ClientConfig.cloneConfig(routerClientConfig.get()).setStoreName(systemStoreName), null));
     } catch (Exception e) {
       LOGGER.error("Exception in initializing {} schema reader", protocolDefinition.name(), e);
       return Optional.empty();
