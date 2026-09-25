@@ -16,7 +16,6 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import org.apache.avro.Schema;
@@ -69,7 +68,6 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
             .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(configWithSsl))
             .setConsumerName(consumerName)
-            .setPubSubEncryptionKeyUrnLookup(PubSubEncryptionUtils.getKeyUrnLookup(configWithSsl.toProperties()))
             .build();
     final PubSubConsumerAdapter pubSubConsumer =
         PubSubClientsFactory.createConsumerFactory(configWithSsl).create(consumerContext);

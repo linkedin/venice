@@ -161,7 +161,6 @@ import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
@@ -232,11 +231,7 @@ public class VenicePushJob implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
   // Immutable state
-  /**
-   * Rewritten once, after the store metadata is read, to carry the authoritative encryption key URN.
-   * @see #applyStoreDerivedEncryptionKeyUrn
-   */
-  private VeniceProperties props;
+  private final VeniceProperties props;
   private final String jobId;
 
   /**
@@ -322,7 +317,8 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps, D2Client d2Client) {
     this.jobId = jobId;
     this.externalD2Client = d2Client;
-    this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
+    this.props = withoutCallerSuppliedEncryptionKeyUrn(
+        getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null")));
     String storeName = this.props.getString(VENICE_STORE_NAME_PROP);
     LogContext logContext =
         LogContext.newBuilder().setComponentName("VenicePushJob").setInstanceName(storeName).build();
@@ -824,7 +820,6 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSetting.newKmeSchemasFromController = validateAndFetchNewKafkaMessageEnvelopeSchemas(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
-      props = applyStoreDerivedEncryptionKeyUrn(props, pushJobSetting.pubSubEncryptionKeyUrn);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
 
       if (pushJobSetting.isSourceETL) {
@@ -880,7 +875,8 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          ByteBuffer sourceDict = readSourceDictionary();
+          ByteBuffer sourceDict = DictionaryUtils
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -1700,43 +1696,16 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Makes the job properties the single authority for the encryption key URN, which store metadata owns.
-   *
-   * <p>Any caller-supplied value is dropped first. A caller can reach the key under a prefix as well as
-   * directly, because the data writers strip {@code hadoop-conf.} and {@code spark.data.writer.conf.} before
-   * applying a key, and {@link ConfigKeys#PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY} lets a caller nominate
-   * further prefixes at runtime. Every suffix match is therefore removed, not just the bare key.
-   *
-   * <p>This runs once, as soon as the store metadata has been read and before anything derives a job
-   * configuration, so that every downstream copy is correct by construction: both data-writer drivers, the
-   * Spark input reader options, and the dictionary consumers all build their configuration from these
-   * properties.
+   * Driver properties cannot supply the writer's key URN, including via a prefix that gets stripped when
+   * configuring a task. The drivers obtain the value from store metadata instead.
    */
-  @VisibleForTesting
-  static VeniceProperties applyStoreDerivedEncryptionKeyUrn(VeniceProperties props, String pubSubEncryptionKeyUrn) {
+  private static VeniceProperties withoutCallerSuppliedEncryptionKeyUrn(VeniceProperties props) {
     Properties sanitized = props.toProperties();
     sanitized.keySet().removeIf(key -> {
       String lowerCaseKey = ((String) key).toLowerCase();
       return lowerCaseKey.equals(PUB_SUB_ENCRYPTION_KEY_URN) || lowerCaseKey.endsWith("." + PUB_SUB_ENCRYPTION_KEY_URN);
     });
-    if (pubSubEncryptionKeyUrn != null) {
-      sanitized.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pubSubEncryptionKeyUrn);
-    }
     return new VeniceProperties(sanitized);
-  }
-
-  /**
-   * Reads the compression dictionary off the repush source version, decrypting it when that version is
-   * encrypted. The Start Of Push control message carrying the dictionary is encrypted with the rest of the
-   * topic, so the consumer needs the key lookup just as the data-writer tasks do.
-   */
-  private ByteBuffer readSourceDictionary() {
-    VeniceProperties consumerProperties = getSourceDictionaryConsumerProperties();
-    return DictionaryUtils.readDictionaryFromKafka(
-        pushJobSetting.kafkaInputTopic,
-        consumerProperties,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        PubSubEncryptionUtils.getKeyUrnLookup(consumerProperties.toProperties()));
   }
 
   private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
@@ -1764,7 +1733,8 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          return readSourceDictionary();
+          return DictionaryUtils
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
         }
       }
       LOGGER.info(

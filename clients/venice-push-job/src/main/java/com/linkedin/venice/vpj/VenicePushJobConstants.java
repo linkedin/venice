@@ -177,10 +177,9 @@ public final class VenicePushJobConstants {
    * not copied here by default. That alone is not sufficient, because a caller can still reach any key name
    * through the per-engine override prefix ({@code hadoop-conf.} for MapReduce,
    * {@code spark.data.writer.conf.} for Spark), or by adding a prefix to
-   * {@link com.linkedin.venice.ConfigKeys#PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY}. The job properties are
-   * therefore rewritten once, as soon as the store metadata is read, dropping any caller-supplied value
-   * under any prefix; see {@code VenicePushJob#applyStoreDerivedEncryptionKeyUrn}. Everything downstream
-   * derives its configuration from those properties, so it is correct by construction.
+   * {@link com.linkedin.venice.ConfigKeys#PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY}. Caller-supplied values
+   * are stripped from job properties at construction; each data-writer driver uses the URN from store
+   * metadata when configuring its tasks.
    *
    * <p>Populated only for encryption-enabled stores; otherwise the lookup is {@code null} and writers are
    * created unencrypted.

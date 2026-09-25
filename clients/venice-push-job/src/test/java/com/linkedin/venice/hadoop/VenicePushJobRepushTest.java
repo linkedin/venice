@@ -9,7 +9,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -98,40 +97,6 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     assertEquals(consumerProperties.getString(PUBSUB_SECURITY_PROTOCOL), "SSL");
     assertEquals(consumerProperties.getString("ssl.keystore.location"), "credential-keystore");
     assertEquals(consumerProperties.getString("xc.tls.key.store.type"), "PKCS12");
-  }
-
-  @Test
-  public void testStoreDerivedEncryptionKeyUrnDisplacesCallerSuppliedValuesUnderEveryPrefix() {
-    Properties jobProperties = new Properties();
-    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:bare");
-    jobProperties.setProperty("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:mapReduceOverride");
-    jobProperties.setProperty("spark.data.writer.conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:sparkOverride");
-    jobProperties.setProperty("custom.whitelisted.prefix." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:passThroughList");
-    jobProperties.setProperty("unrelated.config", "keep-me");
-
-    VeniceProperties sanitized =
-        VenicePushJob.applyStoreDerivedEncryptionKeyUrn(new VeniceProperties(jobProperties), "urn:li:storeDerived");
-
-    assertEquals(sanitized.getString(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
-    Assert.assertFalse(sanitized.containsKey("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN));
-    Assert.assertFalse(sanitized.containsKey("spark.data.writer.conf." + PUB_SUB_ENCRYPTION_KEY_URN));
-    Assert.assertFalse(sanitized.containsKey("custom.whitelisted.prefix." + PUB_SUB_ENCRYPTION_KEY_URN));
-    assertEquals(sanitized.getString("unrelated.config"), "keep-me", "Unrelated configs must be preserved");
-  }
-
-  @Test
-  public void testCallerSuppliedEncryptionKeyUrnIsRemovedWhenStoreIsNotEncrypted() {
-    Properties jobProperties = new Properties();
-    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:bare");
-    jobProperties.setProperty("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:mapReduceOverride");
-
-    VeniceProperties sanitized =
-        VenicePushJob.applyStoreDerivedEncryptionKeyUrn(new VeniceProperties(jobProperties), null);
-
-    Assert.assertFalse(
-        sanitized.containsKey(PUB_SUB_ENCRYPTION_KEY_URN),
-        "An unencrypted store must not carry any encryption key URN");
-    Assert.assertFalse(sanitized.containsKey("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN));
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")

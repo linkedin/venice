@@ -56,7 +56,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -1023,11 +1022,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
         if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {
           String topicName = props.getString(TOPIC_PROP);
-          ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(
-              topicName,
-              props,
-              PubSubMessageDeserializer.createDefaultDeserializer(),
-              PubSubEncryptionUtils.getKeyUrnLookup(props.toProperties()));
+          ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topicName, props);
           return compressorFactory.get()
               .createVersionSpecificCompressorIfNotExist(strategy, topicName, ByteUtils.extractByteArray(dict));
         } else {
