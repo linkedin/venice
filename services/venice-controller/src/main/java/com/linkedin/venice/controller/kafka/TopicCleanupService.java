@@ -67,16 +67,13 @@ import org.apache.logging.log4j.Logger;
  *    2.2 Collect all the topics and categorize them based on store names;
  *    2.3 For deprecated real-time topic, will remove it right away;
  *    2.4 For deprecated version topics, will keep pre-configured minimal unused topics to avoid MM crash and remove others;
- *        a version topic is only deleted after it stays deletable for {@link #delayFactor} consecutive scans, and it
- *        stays deletable until its deletion is confirmed or it disappears from the topic listing, so a failed or
- *        skipped deletion attempt is retried on the next scan instead of restarting the delay.
+ *        version topics wait for the configured scan delay and remain eligible until their absence is confirmed.
  */
 public class TopicCleanupService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(TopicCleanupService.class);
   /**
    * Remaining scans before a version topic may be deleted, keyed by PubSub cluster address and then topic name. A
-   * value of 0 means the delay has elapsed; the entry is kept until the topic's deletion is confirmed or the topic is
-   * no longer listed in that cluster.
+   * value of 0 means the delay has elapsed; the entry is kept until the topic is no longer listed in that cluster.
    */
   private static final Map<String, Map<String, Integer>> versionTopicDeletionCountdowns = new HashMap<>();
 
@@ -278,8 +275,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     populateDeprecatedTopicQueue(allTopics, topicManager);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();
-    // Each topic is attempted at most once per pass, so a topic whose deletion keeps failing or being delayed cannot
-    // monopolize the pass across queue refreshes and starve the remaining topics.
+    // Prevent failing or delayed topics from starving other topics across queue refreshes.
     Set<PubSubTopic> attemptedTopics = new HashSet<>();
 
     while (!allTopics.isEmpty()) {
@@ -308,54 +304,25 @@ public class TopicCleanupService extends AbstractVeniceService {
         LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
       }
 
-      if (!topic.isRealTime()) {
-        // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
-        // delete. Some new RT topics might have become eligible for deletion in this period.
-        if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
-          int queuedTopicCount = allTopics.size();
-          allTopics.clear();
-          populateDeprecatedTopicQueue(allTopics, topicManager);
-          allTopics.removeIf(attemptedTopics::contains);
-          LOGGER.info(
-              "Refreshed topic cleanup queue for: {} after {} ms. Queued topics before refresh: {}, after refresh: {}, "
-                  + "already attempted in this pass: {}",
-              topicManager.getPubSubClusterAddress(),
-              System.currentTimeMillis() - refreshTime,
-              queuedTopicCount,
-              allTopics.size(),
-              attemptedTopics.size());
-          if (allTopics.isEmpty()) {
-            break;
-          }
-          refreshTime = System.currentTimeMillis();
+      // Refresh during long version-topic cleanup passes so newly eligible RT topics get priority.
+      if (!topic.isRealTime() && System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
+        allTopics.clear();
+        populateDeprecatedTopicQueue(allTopics, topicManager);
+        allTopics.removeIf(attemptedTopics::contains);
+        if (allTopics.isEmpty()) {
+          break;
         }
+        refreshTime = System.currentTimeMillis();
       }
     }
   }
 
   private void deleteTopic(PubSubTopic topic, TopicManager topicManager) {
-    String pubSubClusterAddress = topicManager.getPubSubClusterAddress();
     try {
       topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
-      // The deletion call returns without deleting when the topic exists but not all of its partitions are online,
-      // so only a confirmed absence counts as a deletion.
-      if (topicManager.containsTopic(topic)) {
-        LOGGER.warn(
-            "Topic: {} still exists in: {} after the deletion attempt, likely because not all of its partitions are "
-                + "online. Will try again in the next cleanup cycle.",
-            topic.getName(),
-            pubSubClusterAddress);
-        topicCleanupServiceStats.recordTopicDeletionError();
-        return;
-      }
-      clearVersionTopicDeletionCountdown(pubSubClusterAddress, topic.getName());
       topicCleanupServiceStats.recordTopicDeleted();
     } catch (VeniceException e) {
-      LOGGER.warn(
-          "Caught exception when trying to delete topic: {} in: {} - {}",
-          topic.getName(),
-          pubSubClusterAddress,
-          e.toString());
+      LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
       topicCleanupServiceStats.recordTopicDeletionError();
       // No op, will try again in the next cleanup cycle.
     }
@@ -364,7 +331,12 @@ public class TopicCleanupService extends AbstractVeniceService {
   private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics, TopicManager topicManager) {
     Map<PubSubTopic, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
     String pubSubClusterAddress = topicManager.getPubSubClusterAddress();
-    pruneVersionTopicDeletionCountdowns(pubSubClusterAddress, topicsWithRetention.keySet());
+    Map<String, Integer> clusterCountdowns = versionTopicDeletionCountdowns.get(pubSubClusterAddress);
+    if (clusterCountdowns != null) {
+      Set<String> listedTopicNames =
+          topicsWithRetention.keySet().stream().map(PubSubTopic::getName).collect(Collectors.toSet());
+      clusterCountdowns.keySet().retainAll(listedTopicNames);
+    }
     Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicsWithRetention);
     allStoreTopics.forEach((storeName, topicRetentions) -> {
       int minNumOfUnusedVersionTopicsOverride = minNumberOfUnusedKafkaTopicsToPreserve;
@@ -516,77 +488,16 @@ public class TopicCleanupService extends AbstractVeniceService {
          */
         .filter(t -> admin.isParent() || !admin.isResourceStillAlive(t.getName()))
         .filter(t -> {
-          if (Version.isRealTimeTopic(t.getName())) {
+          if (Version.isRealTimeTopic(t.getName()) || delayFactor <= 0) {
             return true;
           }
-          // delay VT topic deletion as there could be a race condition where the resource is already deleted by venice
-          // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang
-          // in kafka.
-          return isVersionTopicDeletionDelayElapsed(pubSubClusterAddress, t.getName(), delayFactor);
+          // Wait for buffered producer messages after resource removal, then stay eligible until the topic is absent.
+          Map<String, Integer> clusterCountdowns =
+              versionTopicDeletionCountdowns.computeIfAbsent(pubSubClusterAddress, k -> new HashMap<>());
+          return clusterCountdowns
+              .merge(t.getName(), delayFactor, (remaining, initial) -> Math.max(0, remaining - 1)) == 0;
         })
         .collect(Collectors.toList());
-  }
-
-  /**
-   * Counts down one scan for the given version topic and returns whether its deletion delay has elapsed. Once elapsed,
-   * the topic stays eligible on every later scan until {@link #clearVersionTopicDeletionCountdown} is called after a
-   * confirmed deletion or {@link #pruneVersionTopicDeletionCountdowns} finds the topic no longer listed, so a deletion
-   * attempt that fails, is skipped, or is dropped from the queue does not restart the delay.
-   */
-  private static boolean isVersionTopicDeletionDelayElapsed(
-      String pubSubClusterAddress,
-      String topicName,
-      int delayFactor) {
-    if (delayFactor <= 0) {
-      return true;
-    }
-    Map<String, Integer> clusterCountdowns =
-        versionTopicDeletionCountdowns.computeIfAbsent(pubSubClusterAddress, k -> new HashMap<>());
-    Integer previousRemaining = clusterCountdowns.get(topicName);
-    int remaining = previousRemaining == null ? delayFactor : Math.max(0, previousRemaining - 1);
-    clusterCountdowns.put(topicName, remaining);
-    if (remaining > 0) {
-      return false;
-    }
-    if (previousRemaining == 0) {
-      LOGGER.info(
-          "Version topic: {} in: {} is still present after passing its deletion delay. Retrying its deletion.",
-          topicName,
-          pubSubClusterAddress);
-    } else {
-      LOGGER.info(
-          "Version topic: {} in: {} passed its deletion delay of {} scans and is eligible for deletion.",
-          topicName,
-          pubSubClusterAddress,
-          delayFactor);
-    }
-    return true;
-  }
-
-  private static void clearVersionTopicDeletionCountdown(String pubSubClusterAddress, String topicName) {
-    Map<String, Integer> clusterCountdowns = versionTopicDeletionCountdowns.get(pubSubClusterAddress);
-    if (clusterCountdowns != null) {
-      clusterCountdowns.remove(topicName);
-    }
-  }
-
-  /**
-   * Drops countdowns of topics that are no longer listed in the given PubSub cluster, since their absence confirms
-   * they are deleted.
-   */
-  private static void pruneVersionTopicDeletionCountdowns(String pubSubClusterAddress, Set<PubSubTopic> listedTopics) {
-    Map<String, Integer> clusterCountdowns = versionTopicDeletionCountdowns.get(pubSubClusterAddress);
-    if (clusterCountdowns == null) {
-      return;
-    }
-    Set<String> listedTopicNames = listedTopics.stream().map(PubSubTopic::getName).collect(Collectors.toSet());
-    clusterCountdowns.keySet().retainAll(listedTopicNames);
-  }
-
-  /** Package-private for tests. */
-  static Integer getVersionTopicDeletionCountdown(String pubSubClusterAddress, String topicName) {
-    Map<String, Integer> clusterCountdowns = versionTopicDeletionCountdowns.get(pubSubClusterAddress);
-    return clusterCountdowns == null ? null : clusterCountdowns.get(topicName);
   }
 
   /** Package-private for tests. */

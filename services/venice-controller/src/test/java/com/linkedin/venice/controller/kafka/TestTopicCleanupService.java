@@ -6,6 +6,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -18,7 +19,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
@@ -639,9 +639,7 @@ public class TestTopicCleanupService {
   }
 
   private void mockTruncationByRetention() {
-    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
-    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
   }
 
@@ -651,7 +649,9 @@ public class TestTopicCleanupService {
     String storeName = Utils.getUniqueString("deleted_store");
     PubSubTopic versionTopic = getPubSubTopic(storeName, "_v9");
     doThrow(new VeniceNoStoreException(storeName)).when(admin).discoverCluster(storeName);
-    doReturn(Collections.singletonMap(versionTopic, 1000L)).when(topicManager).getAllTopicRetentions();
+    Map<PubSubTopic, Long> topicRetentions = new HashMap<>();
+    topicRetentions.put(versionTopic, 1000L);
+    doReturn(topicRetentions).when(topicManager).getAllTopicRetentions();
     mockTruncationByRetention();
     TopicCleanupService service = createTopicCleanupServiceWithDelayFactor(2);
 
@@ -659,59 +659,69 @@ public class TestTopicCleanupService {
     service.cleanupVeniceTopics();
     service.cleanupVeniceTopics();
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
-    assertEquals(TopicCleanupService.getVersionTopicDeletionCountdown("local", versionTopic.getName()), (Integer) 1);
 
     // Scan 3 passes the delay, but the deletion fails.
     doThrow(new VeniceException("delete failed")).when(topicManager)
         .ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
     service.cleanupVeniceTopics();
-    verify(topicManager, times(1)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
-    verify(topicCleanupServiceStats, times(1)).recordTopicDeletionError();
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    verify(topicCleanupServiceStats).recordTopicDeletionError();
 
-    // Scan 4 skips the deletion because not all partitions are online, so the topic is still present afterward.
+    // Scan 4 models the deletion precheck silently returning while the topic stays listed.
     doNothing().when(topicManager).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
-    doReturn(true).when(topicManager).containsTopic(versionTopic);
     service.cleanupVeniceTopics();
     verify(topicManager, times(2)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
-    verify(topicCleanupServiceStats, times(2)).recordTopicDeletionError();
-    verify(topicCleanupServiceStats, never()).recordTopicDeleted();
-    assertEquals(TopicCleanupService.getVersionTopicDeletionCountdown("local", versionTopic.getName()), (Integer) 0);
 
-    // Scan 5 retries immediately instead of waiting for the full delay again, and the deletion is confirmed.
-    doReturn(false).when(topicManager).containsTopic(versionTopic);
+    // Scan 5 retries immediately; successful deletion removes the topic from subsequent listings.
+    doAnswer(invocation -> {
+      topicRetentions.remove(versionTopic);
+      return null;
+    }).when(topicManager).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    service.cleanupVeniceTopics();
     service.cleanupVeniceTopics();
     verify(topicManager, times(3)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
-    verify(topicCleanupServiceStats, times(1)).recordTopicDeleted();
-    assertNull(TopicCleanupService.getVersionTopicDeletionCountdown("local", versionTopic.getName()));
+
+    // A same-name topic created after observed absence must wait the full delay again.
+    topicRetentions.put(versionTopic, 1000L);
+    service.cleanupVeniceTopics();
+    service.cleanupVeniceTopics();
+    verify(topicManager, times(3)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    service.cleanupVeniceTopics();
+    verify(topicManager, times(4)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
   }
 
   @Test
   public void testVersionTopicCountdownIsPrunedOnceTopicIsNoLongerListed() {
     String storeName = Utils.getUniqueString("deleted_store");
     PubSubTopic versionTopic = getPubSubTopic(storeName, "_v1");
-    doReturn("cluster0").when(admin).discoverCluster(storeName);
-    when(topicManager.getAllTopicRetentions()).thenReturn(Collections.singletonMap(versionTopic, 1000L))
-        .thenReturn(Collections.emptyMap());
+    Map<PubSubTopic, Long> topicRetentions = Collections.singletonMap(versionTopic, 1000L);
+    when(topicManager.getAllTopicRetentions()).thenReturn(topicRetentions)
+        .thenReturn(Collections.emptyMap())
+        .thenReturn(topicRetentions);
     mockTruncationByRetention();
     TopicCleanupService service = createTopicCleanupServiceWithDelayFactor(5);
 
     service.cleanupVeniceTopics();
-    assertEquals(TopicCleanupService.getVersionTopicDeletionCountdown("local", versionTopic.getName()), (Integer) 5);
 
     // The topic disappears from the listing before its delay elapses, e.g. it is deleted through another path.
     service.cleanupVeniceTopics();
-    assertNull(TopicCleanupService.getVersionTopicDeletionCountdown("local", versionTopic.getName()));
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+
+    for (int scan = 0; scan < 5; scan++) {
+      service.cleanupVeniceTopics();
+      verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    }
+    service.cleanupVeniceTopics();
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
   }
 
-  @Test
+  @Test(timeOut = 10_000)
   public void testQueueRefreshKeepsEligibleVersionTopicsAndAttemptsEachTopicOncePerPass() {
     String clusterName = "cluster0";
     String storeName = Utils.getUniqueString("deleted_store");
     PubSubTopic realTimeTopic = getPubSubTopic(storeName, "_rt");
-    PubSubTopic stuckVersionTopic = getPubSubTopic(storeName, "_v1");
     List<PubSubTopic> versionTopics = Arrays.asList(
-        stuckVersionTopic,
+        getPubSubTopic(storeName, "_v1"),
         getPubSubTopic(storeName, "_v2"),
         getPubSubTopic(storeName, "_v3"),
         getPubSubTopic(storeName, "_v4"));
@@ -722,10 +732,9 @@ public class TestTopicCleanupService {
     doReturn(clusterName).when(admin).discoverCluster(storeName);
     doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(clusterName, realTimeTopic.getName());
     mockTruncationByRetention();
-    // The RT deletion keeps failing and one VT deletion is silently skipped, so both stay listed.
+    // The RT deletion fails and the VT deletions silently return; every topic stays listed.
     doThrow(new VeniceException("delete failed")).when(topicManager)
         .ensureTopicIsDeletedAndBlockWithRetry(realTimeTopic);
-    doReturn(true).when(topicManager).containsTopic(stuckVersionTopic);
 
     TopicCleanupService service = createTopicCleanupServiceWithDelayFactor(1);
     // Refresh the queue after every VT deletion to simulate a cleanup pass that takes longer than the refresh cycle.
@@ -733,7 +742,7 @@ public class TestTopicCleanupService {
 
     // Scan 1 only counts down the VT deletion delay; the RT topic is not delayed.
     service.cleanupVeniceTopics();
-    verify(topicManager, times(1)).ensureTopicIsDeletedAndBlockWithRetry(realTimeTopic);
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry(realTimeTopic);
     for (PubSubTopic versionTopic: versionTopics) {
       verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
     }
@@ -743,15 +752,54 @@ public class TestTopicCleanupService {
     service.cleanupVeniceTopics();
     verify(topicManager, times(2)).ensureTopicIsDeletedAndBlockWithRetry(realTimeTopic);
     for (PubSubTopic versionTopic: versionTopics) {
-      verify(topicManager, times(1)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+      verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
     }
-    assertEquals(
-        TopicCleanupService.getVersionTopicDeletionCountdown("local", stuckVersionTopic.getName()),
-        (Integer) 0);
-
-    // Scan 3 retries the still-listed VT right away.
+    // Scan 3 retries all still-listed topics right away.
     service.cleanupVeniceTopics();
-    verify(topicManager, times(2)).ensureTopicIsDeletedAndBlockWithRetry(stuckVersionTopic);
+    verify(topicManager, times(3)).ensureTopicIsDeletedAndBlockWithRetry(realTimeTopic);
+    for (PubSubTopic versionTopic: versionTopics) {
+      verify(topicManager, times(2)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    }
+  }
+
+  @Test
+  public void testVersionTopicCountdownAndPruningAreIsolatedPerBroker() {
+    String storeName = Utils.getUniqueString("deleted_store");
+    PubSubTopic versionTopic = getPubSubTopic(storeName, "_v1");
+    Map<PubSubTopic, Long> topicRetentions = Collections.singletonMap(versionTopic, 1000L);
+    doReturn(topicRetentions).when(topicManager).getAllTopicRetentions();
+    doReturn(topicRetentions).when(remoteTopicManager).getAllTopicRetentions();
+    doReturn("remote").when(remoteTopicManager).getPubSubClusterAddress();
+    mockTruncationByRetention();
+    TopicCleanupService service = createTopicCleanupServiceWithDelayFactor(2);
+
+    service.cleanupVeniceTopics(topicManager);
+    // A zero-delay query must not advance or reset the cleaner's countdown.
+    assertEquals(
+        TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 1, 0, "local"),
+        Collections.singletonList(versionTopic));
+    service.cleanupVeniceTopics(topicManager);
+    service.cleanupVeniceTopics(remoteTopicManager);
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    verify(remoteTopicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    service.cleanupVeniceTopics(topicManager);
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+
+    // Absence in the remote broker must not reset the local broker's elapsed countdown.
+    doReturn(Collections.emptyMap()).when(remoteTopicManager).getAllTopicRetentions();
+    service.cleanupVeniceTopics(remoteTopicManager);
+    service.cleanupVeniceTopics(topicManager);
+    verify(topicManager, times(2)).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+
+    // Absence in the local broker must not reset the remote broker's in-progress countdown.
+    doReturn(topicRetentions).when(remoteTopicManager).getAllTopicRetentions();
+    service.cleanupVeniceTopics(remoteTopicManager);
+    doReturn(Collections.emptyMap()).when(topicManager).getAllTopicRetentions();
+    service.cleanupVeniceTopics(topicManager);
+    service.cleanupVeniceTopics(remoteTopicManager);
+    verify(remoteTopicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+    service.cleanupVeniceTopics(remoteTopicManager);
+    verify(remoteTopicManager).ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
   }
 
   @Test
