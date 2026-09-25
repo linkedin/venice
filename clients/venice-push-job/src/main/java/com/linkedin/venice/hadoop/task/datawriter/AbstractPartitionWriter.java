@@ -78,6 +78,7 @@ import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.vpj.ExternalStorageWriteUtils;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
@@ -1005,7 +1006,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         writerProps
             .put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
       }
-      return new VeniceWriterFactory(writerProps);
+      return new VeniceWriterFactory(writerProps, null, null, null, PubSubEncryptionUtils.getKeyUrnLookup(writerProps));
     });
 
     compressor = Lazy.of(() -> {

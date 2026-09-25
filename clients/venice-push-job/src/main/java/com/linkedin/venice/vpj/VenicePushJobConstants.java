@@ -160,6 +160,10 @@ public final class VenicePushJobConstants {
    * @see #VENICE_PUSH_DESTINATION_PUBSUB_BROKER the "output/destination" broker for writing new version data
    */
   public static final String VENICE_REPUSH_SOURCE_PUBSUB_BROKER = "venice.repush.source.pubsub.broker";
+
+  /** Carries the store-derived key URN from the driver to its writer tasks. */
+  public static final String PUB_SUB_ENCRYPTION_KEY_URN = PUBSUB_CLIENT_CONFIG_PREFIX + "encryption.key.urn";
+
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
 

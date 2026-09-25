@@ -17,6 +17,7 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.IntegerType;
@@ -906,4 +907,42 @@ public class AbstractDataWriterSparkJobTest {
 
     abstract long resolve(QuotaTestingDataWriterSparkJob job);
   }
+
+  @Test
+  public void testWriterTaskEncryptionKeyUrnOverridesLateCallerValue() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    VeniceProperties jobProperties = new VeniceProperties(properties);
+
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(jobProperties, setting);
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:callerSupplied");
+      dataWriterSparkJob.setInputConf(
+          dataWriterSparkJob.getSparkSession(),
+          dataWriterSparkJob.getSparkSession().read(),
+          PUB_SUB_ENCRYPTION_KEY_URN,
+          "urn:li:lateCaller");
+      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:lateCaller");
+      Assert.assertEquals(
+          dataWriterSparkJob.getWriterTaskProperties().getProperty(PUB_SUB_ENCRYPTION_KEY_URN),
+          "urn:li:storeDerived");
+
+      setting.pubSubEncryptionKeyUrn = null;
+      dataWriterSparkJob.configure(jobProperties, setting);
+      dataWriterSparkJob.setInputConf(
+          dataWriterSparkJob.getSparkSession(),
+          dataWriterSparkJob.getSparkSession().read(),
+          PUB_SUB_ENCRYPTION_KEY_URN,
+          "urn:li:lateCaller");
+      Assert.assertNull(dataWriterSparkJob.getWriterTaskProperties().getProperty(PUB_SUB_ENCRYPTION_KEY_URN));
+    }
+  }
+
 }
