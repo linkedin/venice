@@ -193,7 +193,6 @@ public class TestDataWriterMRJob {
     return setting;
   }
 
-  /** A setting complete enough for the full {@link DataWriterMRJob#configure} path, not just one setup step. */
   private PushJobSetting fullyConfigurablePushJobSetting() {
     PushJobSetting setting = avroProjectionPushJobSetting();
     setting.vpjEntryClass = VenicePushJob.class;
@@ -208,35 +207,20 @@ public class TestDataWriterMRJob {
   }
 
   @Test
-  public void testCallerSuppliedEncryptionKeyUrnIsClearedForUnencryptedStore() {
-    PushJobSetting setting = fullyConfigurablePushJobSetting();
-    setting.pubSubEncryptionKeyUrn = null;
-
-    Properties props = new Properties();
-    props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
-
-    DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
-    dataWriterMRJob.configure(new VeniceProperties(props), setting);
-    JobConf jobConf = dataWriterMRJob.getJobConf();
-
-    // HADOOP_PREFIX is stripped and re-applied to the job conf, so it reaches any key name regardless of
-    // how the key is named. Without an explicit clear the caller's value would reach the reducers and
-    // encrypt a store whose metadata says it is unencrypted.
-    assertNull(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN));
-  }
-
-  @Test
-  public void testStoreDerivedEncryptionKeyUrnOverridesCallerSuppliedValue() {
+  public void testStoreDerivedEncryptionKeyUrnOverridesAndClearsCallerValue() {
     PushJobSetting setting = fullyConfigurablePushJobSetting();
     setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
 
     Properties props = new Properties();
     props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    VeniceProperties jobProperties = new VeniceProperties(props);
 
     DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
-    dataWriterMRJob.configure(new VeniceProperties(props), setting);
-    JobConf jobConf = dataWriterMRJob.getJobConf();
+    dataWriterMRJob.configure(jobProperties, setting);
+    Assert.assertEquals(dataWriterMRJob.getJobConf().get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
 
-    Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
+    setting.pubSubEncryptionKeyUrn = null;
+    dataWriterMRJob.configure(jobProperties, setting);
+    assertNull(dataWriterMRJob.getJobConf().get(PUB_SUB_ENCRYPTION_KEY_URN));
   }
 }

@@ -230,10 +230,6 @@ public class PushJobSetting implements Serializable {
 
   public String materializedViewConfigFlatMap;
 
-  /**
-   * The store's encryption-key URN, read from store metadata during validation. {@code null} when the store
-   * does not have encryption enabled.
-   */
   public String pubSubEncryptionKeyUrn;
 
   public boolean isBatchWriteOptimizationForHybridStoreEnabled;

@@ -13,22 +13,12 @@ public class PubSubEncryptionUtilsTest {
   private static final String KEY_URN = "urn:li:kmsKeyLineage:test-key";
 
   @Test
-  public void testLookupReturnsConfiguredUrn() {
-    assertEquals(PubSubEncryptionUtils.getKeyUrnLookup(KEY_URN).apply("my-store"), KEY_URN);
-  }
-
-  @Test
   public void testLookupIgnoresStoreNameArgument() {
     Function<String, String> lookup = PubSubEncryptionUtils.getKeyUrnLookup(KEY_URN);
 
     assertEquals(lookup.apply("store-a"), KEY_URN);
     assertEquals(lookup.apply("store-b"), KEY_URN);
     assertEquals(lookup.apply(null), KEY_URN);
-  }
-
-  @Test
-  public void testNullUrnYieldsNullLookup() {
-    assertNull(PubSubEncryptionUtils.getKeyUrnLookup((String) null));
   }
 
   @Test

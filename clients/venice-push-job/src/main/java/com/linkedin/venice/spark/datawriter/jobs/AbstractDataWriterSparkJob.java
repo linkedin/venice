@@ -391,9 +391,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         PASS_THROUGH_CONFIG_PREFIXES,
         SPARK_DATA_WRITER_CONF_PREFIX);
 
-    // The key is not copied above, being outside every pass-through prefix, so store metadata delivers it
-    // here. It is cleared when the store is not encryption enabled because the SparkSession is obtained with
-    // getOrCreate() and its runtime config can outlive a single push job.
+    // SparkSession may be reused, so clear any prior or pass-through URN for unencrypted stores.
     if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
       jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     } else {

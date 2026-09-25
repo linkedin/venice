@@ -349,8 +349,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
-    // The key is not copied by setupDefaultJobConf, being outside every pass-through prefix, so store
-    // metadata delivers it here.
     if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
       jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     } else {

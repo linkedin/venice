@@ -1695,10 +1695,7 @@ public class VenicePushJob implements AutoCloseable {
     return new VeniceProperties(consumerProperties);
   }
 
-  /**
-   * Driver properties cannot supply the writer's key URN, including via a prefix that gets stripped when
-   * configuring a task. The drivers obtain the value from store metadata instead.
-   */
+  /** Drop prefixed variants before pass-through configuration can copy them to writer tasks. */
   private static VeniceProperties withoutCallerSuppliedEncryptionKeyUrn(VeniceProperties props) {
     Properties sanitized = props.toProperties();
     sanitized.keySet().removeIf(key -> {

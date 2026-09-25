@@ -909,30 +909,7 @@ public class AbstractDataWriterSparkJobTest {
   }
 
   @Test
-  public void testCallerSuppliedEncryptionKeyUrnIsClearedForUnencryptedStore() throws IOException {
-    File inputDir = TestWriteUtils.getTempDataDirectory();
-    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
-
-    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
-    setting.pubSubEncryptionKeyUrn = null;
-
-    Properties properties = new Properties();
-    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
-
-    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
-      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
-
-      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
-      // SPARK_DATA_WRITER_CONF_PREFIX is stripped and re-applied to the RuntimeConfig after the
-      // store-derived value is written, so it reaches any key name regardless of how the key is named.
-      // Without an explicit clear the caller's value would reach the tasks and encrypt a store whose
-      // metadata says it is unencrypted.
-      Assert.assertFalse(jobConf.getOption(PUB_SUB_ENCRYPTION_KEY_URN).isDefined());
-    }
-  }
-
-  @Test
-  public void testStoreDerivedEncryptionKeyUrnOverridesCallerSuppliedValue() throws IOException {
+  public void testStoreDerivedEncryptionKeyUrnOverridesAndClearsCallerValue() throws IOException {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
@@ -941,12 +918,16 @@ public class AbstractDataWriterSparkJobTest {
 
     Properties properties = new Properties();
     properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    VeniceProperties jobProperties = new VeniceProperties(properties);
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
-      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
-
+      dataWriterSparkJob.configure(jobProperties, setting);
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
       Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
+
+      setting.pubSubEncryptionKeyUrn = null;
+      dataWriterSparkJob.configure(jobProperties, setting);
+      Assert.assertFalse(dataWriterSparkJob.getSparkSession().conf().getOption(PUB_SUB_ENCRYPTION_KEY_URN).isDefined());
     }
   }
 

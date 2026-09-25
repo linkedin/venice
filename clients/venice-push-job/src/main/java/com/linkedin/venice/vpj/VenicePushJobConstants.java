@@ -161,30 +161,8 @@ public final class VenicePushJobConstants {
    */
   public static final String VENICE_REPUSH_SOURCE_PUBSUB_BROKER = "venice.repush.source.pubsub.broker";
 
-  /**
-   * The encryption-key URN used to encrypt every topic this push job writes. The driver reads it from the
-   * store's own metadata, so it is authoritative and cannot be supplied or overridden through job
-   * properties. A push job writes a single store, so this one URN covers the version topic and any view
-   * topics derived from it, all of which resolve back to the same store name.
-   *
-   * <p>The driver threads it through the job configuration under this key because the data-writer tasks run
-   * in separate processes with no controller access: only serializable configuration crosses that boundary.
-   * Each side rebuilds the {@code Function<String, String>} that {@code VeniceWriterFactory} expects via
-   * {@link PubSubEncryptionUtils}.
-   *
-   * <p>The name deliberately sits outside every prefix in
-   * {@link com.linkedin.venice.jobs.DataWriterComputeJob#PASS_THROUGH_CONFIG_PREFIXES}, so job properties are
-   * not copied here by default. That alone is not sufficient, because a caller can still reach any key name
-   * through the per-engine override prefix ({@code hadoop-conf.} for MapReduce,
-   * {@code spark.data.writer.conf.} for Spark), or by adding a prefix to
-   * {@link com.linkedin.venice.ConfigKeys#PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY}. Caller-supplied values
-   * are stripped from job properties at construction; each data-writer driver uses the URN from store
-   * metadata when configuring its tasks.
-   *
-   * <p>Populated only for encryption-enabled stores; otherwise the lookup is {@code null} and writers are
-   * created unencrypted.
-   */
-  public static final String PUB_SUB_ENCRYPTION_KEY_URN = "venice.push.job.encryption.key.urn";
+  /** Carries the store-derived key URN from the driver to its writer tasks. */
+  public static final String PUB_SUB_ENCRYPTION_KEY_URN = PUBSUB_CLIENT_CONFIG_PREFIX + "encryption.key.urn";
 
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
