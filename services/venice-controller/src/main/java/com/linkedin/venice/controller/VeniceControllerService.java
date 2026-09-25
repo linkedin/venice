@@ -34,6 +34,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -185,8 +186,10 @@ public class VeniceControllerService extends AbstractVeniceService {
         routerClientConfig,
         AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
         AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName());
+    Optional<ClientConfig> pushJobDetailsClientConfig = routerClientConfig
+        .map(clientConfig -> ClientConfig.cloneConfig(clientConfig).setSchemaRefreshPeriod(Duration.ZERO));
     getProtocolSchemaReader(
-        routerClientConfig,
+        pushJobDetailsClientConfig,
         AvroProtocolDefinition.PUSH_JOB_DETAILS,
         VeniceSystemStoreUtils.getPushJobDetailsStoreName()).ifPresent(
             schemaReader -> pushJobDetailsSerializer
