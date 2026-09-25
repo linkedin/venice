@@ -8,6 +8,8 @@ import static com.linkedin.venice.status.PushJobDetailsStatus.isSucceeded;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.dimensions.VeniceDimensionTestFixture;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.Map;
@@ -34,6 +36,27 @@ public class TestPushJobDetailsStatus extends VeniceEnumValueTest<PushJobDetails
         .put(9, PushJobDetailsStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
         .put(10, PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)
         .build();
+  }
+
+  @Test
+  public void testDimensionInterface() {
+    Map<PushJobDetailsStatus, String> expectedValues = CollectionUtils.<PushJobDetailsStatus, String>mapBuilder()
+        .put(PushJobDetailsStatus.STARTED, "started")
+        .put(PushJobDetailsStatus.COMPLETED, "completed")
+        .put(PushJobDetailsStatus.ERROR, "error")
+        .put(PushJobDetailsStatus.NOT_CREATED, "not_created")
+        .put(PushJobDetailsStatus.UNKNOWN, "unknown")
+        .put(PushJobDetailsStatus.TOPIC_CREATED, "topic_created")
+        .put(PushJobDetailsStatus.DATA_WRITER_COMPLETED, "data_writer_completed")
+        .put(PushJobDetailsStatus.KILLED, "killed")
+        .put(PushJobDetailsStatus.END_OF_PUSH_RECEIVED, "end_of_push_received")
+        .put(PushJobDetailsStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, "start_of_incremental_push_received")
+        .put(PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, "end_of_incremental_push_received")
+        .build();
+    new VeniceDimensionTestFixture<>(
+        PushJobDetailsStatus.class,
+        VeniceMetricsDimensions.VENICE_PUSH_JOB_EXECUTION_STATE,
+        expectedValues).assertAll();
   }
 
   @Test

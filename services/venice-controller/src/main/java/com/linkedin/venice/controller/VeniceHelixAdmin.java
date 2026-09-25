@@ -226,6 +226,7 @@ import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
+import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -473,6 +474,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
 
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private final long pushJobSlaMs;
   private final LogContext logContext;
 
   private final Optional<AuthorizerService> authorizerService;
@@ -889,6 +891,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
     pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
+    pushJobSlaMs = commonConfig.getPushJobSlaMs();
     this.externalETLService = externalETLService;
     this.pushJobDetailsManager = new PushJobDetailsManager(
         this,
@@ -1640,6 +1643,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushJobStatusRecordKey pushJobDetailsKey,
       PushJobDetails pushJobDetailsValue,
       Set<PushJobCheckpoints> pushJobUserErrorCheckpoints,
+      long pushJobSlaMs,
       Cache<String, Boolean> dataWriterSinkWriteTimeEmittedPushIds) {
     List<PushJobDetailsStatusTuple> overallStatuses = pushJobDetailsValue.getOverallStatus();
     if (overallStatuses.isEmpty()) {
@@ -1659,6 +1663,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         StringBuilder logMessage = new StringBuilder();
         CharSequence storeName = pushJobDetailsKey.getStoreName();
+        long jobDurationInMs = pushJobDetailsValue.getJobDurationInMs();
+        VenicePushJobDurationBucket durationBucket = jobDurationInMs < pushJobSlaMs
+            ? VenicePushJobDurationBucket.UNDER_SLA
+            : VenicePushJobDurationBucket.AT_OR_OVER_SLA;
         logMessage.append("Push job status for store name: ")
             .append(storeName)
             .append(", version: ")
@@ -1670,25 +1678,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (isPushJobFailedDueToUserError(overallStatus, pushJobDetailsValue, pushJobUserErrorCheckpoints)) {
             logMessage.append(" due to user error");
             if (isIncrementalPush) {
-              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor(storeName.toString());
+              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor(
+                  storeName.toString(),
+                  overallStatus,
+                  durationBucket);
             } else {
-              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor(storeName.toString());
+              pushJobStatusStats
+                  .recordBatchPushFailureDueToUserErrorSensor(storeName.toString(), overallStatus, durationBucket);
             }
           } else {
             logMessage.append(" due to non-user error");
             if (isIncrementalPush) {
-              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor(storeName.toString());
+              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor(
+                  storeName.toString(),
+                  overallStatus,
+                  durationBucket);
             } else {
-              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor(storeName.toString());
+              pushJobStatusStats
+                  .recordBatchPushFailureNotDueToUserErrorSensor(storeName.toString(), overallStatus, durationBucket);
             }
           }
         } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
           logMessage.append(" succeeded with status: ").append(overallStatus);
           // Emit metrics for successful push jobs
           if (isIncrementalPush) {
-            pushJobStatusStats.recordIncrementalPushSuccessSensor(storeName.toString());
+            pushJobStatusStats.recordIncrementalPushSuccessSensor(storeName.toString(), overallStatus, durationBucket);
           } else {
-            pushJobStatusStats.recordBatchPushSuccessSensor(storeName.toString());
+            pushJobStatusStats.recordBatchPushSuccessSensor(storeName.toString(), overallStatus, durationBucket);
           }
 
           // Scheduled log compaction metric
@@ -1706,7 +1722,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               dataWriterSinkWriteTimeEmittedPushIds);
         }
         // Append job duration in minutes to log message
-        double jobDurationInMinutes = pushJobDetailsValue.getJobDurationInMs() / 60000.0;
+        double jobDurationInMinutes = jobDurationInMs / 60000.0;
         logMessage.append(", duration: ").append(String.format("%.1f mins", jobDurationInMinutes));
         LOGGER.info(
             "{}. Incremental push: {}, push job id: {}, checkpoint: {}",
@@ -1835,6 +1851,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         key,
         value,
         pushJobUserErrorCheckpoints,
+        pushJobSlaMs,
         dataWriterSinkWriteTimeEmittedPushIds);
     pushJobDetailsManager.writeToLocalRTTopic(key, value);
   }
