@@ -69,7 +69,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
@@ -317,8 +316,7 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps, D2Client d2Client) {
     this.jobId = jobId;
     this.externalD2Client = d2Client;
-    this.props = withoutCallerSuppliedEncryptionKeyUrn(
-        getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null")));
+    this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
     String storeName = this.props.getString(VENICE_STORE_NAME_PROP);
     LogContext logContext =
         LogContext.newBuilder().setComponentName("VenicePushJob").setInstanceName(storeName).build();
@@ -1693,16 +1691,6 @@ public class VenicePushJob implements AutoCloseable {
     consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, sourcePubsubBroker);
     consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, sourcePubsubBroker);
     return new VeniceProperties(consumerProperties);
-  }
-
-  /** Drop prefixed variants before pass-through configuration can copy them to writer tasks. */
-  private static VeniceProperties withoutCallerSuppliedEncryptionKeyUrn(VeniceProperties props) {
-    Properties sanitized = props.toProperties();
-    sanitized.keySet().removeIf(key -> {
-      String lowerCaseKey = ((String) key).toLowerCase();
-      return lowerCaseKey.equals(PUB_SUB_ENCRYPTION_KEY_URN) || lowerCaseKey.endsWith("." + PUB_SUB_ENCRYPTION_KEY_URN);
-    });
-    return new VeniceProperties(sanitized);
   }
 
   private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {

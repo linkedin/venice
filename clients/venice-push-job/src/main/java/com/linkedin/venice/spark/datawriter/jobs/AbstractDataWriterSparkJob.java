@@ -399,6 +399,18 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     }
   }
 
+  Properties getWriterTaskProperties() {
+    Properties jobProps = new Properties();
+    sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    // Input formats may update the session after configure(); writer encryption comes from store metadata.
+    if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
+      jobProps.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      jobProps.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
+    return jobProps;
+  }
+
   protected SparkSession getSparkSession() {
     return sparkSession;
   }
@@ -1009,8 +1021,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
 
-    Properties jobProps = new Properties();
-    this.sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    Properties jobProps = getWriterTaskProperties();
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
     Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
 

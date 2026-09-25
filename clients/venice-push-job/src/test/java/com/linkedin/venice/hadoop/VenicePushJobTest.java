@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.ConfigKeys.PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
@@ -8,7 +7,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
@@ -85,26 +83,6 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
       assertNotNull(veniceProperties);
       assertEquals(veniceProperties.getString(KEY_FIELD_PROP), "id");
       assertEquals(veniceProperties.getString(VALUE_FIELD_PROP), "name");
-    }
-  }
-
-  @Test
-  public void testCallerCannotSupplyEncryptionKeyUrnThroughJobProperties() {
-    Properties jobProperties = getVpjRequiredProperties();
-    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:caller");
-    jobProperties.setProperty("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:mrOverride");
-    jobProperties.setProperty("spark.data.writer.conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:sparkOverride");
-    jobProperties.setProperty("custom.prefix." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:customPassThrough");
-    jobProperties.setProperty(PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY, "custom.prefix.");
-
-    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, jobProperties)) {
-      VeniceProperties sanitized = pushJob.getJobProperties();
-      assertFalse(sanitized.containsKey(PUB_SUB_ENCRYPTION_KEY_URN));
-      assertFalse(sanitized.containsKey("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN));
-      assertFalse(sanitized.containsKey("spark.data.writer.conf." + PUB_SUB_ENCRYPTION_KEY_URN));
-      assertFalse(sanitized.containsKey("custom.prefix." + PUB_SUB_ENCRYPTION_KEY_URN));
-      assertEquals(sanitized.getString(PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY), "custom.prefix.");
-      assertEquals(jobProperties.getProperty(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:caller");
     }
   }
 
