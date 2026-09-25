@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -138,14 +139,39 @@ public class JobRoutesTest {
     doReturn(payload).when(request).bodyAsBytes();
     Response response = mock(Response.class);
 
-    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
+    InternalAvroSpecificSerializer<PushJobDetails> serializer = AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+    SchemaReader schemaReader = mock(SchemaReader.class);
+    serializer.setSchemaReader(schemaReader, 1);
+    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty(), serializer);
     String responseBody = jobRoutes.sendPushJobDetails(admin).handle(request, response).toString();
     ControllerResponse controllerResponse =
         AdminSparkServer.OBJECT_MAPPER.readValue(responseBody, ControllerResponse.class);
 
     Assert.assertTrue(controllerResponse.isError());
-    Assert.assertTrue(controllerResponse.getError().contains("Received Protocol Version"));
+    Assert.assertTrue(controllerResponse.getError().contains("after 1 attempts"));
     verify(response).status(HttpStatus.SC_OK);
+    verify(schemaReader).getValueSchema(unknownProtocolVersion);
+    verify(admin, never()).sendPushJobDetails(any(PushJobStatusRecordKey.class), any(PushJobDetails.class));
+  }
+
+  @Test
+  public void testSendPushJobDetailsValidationFailurePreservesErrorStatus() throws Exception {
+    Admin admin = mock(Admin.class);
+    doReturn(true).when(admin).isLeaderControllerFor("test-cluster");
+    Request request = mock(Request.class, RETURNS_DEEP_STUBS);
+    doReturn("test-cluster").when(request).queryParams(ControllerApiConstants.CLUSTER);
+    doReturn("test-store").when(request).queryParams(ControllerApiConstants.NAME);
+    doReturn("invalid-version").when(request).queryParams(ControllerApiConstants.VERSION);
+    Response response = mock(Response.class);
+
+    String responseBody =
+        new JobRoutes(false, Optional.empty()).sendPushJobDetails(admin).handle(request, response).toString();
+    ControllerResponse controllerResponse =
+        AdminSparkServer.OBJECT_MAPPER.readValue(responseBody, ControllerResponse.class);
+
+    Assert.assertTrue(controllerResponse.isError());
+    Assert.assertTrue(controllerResponse.getError().contains("must be an integer"));
+    verify(response).status(HttpStatus.SC_BAD_REQUEST);
     verify(admin, never()).sendPushJobDetails(any(PushJobStatusRecordKey.class), any(PushJobDetails.class));
   }
 }

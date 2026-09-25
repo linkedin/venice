@@ -51,6 +51,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceControllerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerService.class);
+  private static final int PUSH_JOB_DETAILS_SCHEMA_READER_MAX_ATTEMPTS = 1;
 
   private final Admin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -187,7 +188,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     getProtocolSchemaReader(
         routerClientConfig,
         AvroProtocolDefinition.PUSH_JOB_DETAILS,
-        VeniceSystemStoreUtils.getPushJobDetailsStoreName()).ifPresent(pushJobDetailsSerializer::setSchemaReader);
+        VeniceSystemStoreUtils.getPushJobDetailsStoreName()).ifPresent(
+            schemaReader -> pushJobDetailsSerializer
+                .setSchemaReader(schemaReader, PUSH_JOB_DETAILS_SCHEMA_READER_MAX_ATTEMPTS));
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
 

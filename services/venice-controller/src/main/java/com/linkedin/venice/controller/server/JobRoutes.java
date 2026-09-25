@@ -178,27 +178,31 @@ public class JobRoutes extends AbstractRoute {
         PushJobStatusRecordKey key = new PushJobStatusRecordKey();
         key.storeName = storeName;
         key.versionNumber = versionNumber;
-        PushJobDetails pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
-        admin.sendPushJobDetails(key, pushJobDetails);
+        try {
+          PushJobDetails pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
+          admin.sendPushJobDetails(key, pushJobDetails);
 
-        if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
+          if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
+            LOGGER.warn(
+                "Sending push job liveness heartbeats for store {} with version {} failed due to "
+                    + "{}. Push job ID is: {}",
+                storeName,
+                versionNumber,
+                pushJobDetails.failureDetails.toString(),
+                pushJobDetails.pushId.toString());
+          }
+        } catch (Exception e) {
+          controllerResponse.setError(e);
           LOGGER.warn(
-              "Sending push job liveness heartbeats for store {} with version {} failed due to "
-                  + "{}. Push job ID is: {}",
+              "Failed to send best-effort push job details for store {} with version {}",
               storeName,
               versionNumber,
-              pushJobDetails.failureDetails.toString(),
-              pushJobDetails.pushId.toString());
+              e);
+          response.status(HttpStatus.SC_OK);
         }
-
-      } catch (Exception e) {
+      } catch (Throwable e) {
         controllerResponse.setError(e);
-        LOGGER.warn(
-            "Failed to send best-effort push job details for store {} with version {}",
-            request.queryParams(NAME),
-            request.queryParams(VERSION),
-            e);
-        response.status(HttpStatus.SC_OK);
+        AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     };
