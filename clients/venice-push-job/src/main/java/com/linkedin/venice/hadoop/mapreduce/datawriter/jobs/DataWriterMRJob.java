@@ -34,6 +34,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE_EXECUTION_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
@@ -162,6 +163,10 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     // silent dual-write skipping if the same store ever takes the MR code path.
     for (String key: props.keySet()) {
       if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
+        conf.set(key, props.getString(key));
+      }
+      // The factory receives these properties when it is initialized in the executor task.
+      if (key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
         conf.set(key, props.getString(key));
       }
     }
