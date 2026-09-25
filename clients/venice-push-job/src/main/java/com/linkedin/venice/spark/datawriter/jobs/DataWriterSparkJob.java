@@ -234,7 +234,18 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
 
     VeniceProperties allJobProps = getJobProperties();
     for (String key: allJobProps.keySet()) {
+      // The encryption key URN is driver-owned and derived from store metadata. This loop forwards the
+      // caller's own job properties verbatim, so the key is set from PushJobSetting below instead.
+      if (PUB_SUB_ENCRYPTION_KEY_URN.equals(key)) {
+        continue;
+      }
       setInputConf(sparkSession, dataFrameReader, key, allJobProps.getString(key));
+    }
+
+    // The reader builds its consumer from the DataFrameReader options rather than from sparkSession.conf(),
+    // so the resolved URN has to be set here too for an encrypted source version to be readable.
+    if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
+      setInputConf(sparkSession, dataFrameReader, PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     }
 
     setInputConf(

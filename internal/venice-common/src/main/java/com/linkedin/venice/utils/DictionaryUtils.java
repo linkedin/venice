@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,6 +47,20 @@ public class DictionaryUtils {
       String topicName,
       VeniceProperties props,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
+    return readDictionaryFromKafka(topicName, props, pubSubMessageDeserializer, null);
+  }
+
+  /**
+   * @param pubSubEncryptionKeyUrnLookup resolves a topic to the encryption key URN its records were written
+   *                                     with, or {@code null} when the topic is not encrypted. Required to
+   *                                     read a dictionary off an encrypted version, since the Start Of Push
+   *                                     control message is encrypted along with the rest of the topic.
+   */
+  public static ByteBuffer readDictionaryFromKafka(
+      String topicName,
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     VeniceProperties pubSubProperties = getKafkaConsumerProps(props);
@@ -55,6 +70,7 @@ public class DictionaryUtils {
             .setPubSubMessageDeserializer(pubSubMessageDeserializer)
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
             .setConsumerName("DictionaryUtilsConsumer")
+            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
             .build();
     try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory.create(context)) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);

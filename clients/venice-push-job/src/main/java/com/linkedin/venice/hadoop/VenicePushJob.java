@@ -69,6 +69,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
@@ -160,6 +161,7 @@ import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
@@ -873,8 +875,7 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          ByteBuffer sourceDict = DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          ByteBuffer sourceDict = readSourceDictionary();
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -1678,19 +1679,42 @@ public class VenicePushJob implements AutoCloseable {
     return buildSourceDictionaryConsumerProperties(
         props,
         pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
-        sourcePubsubBroker);
+        sourcePubsubBroker,
+        pushJobSetting.pubSubEncryptionKeyUrn);
   }
 
   @VisibleForTesting
   static VeniceProperties buildSourceDictionaryConsumerProperties(
       VeniceProperties jobProperties,
       Properties sslProperties,
-      String sourcePubsubBroker) {
+      String sourcePubsubBroker,
+      String pubSubEncryptionKeyUrn) {
     Properties consumerProperties = jobProperties.toProperties();
     consumerProperties.putAll(sslProperties);
     consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, sourcePubsubBroker);
     consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, sourcePubsubBroker);
+    // These properties start life as the caller's own job properties, so the encryption key URN is set or
+    // removed here for the same reason the data-writer drivers do it: store metadata is the only authority.
+    if (pubSubEncryptionKeyUrn != null) {
+      consumerProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pubSubEncryptionKeyUrn);
+    } else {
+      consumerProperties.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
     return new VeniceProperties(consumerProperties);
+  }
+
+  /**
+   * Reads the compression dictionary off the repush source version, decrypting it when that version is
+   * encrypted. The Start Of Push control message carrying the dictionary is encrypted with the rest of the
+   * topic, so the consumer needs the key lookup just as the data-writer tasks do.
+   */
+  private ByteBuffer readSourceDictionary() {
+    VeniceProperties consumerProperties = getSourceDictionaryConsumerProperties();
+    return DictionaryUtils.readDictionaryFromKafka(
+        pushJobSetting.kafkaInputTopic,
+        consumerProperties,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        PubSubEncryptionUtils.getKeyUrnLookup(consumerProperties.toProperties()));
   }
 
   private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
@@ -1718,8 +1742,7 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          return DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          return readSourceDictionary();
         }
       }
       LOGGER.info(

@@ -9,6 +9,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -91,12 +92,42 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     sslProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "SSL");
     sslProperties.setProperty("ssl.keystore.location", "credential-keystore");
 
-    VeniceProperties consumerProperties = VenicePushJob
-        .buildSourceDictionaryConsumerProperties(new VeniceProperties(jobProperties), sslProperties, "source-broker");
+    VeniceProperties consumerProperties = VenicePushJob.buildSourceDictionaryConsumerProperties(
+        new VeniceProperties(jobProperties),
+        sslProperties,
+        "source-broker",
+        null);
 
     assertEquals(consumerProperties.getString(PUBSUB_SECURITY_PROTOCOL), "SSL");
     assertEquals(consumerProperties.getString("ssl.keystore.location"), "credential-keystore");
     assertEquals(consumerProperties.getString("xc.tls.key.store.type"), "PKCS12");
+  }
+
+  @Test
+  public void testSourceDictionaryConsumerPropertiesClearCallerSuppliedEncryptionKeyUrn() {
+    Properties jobProperties = new Properties();
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+
+    VeniceProperties consumerProperties = VenicePushJob
+        .buildSourceDictionaryConsumerProperties(new VeniceProperties(jobProperties), new Properties(), "b", null);
+
+    Assert.assertFalse(
+        consumerProperties.containsKey(PUB_SUB_ENCRYPTION_KEY_URN),
+        "A caller-supplied encryption key URN must not reach the source dictionary consumer");
+  }
+
+  @Test
+  public void testSourceDictionaryConsumerPropertiesUseStoreDerivedEncryptionKeyUrn() {
+    Properties jobProperties = new Properties();
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+
+    VeniceProperties consumerProperties = VenicePushJob.buildSourceDictionaryConsumerProperties(
+        new VeniceProperties(jobProperties),
+        new Properties(),
+        "b",
+        "urn:li:storeDerived");
+
+    assertEquals(consumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
