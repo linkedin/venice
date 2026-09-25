@@ -14,7 +14,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
@@ -132,12 +131,6 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       String lowerCaseKey = key.toLowerCase();
       if (lowerCaseKey.startsWith(SPARK_DATA_WRITER_CONF_PREFIX)) {
         String strippedKey = key.substring(SPARK_DATA_WRITER_CONF_PREFIX.length());
-        // The encryption key URN is owned by the driver and derived from store metadata. Stripping this
-        // prefix would otherwise let a caller reinstate it on the runtime config after configure() has
-        // resolved it, and again as a DataFrameReader option.
-        if (PUB_SUB_ENCRYPTION_KEY_URN.equals(strippedKey)) {
-          continue;
-        }
         setInputConf(sparkSession, dataFrameReader, strippedKey, allJobProps.getString(key));
       }
     }
@@ -234,18 +227,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
 
     VeniceProperties allJobProps = getJobProperties();
     for (String key: allJobProps.keySet()) {
-      // The encryption key URN is driver-owned and derived from store metadata. This loop forwards the
-      // caller's own job properties verbatim, so the key is set from PushJobSetting below instead.
-      if (PUB_SUB_ENCRYPTION_KEY_URN.equals(key)) {
-        continue;
-      }
       setInputConf(sparkSession, dataFrameReader, key, allJobProps.getString(key));
-    }
-
-    // The reader builds its consumer from the DataFrameReader options rather than from sparkSession.conf(),
-    // so the resolved URN has to be set here too for an encrypted source version to be readable.
-    if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
-      setInputConf(sparkSession, dataFrameReader, PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     }
 
     setInputConf(

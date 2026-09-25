@@ -92,11 +92,8 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     sslProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "SSL");
     sslProperties.setProperty("ssl.keystore.location", "credential-keystore");
 
-    VeniceProperties consumerProperties = VenicePushJob.buildSourceDictionaryConsumerProperties(
-        new VeniceProperties(jobProperties),
-        sslProperties,
-        "source-broker",
-        null);
+    VeniceProperties consumerProperties = VenicePushJob
+        .buildSourceDictionaryConsumerProperties(new VeniceProperties(jobProperties), sslProperties, "source-broker");
 
     assertEquals(consumerProperties.getString(PUBSUB_SECURITY_PROTOCOL), "SSL");
     assertEquals(consumerProperties.getString("ssl.keystore.location"), "credential-keystore");
@@ -104,30 +101,37 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
   }
 
   @Test
-  public void testSourceDictionaryConsumerPropertiesClearCallerSuppliedEncryptionKeyUrn() {
+  public void testStoreDerivedEncryptionKeyUrnDisplacesCallerSuppliedValuesUnderEveryPrefix() {
     Properties jobProperties = new Properties();
-    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:bare");
+    jobProperties.setProperty("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:mapReduceOverride");
+    jobProperties.setProperty("spark.data.writer.conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:sparkOverride");
+    jobProperties.setProperty("custom.whitelisted.prefix." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:passThroughList");
+    jobProperties.setProperty("unrelated.config", "keep-me");
 
-    VeniceProperties consumerProperties = VenicePushJob
-        .buildSourceDictionaryConsumerProperties(new VeniceProperties(jobProperties), new Properties(), "b", null);
+    VeniceProperties sanitized =
+        VenicePushJob.applyStoreDerivedEncryptionKeyUrn(new VeniceProperties(jobProperties), "urn:li:storeDerived");
 
-    Assert.assertFalse(
-        consumerProperties.containsKey(PUB_SUB_ENCRYPTION_KEY_URN),
-        "A caller-supplied encryption key URN must not reach the source dictionary consumer");
+    assertEquals(sanitized.getString(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
+    Assert.assertFalse(sanitized.containsKey("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN));
+    Assert.assertFalse(sanitized.containsKey("spark.data.writer.conf." + PUB_SUB_ENCRYPTION_KEY_URN));
+    Assert.assertFalse(sanitized.containsKey("custom.whitelisted.prefix." + PUB_SUB_ENCRYPTION_KEY_URN));
+    assertEquals(sanitized.getString("unrelated.config"), "keep-me", "Unrelated configs must be preserved");
   }
 
   @Test
-  public void testSourceDictionaryConsumerPropertiesUseStoreDerivedEncryptionKeyUrn() {
+  public void testCallerSuppliedEncryptionKeyUrnIsRemovedWhenStoreIsNotEncrypted() {
     Properties jobProperties = new Properties();
-    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:bare");
+    jobProperties.setProperty("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:mapReduceOverride");
 
-    VeniceProperties consumerProperties = VenicePushJob.buildSourceDictionaryConsumerProperties(
-        new VeniceProperties(jobProperties),
-        new Properties(),
-        "b",
-        "urn:li:storeDerived");
+    VeniceProperties sanitized =
+        VenicePushJob.applyStoreDerivedEncryptionKeyUrn(new VeniceProperties(jobProperties), null);
 
-    assertEquals(consumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
+    Assert.assertFalse(
+        sanitized.containsKey(PUB_SUB_ENCRYPTION_KEY_URN),
+        "An unencrypted store must not carry any encryption key URN");
+    Assert.assertFalse(sanitized.containsKey("hadoop-conf." + PUB_SUB_ENCRYPTION_KEY_URN));
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")

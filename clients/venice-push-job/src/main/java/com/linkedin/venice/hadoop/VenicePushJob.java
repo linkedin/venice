@@ -232,7 +232,11 @@ public class VenicePushJob implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
   // Immutable state
-  private final VeniceProperties props;
+  /**
+   * Rewritten once, after the store metadata is read, to carry the authoritative encryption key URN.
+   * @see #applyStoreDerivedEncryptionKeyUrn
+   */
+  private VeniceProperties props;
   private final String jobId;
 
   /**
@@ -820,6 +824,7 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSetting.newKmeSchemasFromController = validateAndFetchNewKafkaMessageEnvelopeSchemas(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
+      props = applyStoreDerivedEncryptionKeyUrn(props, pushJobSetting.pubSubEncryptionKeyUrn);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
 
       if (pushJobSetting.isSourceETL) {
@@ -1679,28 +1684,45 @@ public class VenicePushJob implements AutoCloseable {
     return buildSourceDictionaryConsumerProperties(
         props,
         pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
-        sourcePubsubBroker,
-        pushJobSetting.pubSubEncryptionKeyUrn);
+        sourcePubsubBroker);
   }
 
   @VisibleForTesting
   static VeniceProperties buildSourceDictionaryConsumerProperties(
       VeniceProperties jobProperties,
       Properties sslProperties,
-      String sourcePubsubBroker,
-      String pubSubEncryptionKeyUrn) {
+      String sourcePubsubBroker) {
     Properties consumerProperties = jobProperties.toProperties();
     consumerProperties.putAll(sslProperties);
     consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, sourcePubsubBroker);
     consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, sourcePubsubBroker);
-    // These properties start life as the caller's own job properties, so the encryption key URN is set or
-    // removed here for the same reason the data-writer drivers do it: store metadata is the only authority.
-    if (pubSubEncryptionKeyUrn != null) {
-      consumerProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pubSubEncryptionKeyUrn);
-    } else {
-      consumerProperties.remove(PUB_SUB_ENCRYPTION_KEY_URN);
-    }
     return new VeniceProperties(consumerProperties);
+  }
+
+  /**
+   * Makes the job properties the single authority for the encryption key URN, which store metadata owns.
+   *
+   * <p>Any caller-supplied value is dropped first. A caller can reach the key under a prefix as well as
+   * directly, because the data writers strip {@code hadoop-conf.} and {@code spark.data.writer.conf.} before
+   * applying a key, and {@link ConfigKeys#PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY} lets a caller nominate
+   * further prefixes at runtime. Every suffix match is therefore removed, not just the bare key.
+   *
+   * <p>This runs once, as soon as the store metadata has been read and before anything derives a job
+   * configuration, so that every downstream copy is correct by construction: both data-writer drivers, the
+   * Spark input reader options, and the dictionary consumers all build their configuration from these
+   * properties.
+   */
+  @VisibleForTesting
+  static VeniceProperties applyStoreDerivedEncryptionKeyUrn(VeniceProperties props, String pubSubEncryptionKeyUrn) {
+    Properties sanitized = props.toProperties();
+    sanitized.keySet().removeIf(key -> {
+      String lowerCaseKey = ((String) key).toLowerCase();
+      return lowerCaseKey.equals(PUB_SUB_ENCRYPTION_KEY_URN) || lowerCaseKey.endsWith("." + PUB_SUB_ENCRYPTION_KEY_URN);
+    });
+    if (pubSubEncryptionKeyUrn != null) {
+      sanitized.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pubSubEncryptionKeyUrn);
+    }
+    return new VeniceProperties(sanitized);
   }
 
   /**

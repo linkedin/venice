@@ -391,20 +391,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         PASS_THROUGH_CONFIG_PREFIXES,
         SPARK_DATA_WRITER_CONF_PREFIX);
 
-    applyStoreDerivedEncryptionKeyUrn(jobConf, pushJobSetting);
-  }
-
-  /**
-   * Makes store metadata the only source of the encryption key URN in the Spark runtime config, clearing the
-   * key entirely when the store is not encryption enabled.
-   *
-   * <p>The key is named outside every pass-through prefix, but {@code SPARK_DATA_WRITER_CONF_PREFIX} is
-   * stripped and re-applied to the runtime config, which reaches any key name. Call this after anything that
-   * can write caller-supplied properties into {@code sparkSession.conf()}, and in particular immediately
-   * before the config is broadcast to the tasks, since the runtime config is mutated again while the input
-   * DataFrame is built.
-   */
-  static void applyStoreDerivedEncryptionKeyUrn(RuntimeConfig jobConf, PushJobSetting pushJobSetting) {
+    // The key is not copied above, being outside every pass-through prefix, so store metadata delivers it
+    // here. It is cleared when the store is not encryption enabled because the SparkSession is obtained with
+    // getOrCreate() and its runtime config can outlive a single push job.
     if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
       jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     } else {
@@ -1021,8 +1010,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
     ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
-
-    applyStoreDerivedEncryptionKeyUrn(this.sparkSession.conf(), pushJobSetting);
 
     Properties jobProps = new Properties();
     this.sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));

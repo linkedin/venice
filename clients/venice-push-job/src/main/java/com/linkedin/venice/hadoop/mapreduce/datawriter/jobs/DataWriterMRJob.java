@@ -349,9 +349,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
-    // The encryption key URN is driver-owned and derived from store metadata. Its name is outside every
-    // pass-through prefix, but HADOOP_PREFIX lets a caller write any key name, so set or clear it
-    // unconditionally here, after setupDefaultJobConf has done its copying, and let store metadata win.
+    // The key is not copied by setupDefaultJobConf, being outside every pass-through prefix, so store
+    // metadata delivers it here.
     if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
       jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     } else {
