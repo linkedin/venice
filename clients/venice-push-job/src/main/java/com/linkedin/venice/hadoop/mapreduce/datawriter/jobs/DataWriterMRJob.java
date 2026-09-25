@@ -349,8 +349,13 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
+    // pubsub.encryption.key.urn is driver-owned and derived from store metadata, but it shares the
+    // pubsub.* pass-through prefix applied in setupDefaultJobConf. Set or clear it unconditionally here,
+    // after that pass-through has run, so a caller-supplied value can never reach the tasks.
     if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
       jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      jobConf.unset(PUB_SUB_ENCRYPTION_KEY_URN);
     }
     jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     int partitionCount = pushJobSetting.partitionCount;
@@ -473,6 +478,11 @@ public class DataWriterMRJob extends DataWriterComputeJob {
   @VisibleForTesting
   void setJobConf(JobConf jobConf) {
     this.jobConf = jobConf;
+  }
+
+  @VisibleForTesting
+  JobConf getJobConf() {
+    return jobConf;
   }
 
   @VisibleForTesting

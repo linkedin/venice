@@ -17,6 +17,7 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.IntegerType;
@@ -905,5 +906,46 @@ public class AbstractDataWriterSparkJobTest {
     };
 
     abstract long resolve(QuotaTestingDataWriterSparkJob job);
+  }
+
+  @Test
+  public void testCallerSuppliedEncryptionKeyUrnIsClearedForUnencryptedStore() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.pubSubEncryptionKeyUrn = null;
+
+    Properties properties = new Properties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
+
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      // The key shares the pubsub.* pass-through prefix, which is applied after the store-derived value is
+      // written, so without an explicit clear the caller's value would reach the tasks and encrypt a store
+      // whose metadata says it is unencrypted.
+      Assert.assertFalse(jobConf.getOption(PUB_SUB_ENCRYPTION_KEY_URN).isDefined());
+    }
+  }
+
+  @Test
+  public void testStoreDerivedEncryptionKeyUrnOverridesCallerSuppliedValue() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
+
+    Properties properties = new Properties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
+
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
+    }
   }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_RMD_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_VALUE_SCHEMA_STRING_PROP;
 import static org.mockito.Mockito.doReturn;
@@ -9,11 +10,16 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -185,5 +191,51 @@ public class TestDataWriterMRJob {
     setting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
     setting.inputDataSchemaString = TestWriteUtils.STRING_TO_NAME_RECORD_V2_SCHEMA.toString();
     return setting;
+  }
+
+  /** A setting complete enough for the full {@link DataWriterMRJob#configure} path, not just one setup step. */
+  private PushJobSetting fullyConfigurablePushJobSetting() {
+    PushJobSetting setting = avroProjectionPushJobSetting();
+    setting.vpjEntryClass = VenicePushJob.class;
+    setting.jobId = "test-job";
+    setting.topic = "test-store_v1";
+    setting.storeName = "test-store";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.partitionCount = 3;
+    setting.topicCompressionStrategy = CompressionStrategy.NO_OP;
+    return setting;
+  }
+
+  @Test
+  public void testCallerSuppliedEncryptionKeyUrnIsClearedForUnencryptedStore() {
+    PushJobSetting setting = fullyConfigurablePushJobSetting();
+    setting.pubSubEncryptionKeyUrn = null;
+
+    Properties props = new Properties();
+    props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+
+    DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
+    dataWriterMRJob.configure(new VeniceProperties(props), setting);
+    JobConf jobConf = dataWriterMRJob.getJobConf();
+
+    // The key shares the pubsub.* pass-through prefix, so without an explicit clear it would survive
+    // into the task config and encrypt a store whose metadata says it is unencrypted.
+    assertNull(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN));
+  }
+
+  @Test
+  public void testStoreDerivedEncryptionKeyUrnOverridesCallerSuppliedValue() {
+    PushJobSetting setting = fullyConfigurablePushJobSetting();
+    setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
+
+    Properties props = new Properties();
+    props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+
+    DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
+    dataWriterMRJob.configure(new VeniceProperties(props), setting);
+    JobConf jobConf = dataWriterMRJob.getJobConf();
+
+    Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
   }
 }

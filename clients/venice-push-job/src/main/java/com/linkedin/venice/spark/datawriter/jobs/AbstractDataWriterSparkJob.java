@@ -346,9 +346,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
-    if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
-      jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
-    }
 
     // Forward every push.job.external.storage.* property to the Spark RuntimeConfig so the partition
     // writer's gating predicate and buffering logic — and impl-specific configs the configured
@@ -393,6 +390,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         jobConf::set,
         PASS_THROUGH_CONFIG_PREFIXES,
         SPARK_DATA_WRITER_CONF_PREFIX);
+
+    // pubsub.encryption.key.urn is driver-owned and derived from store metadata, but it shares the pubsub.*
+    // pass-through prefix. Set or clear it unconditionally after the pass-through so a caller-supplied value
+    // cannot override the store-derived URN, and so no value survives for an unencrypted store. Clearing also
+    // matters because the SparkSession is reused across jobs and its runtime config is broadcast to tasks.
+    if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
+      jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      jobConf.unset(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
   }
 
   protected SparkSession getSparkSession() {
