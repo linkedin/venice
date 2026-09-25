@@ -164,7 +164,7 @@ public class JobRoutes extends AbstractRoute {
    * @see Admin#sendPushJobDetails(PushJobStatusRecordKey, PushJobDetails)
    */
   public Route sendPushJobDetails(Admin admin) {
-    return ((request, response) -> {
+    return (request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -178,7 +178,7 @@ public class JobRoutes extends AbstractRoute {
         PushJobStatusRecordKey key = new PushJobStatusRecordKey();
         key.storeName = storeName;
         key.versionNumber = versionNumber;
-        PushJobDetails pushJobDetails = deserializePushJobDetails(request.bodyAsBytes());
+        PushJobDetails pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
         admin.sendPushJobDetails(key, pushJobDetails);
 
         if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
@@ -201,11 +201,7 @@ public class JobRoutes extends AbstractRoute {
         response.status(HttpStatus.SC_OK);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
-    });
-  }
-
-  PushJobDetails deserializePushJobDetails(byte[] bytes) {
-    return pushJobDetailsSerializer.deserialize(null, bytes);
+    };
   }
 
   // TODO: remove the below API after the same version of codes is released to Venice Push Job.

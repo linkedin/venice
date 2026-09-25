@@ -21,7 +21,6 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +33,7 @@ import org.apache.avro.io.EncoderFactory;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import spark.Request;
@@ -69,19 +69,17 @@ public class JobRoutesTest {
   }
 
   @Test
-  public void testDeserializePushJobDetailsWithSchemaReader() throws IOException {
+  public void testSendPushJobDetailsWithSchemaReader() throws Exception {
     int unknownProtocolVersion = AvroProtocolDefinition.PUSH_JOB_DETAILS.getCurrentProtocolVersion() + 1;
     Schema currentSchema = AvroProtocolDefinition.PUSH_JOB_DETAILS.getCurrentProtocolVersionSchema();
     String currentSchemaString = currentSchema.toString();
     int fieldsEndIndex = currentSchemaString.lastIndexOf("]}");
-    Schema futureSchema = new Schema.Parser()
-        .parse(
-            currentSchemaString.substring(0, fieldsEndIndex)
-                + ",{\"name\":\"futureField\",\"type\":\"string\",\"default\":\"\"}"
-                + currentSchemaString.substring(fieldsEndIndex));
+    Schema futureSchema = new Schema.Parser().parse(
+        currentSchemaString.substring(0, fieldsEndIndex)
+            + ",{\"name\":\"futureField\",\"type\":\"string\",\"default\":\"\"}"
+            + currentSchemaString.substring(fieldsEndIndex));
 
-    InternalAvroSpecificSerializer<PushJobDetails> serializer =
-        AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+    InternalAvroSpecificSerializer<PushJobDetails> serializer = AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
     SchemaReader schemaReader = mock(SchemaReader.class);
     doReturn(futureSchema).when(schemaReader).getValueSchema(unknownProtocolVersion);
     serializer.setSchemaReader(schemaReader);
@@ -104,9 +102,22 @@ public class JobRoutesTest {
     new GenericDatumWriter<GenericRecord>(futureSchema).write(futurePushJobDetails, encoder);
     encoder.flush();
 
+    Admin admin = mock(Admin.class);
+    doReturn(true).when(admin).isLeaderControllerFor("test-cluster");
+    Request request = mock(Request.class);
+    doReturn("test-cluster").when(request).queryParams(ControllerApiConstants.CLUSTER);
+    doReturn("test-store").when(request).queryParams(ControllerApiConstants.NAME);
+    doReturn("1").when(request).queryParams(ControllerApiConstants.VERSION);
+    doReturn(output.toByteArray()).when(request).bodyAsBytes();
+
     JobRoutes jobRoutes = new JobRoutes(false, Optional.empty(), serializer);
-    PushJobDetails deserializedPushJobDetails = jobRoutes.deserializePushJobDetails(output.toByteArray());
-    Assert.assertEquals(deserializedPushJobDetails.clusterName.toString(), pushJobDetails.clusterName);
+    String responseBody = jobRoutes.sendPushJobDetails(admin).handle(request, mock(Response.class)).toString();
+    ControllerResponse controllerResponse =
+        AdminSparkServer.OBJECT_MAPPER.readValue(responseBody, ControllerResponse.class);
+    Assert.assertFalse(controllerResponse.isError());
+    ArgumentCaptor<PushJobDetails> capturedDetails = ArgumentCaptor.forClass(PushJobDetails.class);
+    verify(admin).sendPushJobDetails(any(PushJobStatusRecordKey.class), capturedDetails.capture());
+    Assert.assertEquals(capturedDetails.getValue().clusterName.toString(), pushJobDetails.clusterName);
     verify(schemaReader).getValueSchema(unknownProtocolVersion);
   }
 
@@ -116,9 +127,7 @@ public class JobRoutesTest {
     String storeName = "test-store";
     int storeVersion = 1;
     int unknownProtocolVersion = AvroProtocolDefinition.PUSH_JOB_DETAILS.getCurrentProtocolVersion() + 1;
-    byte[] payload = {
-        AvroProtocolDefinition.PUSH_JOB_DETAILS.getMagicByte().get(),
-        (byte) unknownProtocolVersion };
+    byte[] payload = { AvroProtocolDefinition.PUSH_JOB_DETAILS.getMagicByte().get(), (byte) unknownProtocolVersion };
 
     Admin admin = mock(Admin.class);
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
