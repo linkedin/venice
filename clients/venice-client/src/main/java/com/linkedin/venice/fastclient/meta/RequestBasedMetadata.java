@@ -161,7 +161,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
     this.metadataResponseSchemaReader =
         new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
-    this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
+    /**
+     * When gRPC is enabled the top-level {@code r2Client} is allowed to be null: the R2 client used for non-storage
+     * requests lives in {@link GrpcClientConfig} instead. Both the connection warmup and the dictionary fetch below
+     * go over R2, so resolve the transport against whichever client is actually populated.
+     */
+    this.r2TransportClient = new R2TransportClient(
+        clientConfig.useGrpc() ? clientConfig.getGrpcClientConfig().getR2Client() : clientConfig.getR2Client());
     this.harClusters = clientConfig.getHarClusters();
     this.scheduler = Optional.ofNullable(clientConfig.getMetadataRefreshExecutor())
         .orElseGet(() -> Executors.newScheduledThreadPool(1));
@@ -482,13 +488,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         }
       }
 
-      /**
-       * Call the DICTIONARY endpoint if needed.
-       *
-       * This has to happen after the routing info above has been parsed: the dictionary lives in the node-local
-       * {@code StoreVersionState} of the servers hosting this specific store-version, so the request must be sent to
-       * one of those replicas rather than to an arbitrary member of the cluster-wide server D2 service.
-       */
+      // This has to happen after the routing info above has been parsed: the dictionary lives in the node-local
+      // {@code StoreVersionState} of the servers hosting this specific store-version, so the request must be sent to
+      // one of those replicas rather than to an arbitrary member of the cluster-wide server D2 service.
       CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
       if (!versionZstdDictionaryMap.containsKey(fetchedCurrentVersion)
           && versionMetadata.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
@@ -523,13 +525,22 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         if (dictionaryFetchFuture != null) {
           dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
         }
-      } catch (ExecutionException | TimeoutException e) {
+      } catch (TimeoutException e) {
         LOGGER.warn(
             "Dictionary fetch operation could not complete in time for some of the versions. "
                 + "Will be retried on next refresh",
             e);
         // throw exception to make the start() blocking till the dictionary is fetched in case
         // of initial fetch. For other cases: returning an exception doesn't make any difference.
+        throw new VeniceException(e);
+      } catch (ExecutionException e) {
+        /*
+         * The fetch failed outright rather than running out of time (e.g. every replica returned 404). Log the
+         * underlying cause instead of reporting it as a timeout, which would hide the real reason.
+         */
+        LOGGER.warn(
+            "Dictionary fetch operation failed for some of the versions. Will be retried on next refresh",
+            e.getCause() == null ? e : e.getCause());
         throw new VeniceException(e);
       }
 
@@ -859,57 +870,83 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     String url = replica + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
     LOGGER.debug("Fetching compression dictionary for version {} from URL {} ", version, url);
-    r2TransportClient.get(url).whenComplete((response, throwable) -> {
-      Throwable failure = throwable;
-      if (failure == null) {
-        try {
-          /*
-           * A 404 is surfaced as a null response by TransportClientCallback, which is how the server reports that it
-           * does not hold this store-version locally. It must not be dereferenced, and it must not be swallowed
-           * either, otherwise the future below would never complete.
-           */
-          if (response == null) {
-            failure = new VeniceClientException(
-                "Received 404 while fetching zstd compression dictionary from URL: " + url + " for store: " + storeName
-                    + ", version: " + version + ". The replica does not host this store version locally.");
-          } else if (response.getBody() == null || response.getBody().length == 0) {
-            failure = new VeniceClientException(
-                "Received an empty zstd compression dictionary from URL: " + url + " for store: " + storeName
-                    + ", version: " + version);
-          } else {
-            versionZstdDictionaryMap.put(version, ByteBuffer.wrap(response.getBody()));
-            compressionDictionaryFuture.complete(response);
-            return;
+    try {
+      r2TransportClient.get(url).whenComplete((response, throwable) -> {
+        Throwable failure = throwable;
+        if (failure == null) {
+          try {
+            /*
+             * A 404 is surfaced as a null response by TransportClientCallback, which is how the server reports that
+             * it does not hold this store-version locally. It must not be dereferenced, and it must not be swallowed
+             * either, otherwise the future below would never complete.
+             */
+            if (response == null) {
+              failure = new VeniceClientException(
+                  "Received 404 while fetching zstd compression dictionary from URL: " + url + " for store: "
+                      + storeName + ", version: " + version
+                      + ". The replica does not host this store version locally.");
+            } else if (response.getBody() == null || response.getBody().length == 0) {
+              failure = new VeniceClientException(
+                  "Received an empty zstd compression dictionary from URL: " + url + " for store: " + storeName
+                      + ", version: " + version);
+            } else {
+              versionZstdDictionaryMap.put(version, ByteBuffer.wrap(response.getBody()));
+              compressionDictionaryFuture.complete(response);
+              return;
+            }
+          } catch (Throwable t) {
+            failure = t;
           }
-        } catch (Throwable t) {
-          failure = t;
         }
-      }
-
-      int nextAttempt = attempt + 1;
-      if (nextAttempt < maxAttempts) {
-        LOGGER.warn(
-            "Problem fetching zstd compression dictionary from URL: {} for store: {}, version: {}. "
-                + "Retrying against another replica ({}/{}).",
-            url,
-            storeName,
+        handleDictionaryFetchFailure(
             version,
-            nextAttempt + 1,
+            replicas,
+            attempt,
             maxAttempts,
-            failure);
-        attemptDictionaryFetch(version, replicas, nextAttempt, compressionDictionaryFuture);
-        return;
-      }
+            url,
+            failure,
+            compressionDictionaryFuture);
+      });
+    } catch (Throwable t) {
+      /*
+       * The transport can fail synchronously while building the URI or dispatching the request, in which case no
+       * future is ever returned. Route it through the same failure path so the dictionary future is still completed.
+       */
+      handleDictionaryFetchFailure(version, replicas, attempt, maxAttempts, url, t, compressionDictionaryFuture);
+    }
+  }
 
-      String message = String.format(
-          "Problem fetching zstd compression dictionary for store:%s , version:%d after %d attempt(s), last URL:%s",
+  private void handleDictionaryFetchFailure(
+      int version,
+      List<String> replicas,
+      int attempt,
+      int maxAttempts,
+      String url,
+      Throwable failure,
+      CompletableFuture<TransportClientResponse> compressionDictionaryFuture) {
+    int nextAttempt = attempt + 1;
+    if (nextAttempt < maxAttempts) {
+      LOGGER.warn(
+          "Problem fetching zstd compression dictionary from URL: {} for store: {}, version: {}. "
+              + "Retrying against another replica ({}/{}).",
+          url,
           storeName,
           version,
+          nextAttempt + 1,
           maxAttempts,
-          url);
-      LOGGER.warn(message, failure);
-      compressionDictionaryFuture.completeExceptionally(new VeniceClientException(message, failure));
-    });
+          failure);
+      attemptDictionaryFetch(version, replicas, nextAttempt, compressionDictionaryFuture);
+      return;
+    }
+
+    String message = String.format(
+        "Problem fetching zstd compression dictionary for store:%s , version:%d after %d attempt(s), last URL:%s",
+        storeName,
+        version,
+        maxAttempts,
+        url);
+    LOGGER.warn(message, failure);
+    compressionDictionaryFuture.completeExceptionally(new VeniceClientException(message, failure));
   }
 
   @Override

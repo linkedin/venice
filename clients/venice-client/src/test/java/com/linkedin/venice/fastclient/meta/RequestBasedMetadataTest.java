@@ -31,6 +31,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.r2.message.rest.RestRequest;
+import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -43,6 +44,8 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.GrpcClientConfig;
+import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StorageMode;
@@ -617,6 +620,168 @@ public class RequestBasedMetadataTest {
             ExceptionUtils.stackTraceToString(e).contains("empty zstd compression dictionary"),
             "expected the empty-dictionary cause to be preserved, got: " + ExceptionUtils.stackTraceToString(e));
       }
+    }
+  }
+
+  /**
+   * Production metadata carries fully qualified {@code http(s)://host:port} replica URLs (see
+   * {@code Instance#getUrl}), not bare hostnames. Exercise the selection and retry path with realistically shaped
+   * identifiers so the routing is verified against what the server actually sends.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetchWithFullyQualifiedReplicaUrls() throws Exception {
+    String storeName = "testStore";
+    String replica1 = "https://host1.prod.linkedin.com:1690";
+    String replica2 = "https://host2.prod.linkedin.com:1690";
+    // Only replica2 holds the dictionary; replica1 404s, so the retry has to move to replica2.
+    Client r2Client = RequestBasedMetadataTestUtils.getMockR2ClientWithDictionaryOnlyOn(replica2);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(
+        CompletableFuture.completedFuture(
+            RequestBasedMetadataTestUtils.buildMetadataResponse(
+                CURRENT_VERSION,
+                ExternalStorageReadMode.VENICE_ONLY.getValue(),
+                StorageMode.INTERNAL.getValue(),
+                replica1,
+                replica2))).when(d2TransportClient)
+                    .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+
+      assertEquals(
+          requestBasedMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION),
+          RequestBasedMetadataTestUtils.getZstdVeniceCompressor(storeName));
+
+      // Every dictionary request must have been addressed to one of the two replica URLs of this store-version.
+      ArgumentCaptor<RestRequest> captor = ArgumentCaptor.forClass(RestRequest.class);
+      verify(r2Client, atLeastOnce()).restRequest(captor.capture(), any(Callback.class));
+      boolean sawDictionaryRequest = false;
+      for (RestRequest request: captor.getAllValues()) {
+        String uri = request.getURI().toString();
+        if (!uri.contains("/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/")) {
+          continue;
+        }
+        sawDictionaryRequest = true;
+        assertTrue(
+            uri.startsWith(replica1) || uri.startsWith(replica2),
+            "DICTIONARY request must target a replica of the store-version, but went to: " + uri);
+        assertTrue(
+            uri.endsWith(
+                "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION),
+            "unexpected dictionary URL shape: " + uri);
+      }
+      assertTrue(sawDictionaryRequest, "expected at least one DICTIONARY request");
+    }
+  }
+
+  /**
+   * When gRPC is enabled {@code ClientConfig#getR2Client()} is allowed to be null and the R2 client for non-storage
+   * requests lives in {@code GrpcClientConfig} instead. The dictionary fetch goes over R2, so it must resolve the
+   * transport against the populated client rather than dereferencing the null one.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetchWorksWhenGrpcEnabledAndTopLevelR2ClientIsNull() throws Exception {
+    String storeName = "testStore";
+    Client grpcR2Client = RequestBasedMetadataTestUtils.getMockR2ClientWithDictionaryOnlyOn(REPLICA1_NAME);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, null);
+    GrpcClientConfig grpcClientConfig = mock(GrpcClientConfig.class);
+    doReturn(grpcR2Client).when(grpcClientConfig).getR2Client();
+    doReturn(true).when(clientConfig).useGrpc();
+    doReturn(grpcClientConfig).when(clientConfig).getGrpcClientConfig();
+
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)))
+        .when(d2TransportClient)
+        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+
+      assertEquals(
+          requestBasedMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION),
+          RequestBasedMetadataTestUtils.getZstdVeniceCompressor(storeName),
+          "the dictionary should have been fetched over the gRPC config's R2 client");
+    }
+  }
+
+  /**
+   * The transport can fail synchronously while building the URI or dispatching the request, returning no future at
+   * all. That must still complete the dictionary future rather than leaving it orphaned to expire against the 10s
+   * timeout, which is the same failure mode this change removes for 404s.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetchCompletesWhenTransportThrowsSynchronously() throws Exception {
+    String storeName = "testStore";
+    Client r2Client = mock(Client.class);
+    doAnswer(invocation -> {
+      Callback<RestResponse> callback = invocation.getArgument(1);
+      callback.onSuccess(null);
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(argument -> argument.getURI().toString().contains(QueryAction.HEALTH.toString().toLowerCase())),
+            any(Callback.class));
+    /*
+     * The first replica answers 404 asynchronously; the retry against the next replica fails synchronously. A
+     * synchronous failure raised from inside the retry is swallowed by the enclosing whenComplete stage, so unless
+     * it is routed through the failure path explicitly, the dictionary future is orphaned.
+     */
+    AtomicInteger dictionaryRequestCount = new AtomicInteger();
+    doAnswer(invocation -> {
+      if (dictionaryRequestCount.getAndIncrement() > 0) {
+        throw new IllegalStateException("synchronous transport failure");
+      }
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      // The transport layer maps HTTP 404 to a null response.
+      callback.getValueFuture().complete(null);
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(
+                argument -> argument.getURI()
+                    .toString()
+                    .contains("/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/")),
+            any(Callback.class));
+
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)))
+        .when(d2TransportClient)
+        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+
+      long startTimeMs = System.currentTimeMillis();
+      try {
+        requestBasedMetadata.updateCache(true);
+        Assert.fail("expected a synchronous transport failure to fail the refresh");
+      } catch (Exception e) {
+        String stackTrace = ExceptionUtils.stackTraceToString(e);
+        assertTrue(
+            stackTrace.contains("synchronous transport failure"),
+            "the synchronous failure must be preserved as the cause, got: " + stackTrace);
+        assertFalse(
+            stackTrace.contains("TimeoutException"),
+            "a synchronous failure must not be masked as a dictionary fetch timeout, got: " + stackTrace);
+      }
+      long elapsedMs = System.currentTimeMillis() - startTimeMs;
+      assertTrue(
+          elapsedMs < 10 * Time.MS_PER_SECOND,
+          "the fetch must fail fast rather than orphan the future, took: " + elapsedMs + "ms");
     }
   }
 

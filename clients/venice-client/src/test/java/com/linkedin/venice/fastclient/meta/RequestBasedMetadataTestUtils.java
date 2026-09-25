@@ -197,7 +197,7 @@ public class RequestBasedMetadataTestUtils {
       return null;
     }).when(r2Client)
         .restRequest(
-            argThat(argument -> isDictionaryRequest(argument) && argument.getURI().getPath().contains(servingReplica)),
+            argThat(argument -> isDictionaryRequest(argument) && targetsReplica(argument, servingReplica)),
             any(Callback.class));
 
     doAnswer(invocation -> {
@@ -207,7 +207,7 @@ public class RequestBasedMetadataTestUtils {
       return null;
     }).when(r2Client)
         .restRequest(
-            argThat(argument -> isDictionaryRequest(argument) && !argument.getURI().getPath().contains(servingReplica)),
+            argThat(argument -> isDictionaryRequest(argument) && !targetsReplica(argument, servingReplica)),
             any(Callback.class));
   }
 
@@ -240,8 +240,17 @@ public class RequestBasedMetadataTestUtils {
     }).when(r2Client).restRequest(argThat(RequestBasedMetadataTestUtils::isDictionaryRequest), any(Callback.class));
   }
 
+  /**
+   * Match the replica a request was addressed to. Replica identifiers coming from production metadata are fully
+   * qualified {@code http(s)://host:port} URLs (see {@code Instance#getUrl}), whose host is not part of
+   * {@link java.net.URI#getPath()}, so the whole URI is matched rather than just its path.
+   */
+  private static boolean targetsReplica(RestRequest request, String replica) {
+    return request.getURI().toString().contains(replica);
+  }
+
   private static boolean isDictionaryRequest(RestRequest request) {
-    return request.getURI().getPath().contains("/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/");
+    return request.getURI().toString().contains("/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/");
   }
 
   public static D2TransportClient getMockD2TransportClient(
@@ -444,6 +453,24 @@ public class RequestBasedMetadataTestUtils {
       int currentVersion,
       int rawExternalStorageReadMode,
       int rawStorageMode) {
+    return buildMetadataResponse(
+        currentVersion,
+        rawExternalStorageReadMode,
+        rawStorageMode,
+        REPLICA1_NAME,
+        REPLICA2_NAME);
+  }
+
+  /**
+   * Overload that lets a test supply the replica identifiers placed in the routing info, so it can model the fully
+   * qualified {@code http(s)://host:port} URLs that production metadata actually carries.
+   */
+  public static TransportClientResponse buildMetadataResponse(
+      int currentVersion,
+      int rawExternalStorageReadMode,
+      int rawStorageMode,
+      String replica1,
+      String replica2) {
     Map<String, String> partitionerParams = new HashMap<>();
     partitionerParams.put("testKey", "testValue");
     VersionProperties versionProperties = new VersionProperties(
@@ -455,11 +482,11 @@ public class RequestBasedMetadataTestUtils {
         1,
         rawStorageMode);
     Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
-    routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
-    routeMap.put("1", Collections.singletonList(REPLICA2_NAME));
+    routeMap.put("0", Collections.singletonList(replica1));
+    routeMap.put("1", Collections.singletonList(replica2));
     Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
-    helixGroupMap.put(REPLICA1_NAME, 0);
-    helixGroupMap.put(REPLICA2_NAME, 1);
+    helixGroupMap.put(replica1, 0);
+    helixGroupMap.put(replica2, 1);
     // Active versions = {currentVersion} only so isCurrentVersionActive(stale value) is false → forces the switch
     // even before partition-resources-ready logic kicks in.
     MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
