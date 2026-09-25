@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.pubsub.input.PartitionSplitStrategy;
 import java.io.IOException;
 import java.util.Arrays;
@@ -237,6 +238,8 @@ public class KafkaInputDictTrainer {
                             KafkaInputUtils.getKafkaValueSerializer(jobConf),
                             new LandFillObjectPool<>(KafkaMessageEnvelope::new),
                             new LandFillObjectPool<>(KafkaMessageEnvelope::new)))
+                    .setPubSubEncryptionKeyUrnLookup(
+                        PubSubEncryptionUtils.getKeyUrnLookup(veniceProperties.toProperties()))
                     .build()));
     try {
       for (InputSplit split: splits) {
