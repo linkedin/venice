@@ -923,19 +923,19 @@ public class AbstractDataWriterSparkJobTest {
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(jobProperties, setting);
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
-      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
+      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:callerSupplied");
       dataWriterSparkJob.setInputConf(
           dataWriterSparkJob.getSparkSession(),
           dataWriterSparkJob.getSparkSession().read(),
           PUB_SUB_ENCRYPTION_KEY_URN,
           "urn:li:lateCaller");
+      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:lateCaller");
       Assert.assertEquals(
           dataWriterSparkJob.getWriterTaskProperties().getProperty(PUB_SUB_ENCRYPTION_KEY_URN),
           "urn:li:storeDerived");
 
       setting.pubSubEncryptionKeyUrn = null;
       dataWriterSparkJob.configure(jobProperties, setting);
-      Assert.assertFalse(dataWriterSparkJob.getSparkSession().conf().getOption(PUB_SUB_ENCRYPTION_KEY_URN).isDefined());
       dataWriterSparkJob.setInputConf(
           dataWriterSparkJob.getSparkSession(),
           dataWriterSparkJob.getSparkSession().read(),

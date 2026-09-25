@@ -390,13 +390,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         jobConf::set,
         PASS_THROUGH_CONFIG_PREFIXES,
         SPARK_DATA_WRITER_CONF_PREFIX);
-
-    // SparkSession may be reused, so clear any prior or pass-through URN for unencrypted stores.
-    if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
-      jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
-    } else {
-      jobConf.unset(PUB_SUB_ENCRYPTION_KEY_URN);
-    }
   }
 
   Properties getWriterTaskProperties() {
