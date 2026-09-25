@@ -66,8 +66,8 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
                 instanceHealthMonitor,
                 clientConfig.getMetricsRepository(),
                 getStoreName(),
-                clientConfig.getHelixGroupEvenUntilLatencyRatio(),
-                clientConfig.getHelixGroupFullSkewAtLatencyRatio(),
+                clientConfig.getHelixGroupEvenUntilLatencyMs(),
+                clientConfig.getHelixGroupFullSkewAtLatencyMs(),
                 clientConfig.getHelixGroupSkewRampExponent());
           case LEAST_LOADED:
             return new HelixLeastLoadedGroupRoutingStrategy(

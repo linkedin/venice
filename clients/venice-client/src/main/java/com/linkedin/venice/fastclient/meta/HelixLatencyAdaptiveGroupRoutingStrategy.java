@@ -23,11 +23,11 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       InstanceHealthMonitor instanceHealthMonitor,
       MetricsRepository metricsRepository,
       String storeName,
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double skewRampExponent) {
     super(instanceHealthMonitor, metricsRepository, storeName);
-    this.selector = buildSelector(evenUntilLatencyRatio, fullSkewAtLatencyRatio, skewRampExponent);
+    this.selector = buildSelector(evenUntilLatencyMs, fullSkewAtLatencyMs, skewRampExponent);
   }
 
   /** Uses the default latency-adaptive knobs. */
@@ -35,29 +35,29 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
     this(
         monitor,
         helixGroupStats,
-        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT);
   }
 
   HelixLatencyAdaptiveGroupRoutingStrategy(
       InstanceHealthMonitor monitor,
       HelixGroupStats helixGroupStats,
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double skewRampExponent) {
     super(monitor, helixGroupStats);
-    this.selector = buildSelector(evenUntilLatencyRatio, fullSkewAtLatencyRatio, skewRampExponent);
+    this.selector = buildSelector(evenUntilLatencyMs, fullSkewAtLatencyMs, skewRampExponent);
   }
 
   private LatencyAdaptiveGroupSelector buildSelector(
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double skewRampExponent) {
     return new LatencyAdaptiveGroupSelector(
         helixGroupStats::getGroupResponseWaitingTimeAvg,
-        evenUntilLatencyRatio,
-        fullSkewAtLatencyRatio,
+        evenUntilLatencyMs,
+        fullSkewAtLatencyMs,
         skewRampExponent,
         () -> ThreadLocalRandom.current().nextDouble());
   }

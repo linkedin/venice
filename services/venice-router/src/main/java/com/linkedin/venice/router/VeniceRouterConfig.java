@@ -38,8 +38,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HEART_BEAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
@@ -215,8 +215,8 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int ioThreadCountInPoolMode;
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
-  private final double helixGroupEvenUntilLatencyRatio;
-  private final double helixGroupFullSkewAtLatencyRatio;
+  private final double helixGroupEvenUntilLatencyMs;
+  private final double helixGroupFullSkewAtLatencyMs;
   private final double helixGroupSkewRampExponent;
   private final String systemSchemaClusterName;
   private final int maxConcurrentSslHandshakes;
@@ -411,12 +411,12 @@ public class VeniceRouterConfig implements RouterRetryConfig {
                 + helixGroupSelectionStrategyStr + ", and allowed values: "
                 + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
       }
-      helixGroupEvenUntilLatencyRatio = props.getDouble(
-          ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO,
-          HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO);
-      helixGroupFullSkewAtLatencyRatio = props.getDouble(
-          ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO,
-          HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO);
+      helixGroupEvenUntilLatencyMs = props.getDouble(
+          ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS,
+          HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS);
+      helixGroupFullSkewAtLatencyMs = props.getDouble(
+          ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS,
+          HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS);
       helixGroupSkewRampExponent = props.getDouble(
           ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT,
           HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT);
@@ -768,12 +768,12 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return helixGroupSelectionStrategy;
   }
 
-  public double getHelixGroupEvenUntilLatencyRatio() {
-    return helixGroupEvenUntilLatencyRatio;
+  public double getHelixGroupEvenUntilLatencyMs() {
+    return helixGroupEvenUntilLatencyMs;
   }
 
-  public double getHelixGroupFullSkewAtLatencyRatio() {
-    return helixGroupFullSkewAtLatencyRatio;
+  public double getHelixGroupFullSkewAtLatencyMs() {
+    return helixGroupFullSkewAtLatencyMs;
   }
 
   public double getHelixGroupSkewRampExponent() {

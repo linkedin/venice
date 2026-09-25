@@ -763,8 +763,8 @@ public class TestVeniceDelegateMode {
         helixInstanceConfigRepository,
         HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
         mock(TimeoutProcessor.class),
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT);
     scatterMode.initHelixGroupSelector(helixGroupSelector);
 

@@ -31,8 +31,8 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
       HelixInstanceConfigRepository instanceConfigRepository,
       HelixGroupSelectionStrategyEnum strategyEnum,
       TimeoutProcessor timeoutProcessor,
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double skewRampExponent) {
     this.helixGroupStats = new HelixGroupStats(metricsRepository);
     this.instanceConfigRepository = instanceConfigRepository;
@@ -46,8 +46,8 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
           HELIX_GROUP_COUNTER_TIMEOUT_MS,
           helixGroupStats,
           helixGroupStats::getGroupResponseWaitingTimeAvg,
-          evenUntilLatencyRatio,
-          fullSkewAtLatencyRatio,
+          evenUntilLatencyMs,
+          fullSkewAtLatencyMs,
           skewRampExponent,
           () -> ThreadLocalRandom.current().nextDouble());
     } else {

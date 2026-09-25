@@ -8,23 +8,26 @@ import java.util.function.IntToDoubleFunction;
 
 /**
  * Latency-adaptive weighted group selection, shared by the router and fast-client routing strategies. Given each
- * group's measured average latency it picks a group by a weighted-random draw whose skew adapts to the latency spread:
- * while the groups are close it routes evenly, and as one group's latency pulls ahead it steers share onto the faster
- * groups. Measured latency is the only signal - it determines both which group is fast and how much to skew:
+ * group's measured average latency it picks a group by a weighted-random draw whose skew adapts to the slowest group's
+ * latency: while every group is fast it routes evenly, and as the slowest group's latency climbs it steers share onto
+ * the faster groups. The two thresholds are absolute latencies in milliseconds so they can be set against a
+ * response-time SLA. Measured latency is the only signal - it determines both which group is fast and how much to skew:
  *
  * <pre>
  *   strength(g) = 1 / max(latency(g), MIN_LATENCY_MS)                     // faster group => stronger
- *   ratio       = max(latency) / min(latency)   over measured groups      // 1.0 == even latency
- *   skew        = 0                                          if ratio &lt;= evenUntilLatencyRatio
- *                 1                                          if ratio &gt;= fullSkewAtLatencyRatio
- *                 ((ratio - evenUntil) / (fullSkew - evenUntil))^m  otherwise
+ *   slowest     = max(latency)                  over measured groups (ms)
+ *   skew        = 0                                          if slowest &lt;= evenUntilLatencyMs
+ *                 1                                          if slowest &gt;= fullSkewAtLatencyMs
+ *                 ((slowest - evenUntil) / (fullSkew - evenUntil))^m  otherwise
  *   share(g)    = (1 - skew) * (1 / G)  +  skew * strength(g) / sum(strength)
  *   share(g)    = max(share(g), PROBE_FLOOR_FRACTION * (1 / G))           // never fully starve a group
  * </pre>
  *
- * <p>A group not yet measured ({@code latency <= 0}) is treated as neutral (average strength) and excluded from the
- * spread. With fewer than two measured groups there is no spread to act on, so routing stays even. The probe floor
- * keeps every group observable so the latency signal stays live and the loop self-corrects.
+ * <p>Because share still weighs by {@code strength(g)}, groups that are all slow but equal in latency get equal
+ * strength and routing stays even even at full skew - the skew only steers when a genuinely faster group exists. A
+ * group not yet measured ({@code latency <= 0}) is treated as neutral (average strength) and excluded from the skew
+ * calculation. The probe floor keeps every group observable so the latency signal stays live and the loop
+ * self-corrects.
  *
  * <p>Holds no per-request state; thread-safe as long as the supplied {@code latencyProvider} and {@code randomSupplier}
  * are. Callers own any in-flight accounting.
@@ -33,17 +36,17 @@ public class LatencyAdaptiveGroupSelector {
   public static final int MAX_ALLOWED_GROUP = 100;
 
   /**
-   * Default stay-even threshold, as a latency spread ratio (slowest / fastest measured group): routing stays fully even
-   * (skew {@code == 0}) while the spread is at or below this factor.
+   * Default stay-even threshold, as an absolute latency in milliseconds: routing stays fully even (skew {@code == 0})
+   * while the slowest measured group's average latency is at or below this. Set it against the read-path SLA.
    */
-  public static final double DEFAULT_EVEN_UNTIL_LATENCY_RATIO = 1.2;
+  public static final double DEFAULT_EVEN_UNTIL_LATENCY_MS = 10.0;
 
   /**
-   * Default full-skew threshold, as a latency spread ratio: routing reaches its full latency-proportional split (skew
-   * {@code == 1}) at or above this factor. Between {@link #DEFAULT_EVEN_UNTIL_LATENCY_RATIO} and this the skew ramps 0
-   * to 1.
+   * Default full-skew threshold, as an absolute latency in milliseconds: routing reaches its full latency-proportional
+   * split (skew {@code == 1}) once the slowest measured group's average latency is at or above this. Between
+   * {@link #DEFAULT_EVEN_UNTIL_LATENCY_MS} and this the skew ramps 0 to 1.
    */
-  public static final double DEFAULT_FULL_SKEW_AT_LATENCY_RATIO = 2.0;
+  public static final double DEFAULT_FULL_SKEW_AT_LATENCY_MS = 30.0;
 
   /**
    * Default in-band ramp exponent {@code m}, shaping the skew ramp between the two thresholds: {@code 1.0} is linear and
@@ -64,8 +67,8 @@ public class LatencyAdaptiveGroupSelector {
   public static final double PROBE_FLOOR_FRACTION = 0.05;
 
   private final IntToDoubleFunction latencyProvider;
-  private final double evenUntilLatencyRatio;
-  private final double fullSkewAtLatencyRatio;
+  private final double evenUntilLatencyMs;
+  private final double fullSkewAtLatencyMs;
   private final double interpolationExponent;
   private final DoubleSupplier randomSupplier;
 
@@ -78,33 +81,33 @@ public class LatencyAdaptiveGroupSelector {
   public LatencyAdaptiveGroupSelector(IntToDoubleFunction latencyProvider) {
     this(
         latencyProvider,
-        DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         DEFAULT_INTERPOLATION_EXPONENT,
         () -> ThreadLocalRandom.current().nextDouble());
   }
 
   /**
    * @param latencyProvider        group id -> measured average response time in ms; non-positive means not yet measured
-   *                              (treated as neutral and excluded from the spread).
-   * @param evenUntilLatencyRatio  stay-even threshold (slowest / fastest spread); routing stays even at or below it.
-   *                              Must be {@code >= 1} and {@code < fullSkewAtLatencyRatio}.
-   * @param fullSkewAtLatencyRatio full-skew threshold; routing reaches its full latency-proportional split at or above
-   *                              it. Must be {@code > evenUntilLatencyRatio}.
+   *                              (treated as neutral and excluded from the skew calculation).
+   * @param evenUntilLatencyMs     stay-even threshold in ms; while the slowest measured group is at or below it routing
+   *                              stays even. Must be {@code >= 0} and {@code < fullSkewAtLatencyMs}.
+   * @param fullSkewAtLatencyMs    full-skew threshold in ms; routing reaches its full latency-proportional split once
+   *                              the slowest measured group is at or above it. Must be {@code > evenUntilLatencyMs}.
    * @param interpolationExponent  ramp exponent {@code m} between the thresholds ({@code 1.0} = linear). Must be
    *                              {@code > 0}.
    * @param randomSupplier         uniform random double in [0, 1); injectable for deterministic tests.
    */
   public LatencyAdaptiveGroupSelector(
       IntToDoubleFunction latencyProvider,
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double interpolationExponent,
       DoubleSupplier randomSupplier) {
-    if (!(evenUntilLatencyRatio >= 1.0 && evenUntilLatencyRatio < fullSkewAtLatencyRatio)) {
+    if (!(evenUntilLatencyMs >= 0.0 && evenUntilLatencyMs < fullSkewAtLatencyMs)) {
       throw new VeniceException(
-          "Require 1 <= evenUntilLatencyRatio < fullSkewAtLatencyRatio, but received evenUntilLatencyRatio="
-              + evenUntilLatencyRatio + ", fullSkewAtLatencyRatio=" + fullSkewAtLatencyRatio);
+          "Require 0 <= evenUntilLatencyMs < fullSkewAtLatencyMs, but received evenUntilLatencyMs=" + evenUntilLatencyMs
+              + ", fullSkewAtLatencyMs=" + fullSkewAtLatencyMs);
     }
     if (!(interpolationExponent > 0.0)) {
       throw new VeniceException(
@@ -112,8 +115,8 @@ public class LatencyAdaptiveGroupSelector {
               + "the share past full skew), but received interpolationExponent=" + interpolationExponent);
     }
     this.latencyProvider = latencyProvider;
-    this.evenUntilLatencyRatio = evenUntilLatencyRatio;
-    this.fullSkewAtLatencyRatio = fullSkewAtLatencyRatio;
+    this.evenUntilLatencyMs = evenUntilLatencyMs;
+    this.fullSkewAtLatencyMs = fullSkewAtLatencyMs;
     this.interpolationExponent = interpolationExponent;
     this.randomSupplier = randomSupplier;
   }
@@ -133,8 +136,8 @@ public class LatencyAdaptiveGroupSelector {
    *
    * @param groupCount      number of groups; must be in {@code [1, MAX_ALLOWED_GROUP]}.
    * @param startGroupId    group id the scan starts from (typically {@code requestId % groupCount}).
-   * @param excludedGroupId group to exclude from selection and from the spread (e.g. the group already tried, so a retry
-   *                        lands elsewhere); {@code -1} excludes none.
+   * @param excludedGroupId group to exclude from selection and from the skew calculation (e.g. the group already tried,
+   *                        so a retry lands elsewhere); {@code -1} excludes none.
    */
   public int selectGroup(int groupCount, int startGroupId, int excludedGroupId) {
     if (groupCount > MAX_ALLOWED_GROUP || groupCount <= 0) {
@@ -172,12 +175,11 @@ public class LatencyAdaptiveGroupSelector {
   }
 
   /**
-   * The skew factor in {@code [0, 1]} derived from the current latency spread across measured, non-excluded groups.
+   * The skew factor in {@code [0, 1]} derived from the slowest measured, non-excluded group's latency (ms). Groups not
+   * yet measured are ignored here; with no measured group the skew is 0 (even routing).
    */
   private double latencySkew(int groupCount, int excludedGroupId) {
-    double minLatency = Double.MAX_VALUE;
-    double maxLatency = 0.0;
-    int measured = 0;
+    double slowestLatencyMs = 0.0;
     for (int g = 0; g < groupCount; ++g) {
       if (g == excludedGroupId) {
         continue;
@@ -186,22 +188,15 @@ public class LatencyAdaptiveGroupSelector {
       if (latency <= 0.0) {
         continue;
       }
-      double clamped = Math.max(latency, MIN_LATENCY_MS);
-      minLatency = Math.min(minLatency, clamped);
-      maxLatency = Math.max(maxLatency, clamped);
-      ++measured;
+      slowestLatencyMs = Math.max(slowestLatencyMs, Math.max(latency, MIN_LATENCY_MS));
     }
-    if (measured < 2) {
+    if (slowestLatencyMs <= evenUntilLatencyMs) {
       return 0.0;
     }
-    double ratio = maxLatency / minLatency;
-    if (ratio <= evenUntilLatencyRatio) {
-      return 0.0;
-    }
-    if (ratio >= fullSkewAtLatencyRatio) {
+    if (slowestLatencyMs >= fullSkewAtLatencyMs) {
       return 1.0;
     }
-    double position = (ratio - evenUntilLatencyRatio) / (fullSkewAtLatencyRatio - evenUntilLatencyRatio);
+    double position = (slowestLatencyMs - evenUntilLatencyMs) / (fullSkewAtLatencyMs - evenUntilLatencyMs);
     return interpolationExponent == 1.0 ? position : Math.pow(position, interpolationExponent);
   }
 

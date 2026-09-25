@@ -102,8 +102,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
   private final HelixGroupRoutingStrategyType helixGroupRoutingStrategyType;
-  private final double helixGroupEvenUntilLatencyRatio;
-  private final double helixGroupFullSkewAtLatencyRatio;
+  private final double helixGroupEvenUntilLatencyMs;
+  private final double helixGroupFullSkewAtLatencyMs;
   private final double helixGroupSkewRampExponent;
 
   private final MetricsRepository metricsRepository;
@@ -225,8 +225,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.helixGroupRoutingStrategyType = builder.helixGroupRoutingStrategyType == null
         ? HelixGroupRoutingStrategyType.LEAST_LOADED
         : builder.helixGroupRoutingStrategyType;
-    this.helixGroupEvenUntilLatencyRatio = builder.helixGroupEvenUntilLatencyRatio;
-    this.helixGroupFullSkewAtLatencyRatio = builder.helixGroupFullSkewAtLatencyRatio;
+    this.helixGroupEvenUntilLatencyMs = builder.helixGroupEvenUntilLatencyMs;
+    this.helixGroupFullSkewAtLatencyMs = builder.helixGroupFullSkewAtLatencyMs;
     this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;
     this.retryBudgetPercentage = builder.retryBudgetPercentage;
@@ -402,12 +402,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return helixGroupRoutingStrategyType;
   }
 
-  public double getHelixGroupEvenUntilLatencyRatio() {
-    return helixGroupEvenUntilLatencyRatio;
+  public double getHelixGroupEvenUntilLatencyMs() {
+    return helixGroupEvenUntilLatencyMs;
   }
 
-  public double getHelixGroupFullSkewAtLatencyRatio() {
-    return helixGroupFullSkewAtLatencyRatio;
+  public double getHelixGroupFullSkewAtLatencyMs() {
+    return helixGroupFullSkewAtLatencyMs;
   }
 
   public double getHelixGroupSkewRampExponent() {
@@ -504,8 +504,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private double retryBudgetPercentage = 0.1d;
 
     private HelixGroupRoutingStrategyType helixGroupRoutingStrategyType = HelixGroupRoutingStrategyType.LEAST_LOADED;
-    private double helixGroupEvenUntilLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO;
-    private double helixGroupFullSkewAtLatencyRatio = LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO;
+    private double helixGroupEvenUntilLatencyMs = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_MS;
+    private double helixGroupFullSkewAtLatencyMs = LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_MS;
     private double helixGroupSkewRampExponent = LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
     private boolean storeLoadControllerEnabled = false;
     private int storeLoadControllerWindowSizeInSec = 30;
@@ -694,13 +694,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setHelixGroupEvenUntilLatencyRatio(double helixGroupEvenUntilLatencyRatio) {
-      this.helixGroupEvenUntilLatencyRatio = helixGroupEvenUntilLatencyRatio;
+    public ClientConfigBuilder<K, V, T> setHelixGroupEvenUntilLatencyMs(double helixGroupEvenUntilLatencyMs) {
+      this.helixGroupEvenUntilLatencyMs = helixGroupEvenUntilLatencyMs;
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setHelixGroupFullSkewAtLatencyRatio(double helixGroupFullSkewAtLatencyRatio) {
-      this.helixGroupFullSkewAtLatencyRatio = helixGroupFullSkewAtLatencyRatio;
+    public ClientConfigBuilder<K, V, T> setHelixGroupFullSkewAtLatencyMs(double helixGroupFullSkewAtLatencyMs) {
+      this.helixGroupFullSkewAtLatencyMs = helixGroupFullSkewAtLatencyMs;
       return this;
     }
 
@@ -810,8 +810,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
           .setHelixGroupRoutingStrategyType(helixGroupRoutingStrategyType)
-          .setHelixGroupEvenUntilLatencyRatio(helixGroupEvenUntilLatencyRatio)
-          .setHelixGroupFullSkewAtLatencyRatio(helixGroupFullSkewAtLatencyRatio)
+          .setHelixGroupEvenUntilLatencyMs(helixGroupEvenUntilLatencyMs)
+          .setHelixGroupFullSkewAtLatencyMs(helixGroupFullSkewAtLatencyMs)
           .setHelixGroupSkewRampExponent(helixGroupSkewRampExponent)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)

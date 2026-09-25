@@ -32,15 +32,15 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
 
   private static HelixLatencyAdaptiveGroupRoutingStrategy threeGroupStrategyWithKnobs(
       HelixGroupStats stats,
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double skewRampExponent) {
     InstanceHealthMonitor monitor = mock(InstanceHealthMonitor.class);
     HelixLatencyAdaptiveGroupRoutingStrategy strategy = new HelixLatencyAdaptiveGroupRoutingStrategy(
         monitor,
         stats,
-        evenUntilLatencyRatio,
-        fullSkewAtLatencyRatio,
+        evenUntilLatencyMs,
+        fullSkewAtLatencyMs,
         skewRampExponent);
     Map<String, Integer> instanceToGroupIdMapping = new HashMap<>();
     instanceToGroupIdMapping.put(instance1, 0);
@@ -134,19 +134,20 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
 
   @Test
   public void testKnobsControlWhenSkewKicksIn() {
-    // Fixed 1.6x latency spread [20, 20, 32]; the slow group is index 2.
+    // Fixed latency [20, 20, 32] ms; the slow group is index 2.
     HelixGroupStats stats = mock(HelixGroupStats.class);
     doReturn(20d).when(stats).getGroupResponseWaitingTimeAvg(0);
     doReturn(20d).when(stats).getGroupResponseWaitingTimeAvg(1);
     doReturn(32d).when(stats).getGroupResponseWaitingTimeAvg(2);
     int total = 9000;
 
-    // Default knobs (even-until 1.2, full-skew 2.0): the 1.6x spread lands mid-ramp, so the slow group sheds share.
-    HelixLatencyAdaptiveGroupRoutingStrategy defaultKnobs = threeGroupStrategyWithKnobs(stats, 1.2, 2.0, 1.0);
+    // Knobs even-until 20ms / full-skew 40ms: the 32ms slowest lands mid-ramp, so the slow group sheds share.
+    HelixLatencyAdaptiveGroupRoutingStrategy defaultKnobs = threeGroupStrategyWithKnobs(stats, 20.0, 40.0, 1.0);
     int defaultSlowHits = countSlowGroupHits(defaultKnobs, 2, total);
 
-    // Raising the stay-even knob above the spread (1.8 > 1.6) should keep routing even: the slow group keeps ~1/3.
-    HelixLatencyAdaptiveGroupRoutingStrategy stayEvenKnobs = threeGroupStrategyWithKnobs(stats, 1.8, 2.0, 1.0);
+    // Raising the stay-even knob above the 32ms slowest (even-until 35ms) keeps routing even: the slow group keeps
+    // ~1/3.
+    HelixLatencyAdaptiveGroupRoutingStrategy stayEvenKnobs = threeGroupStrategyWithKnobs(stats, 35.0, 50.0, 1.0);
     int stayEvenSlowHits = countSlowGroupHits(stayEvenKnobs, 2, total);
 
     assertTrue(
@@ -155,7 +156,7 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
             + defaultSlowHits);
     assertTrue(
         Math.abs(stayEvenSlowHits - total / 3.0) < total * 0.06,
-        "with the stay-even knob above the spread the slow group should stay near an even 1/3, got " + stayEvenSlowHits
-            + "/" + total);
+        "with the stay-even knob above the slowest latency the slow group should stay near an even 1/3, got "
+            + stayEvenSlowHits + "/" + total);
   }
 }

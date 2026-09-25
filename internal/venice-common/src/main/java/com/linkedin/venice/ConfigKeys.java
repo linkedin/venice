@@ -1491,23 +1491,21 @@ public class ConfigKeys {
       "router.helix.assisted.routing.group.selection.strategy";
 
   /**
-   * Stay-even threshold for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy, expressed as a
-   * latency spread ratio (slowest / fastest measured group): while the spread is at or below this factor the
-   * strategy routes evenly. Must be {@code >= 1} and strictly less than
-   * {@link #ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO}. Only consumed when the group selection strategy is
+   * Stay-even threshold for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy, an absolute latency in
+   * milliseconds: while the slowest measured group's average latency is at or below this the strategy routes evenly.
+   * Set it against the read-path response-time SLA. Must be {@code >= 0} and strictly less than
+   * {@link #ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS}. Only consumed when the group selection strategy is
    * {@literal LATENCY_ADAPTIVE}.
    */
-  public static final String ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO =
-      "router.helix.group.even.until.latency.ratio";
+  public static final String ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS = "router.helix.group.even.until.latency.ms";
 
   /**
-   * Full-skew threshold for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy, expressed as a
-   * latency spread ratio: at (and above) this factor the strategy reaches its full latency-proportional split.
-   * Must be strictly greater than {@link #ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_RATIO}. Only consumed when the
-   * group selection strategy is {@literal LATENCY_ADAPTIVE}.
+   * Full-skew threshold for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy, an absolute latency in
+   * milliseconds: once the slowest measured group's average latency reaches this the strategy applies its full
+   * latency-proportional split. Must be strictly greater than {@link #ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS}. Only
+   * consumed when the group selection strategy is {@literal LATENCY_ADAPTIVE}.
    */
-  public static final String ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_RATIO =
-      "router.helix.group.full.skew.at.latency.ratio";
+  public static final String ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS = "router.helix.group.full.skew.at.latency.ms";
 
   /**
    * In-band ramp exponent {@code m} for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy: shapes

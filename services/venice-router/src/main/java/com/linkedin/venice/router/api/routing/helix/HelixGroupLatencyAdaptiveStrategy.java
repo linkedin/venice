@@ -33,13 +33,12 @@ import java.util.function.IntToDoubleFunction;
 public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStrategy {
   public static final int MAX_ALLOWED_GROUP = LatencyAdaptiveGroupSelector.MAX_ALLOWED_GROUP;
 
-  /** @see LatencyAdaptiveGroupSelector#DEFAULT_EVEN_UNTIL_LATENCY_RATIO */
-  public static final double DEFAULT_EVEN_UNTIL_LATENCY_RATIO =
-      LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO;
+  /** @see LatencyAdaptiveGroupSelector#DEFAULT_EVEN_UNTIL_LATENCY_MS */
+  public static final double DEFAULT_EVEN_UNTIL_LATENCY_MS = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_MS;
 
-  /** @see LatencyAdaptiveGroupSelector#DEFAULT_FULL_SKEW_AT_LATENCY_RATIO */
-  public static final double DEFAULT_FULL_SKEW_AT_LATENCY_RATIO =
-      LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO;
+  /** @see LatencyAdaptiveGroupSelector#DEFAULT_FULL_SKEW_AT_LATENCY_MS */
+  public static final double DEFAULT_FULL_SKEW_AT_LATENCY_MS =
+      LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_MS;
 
   /** @see LatencyAdaptiveGroupSelector#DEFAULT_INTERPOLATION_EXPONENT */
   public static final double DEFAULT_INTERPOLATION_EXPONENT =
@@ -67,23 +66,23 @@ public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStr
         timeoutInMS,
         helixGroupStats,
         helixGroupStats::getGroupResponseWaitingTimeAvg,
-        DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         DEFAULT_INTERPOLATION_EXPONENT,
         () -> ThreadLocalRandom.current().nextDouble());
   }
 
   /**
    * Knobs and latency source are forwarded to {@link LatencyAdaptiveGroupSelector}; see it for their meaning and the
-   * validated invariants ({@code 1 <= evenUntilLatencyRatio < fullSkewAtLatencyRatio}, {@code interpolationExponent > 0}).
+   * validated invariants ({@code 0 <= evenUntilLatencyMs < fullSkewAtLatencyMs}, {@code interpolationExponent > 0}).
    */
   public HelixGroupLatencyAdaptiveStrategy(
       TimeoutProcessor timeoutProcessor,
       long timeoutInMS,
       HelixGroupStats helixGroupStats,
       IntToDoubleFunction latencyProvider,
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double interpolationExponent,
       DoubleSupplier randomSupplier) {
     this.timeoutProcessor = timeoutProcessor;
@@ -91,8 +90,8 @@ public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStr
     this.helixGroupStats = helixGroupStats;
     this.selector = new LatencyAdaptiveGroupSelector(
         latencyProvider,
-        evenUntilLatencyRatio,
-        fullSkewAtLatencyRatio,
+        evenUntilLatencyMs,
+        fullSkewAtLatencyMs,
         interpolationExponent,
         randomSupplier);
   }

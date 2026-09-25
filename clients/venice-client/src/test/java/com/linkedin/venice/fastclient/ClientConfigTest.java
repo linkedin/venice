@@ -286,12 +286,12 @@ public class ClientConfigTest {
   public void testHelixGroupLatencyAdaptiveKnobsDefaultToSelectorConstants() {
     ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().build();
     assertEquals(
-        clientConfig.getHelixGroupEvenUntilLatencyRatio(),
-        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
+        clientConfig.getHelixGroupEvenUntilLatencyMs(),
+        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_MS,
         0.0);
     assertEquals(
-        clientConfig.getHelixGroupFullSkewAtLatencyRatio(),
-        LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        clientConfig.getHelixGroupFullSkewAtLatencyMs(),
+        LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         0.0);
     assertEquals(
         clientConfig.getHelixGroupSkewRampExponent(),
@@ -302,18 +302,18 @@ public class ClientConfigTest {
   @Test
   public void testHelixGroupLatencyAdaptiveKnobsAreOverridableAndClonePreservesThem() {
     ClientConfig.ClientConfigBuilder builder =
-        getClientConfigWithMinimumRequiredInputs().setHelixGroupEvenUntilLatencyRatio(1.5)
-            .setHelixGroupFullSkewAtLatencyRatio(3.0)
+        getClientConfigWithMinimumRequiredInputs().setHelixGroupEvenUntilLatencyMs(1.5)
+            .setHelixGroupFullSkewAtLatencyMs(3.0)
             .setHelixGroupSkewRampExponent(2.0);
     ClientConfig clientConfig = builder.build();
-    assertEquals(clientConfig.getHelixGroupEvenUntilLatencyRatio(), 1.5, 0.0);
-    assertEquals(clientConfig.getHelixGroupFullSkewAtLatencyRatio(), 3.0, 0.0);
+    assertEquals(clientConfig.getHelixGroupEvenUntilLatencyMs(), 1.5, 0.0);
+    assertEquals(clientConfig.getHelixGroupFullSkewAtLatencyMs(), 3.0, 0.0);
     assertEquals(clientConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
 
     // The builder clone (used by ClientFactory) must carry the overridden knobs through.
     ClientConfig clonedConfig = builder.clone().build();
-    assertEquals(clonedConfig.getHelixGroupEvenUntilLatencyRatio(), 1.5, 0.0);
-    assertEquals(clonedConfig.getHelixGroupFullSkewAtLatencyRatio(), 3.0, 0.0);
+    assertEquals(clonedConfig.getHelixGroupEvenUntilLatencyMs(), 1.5, 0.0);
+    assertEquals(clonedConfig.getHelixGroupFullSkewAtLatencyMs(), 3.0, 0.0);
     assertEquals(clonedConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
   }
 

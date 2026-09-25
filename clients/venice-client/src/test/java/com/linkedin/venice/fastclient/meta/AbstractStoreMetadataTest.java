@@ -244,8 +244,8 @@ public class AbstractStoreMetadataTest {
     doReturn(ClientRoutingStrategyType.HELIX_ASSISTED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(type).when(clientConfig).getHelixGroupRoutingStrategyType();
     doReturn(new MetricsRepository()).when(clientConfig).getMetricsRepository();
-    doReturn(1.2).when(clientConfig).getHelixGroupEvenUntilLatencyRatio();
-    doReturn(2.0).when(clientConfig).getHelixGroupFullSkewAtLatencyRatio();
+    doReturn(1.2).when(clientConfig).getHelixGroupEvenUntilLatencyMs();
+    doReturn(2.0).when(clientConfig).getHelixGroupFullSkewAtLatencyMs();
     doReturn(1.0).when(clientConfig).getHelixGroupSkewRampExponent();
     return new TestStoreMetadata(clientConfig);
   }

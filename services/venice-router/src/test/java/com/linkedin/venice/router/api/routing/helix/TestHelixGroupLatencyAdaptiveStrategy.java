@@ -27,11 +27,11 @@ import org.testng.annotations.Test;
  *
  * <p>The strategy is a best-effort latency equaliser. Its only per-group signal is measured latency; it infers
  * both <em>which</em> group is fast ({@code strength(g) = 1 / latency(g)}) and <em>how much</em> to skew from
- * the latency spread {@code ratio = max(latency) / min(latency)} across the measured groups:
+ * the slowest measured group's absolute latency (ms):
  * {@code share(g) = (1 - skew) / G + skew * strength(g) / sum(strength)}, where {@code skew} ramps from 0 to 1
- * as {@code ratio} climbs from {@code evenUntilLatencyRatio} to {@code fullSkewAtLatencyRatio}. There is no
- * configured per-group capacity and no aggregate-utilization input: while the groups' latencies are close the
- * strategy routes evenly, and as one group's latency pulls ahead it sheds traffic onto the faster groups.
+ * as the slowest group's latency climbs from {@code evenUntilLatencyMs} to {@code fullSkewAtLatencyMs}. There is
+ * no configured per-group capacity and no aggregate-utilization input: while every group is fast the strategy
+ * routes evenly, and as one group's latency pulls ahead it sheds traffic onto the faster groups.
  *
  * <p>Latency is injected through a simple provider so each scenario can move it deterministically. The staged
  * scenarios go one step further and run a <em>closed loop</em>: a hidden per-group serving capacity (never read
@@ -70,8 +70,8 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
    */
   private static HelixGroupLatencyAdaptiveStrategy weightedStrategy(
       double[] latency,
-      double evenUntilLatencyRatio,
-      double fullSkewAtLatencyRatio,
+      double evenUntilLatencyMs,
+      double fullSkewAtLatencyMs,
       double interpolationExponent,
       Random random) {
     return new HelixGroupLatencyAdaptiveStrategy(
@@ -79,21 +79,21 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
         TIMEOUT_MS,
         mock(HelixGroupStats.class),
         groupId -> latency[groupId],
-        evenUntilLatencyRatio,
-        fullSkewAtLatencyRatio,
+        evenUntilLatencyMs,
+        fullSkewAtLatencyMs,
         interpolationExponent,
         random::nextDouble);
   }
 
-  /** Convenience overload using the strategy's default stay-even and full-skew latency-ratio thresholds. */
+  /** Convenience overload using the strategy's default stay-even and full-skew latency-ms thresholds. */
   private static HelixGroupLatencyAdaptiveStrategy weightedStrategy(
       double[] latency,
       double interpolationExponent,
       Random random) {
     return weightedStrategy(
         latency,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         interpolationExponent,
         random);
   }
@@ -162,8 +162,9 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
   }
 
   /**
-   * The latency spread ratio (slowest / fastest) across the measured groups -- the exact signal the strategy
-   * gates its skew on. Groups with non-positive latency are not yet measured and are excluded.
+   * The latency spread ratio (slowest / fastest) across the measured groups. Kept as a diagnostic for logging and the
+   * homogeneous-fleet sanity check; the skew is now driven by the absolute slowest latency, not this ratio. Groups with
+   * non-positive latency are not yet measured and are excluded.
    */
   private static double latencyRatio(double[] latency) {
     double min = Double.MAX_VALUE;
@@ -180,37 +181,51 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
     return measured < 2 ? 1.0 : max / min;
   }
 
-  /** The skew factor the strategy derives from a latency-ratio and the two knobs; mirrors the production math. */
-  private static double skewFor(double ratio, double evenUntil, double fullSkew, double m) {
-    if (ratio <= evenUntil) {
+  /**
+   * The slowest measured group's latency in ms (clamped by {@code MIN_LATENCY_MS}) -- the signal the strategy gates its
+   * skew on. Returns 0 when no group is measured (which yields skew 0, i.e. even routing).
+   */
+  private static double slowestMeasuredLatencyMs(double[] latency) {
+    double max = 0.0;
+    for (double l: latency) {
+      if (l > 0) {
+        max = Math.max(max, Math.max(l, HelixGroupLatencyAdaptiveStrategy.MIN_LATENCY_MS));
+      }
+    }
+    return max;
+  }
+
+  /** The skew factor the strategy derives from a driver latency (ms) and the two knobs; mirrors the production math. */
+  private static double skewFor(double slowestLatencyMs, double evenUntil, double fullSkew, double m) {
+    if (slowestLatencyMs <= evenUntil) {
       return 0.0;
     }
-    if (ratio >= fullSkew) {
+    if (slowestLatencyMs >= fullSkew) {
       return 1.0;
     }
-    double position = (ratio - evenUntil) / (fullSkew - evenUntil);
+    double position = (slowestLatencyMs - evenUntil) / (fullSkew - evenUntil);
     return m == 1.0 ? position : Math.pow(position, m);
   }
 
   /**
    * The analytic realized share the strategy targets for the given measured latencies and knobs, matching
-   * {@link HelixGroupLatencyAdaptiveStrategy}'s math (strength = 1/latency, latency-ratio skew, probe floor,
+   * {@link HelixGroupLatencyAdaptiveStrategy}'s math (strength = 1/latency, absolute-latency skew, probe floor,
    * reservoir normalisation). Used to (a) assert the strategy's actual routed distribution matches its model and
    * (b) find the environment's fixed point in the closed-loop scenarios.
    */
   private static double[] analyticShares(double[] latency, double m) {
     return analyticShares(
         latency,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         m);
   }
 
-  private static double[] analyticShares(double[] latency, double evenUntilRatio, double fullSkewRatio, double m) {
+  private static double[] analyticShares(double[] latency, double evenUntilMs, double fullSkewMs, double m) {
     int groupCount = latency.length;
     double even = 1.0 / groupCount;
     double floor = HelixGroupLatencyAdaptiveStrategy.PROBE_FLOOR_FRACTION * even;
-    double skew = skewFor(latencyRatio(latency), evenUntilRatio, fullSkewRatio, m);
+    double skew = skewFor(slowestMeasuredLatencyMs(latency), evenUntilMs, fullSkewMs, m);
 
     double sumMeasured = 0.0;
     int measured = 0;
@@ -244,15 +259,16 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
   }
 
   /**
-   * Headline behaviour: when the groups' latencies are close (within the stay-even ratio) the strategy routes
-   * evenly even though one group is measurably faster. Treating a small spread as noise keeps every group's
-   * read-quota consumption low and avoids the over-concentration that drives a single group to its 429 ceiling.
+   * Headline behaviour: when every group is fast (slowest under the even-until threshold) the strategy routes
+   * evenly even though one group is measurably faster. Treating sub-threshold latency as noise keeps every
+   * group's read-quota consumption low and avoids the over-concentration that drives a single group to its 429
+   * ceiling.
    */
   @Test
   public void testEvenWhenLatencyCloseDespiteDifference() {
     int groupCount = 3;
-    // Group 2 is measurably faster, but the spread (22/20 = 1.1x) is inside the stay-even ratio (1.2x default).
-    double[] latency = { 22.0, 21.0, 20.0 };
+    // Group 2 is measurably faster, but the slowest (9ms) is under the 10ms even-until threshold, so skew is 0.
+    double[] latency = { 9.0, 8.5, 8.0 };
     double evenShare = 1.0 / groupCount;
 
     int[] routed = routeAndFinish(
@@ -272,21 +288,21 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
       double share = routed[g] / 60000.0;
       Assert.assertTrue(
           Math.abs(share - evenShare) < 0.02,
-          "Within the stay-even ratio every group should get ~even share despite the latency gap; group " + g
+          "Below the even-until threshold every group should get ~even share despite the latency gap; group " + g
               + " share=" + share);
     }
   }
 
   /**
-   * The complement of the previous test: once the latency spread reaches the full-skew ratio, routing converges
-   * to the latency-proportional split, so the faster (lower-latency) group absorbs proportionally more traffic.
-   * With latency {40, 40, 20} the ratio is 2.0 (>= full-skew default) and the strengths are {1/40, 1/40, 1/20},
-   * i.e. shares {0.25, 0.25, 0.50}.
+   * The complement of the previous test: once the slowest group's latency reaches the full-skew threshold, routing
+   * converges to the latency-proportional split, so the faster (lower-latency) group absorbs proportionally more
+   * traffic. With latency {40, 40, 20} the slowest (40ms) is >= the 30ms full-skew default and the strengths are
+   * {1/40, 1/40, 1/20}, i.e. shares {0.25, 0.25, 0.50}.
    */
   @Test
   public void testSkewsToFastGroupWhenLatencyDiverges() {
     int groupCount = 3;
-    double[] latency = { 40.0, 40.0, 20.0 }; // ratio 2.0 -> full skew -> strength shares 0.25 / 0.25 / 0.50
+    double[] latency = { 40.0, 40.0, 20.0 }; // slowest 40ms >= 30ms full-skew -> strength shares 0.25 / 0.25 / 0.50
     int fastGroup = argMin(latency);
 
     int[] routed = routeAndFinish(
@@ -319,9 +335,9 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
    * discovers group 2 is stronger purely from the lower latency group 2 produces under load.
    *
    * <p>Each stage offers a higher absolute load than the last (10k -> 20k -> 30k -> 38k -> 42k RPS). At low RPS
-   * every group has headroom, latencies are close, the spread is inside the stay-even ratio, and routing is
-   * even. As RPS climbs the weak members' latency pulls ahead, the spread widens past the stay-even ratio, and
-   * the model shifts to a latency-proportional split with the stronger member carrying a growing fraction.
+   * every group has headroom, latencies are close, so their strengths are near-equal and routing stays even. As
+   * RPS climbs the weak members' latency pulls ahead of the stronger member, and the model shifts to a
+   * latency-proportional split with the stronger member carrying a growing fraction.
    *
    * <p>The key health property this asserts is on <em>absolute</em> traffic, not just shares: because RPS rises
    * every stage, each group -- including the weaker members -- must keep receiving <em>more</em> absolute
@@ -412,25 +428,32 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
 
   /**
    * The single-slow-host scenario: two identical strong hosts plus one weaker host (2/3 the capacity). At low
-   * RPS routing is even (latencies are close, so the spread is inside the stay-even ratio), but as RPS climbs
-   * the weaker host's latency pulls ahead, the spread widens, and it progressively <em>sheds</em> share to the
-   * two strong hosts -- its absolute traffic still rises (never starved, never taken below its floor), it simply
+   * RPS every group's latency is inside the even band, so routing stays even, but as RPS climbs the weaker
+   * host's latency pulls past the full-skew threshold and it progressively <em>sheds</em> share to the two
+   * strong hosts -- its absolute traffic still rises (never starved, never taken below its floor), it simply
    * carries a shrinking fraction of a growing total. The request spread grows with load while the served
    * latencies converge relative to even routing, so no host is pushed far past the others.
+   *
+   * <p>Thresholds are set to this simulation's latency scale (base ~20ms) so the low-load fixed point lands in
+   * the even band and the divergence at high load lands past full skew.
    */
   @Test
   public void testOneSlowHostShedsTrafficAsRpsRises() {
     double[] hiddenCapacity = { 16800.0, 16800.0, 8400.0 };
     int slowGroup = 2;
 
-    StagedRun run =
-        runStagedScenario("One slow host - group 2 is half the capacity (16.8k/16.8k/8.4k)", hiddenCapacity);
+    StagedRun run = runStagedScenario(
+        "One slow host - group 2 is half the capacity (16.8k/16.8k/8.4k)",
+        hiddenCapacity,
+        26.0,
+        40.0,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT);
 
     int lastStage = run.stageLoads.length - 1;
     int[] firstRouted = run.routed[0];
     int[] lastRouted = run.routed[lastStage];
 
-    // Low load: even (the slow host is barely distinguished, spread inside the stay-even ratio).
+    // Low load: even (the slow host's latency is still inside the even band).
     double firstSpreadPct = 100.0 * (maxOf(firstRouted) - minOf(firstRouted)) / run.stageLoads[0];
     Assert.assertTrue(
         firstSpreadPct < 3.0,
@@ -467,17 +490,17 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
   }
 
   /**
-   * The two controllable knobs in action, on a fixed latency vector whose spread ({@code ratio = 32/20 = 1.6})
-   * sits between the default stay-even (1.2) and full-skew (2.0) ratios. Both knobs move <em>where</em> on the
-   * latency-spread axis the strategy reacts, without touching the latency signal itself:
+   * The two controllable knobs in action, on a fixed latency vector whose slowest group (32ms) sits between the
+   * stay-even and full-skew thresholds. Both knobs move <em>where</em> on the absolute-latency axis the strategy
+   * reacts, without touching the latency signal itself:
    *
    * <ul>
-   *   <li><b>evenUntilLatencyRatio (stay-even knob)</b> — the latency spread up to which routing stays fully
-   *       even. Raising it above the observed 1.6x spread (1.2 -> 1.8) keeps the fleet even; lowering it makes
-   *       the strategy react to smaller imbalances.</li>
-   *   <li><b>fullSkewAtLatencyRatio (full-skew knob)</b> — the latency spread at which routing reaches its
-   *       maximum latency-proportional split. Lowering it below the observed spread (2.0 -> 1.5) reaches full
-   *       protection immediately, so the slow host is at its floor-bounded minimum.</li>
+   *   <li><b>evenUntilLatencyMs (stay-even knob)</b> — the slowest latency up to which routing stays fully
+   *       even. Raising it above the 32ms slowest (20 -> 35) keeps the fleet even; lowering it makes the strategy
+   *       react to smaller latencies.</li>
+   *   <li><b>fullSkewAtLatencyMs (full-skew knob)</b> — the slowest latency at which routing reaches its maximum
+   *       latency-proportional split. Lowering it below the 32ms slowest (40 -> 30) reaches full protection
+   *       immediately, so the slow host is at its floor-bounded minimum.</li>
    * </ul>
    *
    * Each configuration renders a row so the effect of moving a knob is directly visible.
@@ -485,47 +508,47 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
   @Test
   public void testKnobsControlEvenBandAndFullSkewOnset() {
     int groupCount = 3;
-    double[] latency = { 20.0, 20.0, 32.0 }; // ratio 1.6
+    double[] latency = { 20.0, 20.0, 32.0 }; // slowest 32ms
     int slow = 2;
     int requestCount = 60000;
     double even = 1.0 / groupCount;
     double linear = 1.0;
 
     int[] defaultRouted =
-        routeAndFinish(weightedStrategy(latency, 1.2, 2.0, linear, new Random(SEED)), groupCount, 0, requestCount);
+        routeAndFinish(weightedStrategy(latency, 20.0, 40.0, linear, new Random(SEED)), groupCount, 0, requestCount);
     int[] stayEvenRouted =
-        routeAndFinish(weightedStrategy(latency, 1.8, 2.0, linear, new Random(SEED)), groupCount, 0, requestCount);
+        routeAndFinish(weightedStrategy(latency, 35.0, 50.0, linear, new Random(SEED)), groupCount, 0, requestCount);
     int[] fullSkewRouted =
-        routeAndFinish(weightedStrategy(latency, 1.2, 1.5, linear, new Random(SEED)), groupCount, 0, requestCount);
+        routeAndFinish(weightedStrategy(latency, 20.0, 30.0, linear, new Random(SEED)), groupCount, 0, requestCount);
 
     double defaultSlow = defaultRouted[slow] / (double) requestCount;
     double stayEvenSlow = stayEvenRouted[slow] / (double) requestCount;
     double fullSkewSlow = fullSkewRouted[slow] / (double) requestCount;
 
     List<String[]> rows = new ArrayList<>();
-    rows.add(knobRow("even<=1.2, full-skew@2.0 (default)", latency, defaultRouted, requestCount));
-    rows.add(knobRow("even<=1.8, full-skew@2.0 (stays even)", latency, stayEvenRouted, requestCount));
-    rows.add(knobRow("even<=1.2, full-skew@1.5 (full skew now)", latency, fullSkewRouted, requestCount));
+    rows.add(knobRow("even<=20ms, full-skew@40ms (mid-ramp)", latency, defaultRouted, requestCount));
+    rows.add(knobRow("even<=35ms, full-skew@50ms (stays even)", latency, stayEvenRouted, requestCount));
+    rows.add(knobRow("even<=20ms, full-skew@30ms (full skew now)", latency, fullSkewRouted, requestCount));
     logTable(
-        "Knob control on a fixed 1.6x latency spread " + Arrays.toString(latency),
+        "Knob control on a fixed 32ms slowest latency " + Arrays.toString(latency),
         new String[] { "knobs", "routed (absolute)", "shares %", "slow-host share %" },
         rows);
 
-    // Stay-even knob raised above the 1.6x spread: the slow host is still routed ~evenly.
+    // Stay-even knob raised above the 32ms slowest: the slow host is still routed ~evenly.
     Assert.assertEquals(
         stayEvenSlow,
         even,
         0.02,
-        "with stay-even=1.8 (above the 1.6x spread) the slow host stays ~even; share=" + stayEvenSlow);
-    // The default knob (stay-even 1.2) already reacts to the 1.6x spread, so the slow host sits below even.
+        "with even-until=35ms (above the 32ms slowest) the slow host stays ~even; share=" + stayEvenSlow);
+    // The mid-ramp knob (even-until 20ms, full-skew 40ms) reacts to the 32ms slowest, so the slow host sits below even.
     Assert.assertTrue(
         defaultSlow < even - 0.02,
-        "the default knob reacts to the 1.6x spread and sheds slow-host traffic; share=" + defaultSlow);
-    // Lowering the full-skew knob below the spread reaches full skew, shedding even more than the default ramp.
+        "the mid-ramp knob reacts to the 32ms slowest and sheds slow-host traffic; share=" + defaultSlow);
+    // Lowering the full-skew knob below the slowest latency reaches full skew, shedding even more than the mid-ramp.
     Assert.assertTrue(
         fullSkewSlow < defaultSlow - 0.02,
-        "reaching full skew at 1.5 sheds more slow-host traffic than the default ramp; full=" + fullSkewSlow
-            + " default=" + defaultSlow);
+        "reaching full skew at 30ms sheds more slow-host traffic than the mid-ramp; full=" + fullSkewSlow + " default="
+            + defaultSlow);
     // No knob setting ever starves the slow host below its probe floor.
     double floor = HelixGroupLatencyAdaptiveStrategy.PROBE_FLOOR_FRACTION * even;
     for (double slowShare: new double[] { defaultSlow, stayEvenSlow, fullSkewSlow }) {
@@ -570,8 +593,8 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
     double[] measuredLatency = closedLoopLatency(
         hiddenCapacity,
         load,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         m);
     Assert.assertNotNull(measuredLatency, "The latency-driven loop must reach a stable fixed point; did not converge");
 
@@ -665,8 +688,8 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
   private static double[] closedLoopLatency(
       double[] hiddenCapacity,
       double load,
-      double evenUntilRatio,
-      double fullSkewRatio,
+      double evenUntilMs,
+      double fullSkewMs,
       double m) {
     int groupCount = hiddenCapacity.length;
     double[] measuredLatency = new double[groupCount];
@@ -674,7 +697,7 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
     double damping = 0.3; // under-relaxation models EWMA smoothing of measured latency and keeps the loop stable
     int maxRounds = 500;
     for (int round = 0; round < maxRounds; round++) {
-      double[] shares = analyticShares(measuredLatency, evenUntilRatio, fullSkewRatio, m);
+      double[] shares = analyticShares(measuredLatency, evenUntilMs, fullSkewMs, m);
       double maxDelta = 0.0;
       for (int g = 0; g < groupCount; g++) {
         double served = shares[g] * load;
@@ -778,16 +801,16 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
     return runStagedScenario(
         scenario,
         hiddenCapacity,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_RATIO,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_RATIO,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
         HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT);
   }
 
   private StagedRun runStagedScenario(
       String scenario,
       double[] hiddenCapacity,
-      double evenUntilRatio,
-      double fullSkewRatio,
+      double evenUntilMs,
+      double fullSkewMs,
       double m) {
     int groupCount = hiddenCapacity.length;
     int[][] routedByStage = new int[STAGED_LOADS.length][];
@@ -800,13 +823,13 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
       int load = STAGED_LOADS[stage];
 
       // The router's only per-group signal: the latency the environment produces at this load's fixed point.
-      double[] measuredLatency = closedLoopLatency(hiddenCapacity, load, evenUntilRatio, fullSkewRatio, m);
+      double[] measuredLatency = closedLoopLatency(hiddenCapacity, load, evenUntilMs, fullSkewMs, m);
       Assert.assertNotNull(measuredLatency, scenario + " stage " + stage + " closed loop did not converge");
       double ratio = latencyRatio(measuredLatency);
-      double skew = skewFor(ratio, evenUntilRatio, fullSkewRatio, m);
+      double skew = skewFor(slowestMeasuredLatencyMs(measuredLatency), evenUntilMs, fullSkewMs, m);
 
       int[] routed = routeAndFinish(
-          weightedStrategy(measuredLatency, evenUntilRatio, fullSkewRatio, m, new Random(SEED)),
+          weightedStrategy(measuredLatency, evenUntilMs, fullSkewMs, m, new Random(SEED)),
           groupCount,
           nextRequestId,
           load);
@@ -827,7 +850,7 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
       double requestSpreadPct = 100.0 * requestSpread / load;
 
       // Sanity: the real strategy's routed distribution matches the analytic model for this latency + knobs.
-      double[] expected = analyticShares(measuredLatency, evenUntilRatio, fullSkewRatio, m);
+      double[] expected = analyticShares(measuredLatency, evenUntilMs, fullSkewMs, m);
       for (int g = 0; g < groupCount; g++) {
         Assert.assertTrue(
             Math.abs(shares[g] - expected[g]) < 0.02,
@@ -917,7 +940,7 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
   @Test
   public void testNotYetMeasuredGroupTreatedNeutrally() {
     int groupCount = 3;
-    // Groups 0 and 1 measured (one fast, one slow, ratio 3.0 -> full skew); group 2 has no data yet.
+    // Groups 0 and 1 measured (one fast, one slow; slowest 60ms >= 30ms full-skew); group 2 has no data yet.
     double[] latency = { 20.0, 60.0, -1.0 };
     double evenShare = 1.0 / groupCount;
 
@@ -1010,49 +1033,49 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
     Assert.assertThrows(VeniceException.class, () -> strategy.selectGroup(7, 3));
   }
 
-  /** Failure path: the latency-ratio knobs must satisfy {@code 1 <= evenUntil < fullSkew} or the ctor rejects them. */
+  /** Failure path: the latency knobs must satisfy {@code 0 <= evenUntil < fullSkew} or the ctor rejects them. */
   @Test
-  public void testInvalidRatioKnobsThrow() {
+  public void testInvalidKnobsThrow() {
     Random random = new Random(SEED);
-    // evenUntil below 1.0 is meaningless (a ratio is always >= 1).
+    // evenUntil below 0 is meaningless (a latency is non-negative).
     Assert.assertThrows(
         VeniceException.class,
-        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 0.9, 2.0, 1.0, random));
+        () -> weightedStrategy(new double[] { 25.0, 25.0 }, -1.0, 20.0, 1.0, random));
     // evenUntil must be strictly less than fullSkew.
     Assert.assertThrows(
         VeniceException.class,
-        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 2.0, 2.0, 1.0, random));
+        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 20.0, 20.0, 1.0, random));
     Assert.assertThrows(
         VeniceException.class,
-        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 2.5, 2.0, 1.0, random));
+        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 25.0, 20.0, 1.0, random));
     // A non-positive ramp exponent would push skew outside [0, 1] and distort the share past full skew.
     Assert.assertThrows(
         VeniceException.class,
-        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 1.2, 2.0, 0.0, random));
+        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 10.0, 30.0, 0.0, random));
     Assert.assertThrows(
         VeniceException.class,
-        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 1.2, 2.0, -1.0, random));
+        () -> weightedStrategy(new double[] { 25.0, 25.0 }, 10.0, 30.0, -1.0, random));
   }
 
   /**
    * Baseline reproduction of the group-routing skew this strategy fixes, plus the fix, on identical input.
    *
    * <p>The existing {@link HelixGroupLeastLoadedStrategy} is driven with a <em>real per-group latency vector
-   * observed in production</em> (only a 1.18x spread between the fastest and slowest group). Its lexicographic
+   * observed in production</em> (fastest 20.25ms, slowest 23.84ms). Its lexicographic
    * (in-flight, latency) tie-break -- with the constant near-zero in-flight a single router sees -- breaks ties
    * on the momentarily lowest latency and over-concentrates traffic on whichever group is momentarily fastest,
    * reproducing the ~40% production skew from a sub-millisecond edge and squeezing read-quota headroom on the
    * others (the 429s).
    *
-   * <p>The new strategy still reads latency, but a 1.18x spread is <em>inside</em> its stay-even ratio (1.2x
-   * default), so it treats the spread as noise and routes evenly, holding each group near its fair share and
-   * preserving quota. The two strategies are compared on the same latency vector to show the fix removes the
-   * over-concentration.
+   * <p>The new strategy still reads latency, but the slowest group (23.84ms) is <em>under</em> a 25ms even-until
+   * threshold (an SLA-scale setting), so it treats the spread as noise and routes evenly, holding each group near
+   * its fair share and preserving quota. The two strategies are compared on the same latency vector to show the
+   * fix removes the over-concentration.
    */
   @Test
   public void testBaselineOldStrategyOverConcentratesVersusNewStrategy() {
     int groupCount = 5;
-    // Real per-group average latency (ms) observed in production; group 4 is fastest. Spread 23.84/20.25 = 1.18x.
+    // Real per-group average latency (ms) observed in production; group 4 is fastest. Slowest is 23.84ms.
     double[] measured = { 22.88, 22.13, 23.84, 20.94, 20.25 };
     double jitterStdDevMs = 3.0;
     int fastGroup = argMin(measured);
@@ -1065,16 +1088,20 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
         new HelixGroupLeastLoadedStrategy(mockTimeoutProcessor(), TIMEOUT_MS, oldStats);
     int[] oldRouted = routeAndFinish(oldStrategy, groupCount, 0, requestCount);
 
-    // --- Fix: new weighted strategy on the same latency vector; the 1.18x spread is inside the stay-even ratio. ---
-    HelixGroupLatencyAdaptiveStrategy newStrategy =
-        weightedStrategy(measured, HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT, new Random(SEED));
+    // --- Fix: new weighted strategy on the same latency vector; the 23.84ms slowest is under a 25ms even-until. ---
+    HelixGroupLatencyAdaptiveStrategy newStrategy = weightedStrategy(
+        measured,
+        25.0,
+        45.0,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT,
+        new Random(SEED));
     int[] newRouted = routeAndFinish(newStrategy, groupCount, 0, requestCount);
 
     double oldFastShare = oldRouted[fastGroup] / (double) requestCount;
     double newFastShare = newRouted[fastGroup] / (double) requestCount;
 
     LOGGER.info(
-        "Baseline reproduction on production-observed latency vector {} (1.18x spread, ratio {}, {}ms jitter):",
+        "Baseline reproduction on production-observed latency vector {} (slowest 23.84ms, ratio {}, {}ms jitter):",
         Arrays.toString(measured),
         String.format("%.2f", latencyRatio(measured)),
         jitterStdDevMs);
@@ -1089,21 +1116,22 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
         fastGroup,
         String.format("%.1f", 100 * newFastShare));
 
-    // The baseline exhibits the undesirable over-concentration: despite only a 1.18x latency spread and every
-    // group being healthy, the old strategy pushes the fastest group's share far above its ~20% fair share.
+    // The baseline exhibits the undesirable over-concentration: despite a slowest latency of only 23.84ms and
+    // every group being healthy, the old strategy pushes the fastest group's share far above its ~20% fair share.
     Assert.assertEquals(argMax(oldRouted), fastGroup, "Baseline should concentrate on the fastest group");
     Assert.assertTrue(
         oldFastShare > evenShare * 1.5,
         "Baseline should over-concentrate on the fastest group (>1.5x fair share); share=" + oldFastShare);
 
-    // The fix removes that over-concentration: the 1.18x spread is inside the stay-even ratio, so the new
+    // The fix removes that over-concentration: the 23.84ms slowest is under the 25ms even-until, so the new
     // strategy spreads evenly and the (formerly hottest) group stays near its fair share and no group is starved.
     Assert.assertTrue(
         newFastShare < oldFastShare - 0.1,
         "New strategy must materially reduce the over-concentration; old=" + oldFastShare + " new=" + newFastShare);
     Assert.assertTrue(
         Math.abs(newFastShare - evenShare) < 0.02,
-        "New strategy should keep every group near an even share within the stay-even ratio; share=" + newFastShare);
+        "New strategy should keep every group near an even share when latencies are inside the even band; share="
+            + newFastShare);
     for (int g = 0; g < groupCount; g++) {
       Assert.assertTrue(
           newRouted[g] > 0.10 * requestCount,
