@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer.client;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_THREAD_PRIORITY;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotSame;
@@ -27,8 +28,6 @@ import org.testng.annotations.Test;
 public class TestNettyFileTransferClient {
   // Reuse the production floor so this test tracks it instead of hard-coding a second copy.
   private static final int MIN_NETTY_WORKER_THREADS = NettyFileTransferClient.MIN_NETTY_WORKER_THREADS;
-  // Mirrors NettyFileTransferClient#BLOB_TRANSFER_CLIENT_THREAD_PRIORITY.
-  private static final int EXPECTED_THREAD_PRIORITY = 4;
 
   private NettyFileTransferClient createClient(int nettyWorkerThreadCount) throws Exception {
     return createClient(nettyWorkerThreadCount, false);
@@ -118,7 +117,7 @@ public class TestNettyFileTransferClient {
         Thread thread = executor.submit(Thread::currentThread).get(5, TimeUnit.SECONDS);
         assertEquals(
             thread.getPriority(),
-            EXPECTED_THREAD_PRIORITY,
+            BLOB_TRANSFER_THREAD_PRIORITY,
             "Blob transfer event-loop threads should run below normal priority");
         assertTrue(
             thread.getName().startsWith("Venice-BlobTransfer-Client-Netty"),
