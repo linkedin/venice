@@ -949,4 +949,30 @@ public class AbstractDataWriterSparkJobTest {
       Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
     }
   }
+
+  @Test
+  public void testEncryptionKeyUrnIsReassertedAfterLaterRuntimeConfigWrites() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.pubSubEncryptionKeyUrn = null;
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertFalse(jobConf.getOption(PUB_SUB_ENCRYPTION_KEY_URN).isDefined());
+
+      // Building the input DataFrame writes spark.data.writer.conf.* back onto the runtime config, after
+      // configure() has already resolved the key. The task config is materialised from the runtime config
+      // later still, so the store-derived value has to win at that point, not merely at configure() time.
+      jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:reintroducedAfterConfigure");
+      AbstractDataWriterSparkJob.applyStoreDerivedEncryptionKeyUrn(jobConf, setting);
+
+      Assert.assertFalse(jobConf.getOption(PUB_SUB_ENCRYPTION_KEY_URN).isDefined());
+    }
+  }
 }

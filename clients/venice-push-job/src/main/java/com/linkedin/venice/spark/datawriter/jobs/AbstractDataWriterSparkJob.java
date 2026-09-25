@@ -391,10 +391,20 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         PASS_THROUGH_CONFIG_PREFIXES,
         SPARK_DATA_WRITER_CONF_PREFIX);
 
-    // The encryption key URN is driver-owned and derived from store metadata. Its name is outside every
-    // pass-through prefix, but SPARK_DATA_WRITER_CONF_PREFIX lets a caller write any key name, so set or
-    // clear it unconditionally after the copying above and let store metadata win. Clearing also matters
-    // because the SparkSession is reused across jobs and its runtime config is broadcast to the tasks.
+    applyStoreDerivedEncryptionKeyUrn(jobConf, pushJobSetting);
+  }
+
+  /**
+   * Makes store metadata the only source of the encryption key URN in the Spark runtime config, clearing the
+   * key entirely when the store is not encryption enabled.
+   *
+   * <p>The key is named outside every pass-through prefix, but {@code SPARK_DATA_WRITER_CONF_PREFIX} is
+   * stripped and re-applied to the runtime config, which reaches any key name. Call this after anything that
+   * can write caller-supplied properties into {@code sparkSession.conf()}, and in particular immediately
+   * before the config is broadcast to the tasks, since the runtime config is mutated again while the input
+   * DataFrame is built.
+   */
+  static void applyStoreDerivedEncryptionKeyUrn(RuntimeConfig jobConf, PushJobSetting pushJobSetting) {
     if (pushJobSetting.pubSubEncryptionKeyUrn != null) {
       jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
     } else {
@@ -1011,6 +1021,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
     ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
+
+    applyStoreDerivedEncryptionKeyUrn(this.sparkSession.conf(), pushJobSetting);
 
     Properties jobProps = new Properties();
     this.sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
