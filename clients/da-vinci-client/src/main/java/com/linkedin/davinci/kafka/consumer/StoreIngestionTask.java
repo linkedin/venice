@@ -102,6 +102,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -4167,6 +4168,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *       push is in progress (i.e., {@code store.getCurrentVersion() < this version}). Already-
    *       current and backup versions skip verification, since their EOP was already processed in
    *       a prior lifecycle and a re-emit (e.g., re-ingestion from snapshot) shouldn't re-fire it.</li>
+   *   <li>The local version topic has compaction enabled and the persisted SOP age meets its
+   *       minimum compaction lag. Its surviving records need not match the original producer
+   *       count, even while a deferred swap leaves the version in the FUTURE role.</li>
    * </ul>
    */
   void verifyBatchPushRecordCount(PartitionConsumptionState pcs, PubSubMessageHeaders headers) {
@@ -4192,6 +4196,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * prior lifecycle and shouldn't be re-judged on any re-emit / re-ingestion path.
      */
     if (versionRole != VersionRole.FUTURE) {
+      return;
+    }
+
+    if (isLocalBatchCompacted()) {
+      LOGGER.info(
+          "Skipping batch record count and HLL verification for replica {}: local compaction enabled and SOP age meets minimum compaction lag",
+          pcs.getReplicaId());
       return;
     }
 
@@ -4271,6 +4282,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long storeCreatedTime = store.getCreatedTime();
     long versionCreatedTime = storeVersion.getCreatedTime();
     return storeCreatedTime > 0 && versionCreatedTime > 0 && versionCreatedTime < storeCreatedTime;
+  }
+
+  /**
+   * Uses the local topic's current compaction policy and persisted producer SOP timestamp to determine
+   * whether batch records are old enough for compaction. This is an eligibility heuristic, not proof
+   * that the broker cleaner ran; current configuration cannot reconstruct earlier policy changes.
+   */
+  private boolean isLocalBatchCompacted() {
+    // Refresh at EOP: a cached false may predate regional push completion and compaction enablement.
+    // Do not hide metadata failures.
+    PubSubTopicConfiguration config =
+        topicManagerRepository.getLocalTopicManager().getTopicConfigWithRetry(versionTopic);
+    if (!config.isLogCompacted()) {
+      return false;
+    }
+    StoreVersionState state = storageEngine.getStoreVersionState();
+    long sopTimestamp = state == null ? 0 : state.startOfPushTimestamp;
+    long batchAgeMs = LatencyUtils.getElapsedTimeFromMsToMs(sopTimestamp);
+    if (sopTimestamp <= 0 || batchAgeMs < 0) {
+      LOGGER.warn(
+          "Cannot determine batch age for {}: invalid SOP timestamp {}. Retaining record count verification.",
+          kafkaVersionTopic,
+          sopTimestamp);
+      return false;
+    }
+    return batchAgeMs >= config.minLogCompactionLagMs();
   }
 
   protected void processStartOfIncrementalPush(
