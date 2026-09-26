@@ -5,6 +5,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,7 @@ import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -152,6 +154,39 @@ public class JobRoutesTest {
     verify(response).status(HttpStatus.SC_OK);
     verify(schemaReader).getValueSchema(unknownProtocolVersion);
     verify(admin, never()).sendPushJobDetails(any(PushJobStatusRecordKey.class), any(PushJobDetails.class));
+  }
+
+  @Test
+  public void testSendPushJobDetailsAdminFailurePreservesErrorStatus() throws Exception {
+    PushJobDetails pushJobDetails = new PushJobDetails();
+    pushJobDetails.clusterName = "test-cluster";
+    pushJobDetails.overallStatus = Collections.emptyList();
+    pushJobDetails.pushId = "";
+    pushJobDetails.failureDetails = "";
+    InternalAvroSpecificSerializer<PushJobDetails> serializer = AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+    byte[] payload = serializer.serialize(null, pushJobDetails);
+
+    Admin admin = mock(Admin.class);
+    doReturn(true).when(admin).isLeaderControllerFor("test-cluster");
+    doThrow(new VeniceException("writer failure")).when(admin)
+        .sendPushJobDetails(any(PushJobStatusRecordKey.class), any(PushJobDetails.class));
+    Request request = mock(Request.class, RETURNS_DEEP_STUBS);
+    doReturn("test-cluster").when(request).queryParams(ControllerApiConstants.CLUSTER);
+    doReturn("test-store").when(request).queryParams(ControllerApiConstants.NAME);
+    doReturn("1").when(request).queryParams(ControllerApiConstants.VERSION);
+    doReturn(payload).when(request).bodyAsBytes();
+    Response response = mock(Response.class);
+
+    String responseBody = new JobRoutes(false, Optional.empty(), serializer).sendPushJobDetails(admin)
+        .handle(request, response)
+        .toString();
+    ControllerResponse controllerResponse =
+        AdminSparkServer.OBJECT_MAPPER.readValue(responseBody, ControllerResponse.class);
+
+    Assert.assertTrue(controllerResponse.isError());
+    Assert.assertTrue(controllerResponse.getError().contains("writer failure"));
+    verify(response).status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+    verify(response, never()).status(HttpStatus.SC_OK);
   }
 
   @Test

@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Optional;
@@ -37,6 +38,8 @@ import spark.Route;
 
 public class JobRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(JobRoutes.class);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
 
   public JobRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
@@ -178,27 +181,34 @@ public class JobRoutes extends AbstractRoute {
         PushJobStatusRecordKey key = new PushJobStatusRecordKey();
         key.storeName = storeName;
         key.versionNumber = versionNumber;
+        PushJobDetails pushJobDetails;
         try {
-          PushJobDetails pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
-          admin.sendPushJobDetails(key, pushJobDetails);
-
-          if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
+          pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
+        } catch (Exception e) {
+          // Deserialization failures (e.g. an unknown future protocol version) are best-effort telemetry failures.
+          controllerResponse.setError(e);
+          String errorMessage = e.getMessage();
+          if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(clusterName + ":" + errorMessage)) {
             LOGGER.warn(
-                "Sending push job liveness heartbeats for store {} with version {} failed due to "
-                    + "{}. Push job ID is: {}",
+                "Failed to deserialize best-effort push job details in cluster {} for store {} with version {}: {}",
+                clusterName,
                 storeName,
                 versionNumber,
-                pushJobDetails.failureDetails.toString(),
-                pushJobDetails.pushId.toString());
+                errorMessage);
           }
-        } catch (Exception e) {
-          controllerResponse.setError(e);
+          response.status(HttpStatus.SC_OK);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
+        }
+        admin.sendPushJobDetails(key, pushJobDetails);
+
+        if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
           LOGGER.warn(
-              "Failed to send best-effort push job details for store {} with version {}",
+              "Sending push job liveness heartbeats for store {} with version {} failed due to "
+                  + "{}. Push job ID is: {}",
               storeName,
               versionNumber,
-              e);
-          response.status(HttpStatus.SC_OK);
+              pushJobDetails.failureDetails.toString(),
+              pushJobDetails.pushId.toString());
         }
       } catch (Throwable e) {
         controllerResponse.setError(e);
