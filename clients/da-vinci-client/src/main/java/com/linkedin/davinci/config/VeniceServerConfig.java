@@ -18,6 +18,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_BLOB_R
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_RECEIVER_DIRECT_MEMORY_THROTTLE_THRESHOLD_BYTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_RECEIVER_SERVER_POLICY;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS;
@@ -697,6 +698,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int maxConcurrentSnapshotUser;
   private final long blobTransferMaxChunkSizeBytes;
   private final boolean blobTransferDedicatedAllocatorEnabled;
+  private final long blobTransferReceiverDirectMemoryThrottleThresholdBytes;
   private final int blobTransferMaxTimeoutInMin;
   private final int blobReceiveMaxTimeoutInMin;
   private final int blobReceiveReaderIdleTimeInSeconds;
@@ -851,6 +853,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES, 2 * 1024 * 1024L);
     blobTransferDedicatedAllocatorEnabled =
         serverProperties.getBoolean(BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED, false);
+    // Defaults to zero, which leaves the receiver behaving exactly as it did before: a host only starts declining
+    // transfers once an operator has picked a bound for it.
+    blobTransferReceiverDirectMemoryThrottleThresholdBytes =
+        serverProperties.getSizeInBytes(BLOB_TRANSFER_RECEIVER_DIRECT_MEMORY_THROTTLE_THRESHOLD_BYTES, 0L);
     blobTransferMaxTimeoutInMin = serverProperties.getInt(BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN, 60);
     blobReceiveMaxTimeoutInMin = serverProperties.getInt(BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN, 20);
     blobReceiveReaderIdleTimeInSeconds = serverProperties.getInt(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 60);
@@ -1471,6 +1477,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isBlobTransferDedicatedAllocatorEnabled() {
     return blobTransferDedicatedAllocatorEnabled;
+  }
+
+  public long getBlobTransferReceiverDirectMemoryThrottleThresholdBytes() {
+    return blobTransferReceiverDirectMemoryThrottleThresholdBytes;
   }
 
   public boolean isServerAcceptClientBlobRequestEnabled() {

@@ -55,17 +55,28 @@ public class TestBlobTransferPooledByteBufAllocator {
     ByteBuf directBuffer = allocator.directBuffer(pooledSize);
     try {
       assertTrue(
-          heapBuffer.getClass().getSimpleName().startsWith("Pooled"),
-          "Expected a pooled heap buffer but got " + heapBuffer.getClass().getSimpleName());
+          pooledImplementationOf(heapBuffer).startsWith("Pooled"),
+          "Expected a pooled heap buffer but got " + pooledImplementationOf(heapBuffer));
       assertTrue(
-          directBuffer.getClass().getSimpleName().startsWith("Pooled"),
-          "Expected a pooled direct buffer but got " + directBuffer.getClass().getSimpleName());
+          pooledImplementationOf(directBuffer).startsWith("Pooled"),
+          "Expected a pooled direct buffer but got " + pooledImplementationOf(directBuffer));
       assertTrue(allocator.metric().usedHeapMemory() > 0);
       assertTrue(allocator.metric().usedDirectMemory() > 0);
     } finally {
       heapBuffer.release();
       directBuffer.release();
     }
+  }
+
+  /**
+   * Netty's leak detector samples a fraction of allocations and hands back a {@code SimpleLeakAwareByteBuf} wrapper,
+   * so the concrete type of an allocation is only visible underneath any wrapper. Which allocations get sampled
+   * depends on how many allocations the JVM has already served, making the unwrapped type order-dependent across
+   * test classes.
+   */
+  private static String pooledImplementationOf(ByteBuf buffer) {
+    ByteBuf unwrapped = buffer.unwrap();
+    return (unwrapped == null ? buffer : unwrapped).getClass().getSimpleName();
   }
 
   @Test
@@ -140,5 +151,37 @@ public class TestBlobTransferPooledByteBufAllocator {
     String usageAfterRelease = BlobTransferPooledByteBufAllocator.describeUsage(allocator);
     assertTrue(usageAfterRelease.contains("directHugeAllocationsTotal=1"), usageAfterRelease);
     assertTrue(usageAfterRelease.contains("usedDirectMemory=0"), usageAfterRelease);
+  }
+
+  @Test
+  public void testUsedDirectMemoryBytesIsAttributableToBlobTransferAlone() {
+    ByteBuf processWideBuffer = PooledByteBufAllocator.DEFAULT.directBuffer(1024);
+    try {
+      assertEquals(
+          BlobTransferPooledByteBufAllocator.usedDirectMemoryBytes(PooledByteBufAllocator.DEFAULT),
+          0L,
+          "The process-wide pool serves the read path too, so returning its total would let a blob transfer budget "
+              + "be compared against memory blob transfer never allocated.");
+      assertEquals(
+          BlobTransferPooledByteBufAllocator.usedDirectMemoryBytes(UnpooledByteBufAllocator.DEFAULT),
+          0L,
+          "An unpooled allocator keeps no pool metrics to read.");
+    } finally {
+      processWideBuffer.release();
+    }
+
+    PooledByteBufAllocator allocator = BlobTransferPooledByteBufAllocator.create("receiver", true, 2);
+    ByteBuf buffer = allocator.directBuffer(allocator.metric().chunkSize() * 2);
+    try {
+      long usedBytes = BlobTransferPooledByteBufAllocator.usedDirectMemoryBytes(allocator);
+      assertTrue(usedBytes > 0, "A dedicated allocator holding a buffer must report it, or nothing would decline.");
+      // The number a caller compares against a budget and the string a caller logs have to be one reading, or a
+      // decline would end up explained by a figure that did not cause it.
+      assertTrue(
+          BlobTransferPooledByteBufAllocator.describeUsage(allocator).contains("usedDirectMemory=" + usedBytes),
+          BlobTransferPooledByteBufAllocator.describeUsage(allocator));
+    } finally {
+      buffer.release();
+    }
   }
 }

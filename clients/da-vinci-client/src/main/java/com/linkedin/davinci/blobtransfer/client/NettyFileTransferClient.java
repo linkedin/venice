@@ -62,6 +62,9 @@ public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
   private static final int ALL_HOSTS_CONNECTION_TIMEOUT_IN_MINUTES = 1;
+  public static final int MAX_RECEIVE_BUFFER_BYTES = 1 << 20;
+  private static final int MIN_RECEIVE_BUFFER_BYTES = 64 * 1024;
+  private static final int INITIAL_RECEIVE_BUFFER_BYTES = 512 * 1024;
   // Total connection timeout (TCP connection and SSL handshake)
   private static final int PER_HOST_CONNECTION_TIMEOUT_MS = 50 * 1000;
   // Maximum time that Netty will wait to establish the initial connection before failing. (TCP connection)
@@ -138,10 +141,14 @@ public class NettyFileTransferClient {
     clientBootstrap.option(ChannelOption.SO_KEEPALIVE, true);
     clientBootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECTION_ESTABLISHMENT_TIMEOUT_MS);
     // Increase the receiver buffer size to 1MB.
-    clientBootstrap.option(ChannelOption.SO_RCVBUF, 1 << 20);
+    clientBootstrap.option(ChannelOption.SO_RCVBUF, MAX_RECEIVE_BUFFER_BYTES);
     // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
-    clientBootstrap
-        .option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(64 * 1024, 512 * 1024, 1 << 20));
+    clientBootstrap.option(
+        ChannelOption.RCVBUF_ALLOCATOR,
+        new AdaptiveRecvByteBufAllocator(
+            MIN_RECEIVE_BUFFER_BYTES,
+            INITIAL_RECEIVE_BUFFER_BYTES,
+            MAX_RECEIVE_BUFFER_BYTES));
     // RCVBUF_ALLOCATOR above decides how large each read buffer is; ALLOCATOR decides which pool it comes from.
     // Size the arena count to this client's event loop pool rather than to Netty's process-wide cores * 2 default.
     this.byteBufAllocator =

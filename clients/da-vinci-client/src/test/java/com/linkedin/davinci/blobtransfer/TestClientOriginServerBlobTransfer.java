@@ -265,6 +265,7 @@ public class TestClientOriginServerBlobTransfer {
         partitionDir.toString(),
         versionedBlobTransferStats,
         5,
+        0L,
         LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
     blobTransferManager.start();
     return blobTransferManager;

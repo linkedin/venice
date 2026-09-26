@@ -51,6 +51,20 @@ public interface BlobTransferManager<T> extends AutoCloseable {
   CompletionStage<T> put(String storeName, int version, int partition);
 
   /**
+   * Whether the receiver is willing to start another blob transfer right now, so a caller can fall back to
+   * version-topic bootstrapping instead of adding to memory the host is already struggling to hold.
+   * <p>
+   * Called before any of the transfer's setup work, since that work drops and recreates partition directories and is
+   * wasted if the transfer is not going to run.
+   *
+   * @return true unless an implementation actively declines, so an implementation that does not throttle keeps
+   *         behaving as it did.
+   */
+  default boolean canAcceptNewTransfer(String storeName, int version, int partition) {
+    return true;
+  }
+
+  /**
    * Close the blob transfer manager and related resources
    */
   void close() throws Exception;

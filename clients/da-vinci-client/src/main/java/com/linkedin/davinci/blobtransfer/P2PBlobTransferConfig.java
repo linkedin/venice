@@ -43,6 +43,9 @@ public class P2PBlobTransferConfig {
   // Whether the sender and receiver channels allocate from a Netty PooledByteBufAllocator of their own rather than
   // the process-wide default, so their memory usage is attributable to blob transfer.
   private final boolean dedicatedAllocatorEnabled;
+  // How much direct memory blob transfer may hold before the receiver declines new transfers. Zero disables the
+  // check.
+  private final long receiverDirectMemoryThrottleThresholdBytes;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -63,7 +66,8 @@ public class P2PBlobTransferConfig {
       int p2pTransferClientNettyWorkerThreadCount,
       int clientCapacityPercent,
       boolean serverAcceptClientBlobRequestEnabled,
-      boolean dedicatedAllocatorEnabled) {
+      boolean dedicatedAllocatorEnabled,
+      long receiverDirectMemoryThrottleThresholdBytes) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -83,6 +87,7 @@ public class P2PBlobTransferConfig {
     this.clientCapacityPercent = clientCapacityPercent;
     this.serverAcceptClientBlobRequestEnabled = serverAcceptClientBlobRequestEnabled;
     this.dedicatedAllocatorEnabled = dedicatedAllocatorEnabled;
+    this.receiverDirectMemoryThrottleThresholdBytes = receiverDirectMemoryThrottleThresholdBytes;
   }
 
   public int getP2pTransferServerPort() {
@@ -159,5 +164,9 @@ public class P2PBlobTransferConfig {
 
   public boolean isDedicatedAllocatorEnabled() {
     return dedicatedAllocatorEnabled;
+  }
+
+  public long getReceiverDirectMemoryThrottleThresholdBytes() {
+    return receiverDirectMemoryThrottleThresholdBytes;
   }
 }

@@ -88,6 +88,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   private final ThreadPoolExecutor replicaBlobFetchExecutor;
   // Status tracking manager is responsible for coordinating blob transfer cancellations
   private final BlobTransferStatusTrackingManager statusTrackingManager;
+  // Decides whether this host should start another transfer, or let the replica bootstrap from the version topic
+  private final BlobTransferAdmissionGate admissionGate;
 
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
@@ -96,6 +98,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       String baseDir,
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
       int maxConcurrentBlobReceiveReplicas,
+      long receiverDirectMemoryThrottleThresholdBytes,
       LogContext logContext) {
     this.blobTransferService = blobTransferService;
     this.nettyClient = nettyClient;
@@ -113,6 +116,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
             BLOB_TRANSFER_THREAD_PRIORITY,
             logContext));
     this.statusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
+    this.admissionGate =
+        new BlobTransferAdmissionGate(nettyClient.getByteBufAllocator(), receiverDirectMemoryThrottleThresholdBytes);
+  }
+
+  @Override
+  public boolean canAcceptNewTransfer(String storeName, int version, int partition) {
+    return admissionGate
+        .canAcceptNewTransfer(Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
   }
 
   @Override
