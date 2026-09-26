@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
@@ -759,6 +760,51 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
           .emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION);
       verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
     });
+  }
+
+  @Test
+  public void testMetricReportingThreadSurvivesRecordStatsFailure() {
+    // Keep the interval short so a surviving loop completes several cycles well within the test timeout.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+
+    // emitCurrentConsumingVersionMetrics is the last statement of recordStats, so throwing here fails the
+    // whole reporting cycle the same way a malformed topic name would.
+    doThrow(new NumberFormatException("Simulated failure while computing stats")).when(changeCaptureStats)
+        .emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
+
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+
+    int partitionId = 0;
+    recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
+    recordTransformer.onHeartbeat(partitionId, 1L);
+
+    Thread reporterThread = null;
+    try {
+      /**
+       * Require a second cycle rather than a single one: the first invocation is recorded before the
+       * exception finishes unwinding, so asserting on it alone could observe a thread that is already
+       * terminating. A second call only happens if the loop resumed.
+       */
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          () -> verify(changeCaptureStats, atLeast(2)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt()));
+
+      reporterThread = veniceChangelogConsumer.getBackgroundReporterThread();
+      assertNotNull(reporterThread, "Background reporter thread should have been started.");
+      assertTrue(
+          reporterThread.isAlive(),
+          "Reporter thread must stay alive after recordStats throws, otherwise lag reporting stops permanently.");
+    } finally {
+      if (reporterThread == null) {
+        reporterThread = veniceChangelogConsumer.getBackgroundReporterThread();
+      }
+      if (reporterThread != null) {
+        reporterThread.interrupt();
+      }
+    }
   }
 
   @Test
