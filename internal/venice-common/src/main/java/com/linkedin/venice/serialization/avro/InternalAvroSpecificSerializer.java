@@ -101,6 +101,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
   /** Used to fetch unknown schemas, to ensure forward compatibility when the protocol gets upgraded. */
   private SchemaReader schemaReader = null;
+  private int maxAttemptsForSchemaReader = MAX_ATTEMPTS_FOR_SCHEMA_READER;
 
   private final BiConsumer<Integer, Schema> newSchemaEncountered;
 
@@ -243,6 +244,14 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     this.schemaReader = schemaReader;
   }
 
+  public void setSchemaReader(SchemaReader schemaReader, int maxAttemptsForSchemaReader) {
+    if (maxAttemptsForSchemaReader < 1) {
+      throw new IllegalArgumentException("maxAttemptsForSchemaReader must be at least 1");
+    }
+    this.schemaReader = schemaReader;
+    this.maxAttemptsForSchemaReader = maxAttemptsForSchemaReader;
+  }
+
   /**
    * Construct an array of bytes from the given object
    *
@@ -331,7 +340,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
                 + ". The only supported Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
       }
 
-      for (int attempt = 1; attempt <= MAX_ATTEMPTS_FOR_SCHEMA_READER; attempt++) {
+      for (int attempt = 1; attempt <= maxAttemptsForSchemaReader; attempt++) {
         try {
           Schema newProtocolSchema = schemaReader.getValueSchema(protocolVersion);
           if (newProtocolSchema == null) {
@@ -350,15 +359,15 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
           break;
         } catch (Exception e) {
-          if (attempt == MAX_ATTEMPTS_FOR_SCHEMA_READER) {
+          if (attempt == maxAttemptsForSchemaReader) {
             throw new VeniceException(
                 "Failed to retrieve new protocol schema version (" + protocolVersion + ") after "
-                    + MAX_ATTEMPTS_FOR_SCHEMA_READER + " attempts.",
+                    + maxAttemptsForSchemaReader + " attempts.",
                 e);
           }
           LOGGER.error(
               "Caught an exception while trying to fetch a new protocol schema version (" + protocolVersion
-                  + "). Attempt #" + attempt + "/" + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep "
+                  + "). Attempt #" + attempt + "/" + maxAttemptsForSchemaReader + ". Will sleep "
                   + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS + " ms and try again.",
               e);
           Utils.sleep(WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS);
