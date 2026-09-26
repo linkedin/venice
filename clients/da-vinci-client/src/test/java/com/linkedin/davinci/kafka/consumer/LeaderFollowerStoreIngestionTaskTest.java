@@ -3708,6 +3708,41 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testShouldStartBlobTransferIsRefusedOnceInFlightLimitIsReached() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    // A negative lag threshold keeps every other condition satisfied, so the in-flight count is the only thing
+    // deciding the outcome below.
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+    when(mockVeniceServerConfig.getMaxConcurrentInFlightReceiveReplicas()).thenReturn(2);
+
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(1);
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(2);
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferIgnoresInFlightCountWhenLimitIsZero() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+    // Zero is the shipped default and has to leave the count unbounded, otherwise enabling this code would change
+    // behaviour before anyone chose a limit.
+    when(mockVeniceServerConfig.getMaxConcurrentInFlightReceiveReplicas()).thenReturn(0);
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(100);
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
   public void testShouldStartBlobTransferBatchStoreEOPReceived() throws InterruptedException {
     setUpWithBlobTransfer(false);
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");

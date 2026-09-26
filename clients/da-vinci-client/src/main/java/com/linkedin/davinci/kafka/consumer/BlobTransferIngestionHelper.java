@@ -88,14 +88,53 @@ public class BlobTransferIngestionHelper {
     if (!shouldEnableBlobTransfer(store, isDaVinciClient)) {
       return false;
     }
-    return isReplicaLaggedAndNeedBlobTransfer(
+    if (!isReplicaLaggedAndNeedBlobTransfer(
         storeName,
         versionNumber,
         partition,
         replicaId,
         isHybrid,
         kafkaVersionTopic,
-        pubSubContext);
+        pubSubContext)) {
+      return false;
+    }
+    // Checked last so it only reports replicas that would otherwise have transferred, which is the number needed to
+    // size the limit.
+    return isWithinConcurrentInFlightReceiveLimit(replicaId);
+  }
+
+  /**
+   * Whether the receiver still has room for another streaming blob transfer channel.
+   *
+   * <p>A receiving host's direct memory scales with the channels that are actually streaming rather than with the size
+   * of the fetch pool, so the streaming count is the quantity that has to be bounded. A limit of 0 or less leaves it
+   * unbounded.
+   *
+   * <p>This is asked before a replica commits to blob transfer rather than partway through one, which leaves a
+   * refused replica intact: {@code startBlobTransferAsyncForPartition} drops the local partition before it fetches, so
+   * a replica turned away later has to rebuild from the version topic from scratch, whereas one turned away here keeps
+   * its data and simply resumes consuming.
+   *
+   * <p>The count is read without being reserved against, so a burst can still overshoot by however many replicas sit
+   * between this check and opening their channel. That overshoot is bounded and costs far less than serialising
+   * admission.
+   */
+  public boolean isWithinConcurrentInFlightReceiveLimit(String replicaId) {
+    int limit = serverConfig.getMaxConcurrentInFlightReceiveReplicas();
+    if (limit <= 0) {
+      return true;
+    }
+    int inFlightTransfers = blobTransferManager.getInFlightReceiveCount();
+    if (inFlightTransfers < limit) {
+      return true;
+    }
+    LOGGER.info(
+        "Skipping blob transfer for replica {} and falling back to version topic ingestion: inFlightTransfers={} "
+            + "has reached the limit of {}",
+        replicaId,
+        inFlightTransfers,
+        limit);
+    return false;
   }
 
   /**
