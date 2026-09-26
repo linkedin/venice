@@ -207,6 +207,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         .createVeniceWriter(new VeniceWriterOptions.Builder("store_v1").setPartitionCount(1).build())) {
       assertSame(captor.getValue().getPubSubEncryptionKeyUrnLookup(), lookup);
       assertEquals(captor.getValue().getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+      assertFalse(captor.getValue().isProducerEncryptionEnabled());
     }
     verify(mockMetadataRepo, never()).getStore(anyString());
     verify(mockMetadataRepo, never()).refreshOneStore(anyString());
