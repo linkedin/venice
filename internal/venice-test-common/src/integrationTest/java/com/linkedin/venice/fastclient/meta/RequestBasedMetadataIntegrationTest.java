@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.ConfigKeys.SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -65,6 +66,9 @@ public class RequestBasedMetadataIntegrationTest {
     Utils.thisIsLocalhost();
     Properties props = new Properties();
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
+    props.put(
+        SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS,
+        "1-12:8,13-20:30,21-150:50,151-500:100,501-:500");
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
@@ -145,6 +149,15 @@ public class RequestBasedMetadataIntegrationTest {
     assertEquals(requestBasedMetadata.getLatestValueSchema(), latestValueSchema.getSchema());
     assertEquals(requestBasedMetadata.getValueSchema(latestValueSchema.getId()), latestValueSchema.getSchema());
     assertEquals(requestBasedMetadata.getValueSchemaId(latestValueSchema.getSchema()), latestValueSchema.getId());
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testServerMultiKeyRetryPolicyRoundTrip() {
+    // Real server config -> metadata response/header -> router-backed writer schema lookup -> client snapshot.
+    assertNotNull(requestBasedMetadata.getMultiKeyLongTailRetryPolicy());
+    assertEquals(requestBasedMetadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(500), 100000);
+    assertEquals(requestBasedMetadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(5000), 500000);
+    assertEquals(requestBasedMetadata.getBatchGetLimit(), 500, "Retry policy must not raise the request key cap");
   }
 
   @Test(timeOut = TIME_OUT)

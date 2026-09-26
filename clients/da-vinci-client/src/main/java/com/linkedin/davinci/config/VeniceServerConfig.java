@@ -128,6 +128,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN
 import static com.linkedin.venice.ConfigKeys.SERVER_DRAIN_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
+import static com.linkedin.venice.ConfigKeys.SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES;
@@ -284,6 +285,7 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
@@ -790,6 +792,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int partialUpdateLargeResultLogThresholdBytes;
   private final long partialUpdateAmplificationReportIntervalMs;
 
+  private final String fastClientMultiKeyLongTailRetryThresholdsMs;
+
+  public String getFastClientMultiKeyLongTailRetryThresholdsMs() {
+    return fastClientMultiKeyLongTailRetryThresholdsMs;
+  }
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -797,6 +805,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public VeniceServerConfig(VeniceProperties serverProperties, Map<String, Map<String, String>> kafkaClusterMap)
       throws ConfigurationException {
     super(serverProperties, kafkaClusterMap);
+    fastClientMultiKeyLongTailRetryThresholdsMs =
+        serverProperties.getString(SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS, "");
+    if (!fastClientMultiKeyLongTailRetryThresholdsMs.isEmpty()) {
+      BatchGetConfigUtils.parseServerMultiKeyRetryThresholds(fastClientMultiKeyLongTailRetryThresholdsMs);
+    }
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     String componentName = serverProperties.getString(VENICE_LOG_CONTEXT_COMPONENT, VeniceComponent.SERVER.name());
