@@ -3799,9 +3799,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testGetTopicForCurrentPushJobBlocksInProgressVersion() {
     // Regression coverage for the in-progress branch of getTopicForCurrentPushJob. Terminal statuses
     // early-exit (see testGetTopicForCurrentPushJob); a non-terminal latest version must instead block
-    // the next push immediately and return the in-flight topic, without polling getOffLinePushStatus.
-    // STARTED is not polled because a terminal job-status poll only reflects ingestion completion, not
-    // deferred version-swap completion, so polling could let a concurrent push slip in during the
+    // the next push and return the in-flight topic - unless the offline push has terminally ERRORED, in
+    // which case the stranded push is reaped and the next push is allowed. A COMPLETED offline push still
+    // blocks, because a terminal job-status poll only reflects ingestion completion, not deferred
+    // version-swap completion, so unblocking on COMPLETED could let a concurrent push slip in during the
     // STARTED -> PUSHED transition. This guards the stuck-push prevention behavior.
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
@@ -3816,11 +3817,17 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
     doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    doCallRealMethod().when(mockParentAdmin).setTimer(any());
+    mockParentAdmin.setTimer(new TestMockTime());
 
     String latestTopic = storeName + "_v1";
 
-    // CREATED and PUSHED always block the next push immediately and return the in-flight topic, without
-    // polling offline push status.
+    // Default the offline push status to a still-running (non-terminal) push, so the blocking cases below
+    // reach the reap check but are not reaped.
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+
+    // CREATED and PUSHED block the next push and return the in-flight topic (offline push still running).
     for (VersionStatus status: Arrays.asList(VersionStatus.CREATED, VersionStatus.PUSHED)) {
       doReturn(inProgressStore(storeName, status)).when(mockParentAdmin).getStore(clusterName, storeName);
       Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
@@ -3854,7 +3861,33 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         currentPush.isPresent(),
         "A deferred-swap STARTED version should block even if it is already current");
     assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
+    // The non-terminal cases above reach the reap check, which polls the offline push status.
+    verify(mockParentAdmin, atLeast(1)).getOffLinePushStatus(clusterName, latestTopic);
+
+    // STARTED but the offline push has terminally ERRORED (e.g. the push job's driver died without ever
+    // issuing a kill, stranding the parent version status in STARTED): the parent reaps the stranded
+    // push - killing it for cleanup - and allows the next push to proceed (returns empty), instead of
+    // rejecting it as a spurious concurrent push.
+    doReturn(inProgressStore(storeName, VersionStatus.STARTED)).when(mockParentAdmin).getStore(clusterName, storeName);
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.ERROR)).when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    Assert.assertFalse(
+        mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent(),
+        "A STARTED version whose offline push has ERRORED should be reaped and not block the next push");
+    verify(mockParentAdmin, atLeast(1)).killOfflinePush(clusterName, latestTopic, true);
+
+    // STARTED with a terminally COMPLETED offline push must NOT be reaped: the data is ingested but a
+    // deferred version swap may still need to happen, so the future version must be preserved and keep
+    // blocking new pushes. The parent returns the in-flight topic and does not kill the push.
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(
+        currentPush.isPresent(),
+        "A STARTED version whose offline push COMPLETED should keep blocking (deferred swap pending)");
+    assertEquals(currentPush.get(), latestTopic);
+    // No additional kill beyond the single one issued for the ERROR case above.
+    verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, latestTopic, true);
   }
 
   private Store inProgressStore(String storeName, VersionStatus status) {

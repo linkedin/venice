@@ -1457,18 +1457,86 @@ public class VeniceParentHelixAdmin implements Admin {
     // The only statuses left after the terminal cases above are non-terminal: CREATED (version exists
     // but its push has not begun), STARTED (push in flight), and PUSHED (a deferred-swap version whose
     // push completed in its target region but whose swap is still pending). In all of these the version
-    // is not yet done from the user's perspective, so the next push must wait. STARTED is treated the
-    // same as CREATED/PUSHED for deferred-swap versions, or when the version is not current yet, rather
-    // than polling the child job status: a job-status poll only observes ingestion completion, which for
-    // a deferred-swap version does not imply the version swap has finished, so unblocking on a terminal
-    // poll would let a concurrent push slip in during the STARTED -> PUSHED transition.
+    // is not yet done from the user's perspective, so the next push must normally wait.
+    //
+    // Before blocking, consult the live offline push status: a push job whose driver died ungracefully
+    // (e.g. its container node was lost) may never have run its kill path, leaving the parent version
+    // status stranded here even though the offline push has already moved to a terminal ERROR. If so,
+    // reap the stranded push and allow the next push to proceed instead of rejecting it as concurrent.
+    // Only a terminal ERROR triggers a reap. A COMPLETED (or still-running) push keeps blocking: a
+    // terminal job-status poll only observes ingestion completion, which for a deferred-swap version does
+    // not imply the version swap has finished, so unblocking on COMPLETED would let a concurrent push
+    // slip in during the STARTED -> PUSHED transition.
+    String latestTopicName = Version.composeKafkaTopic(storeName, lastVersionNum);
+    if (reapStrandedPushIfErrored(clusterName, latestTopicName)) {
+      return Optional.empty();
+    }
     LOGGER.info(
         "The push for version {} (pushJobId {}) of store {} is not completed (status {}); the next push must wait.",
         lastVersionNum,
         lastVersion.getPushJobId(),
         storeName,
         lastVersion.getStatus());
-    return Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
+    return Optional.of(latestTopicName);
+  }
+
+  /**
+   * Decide whether an incoming push may preempt an existing push whose parent version status is still
+   * non-terminal (e.g. STARTED/PUSHED), by consulting the live offline push status in the child regions.
+   *
+   * <p>A push job's driver can die ungracefully — for example when its container node is lost — without
+   * ever running its kill path. That leaves the parent version status stranded in a non-terminal state
+   * even though the offline push has already moved to a terminal ERROR. Keying off the parent version
+   * status alone would then reject every subsequent push with a spurious {@link ConcurrentBatchPushException}
+   * until an out-of-band cleanup eventually kills the version. Consulting the offline push status lets an
+   * incoming push reap such a stranded push instead.
+   *
+   * <p>Only a terminal {@link ExecutionStatus#ERROR} triggers a reap. A push that merely COMPLETED must
+   * NOT be reaped here: for a deferred-swap version the data is ingested but the version swap is a
+   * deliberate later step, so the future version must be preserved and continue to block new pushes. A
+   * still-running (non-terminal) push likewise continues to block. The status is polled with the same
+   * retry loop the parent uses elsewhere to tolerate transient child-region connectivity blips, and the
+   * status aggregation lets non-terminal statuses take precedence, so a healthy in-flight push (any
+   * region still in progress) is never seen as errored here.
+   *
+   * @return {@code true} only if the existing offline push has terminally ERRORED — in which case it has
+   *         been killed here so the incoming push may proceed; {@code false} otherwise (still running, or
+   *         terminally completed and awaiting a version swap), so it should continue to block the
+   *         incoming push.
+   */
+  private boolean reapStrandedPushIfErrored(String clusterName, String topicName) {
+    final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
+    ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
+    Map<String, String> extraInfo = new HashMap<>();
+    int retryTimes = 5;
+    int current = 0;
+    while (current++ < retryTimes) {
+      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topicName);
+      jobStatus = offlineJobStatus.getExecutionStatus();
+      extraInfo = offlineJobStatus.getExtraInfo();
+      if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+        break;
+      }
+      // Retry since there is a connection failure when querying job status against a child region.
+      try {
+        timer.sleep(SLEEP_MS_BETWEEN_RETRY);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
+      }
+    }
+    if (!jobStatus.isError()) {
+      // Still running, or terminally completed (a completed push may still owe a deferred version swap).
+      // Either way, do not reap: the caller keeps blocking the incoming push.
+      return false;
+    }
+    LOGGER.warn(
+        "Offline push for topic: {} is in terminal status {} while its parent version status is still "
+            + "non-terminal; killing the stranded push so the incoming push can proceed.",
+        topicName,
+        jobStatus);
+    killOfflinePush(clusterName, topicName, true);
+    return true;
   }
 
   /**
