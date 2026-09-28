@@ -38,6 +38,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -99,8 +100,11 @@ import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -115,10 +119,12 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -130,6 +136,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -347,6 +354,55 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         true,
         false,
         Optional.empty());
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAdminWritersUseClusterPropertiesRegardlessOfInitializationOrder(boolean reverseOrder) {
+    parentAdmin.close();
+    String otherCluster = "other-cluster";
+    Map<String, VeniceControllerClusterConfig> configs = new HashMap<>();
+    for (String cluster: Arrays.asList(clusterName, otherCluster)) {
+      VeniceControllerClusterConfig clusterConfig = mockConfig(cluster);
+      Properties properties = new Properties();
+      properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, cluster + ":9092");
+      properties.setProperty(ConfigKeys.CLUSTER_ENCRYPTION_ENABLED, Boolean.toString(cluster.equals(clusterName)));
+      properties.setProperty("producer.custom.setting", cluster);
+      doReturn(new VeniceProperties(properties)).when(clusterConfig).getProps();
+      configs.put(cluster, clusterConfig);
+      mockResources(clusterConfig, cluster);
+    }
+    VeniceControllerMultiClusterConfig multiClusterConfig = new VeniceControllerMultiClusterConfig(configs);
+    PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactory = mock(PubSubProducerAdapterFactory.class);
+    ArgumentCaptor<PubSubProducerAdapterContext> contextCaptor =
+        ArgumentCaptor.forClass(PubSubProducerAdapterContext.class);
+    when(producerFactory.create(contextCaptor.capture())).thenAnswer(invocation -> mock(PubSubProducerAdapter.class));
+    VeniceWriterFactory writerFactory = new VeniceWriterFactory(
+        multiClusterConfig.getCommonConfig().getProps().toProperties(),
+        producerFactory,
+        null,
+        null);
+    doReturn(writerFactory).when(internalAdmin).getVeniceWriterFactory();
+    doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(any());
+    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfig, mock(MetricsRepository.class));
+    List<String> initializationOrder = Arrays.asList(clusterName, otherCluster);
+    if (reverseOrder) {
+      Collections.reverse(initializationOrder);
+    }
+
+    for (String cluster: initializationOrder) {
+      parentAdmin.initStorageCluster(cluster);
+      PubSubProducerAdapterContext context = contextCaptor.getValue();
+      assertEquals(context.getVeniceProperties(), configs.get(cluster).getProps());
+      assertEquals(context.getBrokerAddress(), cluster + ":9092");
+      assertEquals(context.getVeniceProperties().getString("producer.custom.setting"), cluster);
+      assertEquals(
+          context.getVeniceProperties().getBoolean(ConfigKeys.CLUSTER_ENCRYPTION_ENABLED),
+          cluster.equals(clusterName));
+      assertTrue(context.isProducerEncryptionEnabled());
+      // Reinitialization must reuse the existing writer rather than creating another producer.
+      parentAdmin.initStorageCluster(cluster);
+    }
+    verify(producerFactory, times(2)).create(any());
   }
 
   @Test

@@ -13,6 +13,7 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
@@ -21,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,6 +55,61 @@ public class VeniceWriterFactoryTest {
       assertEquals(veniceWriter.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
       VeniceProperties capturedProperties = capturedProducerCtx.getVeniceProperties();
       assertNotNull(capturedProperties);
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testWriterPropertiesDoNotChangeFactoryDefaults(boolean producerEncryptionEnabled) {
+    PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactory = mock(PubSubProducerAdapterFactory.class);
+    ArgumentCaptor<PubSubProducerAdapterContext> contextCaptor =
+        ArgumentCaptor.forClass(PubSubProducerAdapterContext.class);
+    when(producerFactory.create(contextCaptor.capture())).thenAnswer(invocation -> mock(PubSubProducerAdapter.class));
+    MetricsRepository metricsRepository = new MetricsRepository();
+    PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
+    Function<String, String> keyLookup = storeName -> "test-key";
+    Properties defaults = new Properties();
+    defaults.setProperty(ConfigKeys.PUBSUB_BROKER_ADDRESS, "default-broker:9092");
+    defaults.setProperty("producer.custom.setting", "default");
+    VeniceWriterFactory factory = new VeniceWriterFactory(
+        defaults,
+        producerFactory,
+        metricsRepository,
+        registry,
+        keyLookup,
+        producerEncryptionEnabled);
+    Properties overrides = new Properties();
+    overrides.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "cluster-broker:9092");
+    overrides.setProperty("producer.custom.setting", "cluster");
+    overrides.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "1024");
+    VeniceProperties writerProperties = new VeniceProperties(overrides);
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder("store_v1").setPartitionCount(1).build();
+
+    try (VeniceWriter writer = factory.createVeniceWriter(options, writerProperties);
+        VeniceWriter defaultWriter = factory.createVeniceWriter(options);
+        VeniceWriter explicitBrokerWriter = factory.createVeniceWriter(
+            new VeniceWriterOptions.Builder("store_v2").setPartitionCount(1)
+                .setBrokerAddress("explicit-broker:9092")
+                .build(),
+            writerProperties)) {
+      assertEquals(writer.getMaxSizeForUserPayloadPerMessageInBytes(), 1024);
+      assertEquals(
+          defaultWriter.getMaxSizeForUserPayloadPerMessageInBytes(),
+          VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
+      assertEquals(contextCaptor.getAllValues().get(0).getVeniceProperties(), writerProperties);
+      assertEquals(contextCaptor.getAllValues().get(0).getBrokerAddress(), "cluster-broker:9092");
+      assertEquals(contextCaptor.getAllValues().get(1).getBrokerAddress(), "default-broker:9092");
+      assertEquals(
+          contextCaptor.getAllValues().get(1).getVeniceProperties().getString("producer.custom.setting"),
+          "default");
+      assertEquals(contextCaptor.getAllValues().get(2).getBrokerAddress(), "explicit-broker:9092");
+      for (PubSubProducerAdapterContext context: contextCaptor.getAllValues()) {
+        assertSame(context.getMetricsRepository(), metricsRepository);
+        assertSame(context.getPubSubPositionTypeRegistry(), registry);
+        assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+        assertEquals(context.isProducerEncryptionEnabled(), producerEncryptionEnabled);
+      }
+    } finally {
+      metricsRepository.close();
     }
   }
 
