@@ -137,7 +137,7 @@ public class StoreIngestionTaskRecordCountTest {
     return configureTopicManager(sit, compacted, 0L);
   }
 
-  private static TopicManager configureTopicManager(StoreIngestionTask sit, boolean compacted, long minCompactionLagMs)
+  private static TopicManager configureTopicManager(StoreIngestionTask sit, boolean compacted, Long minCompactionLagMs)
       throws Exception {
     TopicManager topicManager = mock(TopicManager.class);
     PubSubTopicConfiguration config = mock(PubSubTopicConfiguration.class);
@@ -193,9 +193,8 @@ public class StoreIngestionTaskRecordCountTest {
     try (MockedStatic<LatencyUtils> ignored = withFixedTime()) {
       if (skip) {
         sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100));
-        verify(pcs, never()).getBatchPushRecordCount();
-        verify(pcs, never()).getEstimatedUniqueIngestedKeyCount();
-        verifyNoInteractions(stats);
+        verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+        verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
       } else {
         expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100)));
         verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
@@ -252,7 +251,8 @@ public class StoreIngestionTaskRecordCountTest {
 
     verify(restartedSit, never()).processStartOfPush(any(), any(), any());
     verify(pcs, never()).getStartOfPushTimestamp();
-    verifyNoInteractions(stats);
+    verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
   @Test
@@ -293,15 +293,16 @@ public class StoreIngestionTaskRecordCountTest {
     try (MockedStatic<LatencyUtils> ignored = withFixedTime()) {
       sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100));
     }
-    verifyNoInteractions(stats);
+    verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
   @Test
   public void testCompactionEnablementIsRefreshedAtEachEop() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    StoreIngestionTask sit = buildSit(true, stats);
+    StoreIngestionTask sit = buildSit(false, stats);
     TopicManager topicManager = configureTopicManager(sit, false);
-    sit.verifyBatchPushRecordCount(pcsWithCount(100), headersWithPrc(100));
+    sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100));
 
     PubSubTopicConfiguration compactedConfig = mock(PubSubTopicConfiguration.class);
     doReturn(true).when(compactedConfig).isLogCompacted();
@@ -310,8 +311,9 @@ public class StoreIngestionTaskRecordCountTest {
     sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100));
 
     verify(topicManager, times(2)).getTopicConfigWithRetry(any());
-    verify(stats, times(1)).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
-    verify(stats, never()).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
+    verify(stats, times(2)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
   @Test
@@ -326,9 +328,8 @@ public class StoreIngestionTaskRecordCountTest {
 
     verify(topicManager).getTopicConfigWithRetry(any());
     verify(topicManager, never()).isTopicCompactionEnabled(any());
-    verify(pcs, never()).getBatchPushRecordCount();
-    verify(pcs, never()).getEstimatedUniqueIngestedKeyCount();
-    verifyNoInteractions(stats);
+    verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
   @Test
@@ -342,7 +343,48 @@ public class StoreIngestionTaskRecordCountTest {
     assertSame(
         expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100))),
         failure);
-    verifyNoInteractions(stats);
+    verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+  }
+
+  @Test
+  public void testSynthesizedStoreVersionStateFromEopRetainsVerification() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(true, stats);
+    configureTopicManager(sit, true, MIN_COMPACTION_LAG_MS);
+    configureStoreVersionState(sit, storeVersionState(NOW_MS));
+    PartitionConsumptionState pcs = pcsWithCount(0);
+    doReturn(NOW_MS).when(pcs).getEndOfPushTimestamp();
+    TestLogAppender appender =
+        new TestLogAppender("SynthesizedSopTimestampAppender", PatternLayout.createDefaultLayout());
+    appender.start();
+    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
+    logger.addAppender(appender);
+
+    try {
+      expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100)));
+      verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+      verify(stats).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+      assertTrue(appender.getLog().contains("invalid SOP timestamp " + NOW_MS));
+      assertTrue(appender.getLog().contains("Retaining record count verification."));
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testNullMinLogCompactionLagRetainsVerification() throws Exception {
+    AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
+    StoreIngestionTask sit = buildSit(true, stats);
+    configureTopicManager(sit, true, null);
+    configureStoreVersionState(sit, storeVersionState(NOW_MS - MIN_COMPACTION_LAG_MS));
+
+    try (MockedStatic<LatencyUtils> ignored = withFixedTime()) {
+      expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100)));
+    }
+    verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
   @Test
