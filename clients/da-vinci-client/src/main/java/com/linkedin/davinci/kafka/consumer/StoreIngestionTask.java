@@ -4147,12 +4147,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of strict-mode state). If the local version topic has compaction enabled and the
-   * persisted SOP age meets its minimum compaction lag, the mismatch is treated as nonfatal because
-   * surviving records need not match the original producer count. Otherwise, the verifier logs a
-   * tagged error string. A deficit is nonfatal (warn-and-continue) only for a migration-clone replay
-   * (see {@link #isPreExistingMigrationCloneReplay(Store)}). Otherwise, on a non-DaVinci replica, if the
-   * server-level config
+   * fires regardless of strict-mode state). The mismatch is nonfatal when local-topic compaction is
+   * enabled and the persisted SOP age meets its minimum compaction lag, or for a migration-clone
+   * replay (warn-and-continue; see {@link #isPreExistingMigrationCloneReplay(Store)}). Otherwise,
+   * the verifier logs a tagged error string and, on a non-DaVinci replica, if the server-level config
    * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
    * (default), also increments {@code record_count_mismatch_failure} and throws
    * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
@@ -4286,6 +4284,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Uses the local topic's current compaction policy and persisted producer SOP timestamp to determine
    * whether batch records are old enough for compaction. This is an eligibility heuristic, not proof
    * that the broker cleaner ran; current configuration cannot reconstruct earlier policy changes.
+   *
+   * @param endOfPushTimestamp used to detect synthesized {@link StoreVersionState} where the SOP field
+   *     actually carries the EOP timestamp because no SOP was consumed
    */
   private boolean isLocalBatchCompacted(long endOfPushTimestamp) {
     // Refresh at EOP: a cached false may predate regional push completion and compaction enablement.
@@ -4297,9 +4298,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     StoreVersionState state = storageEngine.getStoreVersionState();
     long sopTimestamp = state == null ? 0 : state.startOfPushTimestamp;
-    if (sopTimestamp <= 0 || sopTimestamp == endOfPushTimestamp) {
+    if (sopTimestamp <= 0) {
       LOGGER.warn(
           "Cannot determine batch age for {}: invalid SOP timestamp {}. Retaining record count verification.",
+          kafkaVersionTopic,
+          sopTimestamp);
+      return false;
+    }
+    if (sopTimestamp == endOfPushTimestamp) {
+      LOGGER.warn(
+          "Cannot determine batch age for {}: StoreVersionState SOP timestamp {} equals the EOP timestamp, indicating synthesized version state with no consumed SOP. Retaining record count verification.",
           kafkaVersionTopic,
           sopTimestamp);
       return false;
@@ -4307,7 +4315,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long batchAgeMs = LatencyUtils.getElapsedTimeFromMsToMs(sopTimestamp);
     if (batchAgeMs < 0) {
       LOGGER.warn(
-          "Cannot determine batch age for {}: invalid SOP timestamp {}. Retaining record count verification.",
+          "Cannot determine batch age for {}: SOP timestamp {} is in the future. Retaining record count verification.",
           kafkaVersionTopic,
           sopTimestamp);
       return false;

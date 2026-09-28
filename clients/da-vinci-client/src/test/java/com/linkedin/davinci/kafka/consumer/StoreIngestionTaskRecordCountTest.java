@@ -227,7 +227,11 @@ public class StoreIngestionTaskRecordCountTest {
       expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100)));
       verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
       verify(stats).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
-      assertTrue(appender.getLog().contains("invalid SOP timestamp " + (sopTimestamp == null ? 0 : sopTimestamp)));
+      if (sopTimestamp != null && sopTimestamp > NOW_MS) {
+        assertTrue(appender.getLog().contains("SOP timestamp " + sopTimestamp + " is in the future"));
+      } else {
+        assertTrue(appender.getLog().contains("invalid SOP timestamp " + (sopTimestamp == null ? 0 : sopTimestamp)));
+      }
       assertTrue(appender.getLog().contains("Retaining record count verification."));
     } finally {
       logger.removeAppender(appender);
@@ -365,7 +369,8 @@ public class StoreIngestionTaskRecordCountTest {
       expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100)));
       verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
       verify(stats).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
-      assertTrue(appender.getLog().contains("invalid SOP timestamp " + NOW_MS));
+      assertTrue(appender.getLog().contains("StoreVersionState SOP timestamp " + NOW_MS + " equals the EOP timestamp"));
+      assertTrue(appender.getLog().contains("synthesized version state with no consumed SOP"));
       assertTrue(appender.getLog().contains("Retaining record count verification."));
     } finally {
       logger.removeAppender(appender);
