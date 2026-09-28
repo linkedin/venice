@@ -301,7 +301,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         producerAdapterFactory,
         metricsRepository,
         serverConfig.getPubSubPositionTypeRegistry(),
-        null,
+        pubSubEncryptionKeyUrnLookup,
         false);
     this.encryptedVeniceWriterFactory = new VeniceWriterFactory(
         veniceWriterProperties,
