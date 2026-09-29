@@ -23,13 +23,9 @@ import org.apache.logging.log4j.Logger;
 /**
  * Aggregated versioned storage engine stats with per-store Tehuti reporters and OTel metrics.
  *
- * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily by {@link #getOrCreateOtelStats}
- * and updated by {@link #onVersionInfoUpdated} via {@code computeIfPresent}. This class does NOT
- * override {@code loadAllStats()}, and {@code AbstractVeniceAggVersionedStats} always calls it
- * from its own constructor. As a result, {@code onVersionInfoUpdated} and {@code cleanupVersionResources}
- * are called from within {@code super()}, before the subclass constructor has run at all —
- * meaning {@code otelStatsMap} is still {@code null} at that point. This makes the null guards
- * in those overrides mandatory.
+ * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily when a storage engine or open failure is recorded; the
+ * shared per-store registry updates their version info and closes them on store deletion, and
+ * {@link #removeStorageEngine} closes them once the store's last storage engine leaves this host.
  */
 public class AggVersionedStorageEngineStats extends
     AbstractVeniceAggVersionedStats<AggVersionedStorageEngineStats.StorageEngineStatsWrapper, AggVersionedStorageEngineStats.StorageEngineStatsReporter> {
@@ -40,12 +36,7 @@ public class AggVersionedStorageEngineStats extends
   private final double diskSizeDropAlertThreshold;
   private final Map<String, Sensor> diskSizeDropAlertSensors = new VeniceConcurrentHashMap<>();
 
-  /**
-   * Per-store OTel stats, keyed by store name. Bounded by the number of stores on this host.
-   * Entries are created lazily via {@link #getOrCreateOtelStats(String)} and removed in
-   * {@link #handleStoreDeleted(String)}.
-   */
-  private final Map<String, StorageEngineOtelStats> otelStatsMap = new VeniceConcurrentHashMap<>();
+  private final PerStoreVersionedOtelStats<StorageEngineOtelStats> otelStats;
   private final String clusterName;
 
   public AggVersionedStorageEngineStats(
@@ -75,6 +66,8 @@ public class AggVersionedStorageEngineStats extends
         unregisterMetricForDeletedStoreEnabled);
     this.diskSizeDropAlertThreshold = diskSizeDropAlertThreshold;
     this.clusterName = clusterName;
+    this.otelStats = createPerStoreOtelStats(
+        storeName -> new StorageEngineOtelStats(getMetricsRepository(), storeName, clusterName));
   }
 
   public void setStorageEngine(String topicName, StorageEngine storageEngine) {
@@ -87,9 +80,26 @@ public class AggVersionedStorageEngineStats extends
     try {
       StorageEngineStatsWrapper wrapper = getStats(storeName, version);
       wrapper.setStorageEngine(storageEngine);
-      getOrCreateOtelStats(storeName).setStatsWrapper(version, wrapper);
+      otelStats.compute(storeName, stats -> stats.setStatsWrapper(version, wrapper));
     } catch (Exception e) {
       LOGGER.warn("Failed to setup StorageEngine for store: {}, version: {}", storeName, version, e);
+    }
+  }
+
+  /**
+   * Stops the OTel gauges of a version whose storage engine left this host, and closes the store's OTel metrics once
+   * none of its storage engines remain. Tehuti keeps reading the engine as before.
+   */
+  public void removeStorageEngine(String topicName) {
+    if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
+      return;
+    }
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    int version = Version.parseVersionFromKafkaTopicName(topicName);
+    try {
+      otelStats.removeIf(storeName, stats -> stats.onVersionRemoved(version));
+    } catch (Exception e) {
+      LOGGER.warn("Failed to remove OTel storage engine stats for store: {}, version: {}", storeName, version, e);
     }
   }
 
@@ -121,46 +131,19 @@ public class AggVersionedStorageEngineStats extends
     checkAndRecordDiskSizeAlert(store);
   }
 
-  /**
-   * Updates version info for existing OTel stats only. Uses {@code computeIfPresent} intentionally:
-   * OTel stats are created lazily on first access via {@link #setStorageEngine}/{@link #recordRocksDBOpenFailure},
-   * not eagerly here — this avoids the constructor-time re-entrance hazard described in
-   * {@link #getOrCreateOtelStats}. Null guard: called from {@code super()} constructor before
-   * {@code otelStatsMap} is initialized.
-   */
-  @Override
-  protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
-    if (otelStatsMap == null) {
-      return;
-    }
-    otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
-      try {
-        stats.updateVersionInfo(currentVersion, futureVersion);
-      } catch (Exception e) {
-        LOGGER.error(
-            "Failed to update OTel version info for store: {}, current: {}, future: {}",
-            storeName,
-            currentVersion,
-            futureVersion,
-            e);
-      }
-      return stats;
-    });
-  }
-
   @Override
   protected void cleanupVersionResources(String storeName, int version) {
-    if (otelStatsMap == null) {
+    if (otelStats == null) {
       return;
     }
-    otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
+    StorageEngineOtelStats stats = otelStats.get(storeName);
+    if (stats != null) {
       try {
         stats.onVersionRemoved(version);
       } catch (Exception e) {
         LOGGER.error("Failed to remove OTel wrapper for store: {}, version: {}", storeName, version, e);
       }
-      return stats;
-    });
+    }
   }
 
   @Override
@@ -171,10 +154,6 @@ public class AggVersionedStorageEngineStats extends
       Sensor removed = diskSizeDropAlertSensors.remove(storeName);
       if (removed != null) {
         getMetricsRepository().removeSensor(removed.name());
-      }
-      StorageEngineOtelStats otelStats = otelStatsMap.remove(storeName);
-      if (otelStats != null) {
-        otelStats.close();
       }
     }
   }
@@ -257,27 +236,8 @@ public class AggVersionedStorageEngineStats extends
     return diskSizeDropAlertThreshold;
   }
 
-  /**
-   * Gets or creates OTel stats for a store. {@code getCurrentVersion}/{@code getFutureVersion}
-   * are called <b>before</b> {@code computeIfAbsent} to avoid a re-entrance hazard: when the
-   * store is not yet in {@code aggStats}, calling these methods inside the lambda would trigger
-   * {@code getVersionedStats} -> {@code addStore} -> {@code applyVersionInfo} ->
-   * {@code onVersionInfoUpdated} -> {@code otelStatsMap.computeIfPresent}, which re-enters
-   * {@code otelStatsMap} from inside the lambda and violates the ConcurrentHashMap contract
-   * (JDK-8062841). The {@code get()} fast-path skips the version lookups when stats already exist.
-   */
   private StorageEngineOtelStats getOrCreateOtelStats(String storeName) {
-    StorageEngineOtelStats existing = otelStatsMap.get(storeName);
-    if (existing != null) {
-      return existing;
-    }
-    int currentVersion = getCurrentVersion(storeName);
-    int futureVersion = getFutureVersion(storeName);
-    return otelStatsMap.computeIfAbsent(storeName, k -> {
-      StorageEngineOtelStats stats = new StorageEngineOtelStats(getMetricsRepository(), k, clusterName);
-      stats.updateVersionInfo(currentVersion, futureVersion);
-      return stats;
-    });
+    return otelStats.getOrCreate(storeName);
   }
 
   static class StorageEngineStatsWrapper {

@@ -11,7 +11,6 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.List;
 import java.util.Map;
-import java.util.function.LongSupplier;
 import java.util.function.ObjDoubleConsumer;
 import java.util.function.ObjLongConsumer;
 
@@ -44,9 +43,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
         baseDimensionsMap,
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
-        tehutiMetricStats,
-        (LongSupplier) null,
-        null);
+        tehutiMetricStats);
     MetricType metricType = metricEntity.getMetricType();
     this.isObservableCounter = metricType.isObservableCounterType();
     this.otelDoubleRecordingStrategy = createOtelDoubleRecordingStrategy(metricType);
@@ -94,15 +91,18 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
    * counter values when traffic varied between collection intervals.
    */
   private void reportToMeasurement(ObservableLongMeasurement measurement) {
+    // Read before reporting so that, once closed, this report carries the final totals before retiring.
+    boolean retire = isClosed();
     Iterable<MetricAttributesData> allData = getAllMetricAttributesData();
-    if (allData == null) {
-      return;
-    }
-
-    for (MetricAttributesData holder: allData) {
-      if (holder.hasAdder()) {
-        measurement.record(holder.sum(), holder.getAttributes());
+    if (allData != null) {
+      for (MetricAttributesData holder: allData) {
+        if (holder.hasAdder()) {
+          measurement.record(holder.sum(), holder.getAttributes());
+        }
       }
+    }
+    if (retire) {
+      closeOtelInstrument();
     }
   }
 

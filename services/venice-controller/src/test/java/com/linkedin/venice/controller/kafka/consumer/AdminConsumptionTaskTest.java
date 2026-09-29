@@ -567,6 +567,8 @@ public class AdminConsumptionTaskTest {
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
     Assert.assertEquals(getLastPosition(clusterName), PubSubSymbolicPosition.EARLIEST);
+    // Unsubscribing on close clears the lags instead of reporting them as 0.
+    verify(mockStats, atLeastOnce()).clearAdminConsumptionOffsetLags();
   }
 
   @Test(timeOut = TIMEOUT)

@@ -37,6 +37,21 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
+  public boolean removeIngestionTask(int version, StoreIngestionTask task) {
+    return false;
+  }
+
+  @Override
+  public boolean hasIngestionTasks() {
+    return false;
+  }
+
+  @Override
+  public boolean isIdle() {
+    return true;
+  }
+
+  @Override
   public void close() {
   }
 

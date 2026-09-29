@@ -59,8 +59,10 @@ public class SystemStoreRepairTaskTest {
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
 
     Map<String, SystemStoreHealthCheckStats> systemStoreHealthCheckStatsMap = new HashMap<>();
-    systemStoreHealthCheckStatsMap.put("venice-2", mock(SystemStoreHealthCheckStats.class));
-    systemStoreHealthCheckStatsMap.put("venice-3", mock(SystemStoreHealthCheckStats.class));
+    SystemStoreHealthCheckStats nonLeaderStats = mock(SystemStoreHealthCheckStats.class);
+    SystemStoreHealthCheckStats leaderStats = mock(SystemStoreHealthCheckStats.class);
+    systemStoreHealthCheckStatsMap.put("venice-2", nonLeaderStats);
+    systemStoreHealthCheckStatsMap.put("venice-3", leaderStats);
     doReturn(systemStoreHealthCheckStatsMap).when(systemStoreRepairTask).getClusterToSystemStoreHealthCheckStatsMap();
 
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
@@ -72,6 +74,7 @@ public class SystemStoreRepairTaskTest {
             .setRegionName("test-region")
             .build()).when(parentHelixAdmin).getLogContext();
     doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
+    doReturn(true).when(systemStoreRepairTask).shouldContinue("venice-3");
 
     doCallRealMethod().when(systemStoreRepairTask).run();
     systemStoreRepairTask.run();
@@ -80,6 +83,9 @@ public class SystemStoreRepairTaskTest {
     verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-1"), anySet());
     verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-2"), anySet());
     verify(systemStoreRepairTask).checkSystemStoresHealth(eq("venice-3"), anySet());
+    // Only the leader's completed round makes its counts reportable.
+    verify(nonLeaderStats).setMeasured(false);
+    verify(leaderStats).setMeasured(true);
   }
 
   @Test
@@ -412,6 +418,8 @@ public class SystemStoreRepairTaskTest {
             .setOtelAdditionalMetricsReader(metricReader)
             .build());
     SystemStoreHealthCheckStats realStats = new SystemStoreHealthCheckStats(metricsRepo, clusterName);
+    // run() marks a leader's counts as measured; this test calls repairBadSystemStore directly.
+    realStats.setMeasured(true);
     Map<String, SystemStoreHealthCheckStats> statsMap = new HashMap<>();
     statsMap.put(clusterName, realStats);
 

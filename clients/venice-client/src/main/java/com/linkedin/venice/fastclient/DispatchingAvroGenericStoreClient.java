@@ -772,6 +772,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       metadata.close();
     } catch (Exception e) {
       throw new VeniceClientException("Failed to close store metadata", e);
+    } finally {
+      config.closeOtelStats();
     }
   }
 

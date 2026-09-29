@@ -14,7 +14,6 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import java.time.Clock;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.DoubleSupplier;
 
 
 /**
@@ -99,13 +98,19 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
       dims.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, clusterName);
       dims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(k));
       Attributes attrs = otelRepository.createAttributes(METADATA_CACHE_STALENESS.getMetricEntity(), dims);
-      // DoubleSupplier callback: returns NaN when store is removed (no timestamp in map),
+      // OTel callback returns NaN when store is removed (no timestamp in map),
       // consistent with the Tehuti high-watermark gauge behavior.
-      return AsyncMetricEntityStateBase
-          .create(METADATA_CACHE_STALENESS.getMetricEntity(), otelRepository, dims, attrs, (DoubleSupplier) () -> {
+      return AsyncMetricEntityStateBase.createWithState(
+          METADATA_CACHE_STALENESS.getMetricEntity(),
+          otelRepository,
+          dims,
+          attrs,
+          getMetricScope(),
+          () -> {
             Long ts = metadataCacheTimestampMapInMs.get(k);
             return ts == null ? Double.NaN : (double) (clock.millis() - ts);
-          });
+          },
+          Double::doubleValue);
     });
   }
 }

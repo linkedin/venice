@@ -526,6 +526,7 @@ public class StorageService extends AbstractVeniceService {
       LOGGER.warn("Storage engine {} does not exist, ignoring remove request.", kafkaTopic);
       return;
     }
+    aggVersionedStorageEngineStats.removeStorageEngine(kafkaTopic);
     storageEngine.drop();
 
     VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);
@@ -552,6 +553,7 @@ public class StorageService extends AbstractVeniceService {
       LOGGER.warn("Storage engine {} does not exist, ignoring close request.", kafkaTopic);
       return;
     }
+    aggVersionedStorageEngineStats.removeStorageEngine(kafkaTopic);
     storageEngine.close();
 
     VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);

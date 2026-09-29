@@ -16,10 +16,8 @@ import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.RegionUtils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.VeniceView;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,17 +26,14 @@ import org.apache.logging.log4j.Logger;
  * The store level stats or the total stats will be unpopulated because there is no easy and reliable way to aggregate
  * gauge stats such as rt topic offset lag.
  *
- * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily by {@link #getIngestionOtelStats} and
- * updated by {@link #onVersionInfoUpdated} via {@code computeIfPresent}. This class uses eager loading
- * ({@code loadAllStats()} is NOT overridden), so {@code onVersionInfoUpdated} and
- * {@code cleanupVersionResources} need null guards because they are called during the super()
- * constructor before subclass fields ({@code otelStatsMap}) are initialized.
+ * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily by {@link #getIngestionOtelStats}; the
+ * shared per-store registry updates their version info and closes them on store deletion.
  */
 public class AggVersionedIngestionStats
     extends AbstractVeniceAggVersionedStats<IngestionStats, IngestionStatsReporter> {
   private static final Logger LOGGER = LogManager.getLogger(AggVersionedIngestionStats.class);
 
-  private final Map<String, IngestionOtelStats> otelStatsMap = new VeniceConcurrentHashMap<>();
+  private final PerStoreVersionedOtelStats<IngestionOtelStats> otelStats;
   private final String clusterName;
   private final String localRegionName;
   private final boolean emitOtelIngestionStats;
@@ -60,73 +55,35 @@ public class AggVersionedIngestionStats
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
     this.activeKeyCountEnabled = serverConfig.isAnyActiveKeyCountTrackingEnabled();
-  }
-
-  /** Updates version info for existing OTel stats only. Null guard needed because eager loading
-   *  calls this from the super() constructor before {@code otelStatsMap} is initialized. */
-  @Override
-  protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
-    if (otelStatsMap == null) {
-      return; // Called during super() constructor before otelStatsMap is initialized
-    }
-    otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
-      stats.updateVersionInfo(currentVersion, futureVersion);
-      return stats;
-    });
+    this.otelStats = createPerStoreOtelStats(
+        storeName -> new IngestionOtelStats(
+            getMetricsRepository(),
+            storeName,
+            clusterName,
+            localRegionName,
+            emitOtelIngestionStats,
+            uniqueIngestedKeyCountHllEnabled,
+            activeKeyCountEnabled));
   }
 
   @Override
   protected void cleanupVersionResources(String storeName, int version) {
-    if (otelStatsMap == null) {
-      return; // Called during super() constructor before otelStatsMap is initialized
+    if (otelStats == null) {
+      return;
     }
-    otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
+    otelStats.removeIf(storeName, stats -> {
+      // Close here only if every task had already stopped; a running task closes the store's stats when it stops.
+      boolean tasksStopped = !stats.hasIngestionTasks();
       stats.removeIngestionTask(version);
-      return stats;
+      return tasksStopped && stats.isIdle();
     });
   }
 
-  @Override
-  public void handleStoreDeleted(String storeName) {
-    try {
-      super.handleStoreDeleted(storeName);
-    } finally {
-      IngestionOtelStats otelStats = otelStatsMap.remove(storeName);
-      if (otelStats != null) {
-        otelStats.close();
-      }
-    }
-  }
-
-  /**
-   * Gets or creates OTel stats for a store. {@code getCurrentVersion}/{@code getFutureVersion}
-   * are called <b>before</b> {@code computeIfAbsent} because they can trigger
-   * {@code addStore} → {@code onVersionInfoUpdated} → {@code otelStatsMap.computeIfPresent},
-   * which would re-enter this same map from inside the lambda (violates ConcurrentHashMap contract).
-   * The {@code get()} fast-path skips these calls when stats already exist.
-   */
   private IngestionOtelStats getIngestionOtelStats(String storeName) {
     if (!emitOtelIngestionStats) {
       return NoOpIngestionOtelStats.INSTANCE;
     }
-    IngestionOtelStats existing = otelStatsMap.get(storeName);
-    if (existing != null) {
-      return existing;
-    }
-    int currentVersion = getCurrentVersion(storeName);
-    int futureVersion = getFutureVersion(storeName);
-    return otelStatsMap.computeIfAbsent(storeName, k -> {
-      IngestionOtelStats stats = new IngestionOtelStats(
-          getMetricsRepository(),
-          k,
-          clusterName,
-          localRegionName,
-          emitOtelIngestionStats,
-          uniqueIngestedKeyCountHllEnabled,
-          activeKeyCountEnabled);
-      stats.updateVersionInfo(currentVersion, futureVersion);
-      return stats;
-    });
+    return otelStats.getOrCreate(storeName);
   }
 
   private void recordOtelConsumptionMetrics(String storeName, int version, ReplicaType replicaType, long bytes) {
@@ -151,8 +108,9 @@ public class AggVersionedIngestionStats
        */
       getStats(storeName, version).setIngestionTask(ingestionTask);
 
-      // OTel metrics - set the ingestion task reference for ASYNC_GAUGE callbacks
-      getIngestionOtelStats(storeName).setIngestionTask(version, ingestionTask);
+      if (emitOtelIngestionStats) {
+        otelStats.compute(storeName, stats -> stats.setIngestionTask(version, ingestionTask));
+      }
 
       // Make sure the hybrid store stats are registered
       if (ingestionTask.isHybridMode()) {
@@ -161,6 +119,31 @@ public class AggVersionedIngestionStats
     } catch (Exception e) {
       LOGGER
           .warn("Failed to set up versioned storage ingestion stats of store: {}, version: {}", storeName, version, e);
+    }
+  }
+
+  /** Detaches a stopped task from the OTel stats; never throws, so task shutdown always completes. */
+  public void removeIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {
+    try {
+      if (!Version.isATopicThatIsVersioned(storeVersionTopic)) {
+        LOGGER.warn("Invalid store version topic name: {}", storeVersionTopic);
+        return;
+      }
+      String baseStoreName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
+      String storeName = VeniceView.isViewTopic(storeVersionTopic)
+          ? VeniceView.parseStoreAndViewFromViewTopic(storeVersionTopic)
+          : baseStoreName;
+      int version = Version.parseVersionFromKafkaTopicName(storeVersionTopic);
+      otelStats.removeIf(storeName, stats -> {
+        stats.removeIngestionTask(version, ingestionTask);
+        return stats.isIdle();
+      });
+      if (!storeName.equals(baseStoreName)) {
+        // View tasks register under <storeName>_<viewName> but record metrics under the base store name.
+        otelStats.removeIf(baseStoreName, IngestionOtelStats::isIdle);
+      }
+    } catch (Exception e) {
+      LOGGER.warn("Failed to detach ingestion task from OTel stats for topic: {}", storeVersionTopic, e);
     }
   }
 

@@ -236,10 +236,9 @@ public class FastClientStats extends ClientStats {
     // Close the previous observable gauge (if any) before re-registering.
     AsyncMetricEntityStateBase previousStaleness = this.metadataStalenessHighWatermark;
     if (previousStaleness != null) {
-      otelRepository
-          .closeObservableInstrument(METADATA_STALENESS_DURATION.getMetricEntity(), previousStaleness.getOtelMetric());
+      previousStaleness.close();
     }
-    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
+    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.createWithState(
         METADATA_STALENESS_DURATION.getMetricEntity(),
         otelRepository,
         (sensorName, stats) -> registerSensor(sensorName, stats),
@@ -252,7 +251,9 @@ public class FastClientStats extends ClientStats {
                 FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
         metadataStalenessDims,
         metadataStalenessAttrs,
-        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
+        getMetricScope(),
+        () -> this.cacheTimeStampInMs == 0 ? 0L : (System.currentTimeMillis() - this.cacheTimeStampInMs),
+        Long::doubleValue);
   }
 
   @Override

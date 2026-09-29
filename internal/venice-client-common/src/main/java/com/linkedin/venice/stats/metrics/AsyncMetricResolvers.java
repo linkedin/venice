@@ -6,12 +6,25 @@ import javax.annotation.Nullable;
 
 
 /**
- * Holder for the four named functional interfaces that wire the two-callback (liveness + value)
- * contract used by {@link AsyncMetricEntityStateOneEnum} and {@link AsyncMetricEntityStateTwoEnums}.
+ * The two-callback (liveness + value) contract for async gauges: a live-state resolver returns the state to read, or
+ * {@code null} to emit nothing, and a value resolver reads the value from non-null state.
  * Co-located in a single file because they are only meaningful together.
  */
 public final class AsyncMetricResolvers {
   private AsyncMetricResolvers() {
+  }
+
+  /** Returns the state to read, or {@code null} to emit no sample. */
+  @FunctionalInterface
+  public interface LiveStateResolver<S> {
+    @Nullable
+    S resolve();
+  }
+
+  /** Reads the value from non-null state; non-finite values are not emitted. */
+  @FunctionalInterface
+  public interface ValueResolver<S> {
+    double extractValue(@Nonnull S state);
   }
 
   /**

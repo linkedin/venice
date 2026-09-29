@@ -26,7 +26,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 
 /**
- * This class is the metric class for {@link com.linkedin.venice.controller.systemstore.SystemStoreRepairService}
+ * This class is the metric class for {@link com.linkedin.venice.controller.systemstore.SystemStoreRepairService}.
+ * OTel reports the counts only while {@link #setMeasured} holds, i.e. after this controller, as the cluster's leader,
+ * has completed a check round; Tehuti keeps reporting the raw counters.
  */
 public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
   private final Sensor badMetaSystemStoreCountSensor;
@@ -37,6 +39,7 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
   private final AtomicLong badPushStatusSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong notRepairableSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong systemStoreHealthCheckErrorCounter = new AtomicLong(0);
+  private volatile boolean measured;
 
   public SystemStoreHealthCheckStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -69,14 +72,18 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     Attributes baseAttributes = otelData.getBaseAttributes();
 
     // OTel async gauge. The liveStateResolver returns the backing AtomicLong for each mapped
-    // VeniceSystemStoreType value (null for any future enum additions, which skips emission); the
-    // valueResolver reads the current count.
+    // VeniceSystemStoreType value (null while not measured or for any future enum additions, which skips
+    // emission); the valueResolver reads the current count.
     AsyncMetricEntityStateOneEnum.create(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         VeniceSystemStoreType.class,
+        getMetricScope(),
         type -> {
+          if (!measured) {
+            return null;
+          }
           switch (type) {
             case META_STORE:
               return badMetaSystemStoreCounter;
@@ -93,19 +100,28 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
         },
         (counter, type) -> counter.get());
 
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         baseAttributes,
-        notRepairableSystemStoreCounter::get);
+        getMetricScope(),
+        () -> measured ? notRepairableSystemStoreCounter.get() : null,
+        Long::doubleValue);
 
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         baseAttributes,
-        systemStoreHealthCheckErrorCounter::get);
+        getMetricScope(),
+        () -> measured ? systemStoreHealthCheckErrorCounter.get() : null,
+        Long::doubleValue);
+  }
+
+  /** Whether this controller, as the cluster's leader, has current counts for it. */
+  public void setMeasured(boolean measured) {
+    this.measured = measured;
   }
 
   public AtomicLong getBadMetaSystemStoreCounter() {

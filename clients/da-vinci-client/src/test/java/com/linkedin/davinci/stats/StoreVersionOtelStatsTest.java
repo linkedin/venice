@@ -2,7 +2,6 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.stats.VeniceVersionedStatsOtelMetricEntity.STORE_VERSION;
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
@@ -12,6 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -116,10 +116,9 @@ public class StoreVersionOtelStatsTest {
     stats.handleStoreChanged(store);
     validateGauge(5, TEST_STORE_NAME, VersionRole.CURRENT);
 
-    // Deletion resets versions to NON_EXISTING_VERSION (state kept for callback reuse)
     stats.handleStoreDeleted(TEST_STORE_NAME);
-    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.CURRENT);
-    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+    validateNoGauge(TEST_STORE_NAME, VersionRole.CURRENT);
+    validateNoGauge(TEST_STORE_NAME, VersionRole.FUTURE);
 
     // Re-creation reuses the existing callback — no duplicate registration
     Store reCreated = createMockStore(TEST_STORE_NAME, 8, createVersion(8, VersionStatus.ONLINE));
@@ -156,7 +155,7 @@ public class StoreVersionOtelStatsTest {
     stats.handleStoreCreated(store);
 
     validateGauge(3, TEST_STORE_NAME, VersionRole.CURRENT);
-    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+    validateNoGauge(TEST_STORE_NAME, VersionRole.FUTURE);
   }
 
   @Test
@@ -184,7 +183,7 @@ public class StoreVersionOtelStatsTest {
     stats.handleStoreChanged(store);
 
     validateGauge(3, TEST_STORE_NAME, VersionRole.CURRENT);
-    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+    validateNoGauge(TEST_STORE_NAME, VersionRole.FUTURE);
   }
 
   @Test
@@ -196,7 +195,7 @@ public class StoreVersionOtelStatsTest {
     stats.register(mockRepo);
 
     validateGauge(5, TEST_STORE_NAME, VersionRole.CURRENT);
-    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+    validateNoGauge(TEST_STORE_NAME, VersionRole.FUTURE);
   }
 
   /**
@@ -292,7 +291,7 @@ public class StoreVersionOtelStatsTest {
 
     verify(mockRepo).registerStoreDataChangedListener(created);
     validateGauge(7, TEST_STORE_NAME, VersionRole.CURRENT);
-    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+    validateNoGauge(TEST_STORE_NAME, VersionRole.FUTURE);
   }
 
   @Test
@@ -314,13 +313,16 @@ public class StoreVersionOtelStatsTest {
   @Test
   public void testCloseUnregistersListener() throws Exception {
     ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
-    when(mockRepo.getAllStores()).thenReturn(Collections.emptyList());
+    Store preExisting = createMockStore(TEST_STORE_NAME, 7, createVersion(7, VersionStatus.ONLINE));
+    when(mockRepo.getAllStores()).thenReturn(Collections.singletonList(preExisting));
 
     StoreVersionOtelStats created = StoreVersionOtelStats.create(metricsRepository, TEST_CLUSTER_NAME, mockRepo);
     verify(mockRepo).registerStoreDataChangedListener(created);
+    validateGauge(7, TEST_STORE_NAME, VersionRole.CURRENT);
 
     created.close();
     verify(mockRepo).unregisterStoreDataChangedListener(created);
+    validateNoGauge(TEST_STORE_NAME, VersionRole.CURRENT);
 
     // Idempotent — second close() must not double-unregister.
     created.close();
@@ -351,6 +353,15 @@ public class StoreVersionOtelStatsTest {
         buildAttributes(storeName, role),
         STORE_VERSION_METRIC_NAME,
         TEST_METRIC_PREFIX);
+  }
+
+  private void validateNoGauge(String storeName, VersionRole role) {
+    assertNull(
+        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            STORE_VERSION_METRIC_NAME,
+            TEST_METRIC_PREFIX,
+            buildAttributes(storeName, role)));
   }
 
   private static Attributes buildAttributes(String storeName, VersionRole role) {

@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -305,6 +306,21 @@ public class AdminConsumptionStatsOtelTest {
 
   @Test
   public void testAsyncGaugePendingMessageCount() {
+    stats.recordPendingAdminMessagesCount(-1.0);
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT.getMetricName(),
+        clusterAttributes());
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.PENDING_ADMIN_MESSAGES_COUNT,
+        "Gauge",
+        -1.0);
+
+    stats.recordPendingAdminMessagesCount(0.0);
+    validateGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT.getMetricName(),
+        0,
+        clusterAttributes());
+
     stats.recordPendingAdminMessagesCount(42.0);
 
     validateGauge(
@@ -320,6 +336,15 @@ public class AdminConsumptionStatsOtelTest {
 
   @Test
   public void testAsyncGaugeStorePendingCount() {
+    stats.recordStoresWithPendingAdminMessagesCount(-1.0);
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_STORE_PENDING_COUNT.getMetricName(),
+        clusterAttributes());
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.STORES_WITH_PENDING_ADMIN_MESSAGES_COUNT,
+        "Gauge",
+        -1.0);
+
     stats.recordStoresWithPendingAdminMessagesCount(7.0);
 
     validateGauge(
@@ -335,6 +360,25 @@ public class AdminConsumptionStatsOtelTest {
 
   @Test
   public void testAsyncGaugeOffsetLag() {
+    stats.setAdminConsumptionOffsetLag(Long.MAX_VALUE);
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        clusterAttributes());
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        Long.MAX_VALUE);
+
+    stats.setAdminConsumptionOffsetLag(0L);
+    validateGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        0,
+        clusterAttributes());
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        0.0);
+
     stats.setAdminConsumptionOffsetLag(1000L);
 
     validateGauge(
@@ -362,6 +406,64 @@ public class AdminConsumptionStatsOtelTest {
         AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG,
         "Gauge",
         2000.0);
+  }
+
+  @Test
+  public void testClearedOffsetLagsAreOmittedButTehutiReadsZero() {
+    stats.setAdminConsumptionOffsetLag(1000L);
+    stats.setMaxAdminConsumptionOffsetLag(2000L);
+
+    stats.clearAdminConsumptionOffsetLags();
+
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        clusterAttributes());
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG
+            .getMetricName(),
+        clusterAttributes());
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        0.0);
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        0.0);
+  }
+
+  @Test
+  public void testAsyncGaugesOmitBeforeFirstUpdate() {
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT.getMetricName(),
+        clusterAttributes());
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_STORE_PENDING_COUNT.getMetricName(),
+        clusterAttributes());
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        clusterAttributes());
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG
+            .getMetricName(),
+        clusterAttributes());
+
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.PENDING_ADMIN_MESSAGES_COUNT,
+        "Gauge",
+        0.0);
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.STORES_WITH_PENDING_ADMIN_MESSAGES_COUNT,
+        "Gauge",
+        0.0);
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        0.0);
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        0.0);
   }
 
   // Standard tests
@@ -457,6 +559,15 @@ public class AdminConsumptionStatsOtelTest {
         expectedAttributes,
         metricName,
         TEST_METRIC_PREFIX);
+  }
+
+  private void validateNoGauge(String metricName, Attributes expectedAttributes) {
+    assertNull(
+        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            metricName,
+            TEST_METRIC_PREFIX,
+            expectedAttributes));
   }
 
   private void validateTehutiMetric(

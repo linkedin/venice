@@ -1323,8 +1323,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * this specific host is not responsible for the admin topic anymore.
    */
   private void resetConsumptionLag() {
-    stats.setAdminConsumptionOffsetLag(0L);
-    stats.setMaxAdminConsumptionOffsetLag(0L);
+    stats.clearAdminConsumptionOffsetLags();
   }
 
   // Visible for testing

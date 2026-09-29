@@ -98,7 +98,7 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
 
     // Joint Tehuti+OTel AsyncGauge.
     // Return values are intentionally discarded — the gauge callback is registered internally
-    // by the Tehuti sensor and OTel SDK during create(). No per-recording state is needed.
+    // by the Tehuti sensor and OTel SDK during registration. No per-recording state is needed.
     registerMemoryGauge(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED,
         TehutiMetricName.TOTAL_MEMORY_USAGE,
@@ -127,7 +127,7 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
       StoreBufferServiceOtelMetricEntity metricEntity,
       TehutiMetricName tehutiName,
       LongSupplier supplier) {
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         metricEntity.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
@@ -135,7 +135,9 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
         Collections.singletonList(new AsyncGauge((ig, ig2) -> supplier.getAsLong(), tehutiName.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        supplier);
+        getMetricScope(),
+        () -> supplier.getAsLong(),
+        Long::doubleValue);
   }
 
   private MetricEntityStateBase createPerStoreState(

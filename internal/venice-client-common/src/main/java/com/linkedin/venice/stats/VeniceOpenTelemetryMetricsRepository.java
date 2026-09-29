@@ -8,6 +8,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.GaugeObservation;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -28,7 +29,6 @@ import io.opentelemetry.api.metrics.LongUpDownCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.api.metrics.ObservableDoubleGauge;
-import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
@@ -393,9 +393,8 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   /**
    * Creates an SDK instrument for non-async metric types (histograms, sync counters, gauges).
-   * Async gauges must use {@link #registerObservableLongGauge} / {@link #registerObservableDoubleGauge};
-   * async counters must use {@link #registerObservableLongCounter} /
-   * {@link #registerObservableLongUpDownCounter}.
+   * Async gauges must use {@link #registerObservableGauge}; async counters must use
+   * {@link #registerObservableLongCounter} / {@link #registerObservableLongUpDownCounter}.
    */
   public Object createInstrument(MetricEntity metricEntity) {
     MetricType metricType = metricEntity.getMetricType();
@@ -416,7 +415,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       case ASYNC_GAUGE:
       case ASYNC_DOUBLE_GAUGE:
         throw new IllegalArgumentException(
-            "Async gauges must be registered via registerObservableLongGauge / registerObservableDoubleGauge, not createInstrument. Metric: "
+            "Async gauges must be registered via registerObservableGauge, not createInstrument. Metric: "
                 + metricEntity.getMetricName());
 
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
@@ -515,76 +514,38 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * Registers an {@link ObservableLongGauge} backed by a single multi-emit callback. Use this for
-   * {@link MetricType#ASYNC_GAUGE} metrics with dynamic dimensions (e.g., per-enum, per-entity) so
-   * the caller can iterate and emit only the attribute combinations that currently have data —
-   * avoiding the cardinality blowout of registering one instrument per combo.
-   *
-   * <p>The callback is invoked by the OTel SDK on every collection cycle on the SDK's collection
-   * thread. It may call {@code measurement.record(value, attrs)} zero or more times to emit data
-   * points. Combos not emitted during a given collection are not present in that cycle's output.
-   * Backing state read inside the callback must be safely published (volatile, concurrent
-   * collections, or immutable).
-   *
-   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
-   * deduplication. Multiple callers (e.g., different stores) can register callbacks for the same
-   * metric name; the OTel SDK natively aggregates all their data points during collection.
-   *
-   * <p>Callers should ensure their callback does not throw — uncaught exceptions are caught by the
-   * OTel SDK and logged, but the semantics of partial emissions within a single callback depend on
-   * where the throw happens. Implementations in this repo wrap per-combo bodies in try/catch to
-   * isolate failures across combos.
+   * Registers an async gauge whose callback emits through {@link GaugeObservation#of}, so null state, non-finite
+   * values and resolver failures emit no sample. Close the returned handle with {@link #closeObservableInstrument}.
    */
-  public ObservableLongGauge registerObservableLongGauge(
-      MetricEntity metricEntity,
-      @Nonnull Consumer<ObservableLongMeasurement> reportCallback) {
+  public Object registerObservableGauge(MetricEntity metricEntity, @Nonnull Consumer<GaugeObservation> reportCallback) {
+    MetricType metricType = metricEntity.getMetricType();
+    if (metricType != MetricType.ASYNC_GAUGE && metricType != MetricType.ASYNC_DOUBLE_GAUGE) {
+      throw new IllegalArgumentException(
+          "registerObservableGauge should only be called for ASYNC_GAUGE or ASYNC_DOUBLE_GAUGE metrics, but got: "
+              + metricType + " for metric: " + metricEntity.getMetricName());
+    }
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-    if (metricEntity.getMetricType() != MetricType.ASYNC_GAUGE) {
-      throw new IllegalArgumentException(
-          "registerObservableLongGauge should only be called for ASYNC_GAUGE metrics, but got: "
-              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
-    }
+    Consumer<Exception> onFailure = e -> recordFailureMetric(metricEntity, e);
     try {
+      if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
+        return meter.gaugeBuilder(getFullMetricName(metricEntity))
+            .setUnit(metricEntity.getUnit().name())
+            .setDescription(getMetricDescription(metricEntity, metricsConfig))
+            .buildWithCallback(
+                measurement -> reportCallback.accept(
+                    GaugeObservation.of((attributes, value) -> measurement.record(value, attributes), onFailure)));
+      }
       return meter.gaugeBuilder(getFullMetricName(metricEntity))
           .ofLongs()
           .setUnit(metricEntity.getUnit().name())
           .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(reportCallback);
+          .buildWithCallback(
+              measurement -> reportCallback.accept(
+                  GaugeObservation.of((attributes, value) -> measurement.record((long) value, attributes), onFailure)));
     } catch (RuntimeException e) {
-      throw new VeniceException(
-          "Failed to register ObservableLongGauge for metric: " + metricEntity.getMetricName(),
-          e);
-    }
-  }
-
-  /**
-   * Registers an {@link ObservableDoubleGauge} backed by a single multi-emit callback. Same
-   * contract as {@link #registerObservableLongGauge} but for {@link MetricType#ASYNC_DOUBLE_GAUGE}.
-   * See that method's Javadoc for callback threading, aggregation behaviour, and exception-safety
-   * expectations.
-   */
-  public ObservableDoubleGauge registerObservableDoubleGauge(
-      MetricEntity metricEntity,
-      @Nonnull Consumer<ObservableDoubleMeasurement> reportCallback) {
-    if (!emitOpenTelemetryMetrics()) {
-      return null;
-    }
-    if (metricEntity.getMetricType() != MetricType.ASYNC_DOUBLE_GAUGE) {
-      throw new IllegalArgumentException(
-          "registerObservableDoubleGauge should only be called for ASYNC_DOUBLE_GAUGE metrics, but got: "
-              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
-    }
-    try {
-      return meter.gaugeBuilder(getFullMetricName(metricEntity))
-          .setUnit(metricEntity.getUnit().name())
-          .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(reportCallback);
-    } catch (RuntimeException e) {
-      throw new VeniceException(
-          "Failed to register ObservableDoubleGauge for metric: " + metricEntity.getMetricName(),
-          e);
+      throw new VeniceException("Failed to register ObservableGauge for metric: " + metricEntity.getMetricName(), e);
     }
   }
 

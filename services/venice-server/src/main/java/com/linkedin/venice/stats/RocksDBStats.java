@@ -57,8 +57,6 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.function.DoubleSupplier;
-import java.util.function.LongSupplier;
 import org.rocksdb.Statistics;
 import org.rocksdb.TickerType;
 
@@ -220,14 +218,20 @@ public class RocksDBStats extends AbstractVeniceStats {
     registerTickerSensor("rocksdb_get_hit_l0", GET_HIT_L0);
     registerTickerSensor("rocksdb_get_hit_l1", GET_HIT_L1);
     registerTickerSensor("rocksdb_get_hit_l2_and_up", GET_HIT_L2_AND_UP);
-    AsyncMetricEntityStateOneEnum
-        .create(GET_HIT_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, VeniceRocksDBLevel.class, level -> {
+    AsyncMetricEntityStateOneEnum.create(
+        GET_HIT_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        VeniceRocksDBLevel.class,
+        getMetricScope(),
+        level -> {
           Statistics stat = rocksDBStat;
           if (stat == null || GET_HIT_TICKER_BY_LEVEL.get(level) == null) {
             return null;
           }
           return stat;
-        }, (stat, level) -> stat.getTickerCount(GET_HIT_TICKER_BY_LEVEL.get(level)));
+        },
+        (stat, level) -> stat.getTickerCount(GET_HIT_TICKER_BY_LEVEL.get(level)));
 
     // --- Block Cache Hit Ratio: Tehuti-only (OTel derivable: hit{data} / (hit{data} + sum(miss))) ---
     registerSensorIfAbsent(new AsyncGauge((ig, ig2) -> {
@@ -243,14 +247,6 @@ public class RocksDBStats extends AbstractVeniceStats {
     // --- Read Amplification: Tehuti + OTel ASYNC_DOUBLE_GAUGE ---
     // OTel callback returns NaN when unavailable (SDK drops the data point).
     // Tehuti callback returns -1 as the established sentinel for uninitialized state.
-    DoubleSupplier readAmpOtelCallback = () -> {
-      if (rocksDBStat != null) {
-        long total = rocksDBStat.getTickerCount(READ_AMP_TOTAL_READ_BYTES);
-        long useful = rocksDBStat.getTickerCount(READ_AMP_ESTIMATE_USEFUL_BYTES);
-        return useful == 0 ? Double.NaN : total / (double) useful;
-      }
-      return Double.NaN;
-    };
     registerSensorIfAbsent(new AsyncGauge((ig, ig2) -> {
       if (rocksDBStat != null) {
         long total = rocksDBStat.getTickerCount(READ_AMP_TOTAL_READ_BYTES);
@@ -259,12 +255,21 @@ public class RocksDBStats extends AbstractVeniceStats {
       }
       return -1;
     }, "rocksdb_read_amplification_factor"));
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         READ_AMPLIFICATION_FACTOR.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         baseAttributes,
-        readAmpOtelCallback);
+        getMetricScope(),
+        () -> {
+          if (rocksDBStat != null) {
+            long total = rocksDBStat.getTickerCount(READ_AMP_TOTAL_READ_BYTES);
+            long useful = rocksDBStat.getTickerCount(READ_AMP_ESTIMATE_USEFUL_BYTES);
+            return useful == 0 ? Double.NaN : total / (double) useful;
+          }
+          return Double.NaN;
+        },
+        Double::doubleValue);
   }
 
   /** Registers a Tehuti-only AsyncGauge for a RocksDB TickerType counter. */
@@ -281,10 +286,18 @@ public class RocksDBStats extends AbstractVeniceStats {
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes) {
-    LongSupplier callback = () -> rocksDBStat != null ? rocksDBStat.getTickerCount(tickerType) : -1;
-    registerSensorIfAbsent(new AsyncGauge((ig, ig2) -> callback.getAsLong(), tehutiSensorName));
-    AsyncMetricEntityStateBase
-        .create(otelEntity.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes, callback);
+    registerSensorIfAbsent(
+        new AsyncGauge(
+            (ig, ig2) -> rocksDBStat != null ? rocksDBStat.getTickerCount(tickerType) : -1,
+            tehutiSensorName));
+    AsyncMetricEntityStateBase.createWithState(
+        otelEntity.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        baseAttributes,
+        getMetricScope(),
+        () -> rocksDBStat,
+        stat -> stat.getTickerCount(tickerType));
   }
 
   /** Registers an OTel-only AsyncMetricEntityStateOneEnum for per-component block cache metrics. */
@@ -298,6 +311,7 @@ public class RocksDBStats extends AbstractVeniceStats {
         otelRepository,
         baseDimensionsMap,
         VeniceRocksDBBlockCacheComponent.class,
+        getMetricScope(),
         component -> {
           Statistics stat = rocksDBStat;
           if (stat == null || componentTickers.get(component) == null) {

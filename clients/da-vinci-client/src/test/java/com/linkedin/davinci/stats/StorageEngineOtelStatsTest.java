@@ -342,6 +342,27 @@ public class StorageEngineOtelStatsTest {
     assertNull(point);
   }
 
+  @Test
+  public void testCloseStopsAsyncGauges() {
+    stats.setStatsWrapper(1, new MockWrapper(1000, 100, 10));
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        1000,
+        buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA),
+        DISK_USAGE_METRIC,
+        METRIC_PREFIX);
+
+    stats.close();
+
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        metrics,
+        DISK_USAGE_METRIC,
+        METRIC_PREFIX,
+        buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA));
+    assertNull(point);
+  }
+
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testSetStatsWrapperNullThrows() {
     stats.setStatsWrapper(1, null);

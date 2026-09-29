@@ -10,6 +10,7 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -40,6 +42,8 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
+import com.linkedin.venice.fastclient.stats.ClusterMetricEntity;
+import com.linkedin.venice.fastclient.stats.FastClientMetricEntity;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.meta.Store;
@@ -53,6 +57,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -1918,5 +1923,38 @@ public class DispatchingAvroGenericStoreClientTest {
     } finally {
       tearDown();
     }
+  }
+
+  @Test
+  public void testCloseStopsOtelGaugesButKeepsTehutiSensors() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    ClientConfig config = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
+        .setR2Client(getMockR2Client(false))
+        .setD2Client(mock(D2Client.class))
+        .setClusterDiscoveryD2Service("test_server_discovery")
+        .setMetricsRepository(metricsRepository)
+        .build();
+    DispatchingAvroGenericStoreClient client =
+        new DispatchingAvroGenericStoreClient(mock(StoreMetadata.class), config, mock(TransportClient.class));
+    config.getClusterStats().updateCurrentVersion(2);
+    String currentVersion = ClusterMetricEntity.STORE_VERSION_CURRENT.getMetricEntity().getMetricName();
+    String staleness = FastClientMetricEntity.METADATA_STALENESS_DURATION.getMetricEntity().getMetricName();
+    assertTrue(hasGaugePoint(reader, currentVersion));
+    assertTrue(hasGaugePoint(reader, staleness));
+
+    client.close();
+
+    assertFalse(hasGaugePoint(reader, currentVersion));
+    assertFalse(hasGaugePoint(reader, staleness));
+    assertNotNull(metricsRepository.getMetric("." + STORE_NAME + "--current_version.Gauge"));
+  }
+
+  private static boolean hasGaugePoint(InMemoryMetricReader reader, String metricName) {
+    String fullName = DEFAULT_METRIC_PREFIX + FAST_CLIENT.getMetricsPrefix() + "." + metricName;
+    return reader.collectAllMetrics()
+        .stream()
+        .anyMatch(metricData -> metricData.getName().equals(fullName) && !metricData.getData().getPoints().isEmpty());
   }
 }

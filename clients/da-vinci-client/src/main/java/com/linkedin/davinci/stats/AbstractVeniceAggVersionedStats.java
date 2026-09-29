@@ -12,7 +12,10 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -30,6 +33,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   private final MetricsRepository metricsRepository;
 
   private final Map<String, VeniceVersionedStats<STATS, STATS_REPORTER>> aggStats;
+  private final List<PerStoreVersionedOtelStats<?>> perStoreOtelStats = new CopyOnWriteArrayList<>();
   private final boolean unregisterMetricForDeletedStoreEnabled;
 
   protected MetricsRepository getMetricsRepository() {
@@ -166,6 +170,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     } else if (unregisterMetricForDeletedStoreEnabled) {
       stats.unregisterStats();
     }
+    perStoreOtelStats.forEach(registry -> registry.remove(storeName));
   }
 
   @Override
@@ -196,17 +201,16 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   /**
-   * Hook method called when version info is updated for a store.
-   * Subclasses can override this to update existing OTel stats with new version info.
+   * Hook method called when version info is updated for a store. Updates every per-store OTel registry, so overrides
+   * must call {@code super}.
    *
    * <p><b>WARNING:</b> This method may be called from within {@code aggStats.computeIfAbsent}
    * in {@link #addStore(Store)}. Implementations MUST NOT call {@link #getCurrentVersion},
    * {@link #getFutureVersion}, or {@link #getVersionedStats} — these re-enter {@code aggStats}
-   * and cause a deadlock or IllegalStateException. Use {@code computeIfPresent} on the subclass's
-   * own OTel stats map to update existing entries only.
+   * and cause a deadlock or IllegalStateException.
    */
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
-    // no-op by default
+    perStoreOtelStats.forEach(registry -> registry.updateVersionInfo(storeName, currentVersion, futureVersion));
   }
 
   /**
@@ -215,5 +219,105 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    */
   protected void cleanupVersionResources(String storeName, int version) {
     // no-op by default
+  }
+
+  /**
+   * Creates a per-store OTel registry whose stats get the store's versions and are closed on store deletion. Call it
+   * from the subclass constructor; hooks may run earlier, so overrides that use the registry must null-check it.
+   */
+  protected final <OTEL_STATS extends StoreOtelStats> PerStoreVersionedOtelStats<OTEL_STATS> createPerStoreOtelStats(
+      Function<String, OTEL_STATS> statsFactory) {
+    PerStoreVersionedOtelStats<OTEL_STATS> registry = new PerStoreVersionedOtelStats<>(statsFactory);
+    perStoreOtelStats.add(registry);
+    return registry;
+  }
+
+  /**
+   * Per-store OTel stats managed by a {@link AbstractVeniceAggVersionedStats.PerStoreVersionedOtelStats}. Both methods
+   * run under the registry's per-store lock, so they must not call back into this class.
+   */
+  public interface StoreOtelStats extends AutoCloseable {
+    void updateVersionInfo(int currentVersion, int futureVersion);
+
+    @Override
+    void close();
+  }
+
+  /**
+   * One {@link StoreOtelStats} per store. Registries can only be created through
+   * {@link AbstractVeniceAggVersionedStats#createPerStoreOtelStats}, so every store's stats get version updates and
+   * are closed on store deletion.
+   */
+  protected final class PerStoreVersionedOtelStats<OTEL_STATS extends StoreOtelStats> {
+    private final Map<String, OTEL_STATS> statsByStore = new VeniceConcurrentHashMap<>();
+    private final Function<String, OTEL_STATS> statsFactory;
+
+    private PerStoreVersionedOtelStats(Function<String, OTEL_STATS> statsFactory) {
+      this.statsFactory = statsFactory;
+    }
+
+    public OTEL_STATS get(String storeName) {
+      return statsByStore.get(storeName);
+    }
+
+    /** Reads the versions before entering the map, since reading them can update this map. */
+    public OTEL_STATS getOrCreate(String storeName) {
+      OTEL_STATS existing = statsByStore.get(storeName);
+      if (existing != null) {
+        return existing;
+      }
+      int currentVersion = getCurrentVersion(storeName);
+      int futureVersion = getFutureVersion(storeName);
+      return statsByStore.computeIfAbsent(storeName, name -> {
+        OTEL_STATS stats = statsFactory.apply(name);
+        stats.updateVersionInfo(currentVersion, futureVersion);
+        return stats;
+      });
+    }
+
+    /** Runs {@code action} on the store's stats, creating them if absent, atomically with {@link #removeIf}. */
+    public void compute(String storeName, Consumer<OTEL_STATS> action) {
+      int currentVersion = getCurrentVersion(storeName);
+      int futureVersion = getFutureVersion(storeName);
+      statsByStore.compute(storeName, (name, existing) -> {
+        OTEL_STATS stats = existing;
+        if (stats == null) {
+          stats = statsFactory.apply(name);
+          stats.updateVersionInfo(currentVersion, futureVersion);
+        }
+        action.accept(stats);
+        return stats;
+      });
+    }
+
+    /** Closes and removes the store's stats if {@code predicate} holds, atomically with {@link #compute}. */
+    public void removeIf(String storeName, Predicate<OTEL_STATS> predicate) {
+      statsByStore.computeIfPresent(storeName, (name, stats) -> {
+        if (predicate.test(stats)) {
+          stats.close();
+          return null;
+        }
+        return stats;
+      });
+    }
+
+    /** Visible for testing. */
+    public Map<String, OTEL_STATS> getStatsByStore() {
+      return statsByStore;
+    }
+
+    private void updateVersionInfo(String storeName, int currentVersion, int futureVersion) {
+      statsByStore.computeIfPresent(storeName, (name, stats) -> {
+        stats.updateVersionInfo(currentVersion, futureVersion);
+        return stats;
+      });
+    }
+
+    private void remove(String storeName) {
+      statsByStore.computeIfPresent(storeName, (name, stats) -> {
+        stats.close();
+        return null;
+      });
+    }
   }
 }

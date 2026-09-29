@@ -36,26 +36,32 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         OpenTelemetryMetricsSetup.builder(metricsRepository).setThreadPoolName(name).build();
 
     // OTel async gauges for thread pool metrics
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity(),
         otelData.getOtelRepository(),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes(),
-        () -> this.threadPoolExecutor.getActiveCount());
+        getMetricScope(),
+        () -> this.threadPoolExecutor.getActiveCount(),
+        Integer::doubleValue);
 
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT.getMetricEntity(),
         otelData.getOtelRepository(),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes(),
-        () -> this.threadPoolExecutor.getMaximumPoolSize());
+        getMetricScope(),
+        () -> this.threadPoolExecutor.getMaximumPoolSize(),
+        Integer::doubleValue);
 
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity(),
         otelData.getOtelRepository(),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes(),
-        () -> this.threadPoolExecutor.getQueue().size());
+        getMetricScope(),
+        () -> this.threadPoolExecutor.getQueue().size(),
+        Integer::doubleValue);
 
     /**
      * If only registered as Gauge, the metric would show the queue size at the time of the metric collection, which is not

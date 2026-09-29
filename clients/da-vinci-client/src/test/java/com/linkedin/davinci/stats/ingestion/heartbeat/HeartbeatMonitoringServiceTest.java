@@ -1,9 +1,22 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.CATCHUP_UP_FOLLOWER_METRIC_PREFIX;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.FOLLOWER_METRIC_PREFIX;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.LEADER_METRIC_PREFIX;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.MAX;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICATION_MODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.getExponentialHistogramPointData;
 import static com.linkedin.venice.utils.Utils.SEPARATE_TOPIC_SUFFIX;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -27,6 +40,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
+import com.linkedin.davinci.stats.ServerMetricEntity;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -40,6 +54,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.ReplicaState;
+import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceReplicationMode;
@@ -47,6 +66,9 @@ import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.Collections;
@@ -66,6 +88,8 @@ public class HeartbeatMonitoringServiceTest {
   private static final String REMOTE_FABRIC = "remote";
 
   private static final String TEST_STORE = "Vivaldi_store";
+  private static final String TEST_CLUSTER = "test-cluster";
+  private static final String TEST_OTEL_PREFIX = "server";
 
   @Test
   public void testGetHeartbeatInfo() {
@@ -1194,6 +1218,154 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertTrue(entry3.recordTimestamp >= 2000L);
   }
 
+  @Test
+  public void testLeaderOtelReadinessUsesPartitionStateWithoutChangingEntry() {
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(true);
+    when(serverConfig.isPerRecordOtelMetricsEnabled()).thenReturn(false);
+    when(serverConfig.getClusterName()).thenReturn(TEST_CLUSTER);
+
+    InMemoryMetricReader metricReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_OTEL_PREFIX)
+            .setMetricEntities(ServerMetricEntity.SERVER_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(metricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
+    try {
+      HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+      Version version = new VersionImpl(TEST_STORE, 1, "push-1");
+      version.setHybridStoreConfig(hybridStoreConfig);
+      Store store = mock(Store.class);
+      when(store.getName()).thenReturn(TEST_STORE);
+      when(store.getCurrentVersion()).thenReturn(1);
+      when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+      when(store.getVersion(1)).thenReturn(version);
+      when(store.getVersions()).thenReturn(Collections.singletonList(version));
+
+      ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
+      when(metadataRepository.getStoreOrThrow(TEST_STORE)).thenReturn(store);
+      when(metadataRepository.getStore(TEST_STORE)).thenReturn(store);
+      when(metadataRepository.hasStore(TEST_STORE)).thenReturn(true);
+      when(metadataRepository.getAllStores()).thenReturn(Collections.singletonList(store));
+      when(metadataRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+          .thenReturn(new StoreVersionInfo(store, version));
+
+      HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+          metricsRepository,
+          metadataRepository,
+          serverConfig,
+          mock(HeartbeatMonitoringServiceStats.class),
+          new CompletableFuture<>());
+
+      String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+      KafkaStoreIngestionService ingestionService = mock(KafkaStoreIngestionService.class);
+      StoreIngestionTask ingestionTask = mock(StoreIngestionTask.class);
+      PartitionConsumptionState leaderPcs = mock(PartitionConsumptionState.class);
+      PartitionConsumptionState followerPcs = mock(PartitionConsumptionState.class);
+      when(ingestionService.getStoreIngestionTask(versionTopic)).thenReturn(ingestionTask);
+      when(ingestionTask.getPartitionConsumptionState(0)).thenReturn(leaderPcs);
+      when(ingestionTask.getPartitionConsumptionState(1)).thenReturn(followerPcs);
+      heartbeatMonitoringService.setKafkaStoreIngestionService(ingestionService);
+
+      heartbeatMonitoringService.updateLagMonitor(
+          versionTopic,
+          0,
+          HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
+          Utils.getReplicaId(versionTopic, 0));
+
+      IngestionTimestampEntry leaderEntry =
+          getEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0, LOCAL_FABRIC);
+      leaderEntry.heartbeatTimestamp = System.currentTimeMillis() - 200;
+      leaderEntry.recordTimestamp = System.currentTimeMillis() - 100;
+      leaderEntry.readyToServe = false;
+      leaderEntry.consumedFromUpstream = true;
+
+      when(leaderPcs.isComplete()).thenReturn(true);
+      heartbeatMonitoringService.record();
+      assertHistogramPoint(
+          metricReader,
+          INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.LEADER,
+          ReplicaState.READY_TO_SERVE);
+      assertNoHistogramPoint(
+          metricReader,
+          INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.LEADER,
+          ReplicaState.CATCHING_UP);
+      assertHistogramPoint(
+          metricReader,
+          INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.LEADER,
+          ReplicaState.READY_TO_SERVE);
+      assertNoHistogramPoint(
+          metricReader,
+          INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.LEADER,
+          ReplicaState.CATCHING_UP);
+      Assert.assertFalse(leaderEntry.readyToServe);
+
+      when(leaderPcs.isComplete()).thenReturn(false);
+      leaderEntry.heartbeatTimestamp = System.currentTimeMillis() - 300;
+      leaderEntry.recordTimestamp = System.currentTimeMillis() - 150;
+      heartbeatMonitoringService.record();
+      assertHistogramPoint(
+          metricReader,
+          INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.LEADER,
+          ReplicaState.CATCHING_UP);
+      assertHistogramPoint(
+          metricReader,
+          INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.LEADER,
+          ReplicaState.CATCHING_UP);
+      Assert.assertFalse(leaderEntry.readyToServe);
+
+      heartbeatMonitoringService.updateLagMonitor(
+          versionTopic,
+          1,
+          HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+          Utils.getReplicaId(versionTopic, 1));
+      IngestionTimestampEntry followerEntry =
+          getEntry(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1, 1, LOCAL_FABRIC);
+      followerEntry.heartbeatTimestamp = System.currentTimeMillis() - 250;
+      followerEntry.recordTimestamp = System.currentTimeMillis() - 125;
+      followerEntry.readyToServe = false;
+      followerEntry.consumedFromUpstream = true;
+
+      when(followerPcs.isComplete()).thenReturn(true);
+      heartbeatMonitoringService.record();
+      assertHistogramPoint(
+          metricReader,
+          INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.FOLLOWER,
+          ReplicaState.CATCHING_UP);
+      assertNoHistogramPoint(
+          metricReader,
+          INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
+          ReplicaType.FOLLOWER,
+          ReplicaState.READY_TO_SERVE);
+      Assert.assertFalse(followerEntry.readyToServe);
+      Assert.assertTrue(
+          metricsRepository
+              .getMetric(
+                  "." + TEST_STORE + "_current--" + CATCHUP_UP_FOLLOWER_METRIC_PREFIX + LOCAL_FABRIC + MAX + ".Gauge")
+              .value() > 0);
+    } finally {
+      metricsRepository.close();
+    }
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testFollowerRecordLevelTimestampTracking(boolean recordLevelTimestampEnabled) {
     // Setup similar to leader test
@@ -1891,6 +2063,53 @@ public class HeartbeatMonitoringServiceTest {
       int partition,
       String region) {
     return map.get(new HeartbeatKey(storeName, version, partition, region));
+  }
+
+  private static void assertHistogramPoint(
+      InMemoryMetricReader metricReader,
+      String metricName,
+      ReplicaType replicaType,
+      ReplicaState replicaState) {
+    Assert.assertNotNull(
+        getExponentialHistogramPointData(
+            metricReader.collectAllMetrics(),
+            metricName,
+            TEST_OTEL_PREFIX,
+            buildHeartbeatAttributes(replicaType, replicaState)));
+  }
+
+  private static void assertNoHistogramPoint(
+      InMemoryMetricReader metricReader,
+      String metricName,
+      ReplicaType replicaType,
+      ReplicaState replicaState) {
+    Assert.assertNull(
+        getExponentialHistogramPointData(
+            metricReader.collectAllMetrics(),
+            metricName,
+            TEST_OTEL_PREFIX,
+            buildHeartbeatAttributes(replicaType, replicaState)));
+  }
+
+  private static Attributes buildHeartbeatAttributes(ReplicaType replicaType, ReplicaState replicaState) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER)
+        .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), LOCAL_FABRIC)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.LOCAL.getDimensionValue())
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), replicaType.getDimensionValue())
+        .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
+        .put(
+            VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
+        .put(
+            VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
+            VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .put(
+            VENICE_REPLICATION_MODE.getDimensionNameInDefaultFormat(),
+            VeniceReplicationMode.NON_ACTIVE_ACTIVE.getDimensionValue())
+        .build();
   }
 
   private static long countStores(Map<HeartbeatKey, IngestionTimestampEntry> map) {

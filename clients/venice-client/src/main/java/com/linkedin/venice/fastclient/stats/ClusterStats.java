@@ -79,7 +79,7 @@ public class ClusterStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    this.currentVersionNumber = AsyncMetricEntityStateBase.create(
+    this.currentVersionNumber = AsyncMetricEntityStateBase.createWithState(
         STORE_VERSION_CURRENT.getMetricEntity(),
         otelRepository,
         (sensorName, stats) -> registerSensor(sensorName, stats),
@@ -90,7 +90,9 @@ public class ClusterStats extends AbstractVeniceStats {
                 ClusterTehutiMetricName.CURRENT_VERSION.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        this.currentVersion::get);
+        getMetricScope(),
+        () -> this.currentVersion.get() == -1 ? null : this.currentVersion,
+        AtomicLong::get);
 
     // Initialize OTel metrics for instance error counts
     this.blockedInstanceErrorCount = MetricEntityStateOneEnum.create(

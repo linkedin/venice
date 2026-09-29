@@ -11,6 +11,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -32,6 +34,8 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerReadQuotaUsageStats;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -178,6 +182,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
 
     // Delete a store (call store data deleted) verify nothing in buckets or subscriptions
     quotaEnforcer.handleStoreDeleted(store2.getName());
+    verify(stats).removeStore(store2.getName());
     for (int v: new Integer[] { 2, 3, 4 }) {
       assertFalse(
           registeredTopics.contains(Version.composeKafkaTopic(store2.getName(), v)),
@@ -194,6 +199,33 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     assertTrue(
         quotaEnforcer.getActiveStoreVersions().contains(Version.composeKafkaTopic(store1.getName(), 1)),
         "After deleting a store, the throttler should still have buckets for unrelated topics");
+  }
+
+  @Test
+  public void handleStoreDeletedRemovesStoreQuotaStats() {
+    HelixCustomizedViewOfflinePushRepository customizedViewRepository =
+        mock(HelixCustomizedViewOfflinePushRepository.class);
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      AggServerQuotaUsageStats stats = new AggServerQuotaUsageStats("test-cluster", metricsRepository);
+      ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
+          serverConfig,
+          storeRepository,
+          CompletableFuture.completedFuture(customizedViewRepository),
+          storageEngineRepository,
+          nodeId,
+          stats);
+
+      stats.updateVersionInfo("deleted_store", 1, 0);
+      assertNotNull(stats.getNullableStoreStats("deleted_store"));
+
+      quotaEnforcer.handleStoreDeleted("deleted_store");
+
+      assertNull(stats.getNullableStoreStats("deleted_store"));
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   private Store getDummyStore(String storeName, List<Integer> versions, long rcuQuota) {

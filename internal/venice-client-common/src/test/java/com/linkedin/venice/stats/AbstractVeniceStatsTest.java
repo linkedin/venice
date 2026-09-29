@@ -17,10 +17,20 @@ import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
@@ -31,6 +41,10 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -47,6 +61,21 @@ public class AbstractVeniceStatsTest {
   static class StatsTestImpl extends AbstractVeniceStats {
     public StatsTestImpl(MetricsRepository metricsRepository, String name) {
       super(metricsRepository, name);
+    }
+
+    void registerOtelGauge(
+        MetricEntity metricEntity,
+        VeniceOpenTelemetryMetricsRepository otelRepository,
+        Map<VeniceMetricsDimensions, String> dimensions,
+        Attributes attributes) {
+      AsyncMetricEntityStateBase.createWithState(
+          metricEntity,
+          otelRepository,
+          dimensions,
+          attributes,
+          getMetricScope(),
+          () -> 7L,
+          Long::doubleValue);
     }
   }
 
@@ -402,6 +431,62 @@ public class AbstractVeniceStatsTest {
       assertEquals(metricsRepository.getMetric(".testStore--standaloneSensor.Gauge").value(), 5.0);
       // Total sensor unchanged (no parent propagation)
       assertEquals(metricsRepository.getMetric(".total--totalSensor.Count").value(), 1.0);
+    } finally {
+      metricsRepository.close();
+    }
+  }
+
+  /** Both closes stop the OTel metrics; only {@code close()} also unregisters the Tehuti sensors. */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCloseStopsOtelMetricsAndOnlyFullCloseUnregistersSensors(boolean closeOtelOnly) {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    MetricEntity metricEntity = new MetricEntity(
+        "abstract_stats_close_gauge",
+        MetricType.ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "test gauge",
+        Collections.singleton(VeniceMetricsDimensions.VENICE_STORE_NAME));
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix("test_prefix")
+        .setEmitOtelMetrics(true)
+        .setMetricEntities(Collections.singletonList(metricEntity))
+        .setExportOtelMetricsToEndpoint(false)
+        .setOtelAdditionalMetricsReader(reader)
+        .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+        .build();
+    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(config);
+    try {
+      StatsTestImpl stats = new StatsTestImpl(metricsRepository, "testStore");
+      stats.registerSensor("closeSensor", new Count());
+
+      Map<VeniceMetricsDimensions, String> dimensions = new HashMap<>();
+      dimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store");
+      Attributes attributes =
+          metricsRepository.getOpenTelemetryMetricsRepository().createAttributes(metricEntity, dimensions);
+      stats.registerOtelGauge(
+          metricEntity,
+          metricsRepository.getOpenTelemetryMetricsRepository(),
+          dimensions,
+          attributes);
+
+      Assert.assertNotNull(metricsRepository.getMetric(".testStore--closeSensor.Count"));
+      OpenTelemetryDataTestUtils
+          .validateLongPointDataFromGauge(reader, 7L, attributes, metricEntity.getMetricName(), "test_prefix");
+
+      if (closeOtelOnly) {
+        stats.closeOtelMetrics();
+        Assert.assertNotNull(metricsRepository.getMetric(".testStore--closeSensor.Count"));
+      } else {
+        stats.close();
+        Assert.assertNull(metricsRepository.getMetric(".testStore--closeSensor.Count"));
+      }
+      Collection<MetricData> metricsData = reader.collectAllMetrics();
+      Assert.assertNull(
+          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+              metricsData,
+              metricEntity.getMetricName(),
+              "test_prefix",
+              attributes));
     } finally {
       metricsRepository.close();
     }

@@ -8,6 +8,7 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -1076,5 +1077,20 @@ public class RetriableAvroGenericStoreClientTest {
       // CORRECT behavior: future completed with exception
       assertTrue(e.getCause() instanceof VeniceClientException);
     }
+  }
+
+  @Test
+  public void testCloseClosesRetryManagers() {
+    clientConfig =
+        clientConfigBuilder.setMetricsRepository(getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true))
+            .build();
+    RetriableAvroGenericStoreClient<String, GenericRecord> client =
+        new RetriableAvroGenericStoreClient<>(mock(InternalAvroStoreClient.class), clientConfig, timeoutProcessor);
+    RetryManager singleKeyRetryManager = mock(RetryManager.class);
+    client.setSingleKeyLongTailRetryManager(singleKeyRetryManager);
+
+    client.close();
+
+    verify(singleKeyRetryManager).close();
   }
 }

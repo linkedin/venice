@@ -60,6 +60,7 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> e1,
         (state, e1, e2) -> 1L);
 
@@ -77,12 +78,12 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> e1,
         (state, e1, e2) -> 1L);
 
     assertTrue(metricState.emitOpenTelemetryMetrics());
-    verify(mockOtelRepository, times(1)).registerObservableLongGauge(eq(mockMetricEntity), any());
-    verify(mockOtelRepository, times(0)).registerObservableDoubleGauge(eq(mockMetricEntity), any());
+    verify(mockOtelRepository, times(1)).registerObservableGauge(eq(mockMetricEntity), any());
 
     int leafCount = 0;
     for (DimensionEnum1 e1: DimensionEnum1.values()) {
@@ -103,19 +104,20 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
       return null;
     };
 
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         liveStateResolver,
         (state, e1, e2) -> 42L);
-    Consumer<ObservableLongMeasurement> callback = callbackCaptor.getValue();
+    Consumer<GaugeObservation> callback = callbackCaptor.getValue();
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
-    callback.accept(measurement);
+    callback.accept(asObservation(measurement));
 
     verify(measurement, times(1)).record(eq(42L), any(Attributes.class));
   }
@@ -134,18 +136,19 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
       return "live";
     };
 
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         liveStateResolver,
         (state, e1, e2) -> 3L);
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
-    callbackCaptor.getValue().accept(measurement);
+    callbackCaptor.getValue().accept(asObservation(measurement));
 
     // 1 pair threw; the remaining (|E1| * |E2| - 1) must still have emitted.
     int expected = DimensionEnum1.values().length * DimensionEnum2.values().length - 1;
@@ -158,16 +161,17 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
     ValueResolverTwoEnums<Object, DimensionEnum1, DimensionEnum2> valueResolver = mock(ValueResolverTwoEnums.class);
     when(valueResolver.extractValue(any(), any(), any())).thenReturn(1.0);
 
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> null, // always dormant
         valueResolver);
-    callbackCaptor.getValue().accept(mock(ObservableLongMeasurement.class));
+    callbackCaptor.getValue().accept(asObservation(mock(ObservableLongMeasurement.class)));
 
     verifyNoInteractions(valueResolver);
   }
@@ -178,20 +182,21 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
     LiveStateResolverTwoEnums<DimensionEnum1, DimensionEnum2, String> liveStateResolver =
         (e1, e2) -> live.get().contains(e1.name() + "_" + e2.name()) ? "live" : null;
 
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         liveStateResolver,
         (state, e1, e2) -> 1L);
-    Consumer<ObservableLongMeasurement> callback = callbackCaptor.getValue();
+    Consumer<GaugeObservation> callback = callbackCaptor.getValue();
 
     // First collection: nothing live.
     ObservableLongMeasurement m1 = mock(ObservableLongMeasurement.class);
-    callback.accept(m1);
+    callback.accept(asObservation(m1));
     verifyNoInteractions(m1);
 
     // Transition one pair to live.
@@ -199,31 +204,32 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
     afterOne.add(DimensionEnum1.DIMENSION_ONE.name() + "_" + DimensionEnum2.DIMENSION_TWO.name());
     live.set(afterOne);
     ObservableLongMeasurement m2 = mock(ObservableLongMeasurement.class);
-    callback.accept(m2);
+    callback.accept(asObservation(m2));
     verify(m2, times(1)).record(eq(1L), any(Attributes.class));
 
     // Back to dormant.
     live.set(new HashSet<>());
     ObservableLongMeasurement m3 = mock(ObservableLongMeasurement.class);
-    callback.accept(m3);
+    callback.accept(asObservation(m3));
     verifyNoInteractions(m3);
   }
 
   @Test
   public void testAsyncGaugeEmitsTruncatedLong() {
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> e1,
         (state, e1, e2) -> 42.9);
-    Consumer<ObservableLongMeasurement> callback = callbackCaptor.getValue();
+    Consumer<GaugeObservation> callback = callbackCaptor.getValue();
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
-    callback.accept(measurement);
+    callback.accept(asObservation(measurement));
 
     int expected = DimensionEnum1.values().length * DimensionEnum2.values().length;
     verify(measurement, times(expected)).record(eq(42L), any(Attributes.class));
@@ -233,21 +239,20 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
   public void testAsyncDoubleGaugeEmitsDoubleDirectly() {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
 
-    ArgumentCaptor<Consumer<ObservableDoubleMeasurement>> callbackCaptor = captureDoubleCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureDoubleCallback();
     AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> e1,
         (state, e1, e2) -> 0.75);
-    Consumer<ObservableDoubleMeasurement> callback = callbackCaptor.getValue();
-
-    verify(mockOtelRepository, times(0)).registerObservableLongGauge(eq(mockMetricEntity), any());
+    Consumer<GaugeObservation> callback = callbackCaptor.getValue();
 
     ObservableDoubleMeasurement measurement = mock(ObservableDoubleMeasurement.class);
-    callback.accept(measurement);
+    callback.accept(asObservation(measurement));
 
     int expected = DimensionEnum1.values().length * DimensionEnum2.values().length;
     verify(measurement, times(expected)).record(eq(0.75), any(Attributes.class));
@@ -264,14 +269,14 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> e1,
         (state, e1, e2) -> 1L);
 
     assertFalse(metricState.emitOpenTelemetryMetrics());
     assertNull(metricState.getAttributesByEnum());
     assertNull(metricState.getInstrument());
-    verify(mockOtelRepository, times(0)).registerObservableLongGauge(eq(mockMetricEntity), any());
-    verify(mockOtelRepository, times(0)).registerObservableDoubleGauge(eq(mockMetricEntity), any());
+    verify(mockOtelRepository, times(0)).registerObservableGauge(eq(mockMetricEntity), any());
   }
 
   /**
@@ -281,18 +286,19 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
   @Test
   public void testEachPairEmitsWithItsOwnPrecomputedAttributes() {
     // valueResolver returns a distinct value per (e1, e2), so we can match (value, attrs) pairs.
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums<DimensionEnum1, DimensionEnum2> metricState = AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> e1,
         (state, e1, e2) -> e1.ordinal() * 100L + e2.ordinal());
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
-    callbackCaptor.getValue().accept(measurement);
+    callbackCaptor.getValue().accept(asObservation(measurement));
 
     for (DimensionEnum1 e1: DimensionEnum1.values()) {
       for (DimensionEnum2 e2: DimensionEnum2.values()) {
@@ -317,13 +323,14 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
       }
     }
 
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
+    ArgumentCaptor<Consumer<GaugeObservation>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> stateByPair.get(e1.name() + "_" + e2.name()),
         (state, e1, e2) -> {
           Object expected = stateByPair.get(e1.name() + "_" + e2.name());
@@ -335,7 +342,7 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         });
 
     // If any pair crosses state, the valueResolver throws -> callback propagates -> test fails.
-    callbackCaptor.getValue().accept(mock(ObservableLongMeasurement.class));
+    callbackCaptor.getValue().accept(asObservation(mock(ObservableLongMeasurement.class)));
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*ASYNC_GAUGE.*ASYNC_DOUBLE_GAUGE.*COUNTER.*")
@@ -348,21 +355,35 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         baseDimensionsMap,
         DimensionEnum1.class,
         DimensionEnum2.class,
+        new MetricScope(),
         (e1, e2) -> e1,
         (state, e1, e2) -> 1L);
   }
 
+  /** The production observation, so tests exercise its null, non-finite and failure handling. */
+  private GaugeObservation asObservation(ObservableLongMeasurement measurement) {
+    return GaugeObservation.of(
+        (attributes, value) -> measurement.record((long) value, attributes),
+        e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
+  }
+
+  private GaugeObservation asObservation(ObservableDoubleMeasurement measurement) {
+    return GaugeObservation.of(
+        (attributes, value) -> measurement.record(value, attributes),
+        e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
+  }
+
   @SuppressWarnings("unchecked")
-  private ArgumentCaptor<Consumer<ObservableLongMeasurement>> captureLongCallback() {
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> captor = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableLongGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
+  private ArgumentCaptor<Consumer<GaugeObservation>> captureLongCallback() {
+    ArgumentCaptor<Consumer<GaugeObservation>> captor = ArgumentCaptor.forClass(Consumer.class);
+    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
     return captor;
   }
 
   @SuppressWarnings("unchecked")
-  private ArgumentCaptor<Consumer<ObservableDoubleMeasurement>> captureDoubleCallback() {
-    ArgumentCaptor<Consumer<ObservableDoubleMeasurement>> captor = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableDoubleGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
+  private ArgumentCaptor<Consumer<GaugeObservation>> captureDoubleCallback() {
+    ArgumentCaptor<Consumer<GaugeObservation>> captor = ArgumentCaptor.forClass(Consumer.class);
+    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
     return captor;
   }
 }

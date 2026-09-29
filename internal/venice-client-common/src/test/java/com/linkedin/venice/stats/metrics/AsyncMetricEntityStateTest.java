@@ -10,6 +10,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -34,7 +36,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.DoubleSupplier;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -98,15 +99,21 @@ public class AsyncMetricEntityStateTest {
     LongCounter longCounter = mock(LongCounter.class);
     when(mockOtelRepository.createInstrument(mockMetricEntity)).thenReturn(longCounter);
 
-    // ASYNC_GAUGE (LongSupplier) without tehuti sensor
-    AsyncMetricEntityState metricEntityState =
-        AsyncMetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, baseAttributes, () -> 0L);
+    // ASYNC_GAUGE (state resolver) without tehuti sensor
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
+        mockMetricEntity,
+        null,
+        baseDimensionsMap,
+        baseAttributes,
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor());
 
-    // ASYNC_GAUGE (LongSupplier) with tehuti sensor
-    metricEntityState = AsyncMetricEntityStateBase.create(
+    // ASYNC_GAUGE (state resolver) with tehuti sensor
+    metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         null,
         sensorRegistrationFunction,
@@ -114,15 +121,23 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
 
-    // ASYNC_DOUBLE_GAUGE (DoubleSupplier) without tehuti sensor
+    // ASYNC_DOUBLE_GAUGE (state resolver) without tehuti sensor
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
-    metricEntityState = AsyncMetricEntityStateBase
-        .create(mockMetricEntity, null, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 0.75);
+    metricEntityState = AsyncMetricEntityStateBase.createWithState(
+        mockMetricEntity,
+        null,
+        baseDimensionsMap,
+        baseAttributes,
+        new MetricScope(),
+        () -> 0.75,
+        Double::doubleValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor());
@@ -132,17 +147,23 @@ public class AsyncMetricEntityStateTest {
   public void testCreateMetricWithOtelEnabled() {
     when(mockMetricEntity.getMetricType()).thenReturn(ASYNC_GAUGE);
     ObservableLongGauge mockLongGauge = mock(ObservableLongGauge.class);
-    when(mockOtelRepository.registerObservableLongGauge(any(MetricEntity.class), any())).thenReturn(mockLongGauge);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(mockLongGauge);
 
-    // ASYNC_GAUGE (LongSupplier) without tehuti sensor
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes, () -> 0L);
+    // ASYNC_GAUGE (state resolver) without tehuti sensor
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        baseAttributes,
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor());
 
-    // ASYNC_GAUGE (LongSupplier) with tehuti sensor
-    metricEntityState = AsyncMetricEntityStateBase.create(
+    // ASYNC_GAUGE (state resolver) with tehuti sensor
+    metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -150,24 +171,32 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
 
-    // ASYNC_DOUBLE_GAUGE (DoubleSupplier) without tehuti sensor
+    // ASYNC_DOUBLE_GAUGE (state resolver) without tehuti sensor
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
     ObservableDoubleGauge mockDoubleGauge = mock(ObservableDoubleGauge.class);
-    when(mockOtelRepository.registerObservableDoubleGauge(any(MetricEntity.class), any())).thenReturn(mockDoubleGauge);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(mockDoubleGauge);
 
-    metricEntityState = AsyncMetricEntityStateBase
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 0.75);
+    metricEntityState = AsyncMetricEntityStateBase.createWithState(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        baseAttributes,
+        new MetricScope(),
+        () -> 0.75,
+        Double::doubleValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor());
 
-    // ASYNC_DOUBLE_GAUGE (DoubleSupplier) with tehuti sensor
-    metricEntityState = AsyncMetricEntityStateBase.create(
+    // ASYNC_DOUBLE_GAUGE (state resolver) with tehuti sensor
+    metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -175,7 +204,9 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0.75, "test")),
         baseDimensionsMap,
         baseAttributes,
-        (DoubleSupplier) () -> 0.75);
+        new MetricScope(),
+        () -> 0.75,
+        Double::doubleValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
@@ -187,15 +218,27 @@ public class AsyncMetricEntityStateTest {
     // case 1: right values
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     Attributes baseAttributes1 = getBaseAttributes(baseDimensionsMap);
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes1, () -> 0L);
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        baseAttributes1,
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
     assertNotNull(metricEntityState);
 
     // case 2: baseAttributes have different count than baseDimensionsMap
     Attributes baseAttributes2 = Attributes.builder().build();
     try {
-      AsyncMetricEntityStateBase
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes2, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          baseAttributes2,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -206,8 +249,14 @@ public class AsyncMetricEntityStateTest {
     baseAttributes3Map.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes3 = getBaseAttributes(baseAttributes3Map);
     try {
-      AsyncMetricEntityStateBase
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes3, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          baseAttributes3,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
@@ -219,8 +268,14 @@ public class AsyncMetricEntityStateTest {
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes4 = getBaseAttributes(baseDimensionsMap);
     try {
-      AsyncMetricEntityStateBase
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes4, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          baseAttributes4,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -230,8 +285,14 @@ public class AsyncMetricEntityStateTest {
     baseDimensionsMap.clear();
     Attributes baseAttributes5 = Attributes.builder().build();
     try {
-      AsyncMetricEntityStateBase
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes5, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          baseAttributes5,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -242,8 +303,14 @@ public class AsyncMetricEntityStateTest {
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes6 = getBaseAttributes(baseDimensionsMap);
     try {
-      AsyncMetricEntityStateBase
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes6, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          baseAttributes6,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -256,8 +323,14 @@ public class AsyncMetricEntityStateTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     try {
-      AsyncMetricEntityStateBase
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes7, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          baseAttributes7,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -268,8 +341,14 @@ public class AsyncMetricEntityStateTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
     try {
-      AsyncMetricEntityStateBase
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes8, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          baseAttributes8,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
@@ -280,7 +359,14 @@ public class AsyncMetricEntityStateTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     try {
-      AsyncMetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          null,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
     } catch (IllegalArgumentException e) {
       fail("baseAttributes can be null when emitting OTel metrics is disabled");
     }
@@ -289,7 +375,14 @@ public class AsyncMetricEntityStateTest {
 
     // case 10: baseAttributes is null but emitting OTel metrics is enabled. This should throw exception.
     try {
-      AsyncMetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null, () -> 0L);
+      AsyncMetricEntityStateBase.createWithState(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          null,
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("Base attributes cannot be null"));
@@ -306,7 +399,7 @@ public class AsyncMetricEntityStateTest {
         "Test description",
         Utils.setOf(VENICE_REQUEST_METHOD));
     try {
-      AsyncMetricEntityStateBase.create(
+      AsyncMetricEntityStateBase.createWithState(
           metricEntity,
           mockOtelRepository,
           sensorRegistrationFunction,
@@ -314,7 +407,9 @@ public class AsyncMetricEntityStateTest {
           singletonList(new Count()), // No AsyncGauge in stats
           baseDimensionsMap,
           baseAttributes,
-          () -> 0L);
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(
@@ -332,7 +427,7 @@ public class AsyncMetricEntityStateTest {
         "Test description",
         Utils.setOf(VENICE_REQUEST_METHOD));
     try {
-      AsyncMetricEntityStateBase.create(
+      AsyncMetricEntityStateBase.createWithState(
           metricEntity,
           mockOtelRepository,
           sensorRegistrationFunction,
@@ -340,7 +435,9 @@ public class AsyncMetricEntityStateTest {
           Arrays.asList(new AsyncGauge((ignored, ignored2) -> 0, "test"), new Count()),
           baseDimensionsMap,
           baseAttributes,
-          () -> 0L);
+          new MetricScope(),
+          () -> 0L,
+          Long::doubleValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(
@@ -355,7 +452,7 @@ public class AsyncMetricEntityStateTest {
         MetricUnit.NUMBER,
         "Test description",
         Utils.setOf(VENICE_REQUEST_METHOD));
-    AsyncMetricEntityStateBase metricEntityState = AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase metricEntityState = AsyncMetricEntityStateBase.createWithState(
         metricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -363,12 +460,14 @@ public class AsyncMetricEntityStateTest {
         Arrays.asList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
     assertNotNull(metricEntityState);
 
     // case 4: MetricType is ASYNC_DOUBLE_GAUGE, but tehuti has Count instead of AsyncGauge
     ObservableDoubleGauge mockGauge = mock(ObservableDoubleGauge.class);
-    when(mockOtelRepository.registerObservableDoubleGauge(any(MetricEntity.class), any())).thenReturn(mockGauge);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(mockGauge);
     MetricEntity ratioEntity = new MetricEntity(
         "test_ratio",
         MetricType.ASYNC_DOUBLE_GAUGE,
@@ -376,7 +475,7 @@ public class AsyncMetricEntityStateTest {
         "Test ratio metric",
         Utils.setOf(VENICE_REQUEST_METHOD));
     try {
-      AsyncMetricEntityStateBase.create(
+      AsyncMetricEntityStateBase.createWithState(
           ratioEntity,
           mockOtelRepository,
           sensorRegistrationFunction,
@@ -384,7 +483,9 @@ public class AsyncMetricEntityStateTest {
           singletonList(new Count()),
           baseDimensionsMap,
           baseAttributes,
-          (DoubleSupplier) () -> 0.5);
+          new MetricScope(),
+          () -> 0.5,
+          Double::doubleValue);
       fail("Should throw for ASYNC_DOUBLE_GAUGE with non-AsyncGauge Tehuti stat");
     } catch (IllegalArgumentException e) {
       assertTrue(
@@ -399,7 +500,7 @@ public class AsyncMetricEntityStateTest {
   public void testEmitTehutiMetricsEnabled() {
     when(mockOtelRepository.emitTehutiMetrics()).thenReturn(true);
 
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -407,7 +508,9 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
 
     assertTrue(metricEntityState.emitTehutiMetrics(), "Should emit Tehuti metrics when enabled");
     assertNotNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should be created when enabled");
@@ -417,7 +520,7 @@ public class AsyncMetricEntityStateTest {
   public void testEmitTehutiMetricsDisabled() {
     when(mockOtelRepository.emitTehutiMetrics()).thenReturn(false);
 
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -425,7 +528,9 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
 
     assertFalse(metricEntityState.emitTehutiMetrics(), "Should not emit Tehuti metrics when disabled");
     Assert.assertNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should not be created when disabled");
@@ -434,7 +539,7 @@ public class AsyncMetricEntityStateTest {
   @Test
   public void testEmitTehutiMetricsWithNullRepository() {
     // When repository is null, Tehuti metrics should be disabled
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         null,
         sensorRegistrationFunction,
@@ -442,7 +547,9 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
 
     assertTrue(metricEntityState.emitTehutiMetrics(), "Should emit Tehuti metrics when repository is null");
     assertNotNull(
@@ -453,7 +560,7 @@ public class AsyncMetricEntityStateTest {
   @Test
   public void testEmitTehutiMetricsWithNullRegistrationFunction() {
     // When registration function is null, Tehuti metrics should be disabled
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,
         null,
@@ -461,7 +568,9 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
 
     assertFalse(
         metricEntityState.emitTehutiMetrics(),
@@ -474,7 +583,7 @@ public class AsyncMetricEntityStateTest {
   @Test
   public void testEmitTehutiMetricsWithEmptyStats() {
     // When Tehuti stats are empty, Tehuti metrics should be disabled
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -482,7 +591,9 @@ public class AsyncMetricEntityStateTest {
         new ArrayList<>(), // Empty stats list
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
 
     assertFalse(metricEntityState.emitTehutiMetrics(), "Should not emit Tehuti metrics when stats are empty");
     Assert.assertNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should not be created when stats are empty");
@@ -494,7 +605,7 @@ public class AsyncMetricEntityStateTest {
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(false);
     when(mockOtelRepository.emitTehutiMetrics()).thenReturn(true);
 
-    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -502,12 +613,81 @@ public class AsyncMetricEntityStateTest {
         singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
         baseAttributes,
-        () -> 0L);
+        new MetricScope(),
+        () -> 0L,
+        Long::doubleValue);
 
     assertFalse(metricEntityState.emitOpenTelemetryMetrics(), "OTel metrics should be disabled");
     assertTrue(metricEntityState.emitTehutiMetrics(), "Tehuti metrics should be enabled independently");
     Assert.assertNull(metricEntityState.getOtelMetric(), "OTel metric should not be created");
     assertNotNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should be created");
+  }
+
+  @Test
+  public void testCloseClosesAsyncGaugeOnce() {
+    ObservableLongGauge gauge = mock(ObservableLongGauge.class);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(gauge);
+    AsyncMetricEntityStateBase state = AsyncMetricEntityStateBase.createWithState(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        baseAttributes,
+        new MetricScope(),
+        () -> 1L,
+        Long::doubleValue);
+
+    state.close();
+    state.close();
+
+    verify(mockOtelRepository, times(1)).closeObservableInstrument(mockMetricEntity, gauge);
+  }
+
+  @Test
+  public void testNullAsyncGaugeResolversRejectedAtConstruction() {
+    // AsyncMetricEntityStateBase declares its resolvers @Nonnull, so SpotBugs rejects null callers at build time.
+    when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(false);
+    Assert.assertThrows(
+        NullPointerException.class,
+        () -> AsyncMetricEntityStateOneEnum.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            MetricEntityStateTest.DimensionEnum1.class,
+            new MetricScope(),
+            null,
+            (state, e) -> 1L));
+    Assert.assertThrows(
+        NullPointerException.class,
+        () -> AsyncMetricEntityStateOneEnum.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            MetricEntityStateTest.DimensionEnum1.class,
+            new MetricScope(),
+            e -> e,
+            null));
+    Assert.assertThrows(
+        NullPointerException.class,
+        () -> AsyncMetricEntityStateTwoEnums.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            MetricEntityStateTest.DimensionEnum1.class,
+            MetricEntityStateTest.DimensionEnum2.class,
+            new MetricScope(),
+            null,
+            (state, e1, e2) -> 1L));
+    Assert.assertThrows(
+        NullPointerException.class,
+        () -> AsyncMetricEntityStateTwoEnums.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            MetricEntityStateTest.DimensionEnum1.class,
+            MetricEntityStateTest.DimensionEnum2.class,
+            new MetricScope(),
+            (e1, e2) -> e1,
+            null));
   }
 
   private Attributes getBaseAttributes(Map<VeniceMetricsDimensions, String> inputMap) {

@@ -352,6 +352,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.clusterStats;
   }
 
+  /** Stops the OTel metrics of this config's stats when its client closes; Tehuti sensors stay registered. */
+  void closeOtelStats() {
+    clientStatsMap.values().forEach(FastClientStats::closeOtelMetrics);
+    clusterStats.closeOtelMetrics();
+  }
+
   public StoreMetadataFetchMode getStoreMetadataFetchMode() {
     return this.storeMetadataFetchMode;
   }
