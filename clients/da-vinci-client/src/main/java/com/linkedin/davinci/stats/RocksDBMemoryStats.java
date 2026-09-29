@@ -253,7 +253,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         baseAttributes,
         getMetricScope(),
         () -> valueSupplier.getAsLong(),
-        Long::doubleValue);
+        Long::longValue);
   }
 
   /** Registers a joint Tehuti+OTel RMD cache async gauge metric. */

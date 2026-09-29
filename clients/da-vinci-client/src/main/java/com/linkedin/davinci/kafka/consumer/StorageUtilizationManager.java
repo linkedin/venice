@@ -430,6 +430,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     for (StoragePartitionDiskUsage diskUsage: partitionConsumptionSizeMap.values()) {
       usage += diskUsage.getUsage();
     }
+    // A zero share has no meaningful ratio: this is Infinity with usage and NaN without, which OTel omits.
     return usage / quota;
   }
 

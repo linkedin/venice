@@ -224,7 +224,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
             baseAttributes,
             new MetricScope(),
             () -> 10L,
-            Long::doubleValue);
+            Long::longValue);
       } else {
         metricEntityState =
             MetricEntityStateBase.create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
@@ -1384,6 +1384,36 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     }
   }
 
+  /** Integral values are recorded exactly, including longs that a double cannot represent. */
+  @Test
+  public void testObservableLongGaugeRecordsIntegralValuesExactly() {
+    long beyondDoublePrecision = (1L << 53) + 1;
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(reader);
+    try {
+      MetricEntity metricEntity = createStoreGaugeMetricEntity("test_long_gauge_precision", MetricType.ASYNC_GAUGE);
+      Map<VeniceMetricsDimensions, String> dimensions = singletonStoreDimensions(TEST_STORE_NAME);
+      Attributes attributes = otelRepo.createAttributes(metricEntity, dimensions);
+      AsyncMetricEntityStateBase.createWithState(
+          metricEntity,
+          otelRepo,
+          dimensions,
+          attributes,
+          new MetricScope(),
+          () -> beyondDoublePrecision,
+          Long::longValue);
+
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+          reader,
+          beyondDoublePrecision,
+          attributes,
+          metricEntity.getMetricName(),
+          TEST_PREFIX);
+    } finally {
+      otelRepo.close();
+    }
+  }
+
   @DataProvider(name = "ThrowingGaugeResolvers")
   public Object[][] throwingGaugeResolvers() {
     return new Object[][] { { true }, { false } };
@@ -1422,7 +1452,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           attributes,
           new MetricScope(),
           () -> 9L,
-          Long::doubleValue);
+          Long::longValue);
 
       Collection<MetricData> metricsData = reader.collectAllMetrics();
       assertNoGaugePoint(metricsData, failingGauge.getMetricName(), MetricType.ASYNC_GAUGE, attributes);
@@ -1448,7 +1478,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       Map<VeniceMetricsDimensions, String> dimensions = singletonStoreDimensions(TEST_STORE_NAME);
       Attributes attributes = otelRepo.createAttributes(gaugeEntity, dimensions);
       AsyncMetricEntityStateBase
-          .createWithState(gaugeEntity, otelRepo, dimensions, attributes, scope, () -> 1L, Long::doubleValue);
+          .createWithState(gaugeEntity, otelRepo, dimensions, attributes, scope, () -> 1L, Long::longValue);
       MetricEntityStateBase counter =
           scope.register(MetricEntityStateBase.create(counterEntity, otelRepo, dimensions, attributes));
 
@@ -1484,7 +1514,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           attributes,
           scope,
           () -> 99L,
-          Long::doubleValue);
+          Long::longValue);
       assertNoGaugePoint(deltaReader.collectAllMetrics(), "test_scope_late_gauge", MetricType.ASYNC_GAUGE, attributes);
     } finally {
       otelRepo.close();

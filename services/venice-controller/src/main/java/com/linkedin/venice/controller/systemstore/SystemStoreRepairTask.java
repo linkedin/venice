@@ -90,6 +90,8 @@ public class SystemStoreRepairTask implements Runnable {
         stats.setMeasured(shouldContinue(clusterName));
         LOGGER.info("Completed system store repair task for cluster: {}", clusterName);
       } catch (Exception e) {
+        // A failed round leaves the counts partial or stale.
+        stats.setMeasured(false);
         LOGGER.error("System store repair task failed for cluster: {}", clusterName, e);
       }
     }

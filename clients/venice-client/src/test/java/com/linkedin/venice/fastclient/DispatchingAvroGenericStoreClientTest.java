@@ -75,6 +75,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -1926,7 +1927,7 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   @Test
-  public void testCloseStopsOtelGaugesButKeepsTehutiSensors() {
+  public void testConfigOtelGaugesReportOnlyWhileAClientOfTheConfigIsOpen() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
@@ -1936,19 +1937,34 @@ public class DispatchingAvroGenericStoreClientTest {
         .setClusterDiscoveryD2Service("test_server_discovery")
         .setMetricsRepository(metricsRepository)
         .build();
-    DispatchingAvroGenericStoreClient client =
-        new DispatchingAvroGenericStoreClient(mock(StoreMetadata.class), config, mock(TransportClient.class));
+    Supplier<DispatchingAvroGenericStoreClient> openClient =
+        () -> new DispatchingAvroGenericStoreClient(mock(StoreMetadata.class), config, mock(TransportClient.class));
     config.getClusterStats().updateCurrentVersion(2);
     String currentVersion = ClusterMetricEntity.STORE_VERSION_CURRENT.getMetricEntity().getMetricName();
     String staleness = FastClientMetricEntity.METADATA_STALENESS_DURATION.getMetricEntity().getMetricName();
+    assertFalse(hasGaugePoint(reader, currentVersion));
+    assertFalse(hasGaugePoint(reader, staleness));
+
+    DispatchingAvroGenericStoreClient first = openClient.get();
+    DispatchingAvroGenericStoreClient second = openClient.get();
     assertTrue(hasGaugePoint(reader, currentVersion));
     assertTrue(hasGaugePoint(reader, staleness));
 
-    client.close();
+    // Clients of one config share its stats, so the gauges stay while any of them is open; a repeated close is a no-op.
+    first.close();
+    first.close();
+    assertTrue(hasGaugePoint(reader, currentVersion));
+    assertTrue(hasGaugePoint(reader, staleness));
 
+    second.close();
     assertFalse(hasGaugePoint(reader, currentVersion));
     assertFalse(hasGaugePoint(reader, staleness));
     assertNotNull(metricsRepository.getMetric("." + STORE_NAME + "--current_version.Gauge"));
+
+    DispatchingAvroGenericStoreClient reopened = openClient.get();
+    assertTrue(hasGaugePoint(reader, currentVersion));
+    assertTrue(hasGaugePoint(reader, staleness));
+    reopened.close();
   }
 
   private static boolean hasGaugePoint(InMemoryMetricReader reader, String metricName) {

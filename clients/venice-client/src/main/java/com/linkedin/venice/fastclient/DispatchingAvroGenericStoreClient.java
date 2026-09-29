@@ -54,6 +54,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -78,6 +79,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final ClientConfig config;
   private final TransportClient transportClient;
   private final Executor deserializationExecutor;
+  private final AtomicBoolean closed = new AtomicBoolean();
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
@@ -128,6 +130,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     } else {
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
     }
+    config.onClientOpened();
   }
 
   protected StoreMetadata getStoreMetadata() {
@@ -773,7 +776,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     } catch (Exception e) {
       throw new VeniceClientException("Failed to close store metadata", e);
     } finally {
-      config.closeOtelStats();
+      if (closed.compareAndSet(false, true)) {
+        config.onClientClosed();
+      }
     }
   }
 

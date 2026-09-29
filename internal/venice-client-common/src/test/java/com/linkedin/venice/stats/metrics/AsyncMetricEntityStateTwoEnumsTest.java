@@ -362,15 +362,11 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
 
   /** The production observation, so tests exercise its null, non-finite and failure handling. */
   private GaugeObservation asObservation(ObservableLongMeasurement measurement) {
-    return GaugeObservation.of(
-        (attributes, value) -> measurement.record((long) value, attributes),
-        e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
+    return GaugeObservation.of(measurement, e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
   }
 
   private GaugeObservation asObservation(ObservableDoubleMeasurement measurement) {
-    return GaugeObservation.of(
-        (attributes, value) -> measurement.record(value, attributes),
-        e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
+    return GaugeObservation.of(measurement, e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
   }
 
   @SuppressWarnings("unchecked")

@@ -238,7 +238,7 @@ public class MetricTypeTest {
         getBaseAttributes(),
         new MetricScope(),
         () -> gaugeValue[0],
-        Long::doubleValue);
+        Long::longValue);
 
     Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metrics.isEmpty(), "Metrics should not be empty");

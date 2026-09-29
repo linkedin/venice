@@ -43,7 +43,7 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         otelData.getBaseAttributes(),
         getMetricScope(),
         () -> this.threadPoolExecutor.getActiveCount(),
-        Integer::doubleValue);
+        Integer::longValue);
 
     AsyncMetricEntityStateBase.createWithState(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT.getMetricEntity(),
@@ -52,7 +52,7 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         otelData.getBaseAttributes(),
         getMetricScope(),
         () -> this.threadPoolExecutor.getMaximumPoolSize(),
-        Integer::doubleValue);
+        Integer::longValue);
 
     AsyncMetricEntityStateBase.createWithState(
         ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity(),
@@ -61,7 +61,7 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         otelData.getBaseAttributes(),
         getMetricScope(),
         () -> this.threadPoolExecutor.getQueue().size(),
-        Integer::doubleValue);
+        Integer::longValue);
 
     /**
      * If only registered as Gauge, the metric would show the queue size at the time of the metric collection, which is not

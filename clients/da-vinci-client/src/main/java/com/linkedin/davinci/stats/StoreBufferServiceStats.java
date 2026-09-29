@@ -137,7 +137,7 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
         baseAttributes,
         getMetricScope(),
         () -> supplier.getAsLong(),
-        Long::doubleValue);
+        Long::longValue);
   }
 
   private MetricEntityStateBase createPerStoreState(

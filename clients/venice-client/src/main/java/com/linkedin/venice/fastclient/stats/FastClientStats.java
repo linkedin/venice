@@ -34,6 +34,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -41,6 +42,7 @@ import java.util.stream.IntStream;
 public class FastClientStats extends ClientStats {
   private final String storeName;
   private final boolean storeLoadControllerEnabled;
+  private final BooleanSupplier isReporting;
 
   private volatile MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
   private volatile MetricEntityStateOneEnum<RejectionReason> rejectedRequestCountByLoadController;
@@ -83,8 +85,33 @@ public class FastClientStats extends ClientStats {
       RequestType requestType,
       boolean dualReadEnabled,
       boolean storeLoadControllerEnabled) {
+    return getClientStats(
+        metricsRepository,
+        statsPrefix,
+        storeName,
+        requestType,
+        dualReadEnabled,
+        storeLoadControllerEnabled,
+        () -> true);
+  }
+
+  /** Same as above; the OTel metadata staleness gauge reports only while {@code isReporting} returns true. */
+  public static FastClientStats getClientStats(
+      MetricsRepository metricsRepository,
+      String statsPrefix,
+      String storeName,
+      RequestType requestType,
+      boolean dualReadEnabled,
+      boolean storeLoadControllerEnabled,
+      BooleanSupplier isReporting) {
     String metricName = statsPrefix.isEmpty() ? storeName : statsPrefix + "." + storeName;
-    return new FastClientStats(metricsRepository, metricName, requestType, dualReadEnabled, storeLoadControllerEnabled);
+    return new FastClientStats(
+        metricsRepository,
+        metricName,
+        requestType,
+        dualReadEnabled,
+        storeLoadControllerEnabled,
+        isReporting);
   }
 
   private FastClientStats(
@@ -92,11 +119,13 @@ public class FastClientStats extends ClientStats {
       String storeName,
       RequestType requestType,
       boolean dualReadEnabled,
-      boolean storeLoadControllerEnabled) {
+      boolean storeLoadControllerEnabled,
+      BooleanSupplier isReporting) {
     super(metricsRepository, storeName, requestType, FAST_CLIENT);
 
     this.storeName = storeName;
     this.storeLoadControllerEnabled = storeLoadControllerEnabled;
+    this.isReporting = isReporting;
 
     buildFastClientOtelStats();
 
@@ -252,8 +281,13 @@ public class FastClientStats extends ClientStats {
         metadataStalenessDims,
         metadataStalenessAttrs,
         getMetricScope(),
-        () -> this.cacheTimeStampInMs == 0 ? 0L : (System.currentTimeMillis() - this.cacheTimeStampInMs),
-        Long::doubleValue);
+        () -> {
+          if (!isReporting.getAsBoolean()) {
+            return null;
+          }
+          return this.cacheTimeStampInMs == 0 ? 0L : (System.currentTimeMillis() - this.cacheTimeStampInMs);
+        },
+        Long::longValue);
   }
 
   @Override

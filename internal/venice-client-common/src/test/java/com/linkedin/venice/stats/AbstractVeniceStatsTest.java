@@ -75,7 +75,7 @@ public class AbstractVeniceStatsTest {
           attributes,
           getMetricScope(),
           () -> 7L,
-          Long::doubleValue);
+          Long::longValue);
     }
   }
 

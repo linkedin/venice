@@ -44,6 +44,7 @@ public class MetricScope implements AutoCloseable {
       }
       closed = true;
       toClose = new ArrayList<>(resources);
+      resources.clear();
     }
     for (AutoCloseable resource: toClose) {
       closeResource(resource);

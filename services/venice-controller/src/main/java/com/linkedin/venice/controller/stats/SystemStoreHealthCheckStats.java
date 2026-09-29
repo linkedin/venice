@@ -107,7 +107,7 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
         baseAttributes,
         getMetricScope(),
         () -> measured ? notRepairableSystemStoreCounter.get() : null,
-        Long::doubleValue);
+        Long::longValue);
 
     AsyncMetricEntityStateBase.createWithState(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT.getMetricEntity(),
@@ -116,7 +116,7 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
         baseAttributes,
         getMetricScope(),
         () -> measured ? systemStoreHealthCheckErrorCounter.get() : null,
-        Long::doubleValue);
+        Long::longValue);
   }
 
   /** Whether this controller, as the cluster's leader, has current counts for it. */

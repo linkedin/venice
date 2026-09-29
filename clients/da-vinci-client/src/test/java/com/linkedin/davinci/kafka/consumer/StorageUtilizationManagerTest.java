@@ -246,11 +246,37 @@ public class StorageUtilizationManagerTest {
   @Test
   public void testDiskQuotaUsageStaysFiniteWhenQuotaIsSmallerThanPartitionCount() {
     // 5 bytes over 10 partitions leaves each partition a 0-byte enforcement quota.
-    when(store.getStorageQuotaInByte()).thenReturn(5L);
+    StorageUtilizationManager manager = createManagerHostingPartitions(5L, 1, 2);
+    Assert.assertEquals(manager.getPartitionQuotaInBytes(), 0L);
+
+    manager.enforcePartitionQuota(1, 10);
+    manager.enforcePartitionQuota(2, 10);
+
+    // Enforcement still treats both partitions as over quota; the ratio uses this host's exact 1-byte share.
+    verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionStateMap.get(1));
+    verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionStateMap.get(2));
+    Assert.assertEquals(manager.getDiskQuotaUsage(), 20.0);
+  }
+
+  @Test
+  public void testDiskQuotaUsageHasNoFiniteValueForZeroQuota() {
+    // A zero quota has no meaningful ratio; OTel omits these non-finite values.
+    StorageUtilizationManager manager = createManagerHostingPartitions(0L, 1);
+    manager.initPartition(1);
+    Assert.assertTrue(Double.isNaN(manager.getDiskQuotaUsage()));
+
+    manager.enforcePartitionQuota(1, 10);
+    Assert.assertEquals(manager.getDiskQuotaUsage(), Double.POSITIVE_INFINITY);
+  }
+
+  /** A manager for a host that holds only {@code partitions} of the store's partitions. */
+  private StorageUtilizationManager createManagerHostingPartitions(long storeQuota, int... partitions) {
+    when(store.getStorageQuotaInByte()).thenReturn(storeQuota);
     ConcurrentMap<Integer, PartitionConsumptionState> hostedPartitions = new VeniceConcurrentHashMap<>();
-    hostedPartitions.put(1, partitionConsumptionStateMap.get(1));
-    hostedPartitions.put(2, partitionConsumptionStateMap.get(2));
-    StorageUtilizationManager manager = new StorageUtilizationManager(
+    for (int partition: partitions) {
+      hostedPartitions.put(partition, partitionConsumptionStateMap.get(partition));
+    }
+    return new StorageUtilizationManager(
         storageEngine,
         store,
         VERSION_TOPIC.getName(),
@@ -262,15 +288,6 @@ public class StorageUtilizationManagerTest {
         ingestionNotificationDispatcher,
         (t, p) -> true,
         (t, p) -> true);
-    Assert.assertEquals(manager.getPartitionQuotaInBytes(), 0L);
-
-    manager.enforcePartitionQuota(1, 10);
-    manager.enforcePartitionQuota(2, 10);
-
-    // Enforcement still treats both partitions as over quota; the ratio uses this host's exact 1-byte share.
-    verify(ingestionNotificationDispatcher).reportQuotaViolated(hostedPartitions.get(1));
-    verify(ingestionNotificationDispatcher).reportQuotaViolated(hostedPartitions.get(2));
-    Assert.assertEquals(manager.getDiskQuotaUsage(), 20.0);
   }
 
   private static class PartitionNumberMatcher implements ArgumentMatcher<PartitionConsumptionState> {

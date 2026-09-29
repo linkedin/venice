@@ -252,7 +252,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
           Long value = this.adminConsumptionOffsetLag;
           return value == null || value == Long.MAX_VALUE ? null : value;
         },
-        Long::doubleValue);
+        Long::longValue);
 
     AsyncMetricEntityStateBase.createWithState(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG.getMetricEntity(),
@@ -267,7 +267,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         baseAttributes,
         getMetricScope(),
         () -> this.maxAdminConsumptionOffsetLag,
-        Long::doubleValue);
+        Long::longValue);
 
     // Tehuti-only
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());

@@ -107,7 +107,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor());
@@ -123,7 +123,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
@@ -157,7 +157,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor());
@@ -173,7 +173,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
@@ -225,7 +225,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes1,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
     assertNotNull(metricEntityState);
 
     // case 2: baseAttributes have different count than baseDimensionsMap
@@ -238,7 +238,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes2,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -256,7 +256,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes3,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
@@ -275,7 +275,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes4,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -292,7 +292,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes5,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -310,7 +310,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes6,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -330,7 +330,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes7,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -348,7 +348,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes8,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
@@ -366,7 +366,7 @@ public class AsyncMetricEntityStateTest {
           null,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
     } catch (IllegalArgumentException e) {
       fail("baseAttributes can be null when emitting OTel metrics is disabled");
     }
@@ -382,7 +382,7 @@ public class AsyncMetricEntityStateTest {
           null,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("Base attributes cannot be null"));
@@ -409,7 +409,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(
@@ -437,7 +437,7 @@ public class AsyncMetricEntityStateTest {
           baseAttributes,
           new MetricScope(),
           () -> 0L,
-          Long::doubleValue);
+          Long::longValue);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(
@@ -462,7 +462,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
     assertNotNull(metricEntityState);
 
     // case 4: MetricType is ASYNC_DOUBLE_GAUGE, but tehuti has Count instead of AsyncGauge
@@ -510,7 +510,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
 
     assertTrue(metricEntityState.emitTehutiMetrics(), "Should emit Tehuti metrics when enabled");
     assertNotNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should be created when enabled");
@@ -530,7 +530,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
 
     assertFalse(metricEntityState.emitTehutiMetrics(), "Should not emit Tehuti metrics when disabled");
     Assert.assertNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should not be created when disabled");
@@ -549,7 +549,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
 
     assertTrue(metricEntityState.emitTehutiMetrics(), "Should emit Tehuti metrics when repository is null");
     assertNotNull(
@@ -570,7 +570,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
 
     assertFalse(
         metricEntityState.emitTehutiMetrics(),
@@ -593,7 +593,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
 
     assertFalse(metricEntityState.emitTehutiMetrics(), "Should not emit Tehuti metrics when stats are empty");
     Assert.assertNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should not be created when stats are empty");
@@ -615,7 +615,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 0L,
-        Long::doubleValue);
+        Long::longValue);
 
     assertFalse(metricEntityState.emitOpenTelemetryMetrics(), "OTel metrics should be disabled");
     assertTrue(metricEntityState.emitTehutiMetrics(), "Tehuti metrics should be enabled independently");
@@ -634,7 +634,7 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         new MetricScope(),
         () -> 1L,
-        Long::doubleValue);
+        Long::longValue);
 
     state.close();
     state.close();

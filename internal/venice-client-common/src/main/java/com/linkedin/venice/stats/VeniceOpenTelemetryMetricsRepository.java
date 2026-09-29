@@ -533,17 +533,13 @@ public class VeniceOpenTelemetryMetricsRepository {
         return meter.gaugeBuilder(getFullMetricName(metricEntity))
             .setUnit(metricEntity.getUnit().name())
             .setDescription(getMetricDescription(metricEntity, metricsConfig))
-            .buildWithCallback(
-                measurement -> reportCallback.accept(
-                    GaugeObservation.of((attributes, value) -> measurement.record(value, attributes), onFailure)));
+            .buildWithCallback(measurement -> reportCallback.accept(GaugeObservation.of(measurement, onFailure)));
       }
       return meter.gaugeBuilder(getFullMetricName(metricEntity))
           .ofLongs()
           .setUnit(metricEntity.getUnit().name())
           .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(
-              measurement -> reportCallback.accept(
-                  GaugeObservation.of((attributes, value) -> measurement.record((long) value, attributes), onFailure)));
+          .buildWithCallback(measurement -> reportCallback.accept(GaugeObservation.of(measurement, onFailure)));
     } catch (RuntimeException e) {
       throw new VeniceException("Failed to register ObservableGauge for metric: " + metricEntity.getMetricName(), e);
     }

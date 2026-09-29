@@ -21,10 +21,14 @@ public final class AsyncMetricResolvers {
     S resolve();
   }
 
-  /** Reads the value from non-null state; non-finite values are not emitted. */
+  /**
+   * Reads the value from non-null state. Long gauges record integral values exactly; {@code Double} and {@code Float}
+   * values are recorded only when finite.
+   */
   @FunctionalInterface
   public interface ValueResolver<S> {
-    double extractValue(@Nonnull S state);
+    @Nonnull
+    Number extractValue(@Nonnull S state);
   }
 
   /**
@@ -59,22 +63,23 @@ public final class AsyncMetricResolvers {
   }
 
   /**
-   * Reads a {@code double} value from a non-null state plus the enum dimension. Used by
-   * {@link AsyncMetricEntityStateOneEnum} on combos for which
-   * {@link LiveStateResolverOneEnum#resolve} returned non-null.
+   * Reads the value from a non-null state plus the enum dimension, recorded as described in {@link ValueResolver}.
+   * Used by {@link AsyncMetricEntityStateOneEnum} on combos for which {@link LiveStateResolverOneEnum#resolve}
+   * returned non-null.
    *
    * @param <S> the backing state type
    * @param <E> the enum dimension type
    */
   @FunctionalInterface
   public interface ValueResolverOneEnum<S, E extends Enum<E> & VeniceDimensionInterface> {
-    double extractValue(@Nonnull S state, E enumValue);
+    @Nonnull
+    Number extractValue(@Nonnull S state, E enumValue);
   }
 
   /**
-   * Reads a {@code double} value from a non-null state plus both enum dimensions. Used by
-   * {@link AsyncMetricEntityStateTwoEnums} on pairs for which
-   * {@link LiveStateResolverTwoEnums#resolve} returned non-null.
+   * Reads the value from a non-null state plus both enum dimensions, recorded as described in {@link ValueResolver}.
+   * Used by {@link AsyncMetricEntityStateTwoEnums} on pairs for which {@link LiveStateResolverTwoEnums#resolve}
+   * returned non-null.
    *
    * @param <S>  the backing state type
    * @param <E1> the first enum dimension type
@@ -82,6 +87,7 @@ public final class AsyncMetricResolvers {
    */
   @FunctionalInterface
   public interface ValueResolverTwoEnums<S, E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface> {
-    double extractValue(@Nonnull S state, E1 e1, E2 e2);
+    @Nonnull
+    Number extractValue(@Nonnull S state, E1 e1, E2 e2);
   }
 }

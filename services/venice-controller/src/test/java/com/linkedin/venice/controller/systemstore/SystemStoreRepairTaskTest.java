@@ -86,6 +86,12 @@ public class SystemStoreRepairTaskTest {
     // Only the leader's completed round makes its counts reportable.
     verify(nonLeaderStats).setMeasured(false);
     verify(leaderStats).setMeasured(true);
+
+    // A later round that fails stops reporting the previous round's counts.
+    doThrow(new VeniceException("simulated failure")).when(systemStoreRepairTask)
+        .checkSystemStoresHealth(eq("venice-3"), anySet());
+    systemStoreRepairTask.run();
+    verify(leaderStats).setMeasured(false);
   }
 
   @Test

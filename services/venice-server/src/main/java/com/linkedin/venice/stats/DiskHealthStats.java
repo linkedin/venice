@@ -52,6 +52,6 @@ public class DiskHealthStats extends AbstractVeniceStats {
         baseAttributes,
         getMetricScope(),
         () -> diskHealthCheckService.isDiskHealthy() ? 1L : 0L,
-        Long::doubleValue);
+        Long::longValue);
   }
 }
