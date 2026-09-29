@@ -225,21 +225,24 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         ControllerResponse controllerResponse = supplier.get();
         if (!controllerResponse.isError()) {
           return controllerResponse;
-        } else {
-          time.sleep(1000L * (currentAttempt + 1));
-          errorMsg = controllerResponse.getError();
         }
+        errorMsg = controllerResponse.getError();
       } catch (Exception e) {
-        if (e instanceof InterruptedException) {
-          throw new VeniceException(e);
-        }
-        try {
-          time.sleep(1000L * (currentAttempt + 1));
-        } catch (InterruptedException ie) {
-          throw new VeniceException(ie);
-        }
         errorMsg = e.getMessage();
         lastException = e;
+      }
+      /**
+       * An interrupt means the caller is cancelling this thread, e.g. a Flink task being cancelled while its writer
+       * starts. Another attempt would absorb that signal, so stop here and leave the interrupt flag set.
+       */
+      if (Thread.currentThread().isInterrupted()) {
+        throw new VeniceException("Interrupted while sending request to Controller, error: " + errorMsg, lastException);
+      }
+      try {
+        time.sleep(1000L * (currentAttempt + 1));
+      } catch (InterruptedException ie) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException(ie);
       }
     }
     throw new SamzaException("Failed to send request to Controller, error: " + errorMsg, lastException);

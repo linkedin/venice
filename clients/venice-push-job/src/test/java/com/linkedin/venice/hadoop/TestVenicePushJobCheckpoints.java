@@ -487,6 +487,73 @@ public class TestVenicePushJobCheckpoints {
         expectedReportedCheckpoints);
   }
 
+  /**
+   * The controller client stops at the first interrupted attempt, so a push that fails while its thread is interrupted
+   * must be reported and killed with the interrupt cleared, and the interrupt must be restored afterwards.
+   */
+  @Test
+  public void testFailedPushIsReportedAndKilledWhenTheThreadWasInterrupted() throws Exception {
+    Properties props = getVPJProps();
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    configureControllerClientMock(controllerClient, props, ExecutionStatus.COMPLETED);
+    configureClusterDiscoverControllerClient(controllerClient);
+    when(controllerClient.getAllReplicationMetadataSchemas(anyString())).thenReturn(new MultiSchemaResponse());
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { valueSchema });
+    doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(anyString());
+
+    List<Boolean> interruptedWhileKilling = new ArrayList<>();
+    doAnswer(invocation -> {
+      interruptedWhileKilling.add(Thread.currentThread().isInterrupted());
+      return new ControllerResponse();
+    }).when(controllerClient).killOfflinePushJob(anyString());
+    List<Boolean> interruptedWhileReporting = new ArrayList<>();
+    ControllerResponse reportResponse = new ControllerResponse();
+    doAnswer(invocation -> {
+      interruptedWhileReporting.add(Thread.currentThread().isInterrupted());
+      return reportResponse;
+    }).when(controllerClient).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+
+    // The data writer job fails after restoring an interrupt, the way an interrupted task is expected to.
+    JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
+    when(jobClientWrapper.runJobWithConfig(any())).thenAnswer(invocation -> {
+      Thread.currentThread().interrupt();
+      throw new IOException("data writer job was interrupted");
+    });
+
+    boolean interruptedAfterRun;
+    try (VenicePushJob venicePushJob = new VenicePushJob("job-id", props)) {
+      venicePushJob.setControllerClient(controllerClient);
+      venicePushJob.setKmeSchemaSystemStoreControllerClient(controllerClient);
+      venicePushJob.setJobClientWrapper(jobClientWrapper);
+      venicePushJob.setInputDataInfoProvider(
+          getInputDataInfoProviderMock(
+              props,
+              venicePushJob.getPushJobSetting(),
+              10L,
+              NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT,
+              true,
+              false));
+      venicePushJob.setVeniceWriter(createVeniceWriterMock());
+      venicePushJob.setSentPushJobDetailsTracker(new SentPushJobDetailsTrackerImpl());
+
+      Assert.expectThrows(VeniceException.class, venicePushJob::run);
+      interruptedAfterRun = Thread.interrupted();
+    } finally {
+      // Never leak an interrupt flag onto the shared TestNG worker thread.
+      Thread.interrupted();
+    }
+
+    Assert.assertEquals(interruptedWhileKilling, Collections.singletonList(false), "The failed push must be killed");
+    Assert.assertFalse(interruptedWhileReporting.isEmpty(), "The failure must be reported to the controller");
+    Assert.assertFalse(interruptedWhileReporting.get(interruptedWhileReporting.size() - 1));
+    Assert.assertTrue(interruptedAfterRun, "The interrupt must be restored after the failure handling");
+  }
+
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
       List<PushJobCheckpoints> expectedReportedCheckpoints,

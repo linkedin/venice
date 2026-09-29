@@ -138,6 +138,11 @@ public class ControllerClient implements Closeable {
   // on the controller while it waits for the new version's replicas to be assigned, so a shorter client
   // timeout would expire first and retry the non-idempotent create.
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 17 * Time.MS_PER_MINUTE;
+  /**
+   * Appended to errors when a request stops because the calling thread was interrupted, so a cancellation is not
+   * misread as an unreachable controller.
+   */
+  static final String INTERRUPTED_MESSAGE_SUFFIX = ", aborted because the calling thread was interrupted";
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
@@ -234,6 +239,10 @@ public class ControllerClient implements Closeable {
             lastException = e;
           }
         }
+        // Interrupted by the caller: stop walking the URL list rather than absorbing the interrupt.
+        if (Thread.currentThread().isInterrupted()) {
+          break;
+        }
       }
     }
 
@@ -250,7 +259,8 @@ public class ControllerClient implements Closeable {
       lastException = lastConnectException;
     }
 
-    String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls;
+    String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls
+        + (Thread.currentThread().isInterrupted() ? INTERRUPTED_MESSAGE_SUFFIX : "");
     LOGGER.error(message, lastException);
     throw new VeniceException(message, lastException);
   }
@@ -855,9 +865,24 @@ public class ControllerClient implements Closeable {
               totalAttempts,
               response.getError());
         }
+        // An interrupt is the caller cancelling this thread; spending more attempts on it would absorb the signal.
+        boolean interrupted = Thread.currentThread().isInterrupted();
         // Back off before the next attempt; skip after the final attempt since no retry follows.
-        if (currentAttempt < totalAttempts) {
-          Utils.sleep(retryBackoffMs);
+        if (!interrupted && currentAttempt < totalAttempts) {
+          interrupted = !Utils.sleep(retryBackoffMs);
+        }
+        if (interrupted) {
+          LOGGER.warn(
+              "Stopping Controller query retries after attempt {}/{} because the calling thread was interrupted",
+              currentAttempt,
+              totalAttempts);
+          if (exception != null) {
+            throw new VeniceException(
+                "Could not execute query after attempt " + currentAttempt + "/" + totalAttempts
+                    + INTERRUPTED_MESSAGE_SUFFIX,
+                exception);
+          }
+          return response;
         }
       }
     }
@@ -1463,6 +1488,10 @@ public class ControllerClient implements Closeable {
             lastException = e;
           }
         }
+        // Interrupted by the caller: stop walking the URL list rather than absorbing the interrupt.
+        if (Thread.currentThread().isInterrupted()) {
+          break;
+        }
       }
     }
 
@@ -1479,7 +1508,8 @@ public class ControllerClient implements Closeable {
       lastException = lastConnectException;
     }
 
-    String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls;
+    String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls
+        + (Thread.currentThread().isInterrupted() ? INTERRUPTED_MESSAGE_SUFFIX : "");
     return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }
 
@@ -1724,6 +1754,7 @@ public class ControllerClient implements Closeable {
       String controllerUrl) {
     Exception lastException = null;
     boolean logErrorMessage = true;
+    boolean interrupted = false;
     boolean requireLeaderDiscovery = controllerUrl == null || controllerUrl.isEmpty();
     try (ControllerTransport transport = getNewControllerTransport()) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
@@ -1755,6 +1786,16 @@ public class ControllerClient implements Closeable {
           lastException = e;
         }
 
+        /**
+         * The caller interrupted us; the controller is not necessarily unhealthy. Retrying here would
+         * consume the interrupt and make this thread effectively uncancellable, so stop immediately and
+         * let the caller observe the interrupt.
+         */
+        if (Thread.currentThread().isInterrupted()) {
+          interrupted = true;
+          break;
+        }
+
         if (attempt < maxAttempts) {
           LOGGER.info(
               "Retrying controller request, attempt = {}/{}, controller = {}, route = {}, params = {}, timeout = {}",
@@ -1765,7 +1806,11 @@ public class ControllerClient implements Closeable {
               params.getNameValuePairs(),
               timeoutMs,
               lastException);
-          Utils.sleep(5 * Time.MS_PER_SECOND);
+          if (!Utils.sleep(5 * Time.MS_PER_SECOND)) {
+            // Interrupted during backoff. Same reasoning as above.
+            interrupted = true;
+            break;
+          }
         }
       }
     } catch (Exception e) {
@@ -1774,7 +1819,8 @@ public class ControllerClient implements Closeable {
 
     String message = "An error occurred during controller request." + " controller = "
         + (requireLeaderDiscovery ? this.leaderControllerUrl : controllerUrl) + ", route = " + route.getPath()
-        + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
+        + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs
+        + (interrupted ? INTERRUPTED_MESSAGE_SUFFIX : "");
     return makeErrorResponse(message, lastException, responseType, logErrorMessage);
   }
 

@@ -1026,6 +1026,12 @@ public class VenicePushJob implements AutoCloseable {
       timeoutExecutor.shutdownNow();
     } catch (Throwable e) {
       LOGGER.error("Failed to run job.", e);
+      /**
+       * Report and kill the failed push even if this thread was interrupted: the controller client stops at the first
+       * interrupted attempt, and a failed push that is not killed can block new pushes to the store. The interrupt is
+       * restored once the failure handling is done.
+       */
+      boolean interrupted = Thread.interrupted();
       // Make sure all the logic before killing the failed push jobs is captured in the following block
       try {
         if (e instanceof VeniceResourceAccessException) {
@@ -1054,6 +1060,10 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Successfully killed the failed push job.");
         } catch (Exception ex) {
           LOGGER.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
+        } finally {
+          if (interrupted) {
+            Thread.currentThread().interrupt();
+          }
         }
       }
       throwVeniceException(e);
