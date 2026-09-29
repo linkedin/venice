@@ -55,7 +55,7 @@ public class VeniceWriterFactory {
       PubSubProducerAdapterFactory producerAdapterFactory,
       MetricsRepository metricsRepository,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
-    this(properties, producerAdapterFactory, metricsRepository, pubSubPositionTypeRegistry, null);
+    this(properties, producerAdapterFactory, metricsRepository, pubSubPositionTypeRegistry, null, false);
   }
 
   public VeniceWriterFactory(
@@ -70,7 +70,7 @@ public class VeniceWriterFactory {
         metricsRepository,
         pubSubPositionTypeRegistry,
         pubSubEncryptionKeyUrnLookup,
-        true);
+        pubSubEncryptionKeyUrnLookup != null);
   }
 
   public VeniceWriterFactory(
