@@ -233,12 +233,13 @@ public class TestStoreMigrationWithCompactedVersionTopic {
       });
     }
 
-    // Compaction eligibility is established before migration, so replay skips both verification metrics.
+    // Compaction eligibility is established before migration, so the replay records the mismatch metric
+    // but skips failure handling.
     IntegrationTestPushUtils.assertBatchPushRecordCountSensors(
         childRegion.getClusters().get(destinationClusterName).getVeniceServers(),
         storeName,
         false,
-        false);
+        true);
 
     StoreMigrationTestUtil
         .completeMigration(parentControllerUrl, storeName, sourceClusterName, destinationClusterName, FABRIC);
