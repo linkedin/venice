@@ -43,6 +43,34 @@ import org.testng.annotations.Test;
 
 
 public class StoreRequestHandlerTest {
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testCreateStoreWithExplicitWriteQuotaEnabled(boolean enabled) {
+    CreateStoreGrpcRequest request = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore"))
+        .setOwner("testOwner")
+        .setKeySchema("\"string\"")
+        .setValueSchema("\"string\"")
+        .setWriteQuotaEnabled(enabled)
+        .build();
+
+    storeRequestHandler.createStore(request);
+
+    verify(admin).createStore(
+        "testCluster",
+        "testStore",
+        "testOwner",
+        "\"string\"",
+        "\"string\"",
+        false,
+        Optional.empty(),
+        enabled);
+  }
+
   private StoreRequestHandler storeRequestHandler;
   private Admin admin;
 

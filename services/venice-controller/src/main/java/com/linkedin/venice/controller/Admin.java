@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
@@ -168,6 +169,28 @@ public interface Admin extends AutoCloseable, Closeable {
     createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, Optional.empty());
   }
 
+  default void createStore(
+      String clusterName,
+      String storeName,
+      String owner,
+      String keySchema,
+      String valueSchema,
+      boolean isSystemStore,
+      Optional<String> accessPermissions) {
+    createStore(
+        clusterName,
+        storeName,
+        owner,
+        keySchema,
+        valueSchema,
+        isSystemStore,
+        accessPermissions,
+        !isSystemStore && !VeniceSystemStoreUtils.isSystemStore(storeName));
+  }
+
+  /**
+   * Creates a store with an explicit write quota setting, including when restoring or replicating store metadata.
+   */
   void createStore(
       String clusterName,
       String storeName,
@@ -175,7 +198,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String keySchema,
       String valueSchema,
       boolean isSystemStore,
-      Optional<String> accessPermissions);
+      Optional<String> accessPermissions,
+      boolean writeQuotaEnabled);
 
   boolean isStoreMigrationAllowed(String srcClusterName);
 

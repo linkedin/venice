@@ -29,12 +29,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -141,6 +143,64 @@ import org.testng.annotations.Test;
  * </ul>
  */
 public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testApplyOnParent_WriteQuotaEnabledRoundTrip(boolean enabled) {
+    String storeName = Utils.getUniqueString("write-quota-parent");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(!enabled);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(enabled));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.writeQuotaEnabled, enabled);
+    assertEquals(
+        message.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet()),
+        Collections.singleton(WRITE_QUOTA_ENABLED));
+  }
+
+  @Test
+  public void testApplyOnParent_UnrelatedUpdatePreservesWriteQuotaEnabled() {
+    String storeName = Utils.getUniqueString("write-quota-unset");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertTrue(message.writeQuotaEnabled);
+    assertEquals(
+        message.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet()),
+        Collections.singleton(OWNER));
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testApplyOnChild_WriteQuotaEnabledPersistsAndSurvivesUnrelatedUpdate(boolean enabled) {
+    String storeName = Utils.getUniqueString("write-quota-child");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(!enabled);
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater
+        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(enabled));
+    assertEquals(store.isWriteQuotaEnabled(), enabled);
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+    assertEquals(store.isWriteQuotaEnabled(), enabled);
+  }
+
   private static final String NEW_OWNER = "new-owner-for-trivial-test";
   private static final String NEW_PUSH_SRC = "kafka://broker:9092";
   private static final String NEW_NR_FABRIC = "dc-trivial-test";

@@ -458,8 +458,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
-  @Test
-  public void testAddStore() {
+  @DataProvider(name = "writeQuotaCreationValues")
+  public Object[][] writeQuotaCreationValues() {
+    return new Object[][] { { null }, { false }, { true } };
+  }
+
+  @Test(dataProvider = "writeQuotaCreationValues")
+  public void testAddStore(Boolean writeQuotaEnabled) {
 
     parentAdmin.initStorageCluster(clusterName);
 
@@ -472,7 +477,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    if (writeQuotaEnabled == null) {
+      parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    } else {
+      parentAdmin.createStore(
+          clusterName,
+          storeName,
+          owner,
+          keySchemaStr,
+          valueSchemaStr,
+          false,
+          Optional.empty(),
+          writeQuotaEnabled);
+    }
 
     verify(internalAdmin)
         .checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
@@ -508,6 +525,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(storeCreationMessage.owner.toString(), owner);
     assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
     assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
+    assertEquals(storeCreationMessage.writeQuotaEnabled, writeQuotaEnabled == null || writeQuotaEnabled);
   }
 
   @Test

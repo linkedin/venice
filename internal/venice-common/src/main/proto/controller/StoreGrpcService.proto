@@ -26,6 +26,7 @@ message CreateStoreGrpcRequest {
   optional string owner = 4;
   optional bool isSystemStore = 5;
   optional string accessPermission = 6;
+  optional bool writeQuotaEnabled = 7;
 }
 
 message CreateStoreGrpcResponse {

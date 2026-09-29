@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -42,6 +43,7 @@ import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
 import spark.Request;
@@ -50,6 +52,30 @@ import spark.Route;
 
 
 public class CreateStoreTest {
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testCreateStoreWithExplicitWriteQuotaEnabled(boolean enabled) throws Exception {
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    doReturn(new HashMap<>()).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+    doReturn(NEW_STORE.getPath()).when(request).pathInfo();
+    doReturn(CLUSTER_NAME).when(request).queryParams(CLUSTER);
+    doReturn(STORE_NAME).when(request).queryParams(NAME);
+    doReturn("owner").when(request).queryParams(OWNER);
+    doReturn("\"string\"").when(request).queryParams(KEY_SCHEMA);
+    doReturn("\"string\"").when(request).queryParams(VALUE_SCHEMA);
+    doReturn(Boolean.toString(enabled)).when(request).queryParams(WRITE_QUOTA_ENABLED);
+
+    new CreateStore(false, Optional.empty()).createStore(mockAdmin, requestHandler).handle(request, response);
+
+    verify(mockAdmin)
+        .createStore(CLUSTER_NAME, STORE_NAME, "owner", "\"string\"", "\"string\"", false, Optional.empty(), enabled);
+  }
+
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private static final String CLUSTER_NAME = Utils.getUniqueString("test-cluster");
   private static final String STORE_NAME = Utils.getUniqueString("test-store");

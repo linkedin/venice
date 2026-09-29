@@ -100,6 +100,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 
 import com.linkedin.venice.HttpMethod;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
@@ -122,7 +123,7 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   STORE("/store", HttpMethod.GET, Collections.singletonList(NAME)),
   NEW_STORE(
       "/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE,
-      ACCESS_PERMISSION
+      ACCESS_PERMISSION, WRITE_QUOTA_ENABLED
   ),
   CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION(
       "/check_resource_cleanup_for_store_creation", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)
@@ -146,7 +147,8 @@ public enum ControllerRoute implements VeniceDimensionInterface {
       BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
       FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, ETL_STRATEGY, ETL_ACTIVE_FABRICS, DISABLE_META_STORE,
       DISABLE_DAVINCI_PUSH_STATUS_STORE, PERSONA_NAME, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
-      STORE_MIGRATION, ENABLE_STORE_MIGRATION, LARGEST_USED_RT_VERSION_NUMBER, VENICE_UNITS, WORKLOAD_TYPE
+      STORE_MIGRATION, ENABLE_STORE_MIGRATION, LARGEST_USED_RT_VERSION_NUMBER, VENICE_UNITS, WORKLOAD_TYPE,
+      WRITE_QUOTA_ENABLED
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION(
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER

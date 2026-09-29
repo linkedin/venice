@@ -1188,6 +1188,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param valueSchema value schema of the store.
    * @param isSystemStore if the store is a system store.
    * @param accessPermissions json string representing the access-permissions.
+   * @param writeQuotaEnabled whether write quota enforcement is enabled for the store.
    */
   @Override
   public void createStore(
@@ -1197,7 +1198,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String keySchema,
       String valueSchema,
       boolean isSystemStore,
-      Optional<String> accessPermissions) {
+      Optional<String> accessPermissions,
+      boolean writeQuotaEnabled) {
     HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
     LOGGER.info("Start creating store {} in cluster {} with owner {}", storeName, clusterName, owner);
     try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createStoreWriteLock(storeName)) {
@@ -1259,6 +1261,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             largestUsedRTStoreVersion);
       }
 
+      newStore.setWriteQuotaEnabled(writeQuotaEnabled);
       configureNewStore(newStore, config, largestUsedStoreVersion, largestUsedRTStoreVersion);
 
       invokePreStoreCreationHooks(clusterName, storeName, newStore.getStoreLifecycleHooks());

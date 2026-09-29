@@ -112,6 +112,27 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final static Logger LOGGER = LogManager.getLogger(TestVeniceHelixAdminWithSharedEnvironment.class);
 
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testWriteQuotaEnabledAtCreationAndUpdate() {
+    String storeName = Utils.getUniqueString("write-quota-new");
+    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(false));
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(true));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testStoreCreationPreservesExplicitWriteQuotaDisabled() {
+    String storeName = Utils.getUniqueString("write-quota-restored");
+    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA, false, Optional.empty(), false);
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     setupCluster(metricsRepository);

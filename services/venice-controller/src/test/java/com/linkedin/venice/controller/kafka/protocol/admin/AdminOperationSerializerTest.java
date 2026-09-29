@@ -77,6 +77,7 @@ public class AdminOperationSerializerTest {
 
     // Check value of new semantics are all set to default value
     assertFalse(deserializedOperationPayloadUnion.separateRealTimeTopicEnabled);
+    assertFalse(deserializedOperationPayloadUnion.writeQuotaEnabled);
     assertEquals(deserializedOperationPayloadUnion.maxRecordSizeBytes, -1);
     assertEquals(deserializedOperationPayloadUnion.maxNearlineRecordSizeBytes, -1);
     assertFalse(deserializedOperationPayloadUnion.unusedSchemaDeletionEnabled);

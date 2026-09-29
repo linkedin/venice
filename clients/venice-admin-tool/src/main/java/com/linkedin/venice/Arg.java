@@ -51,6 +51,7 @@ public enum Arg {
   STORAGE_NODE_READ_QUOTA_ENABLED(
       "storage-node-read-quota-enabled", "snrqe", true, "whether storage node read quota is enabled for this store"
   ),
+  WRITE_QUOTA_ENABLED("write-quota-enabled", "wqe", true, "whether write quota enforcement is enabled for this store"),
   DISABLE_META_STORE(
       "disable-meta-store", "dms", false,
       "disable meta system store. This command sets storeMetaSystemStoreEnabled flag to false but does not delete any resources associated with the meta store. Please use this option with caution"

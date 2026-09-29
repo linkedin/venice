@@ -938,7 +938,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String keySchema,
       String valueSchema,
       boolean isSystemStore,
-      Optional<String> accessPermissions) {
+      Optional<String> accessPermissions,
+      boolean writeQuotaEnabled) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       valueSchema = getVeniceHelixAdmin().getStoreSchemaManager()
@@ -949,7 +950,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       // Provisioning ACL needs to be the first step in store creation process.
       provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
-      sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema);
+      sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema, writeQuotaEnabled);
       /**
        * If the newly created store operation is triggered by store migration, Parent Controller will skip the system store
        * auto-materialization since the system stores will be taken care by store migration logic.
@@ -1003,7 +1004,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       String owner,
       String keySchema,
-      String valueSchema) {
+      String valueSchema,
+      boolean writeQuotaEnabled) {
     // Write store creation message to Kafka
     final StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
     storeCreation.clusterName = clusterName;
@@ -1015,6 +1017,7 @@ public class VeniceParentHelixAdmin implements Admin {
     storeCreation.valueSchema = new SchemaMeta();
     storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.getValue();
     storeCreation.valueSchema.definition = valueSchema;
+    storeCreation.writeQuotaEnabled = writeQuotaEnabled;
 
     final AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.STORE_CREATION.getValue();
@@ -5322,7 +5325,8 @@ public class VeniceParentHelixAdmin implements Admin {
           storeInfo.getName(),
           storeInfo.getOwner(),
           keySchema,
-          valueAndDerivedSchemas[0].getSchemaStr());
+          valueAndDerivedSchemas[0].getSchemaStr(),
+          storeInfo.isWriteQuotaEnabled());
       for (int i = 1; i < valueAndDerivedSchemas.length; i++) {
         MultiSchemaResponse.Schema schema = valueAndDerivedSchemas[i];
         if (schema.getDerivedSchemaId() == -1) {

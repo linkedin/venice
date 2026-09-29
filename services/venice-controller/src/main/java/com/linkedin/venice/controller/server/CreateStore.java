@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ACL;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ACL;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
@@ -72,6 +73,10 @@ public class CreateStore extends AbstractRoute {
         }
         if (accessPerm != null) {
           requestBuilder.setAccessPermission(accessPerm);
+        }
+        String writeQuotaEnabled = request.queryParams(WRITE_QUOTA_ENABLED);
+        if (writeQuotaEnabled != null) {
+          requestBuilder.setWriteQuotaEnabled(Boolean.parseBoolean(writeQuotaEnabled));
         }
         CreateStoreGrpcResponse internalResponse = requestHandler.createStore(requestBuilder.build());
         veniceResponse.setCluster(internalResponse.getStoreInfo().getClusterName());

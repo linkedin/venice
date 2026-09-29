@@ -189,8 +189,12 @@ public class RecoverStoreMetadata {
       try {
         System.out.println("Creating a new store for name: " + storeName + " in cluster: " + recoverCluster);
         // Create store
-        NewStoreResponse newStoreResponse =
-            recoveryControllerClient.createNewStore(storeName, deletedStore.getOwner(), keySchema, valueSchemas.get(1));
+        NewStoreResponse newStoreResponse = recoveryControllerClient.createNewStore(
+            storeName,
+            deletedStore.getOwner(),
+            keySchema,
+            valueSchemas.get(1),
+            deletedStore.isWriteQuotaEnabled());
         if (newStoreResponse.isError()) {
           throw new VeniceException(
               "Failed to create store: " + storeName + " in cluster: " + recoverCluster + ", and error: "

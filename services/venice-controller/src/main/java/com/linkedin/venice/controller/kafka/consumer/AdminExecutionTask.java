@@ -69,6 +69,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -453,7 +454,9 @@ public class AdminExecutionTask implements Callable<Void> {
           owner,
           keySchema,
           valueSchema,
-          VeniceSystemStoreUtils.isSystemStore(storeName));
+          VeniceSystemStoreUtils.isSystemStore(storeName),
+          Optional.empty(),
+          message.writeQuotaEnabled);
       LOGGER.info("Added store: {} to cluster: {}", storeName, clusterName);
     }
   }
@@ -734,6 +737,7 @@ public class AdminExecutionTask implements Callable<Void> {
     }
 
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
+    params.setWriteQuotaEnabled(message.writeQuotaEnabled);
     params.setCompactionEnabled(message.compactionEnabled);
     params.setCompactionThresholdMilliseconds(message.compactionThresholdMilliseconds);
     if (message.encryptionEnabled && message.pubSubEncryptionKeyUrn != null
