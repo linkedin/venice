@@ -359,6 +359,10 @@ public interface Store {
 
   void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
 
+  boolean isWriteQuotaEnabled();
+
+  void setWriteQuotaEnabled(boolean writeQuotaEnabled);
+
   boolean isCompactionEnabled();
 
   void setCompactionEnabled(boolean compactionEnabled);
