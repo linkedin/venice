@@ -25,6 +25,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -149,6 +150,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
               .setRunningFabric("dc-0")
               .setVerifyLatestProtocolPresent(true)
               .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+              .setClusterDiscoveryD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setPrimaryControllerColoD2ZKHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
               .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
               .build());
@@ -168,6 +170,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
               .setRunningFabric("dc-1")
               .setVerifyLatestProtocolPresent(true)
               .setVeniceChildD2ZkHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
+              .setClusterDiscoveryD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setPrimaryControllerColoD2ZKHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
               .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
               .build());
@@ -211,6 +214,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
               .setRunningFabric("dc-0")
               .setVerifyLatestProtocolPresent(true)
               .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+              .setClusterDiscoveryD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setPrimaryControllerColoD2ZKHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
               .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
               .build());

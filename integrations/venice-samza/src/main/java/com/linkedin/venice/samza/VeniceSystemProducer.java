@@ -19,6 +19,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
@@ -118,10 +119,15 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private static final WriteComputeHandlerV1 writeComputeHandlerV1 = new WriteComputeHandlerV1();
 
+  // Attempts for each cluster discovery lookup: the store, the Kafka message envelope system store, and transport
+  // re-initialization.
+  private static final int CLUSTER_DISCOVERY_ATTEMPTS = 10;
+
   // Immutable state
   private final String veniceChildD2ZkHost;
   private final String primaryControllerColoD2ZKHost;
   private final String primaryControllerD2ServiceName;
+  private final String clusterDiscoveryD2ServiceName;
   private final String storeName;
   private final String samzaJobId;
   private final Version.PushType pushType;
@@ -175,6 +181,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Map<String, String> additionalConfigs = new HashMap<>();
 
   private TransportClient transportClient;
+  // Routers' cluster discovery D2 service in the child colo; set only when the producer is built with D2 clients.
+  private D2TransportClient clusterDiscoveryTransportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
 
   public VeniceSystemProducer(VeniceSystemProducerConfig config) {
@@ -188,6 +196,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.partitioners = config.getPartitioners();
     this.time = config.getTime();
     this.writerHook = config.getWriterHook();
+    this.clusterDiscoveryD2ServiceName = config.getClusterDiscoveryD2ServiceName();
     if (config.getRouterUrl() != null) {
       this.routerUrl = Optional.of(config.getRouterUrl());
     }
@@ -217,6 +226,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier, int retryLimit) {
+    return requestWithRetry(supplier, retryLimit, "Controller");
+  }
+
+  private ControllerResponse requestWithRetry(Supplier<ControllerResponse> supplier, int retryLimit, String target) {
     String errorMsg = "";
     Exception lastException = null;
     for (int currentAttempt = 0; currentAttempt < retryLimit; currentAttempt++) {
@@ -236,7 +249,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
        * starts. Another attempt would absorb that signal, so stop here and leave the interrupt flag set.
        */
       if (Thread.currentThread().isInterrupted()) {
-        throw new VeniceException("Interrupted while sending request to Controller, error: " + errorMsg, lastException);
+        throw new VeniceException(
+            "Interrupted while sending request to " + target + ", error: " + errorMsg,
+            lastException);
       }
       try {
         time.sleep(1000L * (currentAttempt + 1));
@@ -245,7 +260,17 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         throw new VeniceException(ie);
       }
     }
-    throw new SamzaException("Failed to send request to Controller, error: " + errorMsg, lastException);
+    throw new SamzaException("Failed to send request to " + target + ", error: " + errorMsg, lastException);
+  }
+
+  /**
+   * Asks the routers which cluster hosts the store, through the cluster discovery D2 service in the child colo. The
+   * lookup is read-only and any router can answer it, so it does not depend on the controllers, which have to handle
+   * leader-bound calls such as /request_topic.
+   */
+  private D2ServiceDiscoveryResponse discoverClusterThroughRouters(String storeName) {
+    // One attempt per call: the retry budget and backoff come from requestWithRetry.
+    return new D2ServiceDiscovery(time).find(clusterDiscoveryTransportClient, storeName, false);
   }
 
   public String getTopicName() {
@@ -385,12 +410,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         }
         return getStartedD2Client(veniceChildD2ZkHost);
       });
+      this.clusterDiscoveryTransportClient = new D2TransportClient(clusterDiscoveryD2ServiceName, childColoD2Client);
 
       // Discover cluster
-      D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-          () -> D2ControllerClient
-              .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
-          10);
+      D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) requestWithRetry(
+          () -> discoverClusterThroughRouters(this.storeName),
+          CLUSTER_DISCOVERY_ATTEMPTS,
+          "Router");
 
       String clusterName = discoveryResponse.getCluster();
       LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
@@ -404,12 +430,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
         // Discover the D2 service name for the system store
         String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
-        D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-            () -> D2ControllerClient.discoverCluster(
-                primaryControllerColoD2Client,
-                primaryControllerD2ServiceName,
-                kafkaMessageEnvelopSchemaSysStore),
-            2);
+        D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) requestWithRetry(
+            () -> discoverClusterThroughRouters(kafkaMessageEnvelopSchemaSysStore),
+            CLUSTER_DISCOVERY_ATTEMPTS,
+            "Router");
         ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
             ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
         clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
@@ -434,10 +458,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       transportClient = new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client);
 
       reinitProvider = () -> {
-        D2ServiceDiscoveryResponse d2DiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-            () -> D2ControllerClient
-                .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
-            10);
+        D2ServiceDiscoveryResponse d2DiscoveryResponse = (D2ServiceDiscoveryResponse) requestWithRetry(
+            () -> discoverClusterThroughRouters(this.storeName),
+            CLUSTER_DISCOVERY_ATTEMPTS,
+            "Router");
         LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
         return new D2TransportClient(d2DiscoveryResponse.getD2Service(), childColoD2Client);
       };
@@ -588,6 +612,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
       Utils.closeQuietlyWithErrorLogged(this.controllerClient);
       hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
+      // After the quota monitor, whose transport re-initialization discovers the cluster through this client.
+      Utils.closeQuietlyWithErrorLogged(this.clusterDiscoveryTransportClient);
       d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
     } finally {
       if (interrupted) {
@@ -1012,6 +1038,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   void setControllerClient(ControllerClient controllerClient) {
     this.controllerClient = controllerClient;
+  }
+
+  // used only for testing
+  ControllerClient getControllerClient() {
+    return this.controllerClient;
+  }
+
+  // used only for testing
+  RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider getReinitProvider() {
+    return this.reinitProvider;
   }
 
   // used only for testing

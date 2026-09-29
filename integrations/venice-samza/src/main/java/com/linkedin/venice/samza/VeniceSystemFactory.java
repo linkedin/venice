@@ -15,6 +15,7 @@ import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOU
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -100,6 +101,13 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE = "VeniceController";
   // Legacy D2 service name for parent cluster
   public static final String LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE = "VeniceParentController";
+
+  /**
+   * D2 service that the routers of every cluster announce for cluster discovery. The producer looks up which cluster
+   * hosts a store through this service in its local region, instead of through a controller. Defaults to
+   * {@link ClientConfig#DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME}, the service the thin, fast and Da Vinci clients use.
+   */
+  public static final String VENICE_CLUSTER_DISCOVERY_D2_SERVICE = "venice.cluster.discovery.d2.service";
 
   /**
    * A global static counter to track how many factory one process would create.
@@ -281,6 +289,14 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       parentControllerD2Service = LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE;
     }
 
+    String clusterDiscoveryD2Service = config.get(VENICE_CLUSTER_DISCOVERY_D2_SERVICE);
+    if (isEmpty(clusterDiscoveryD2Service)) {
+      LOGGER.info(
+          VENICE_CLUSTER_DISCOVERY_D2_SERVICE + " is not defined. Using "
+              + ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+      clusterDiscoveryD2Service = ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
+    }
+
     LOGGER.info("Configs for {} producer: ", systemName);
     LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
     LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
@@ -289,6 +305,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     LOGGER.info("{}: {}", VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
     LOGGER.info("{}: {}", VENICE_PARENT_CONTROLLER_D2_SERVICE, parentControllerD2Service);
     LOGGER.info("{}: {}", VENICE_CHILD_CONTROLLER_D2_SERVICE, localControllerD2Service);
+    LOGGER.info("{}: {}", VENICE_CLUSTER_DISCOVERY_D2_SERVICE, clusterDiscoveryD2Service);
 
     String primaryControllerColoD2ZKHost;
     String primaryControllerD2Service;
@@ -304,7 +321,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service);
 
-    configBuilder.setPrimaryControllerD2ServiceName(primaryControllerD2Service);
+    configBuilder.setPrimaryControllerD2ServiceName(primaryControllerD2Service)
+        .setClusterDiscoveryD2ServiceName(clusterDiscoveryD2Service);
     if ((providedChildColoD2Client == null) != (providedPrimaryControllerColoD2Client == null)) {
       throw new SamzaException(
           "Both providedChildColoD2Client and providedPrimaryControllerColoD2Client must be provided together, "
