@@ -123,7 +123,7 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   STORE("/store", HttpMethod.GET, Collections.singletonList(NAME)),
   NEW_STORE(
       "/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE,
-      ACCESS_PERMISSION, WRITE_QUOTA_ENABLED
+      ACCESS_PERMISSION
   ),
   CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION(
       "/check_resource_cleanup_for_store_creation", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)

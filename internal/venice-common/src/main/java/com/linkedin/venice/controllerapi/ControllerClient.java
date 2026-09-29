@@ -81,7 +81,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static com.linkedin.venice.meta.Version.PushType;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -601,23 +600,6 @@ public class ControllerClient implements Closeable {
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
     QueryParams params =
         newParams().add(NAME, storeName).add(OWNER, owner).add(KEY_SCHEMA, keySchema).add(VALUE_SCHEMA, valueSchema);
-    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
-  }
-
-  /**
-   * Creates a store with an explicit write quota setting, preserving the setting when copying store metadata.
-   */
-  public NewStoreResponse createNewStore(
-      String storeName,
-      String owner,
-      String keySchema,
-      String valueSchema,
-      boolean writeQuotaEnabled) {
-    QueryParams params = newParams().add(NAME, storeName)
-        .add(OWNER, owner)
-        .add(KEY_SCHEMA, keySchema)
-        .add(VALUE_SCHEMA, valueSchema)
-        .add(WRITE_QUOTA_ENABLED, writeQuotaEnabled);
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 

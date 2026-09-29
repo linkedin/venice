@@ -70,19 +70,7 @@ public class StoreRequestHandler {
         valueSchema,
         isSystemStore,
         accessPermissions);
-    if (request.hasWriteQuotaEnabled()) {
-      admin.createStore(
-          clusterName,
-          storeName,
-          owner,
-          keySchema,
-          valueSchema,
-          isSystemStore,
-          accessPermissions,
-          request.getWriteQuotaEnabled());
-    } else {
-      admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
-    }
+    admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
     CreateStoreGrpcResponse.Builder responseBuilder =
         CreateStoreGrpcResponse.newBuilder().setStoreInfo(clusterStoreInfo).setOwner(owner);
 

@@ -189,12 +189,8 @@ public class RecoverStoreMetadata {
       try {
         System.out.println("Creating a new store for name: " + storeName + " in cluster: " + recoverCluster);
         // Create store
-        NewStoreResponse newStoreResponse = recoveryControllerClient.createNewStore(
-            storeName,
-            deletedStore.getOwner(),
-            keySchema,
-            valueSchemas.get(1),
-            deletedStore.isWriteQuotaEnabled());
+        NewStoreResponse newStoreResponse =
+            recoveryControllerClient.createNewStore(storeName, deletedStore.getOwner(), keySchema, valueSchemas.get(1));
         if (newStoreResponse.isError()) {
           throw new VeniceException(
               "Failed to create store: " + storeName + " in cluster: " + recoverCluster + ", and error: "
@@ -257,6 +253,7 @@ public class RecoverStoreMetadata {
             .setNativeReplicationSourceFabric(deletedStore.getNativeReplicationSourceFabric())
             .setActiveActiveReplicationEnabled(deletedStore.isActiveActiveReplicationEnabled())
             .setStorageNodeReadQuotaEnabled(deletedStore.isStorageNodeReadQuotaEnabled())
+            .setWriteQuotaEnabled(deletedStore.isWriteQuotaEnabled())
             .setMinCompactionLagSeconds(deletedStore.getMinCompactionLagSeconds())
             .setMaxCompactionLagSeconds(deletedStore.getMaxCompactionLagSeconds())
             .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())

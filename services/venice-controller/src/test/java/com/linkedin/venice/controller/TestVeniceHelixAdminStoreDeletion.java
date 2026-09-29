@@ -618,8 +618,6 @@ public class TestVeniceHelixAdminStoreDeletion {
           .checkPreConditionForCreateStore(eq(CLUSTER_NAME), eq(STORE_NAME), any(), any(), anyBoolean(), anyBoolean());
       doCallRealMethod().when(admin)
           .createStore(eq(CLUSTER_NAME), eq(STORE_NAME), any(), any(), any(), anyBoolean(), any());
-      doCallRealMethod().when(admin)
-          .createStore(eq(CLUSTER_NAME), eq(STORE_NAME), any(), any(), any(), anyBoolean(), any(), anyBoolean());
       return admin;
     }
 

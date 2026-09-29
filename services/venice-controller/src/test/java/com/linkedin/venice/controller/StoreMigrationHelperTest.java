@@ -39,11 +39,11 @@ public class StoreMigrationHelperTest {
   }
 
   @Test(dataProvider = "writeQuotaEnabledValues")
-  public void testMigrationPreservesWriteQuotaAtInitialCreation(boolean enabled) {
+  public void testMigrationRestoresWriteQuotaThroughUpdate(boolean enabled) {
     StoreInfo source = StoreInfo.fromStore(TestUtils.createTestStore(STORE_NAME, "owner", 1L));
     source.setWriteQuotaEnabled(enabled);
     ControllerClient destination = mock(ControllerClient.class);
-    when(destination.createNewStore(STORE_NAME, "owner", "\"string\"", "\"string\"", enabled))
+    when(destination.createNewStore(STORE_NAME, "owner", "\"string\"", "\"string\""))
         .thenReturn(new NewStoreResponse());
     when(destination.addValueSchema(anyString(), anyString())).thenReturn(new SchemaResponse());
     when(destination.updateStore(eq(STORE_NAME), any())).thenReturn(new ControllerResponse());
@@ -59,7 +59,7 @@ public class StoreMigrationHelperTest {
         "region",
         LogManager.getLogger(StoreMigrationHelperTest.class));
 
-    verify(destination).createNewStore(STORE_NAME, "owner", "\"string\"", "\"string\"", enabled);
+    verify(destination).createNewStore(STORE_NAME, "owner", "\"string\"", "\"string\"");
     ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
     verify(destination).updateStore(eq(STORE_NAME), captor.capture());
     assertEquals(captor.getValue().getWriteQuotaEnabled(), Optional.of(enabled));

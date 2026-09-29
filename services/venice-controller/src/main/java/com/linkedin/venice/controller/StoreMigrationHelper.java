@@ -51,12 +51,8 @@ final class StoreMigrationHelper {
       String storeName,
       String localRegion,
       Logger logger) {
-    NewStoreResponse newStoreResponse = destControllerClient.createNewStore(
-        storeName,
-        srcStore.getOwner(),
-        keySchema,
-        valueSchemaEntries.get(0).getSchema().toString(),
-        srcStore.isWriteQuotaEnabled());
+    NewStoreResponse newStoreResponse = destControllerClient
+        .createNewStore(storeName, srcStore.getOwner(), keySchema, valueSchemaEntries.get(0).getSchema().toString());
     if (newStoreResponse.isError()) {
       throw new VeniceException(
           "Failed to create store " + storeName + " in dest cluster " + destClusterName + ". Error "

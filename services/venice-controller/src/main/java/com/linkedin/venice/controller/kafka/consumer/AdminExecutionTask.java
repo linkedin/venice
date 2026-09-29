@@ -69,7 +69,6 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -454,9 +453,7 @@ public class AdminExecutionTask implements Callable<Void> {
           owner,
           keySchema,
           valueSchema,
-          VeniceSystemStoreUtils.isSystemStore(storeName),
-          Optional.empty(),
-          message.writeQuotaEnabled);
+          VeniceSystemStoreUtils.isSystemStore(storeName));
       LOGGER.info("Added store: {} to cluster: {}", storeName, clusterName);
     }
   }
