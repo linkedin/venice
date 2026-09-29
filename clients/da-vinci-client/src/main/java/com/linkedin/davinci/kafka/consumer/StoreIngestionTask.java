@@ -4147,14 +4147,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of strict-mode state). The mismatch is nonfatal when local-topic compaction is
-   * enabled and the persisted SOP age meets its minimum compaction lag, or for a migration-clone
-   * replay (warn-and-continue; see {@link #isPreExistingMigrationCloneReplay(Store)}). Otherwise,
-   * the verifier logs a tagged error string and, on a non-DaVinci replica, if the server-level config
-   * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
-   * (default), also increments {@code record_count_mismatch_failure} and throws
-   * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
-   * and the throw.</p>
+   * fires regardless of strict-mode state). On non-DaVinci replicas, the mismatch is nonfatal when
+   * local-topic compaction is enabled and the persisted SOP age meets its minimum compaction lag, or
+   * for a migration-clone replay (warn-and-continue; see {@link #isPreExistingMigrationCloneReplay(Store)}).
+   * Otherwise, the verifier logs a tagged error string and, on a non-DaVinci replica, if the
+   * server-level config {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled}
+   * is {@code true} (default), also increments {@code record_count_mismatch_failure} and throws
+   * {@link VeniceException} (failing ingestion). DaVinci replicas skip the local-compaction check,
+   * the failure sensor, and the throw.</p>
    *
    * <p>Skip cases (no-op, no metric):</p>
    * <ul>
@@ -4219,7 +4219,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (!counterOk || !hllOk) {
       versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
-      if (isLocalBatchCompacted(pcs.getEndOfPushTimestamp())) {
+      if (!isDaVinciClient && isLocalBatchCompacted()) {
         LOGGER.info(
             "Skipping batch record count and HLL verification for replica {}: local compaction enabled and SOP age meets minimum compaction lag",
             pcs.getReplicaId());
@@ -4284,11 +4284,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Uses the local topic's current compaction policy and persisted producer SOP timestamp to determine
    * whether batch records are old enough for compaction. This is an eligibility heuristic, not proof
    * that the broker cleaner ran; current configuration cannot reconstruct earlier policy changes.
-   *
-   * @param endOfPushTimestamp used to detect synthesized {@link StoreVersionState} where the SOP field
-   *     actually carries the EOP timestamp because no SOP was consumed
    */
-  private boolean isLocalBatchCompacted(long endOfPushTimestamp) {
+  private boolean isLocalBatchCompacted() {
     // Refresh at EOP: a cached false may predate regional push completion and compaction enablement.
     // Do not hide metadata failures.
     PubSubTopicConfiguration config =
@@ -4301,13 +4298,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (sopTimestamp <= 0) {
       LOGGER.warn(
           "Cannot determine batch age for {}: invalid SOP timestamp {}. Retaining record count verification.",
-          kafkaVersionTopic,
-          sopTimestamp);
-      return false;
-    }
-    if (sopTimestamp == endOfPushTimestamp) {
-      LOGGER.warn(
-          "Cannot determine batch age for {}: StoreVersionState SOP timestamp {} equals the EOP timestamp, indicating synthesized version state with no consumed SOP. Retaining record count verification.",
           kafkaVersionTopic,
           sopTimestamp);
       return false;

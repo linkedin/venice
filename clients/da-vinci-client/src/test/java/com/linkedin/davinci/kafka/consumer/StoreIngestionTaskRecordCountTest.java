@@ -352,30 +352,16 @@ public class StoreIngestionTaskRecordCountTest {
   }
 
   @Test
-  public void testSynthesizedStoreVersionStateFromEopRetainsVerification() throws Exception {
+  public void testDaVinciMismatchSkipsCompactionCheckAndDoesNotFail() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    StoreIngestionTask sit = buildSit(true, stats);
-    configureTopicManager(sit, true, MIN_COMPACTION_LAG_MS);
-    configureStoreVersionState(sit, storeVersionState(NOW_MS));
-    PartitionConsumptionState pcs = pcsWithCount(0);
-    doReturn(NOW_MS).when(pcs).getEndOfPushTimestamp();
-    TestLogAppender appender =
-        new TestLogAppender("SynthesizedSopTimestampAppender", PatternLayout.createDefaultLayout());
-    appender.start();
-    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
-    logger.addAppender(appender);
+    StoreIngestionTask sit = buildSit(true, stats, VersionRole.FUTURE, false, true);
+    TopicManager topicManager = configureTopicManager(sit, true, MIN_COMPACTION_LAG_MS);
 
-    try {
-      expectThrows(VeniceException.class, () -> sit.verifyBatchPushRecordCount(pcs, headersWithPrc(100)));
-      verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
-      verify(stats).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
-      assertTrue(appender.getLog().contains("StoreVersionState SOP timestamp " + NOW_MS + " equals the EOP timestamp"));
-      assertTrue(appender.getLog().contains("synthesized version state with no consumed SOP"));
-      assertTrue(appender.getLog().contains("Retaining record count verification."));
-    } finally {
-      logger.removeAppender(appender);
-      appender.stop();
-    }
+    sit.verifyBatchPushRecordCount(pcsWithCount(0), headersWithPrc(100));
+
+    verify(stats).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
+    verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
+    verify(topicManager, never()).getTopicConfigWithRetry(any());
   }
 
   @Test
