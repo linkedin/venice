@@ -342,7 +342,8 @@ public class TestAdminOperationWithPreviousVersion {
   public void testPauseStore() {
     runTestForEntryNames(Arrays.asList("PauseStore", "ResumeStore"), () -> {
       String storeName = Utils.getUniqueString("testDisableStoreWriter");
-      veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin
+          .createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA, false, Optional.empty(), false);
       veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
       veniceAdmin.setStoreWriteability(clusterName, storeName, false);
       Store store = veniceAdmin.getStore(clusterName, storeName);
@@ -596,7 +597,7 @@ public class TestAdminOperationWithPreviousVersion {
           + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
       String valueRecordSchemaStr2 = TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA.toString();
       NewStoreResponse newStoreResponse = parentControllerClient
-          .retryableRequest(5, c -> c.createNewStore(storeName, "", KEY_SCHEMA, valueRecordSchemaStr1));
+          .retryableRequest(5, c -> c.createNewStore(storeName, "", KEY_SCHEMA, valueRecordSchemaStr1, false));
       assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
       SchemaResponse schemaResponse2 =
@@ -826,7 +827,15 @@ public class TestAdminOperationWithPreviousVersion {
       String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
       Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, 1);
 
-      veniceAdmin.createStore(clusterName, storeName, "storeOwner", KEY_SCHEMA, recordSchemaStr);
+      veniceAdmin.createStore(
+          clusterName,
+          storeName,
+          "storeOwner",
+          KEY_SCHEMA,
+          recordSchemaStr,
+          false,
+          Optional.empty(),
+          false);
       veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1, 1, metadataSchema.toString());
       Collection<RmdSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
       assertEquals(metadataSchemas.size(), 1);
@@ -845,7 +854,7 @@ public class TestAdminOperationWithPreviousVersion {
 
       String storeName = Utils.getUniqueString("testSupersetSchemaCreation-store");
       NewStoreResponse newStoreResponse = parentControllerClient
-          .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueSchemaV1.toString()));
+          .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueSchemaV1.toString(), false));
       assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
       ControllerResponse updateStoreResponse =
@@ -896,9 +905,10 @@ public class TestAdminOperationWithPreviousVersion {
   private Store setUpTestStore() {
     Store testStore =
         TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", System.currentTimeMillis());
-    NewStoreResponse response =
-        parentControllerClient.createNewStore(testStore.getName(), testStore.getOwner(), KEY_SCHEMA, VALUE_SCHEMA);
-    assertFalse(response.isError());
+    // Legacy protocols cannot carry the new-store write quota default, so request the legacy value explicitly.
+    NewStoreResponse response = parentControllerClient
+        .createNewStore(testStore.getName(), testStore.getOwner(), KEY_SCHEMA, VALUE_SCHEMA, false);
+    assertFalse(response.isError(), response.getError());
     return testStore;
   }
 
@@ -956,9 +966,11 @@ public class TestAdminOperationWithPreviousVersion {
             .setHybridStoreDiskQuotaEnabled(true)
             .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
             .setStorageNodeReadQuotaEnabled(true); // enable this for using fast client
-    IntegrationTestPushUtils
-        .createStoreForJob(srcClusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)
-        .close();
+    try (ControllerClient controllerClient =
+        new ControllerClient(srcClusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test", keySchemaStr, valueSchemaStr, false));
+    }
+    IntegrationTestPushUtils.updateStore(srcClusterName, props, updateStoreQueryParams);
 
     // Verify store is created in dc-0
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {

@@ -212,10 +212,10 @@ public class TestMultiDataCenterAdminOperations extends AbstractMultiRegionTest 
         parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 85L);
     assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
 
-    // Create store
+    // Protocol v85 cannot carry the new-store write quota default; keep this fixture on legacy semantics.
     NewStoreResponse newStoreResponse =
-        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    Assert.assertFalse(newStoreResponse.isError());
+        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"", false);
+    Assert.assertFalse(newStoreResponse.isError(), newStoreResponse.getError());
     emptyPushToStore(parentControllerClient, storeName, 1);
 
     // Get current execution ID

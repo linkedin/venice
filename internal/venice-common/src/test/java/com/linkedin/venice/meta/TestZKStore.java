@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
@@ -21,8 +22,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.GenericRecordBuilder;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -69,10 +70,17 @@ public class TestZKStore {
         .schema()
         .getTypes()
         .get(1);
-    GenericRecord oldStore = new GenericRecordBuilder(oldSchema).set("name", "legacyStore")
-        .set("owner", "owner")
-        .set("createdTime", 1L)
-        .build();
+    GenericRecord oldStore = new GenericData.Record(oldSchema);
+    for (Schema.Field field: oldSchema.getFields()) {
+      if (AvroCompatibilityHelper.fieldHasDefault(field)) {
+        oldStore.put(
+            field.name(),
+            GenericData.get().deepCopy(field.schema(), AvroCompatibilityHelper.getGenericDefaultValue(field)));
+      }
+    }
+    oldStore.put("name", "legacyStore");
+    oldStore.put("owner", "owner");
+    oldStore.put("createdTime", 1L);
     byte[] bytes = SerializerDeserializerFactory.getAvroGenericSerializer(oldSchema).serialize(oldStore);
     StoreProperties properties =
         SerializerDeserializerFactory.getAvroSpecificDeserializer(oldSchema, StoreProperties.class).deserialize(bytes);
