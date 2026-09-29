@@ -644,7 +644,8 @@ public class AsyncMetricEntityStateTest {
 
   @Test
   public void testNullAsyncGaugeResolversRejectedAtConstruction() {
-    // AsyncMetricEntityStateBase declares its resolvers @Nonnull, so SpotBugs rejects null callers at build time.
+    // The enum factories reject null resolvers at runtime. AsyncMetricEntityStateBase has no case here: its resolvers
+    // are @Nonnull, so SpotBugs rejects null callers at build time.
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(false);
     Assert.assertThrows(
         NullPointerException.class,
