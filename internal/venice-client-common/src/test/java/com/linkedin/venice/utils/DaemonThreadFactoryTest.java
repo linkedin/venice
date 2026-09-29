@@ -32,4 +32,17 @@ public class DaemonThreadFactoryTest {
     // priority (the JVM default behavior).
     Assert.assertEquals(t.getPriority(), Thread.currentThread().getPriority());
   }
+
+  @Test
+  public void testRandomAccessFactoryAppliesPriority() {
+    int priority = Thread.NORM_PRIORITY - 1;
+    RandomAccessDaemonThreadFactory factory =
+        new RandomAccessDaemonThreadFactory("TestRandomAccessPool", priority, null);
+    Thread t = factory.newThread(() -> {});
+
+    Assert.assertEquals(t.getPriority(), priority, "Configured priority should be applied");
+    Assert.assertTrue(t.isDaemon());
+    Assert.assertEquals(t.getName(), "TestRandomAccessPool-t0");
+    Assert.assertSame(factory.getThread(0), t);
+  }
 }
