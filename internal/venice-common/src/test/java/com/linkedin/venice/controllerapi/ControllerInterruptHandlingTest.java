@@ -318,6 +318,53 @@ public class ControllerInterruptHandlingTest {
   }
 
   /**
+   * An ordinary error response followed by an interrupt during the backoff must say that the retries were aborted,
+   * so the caller can tell cancellation apart from a controller that stayed unavailable.
+   */
+  @Test(timeOut = 30_000)
+  public void testRetryableRequestMarksAnErrorResponseInterruptedDuringBackoff() {
+    ControllerClient client = Mockito.mock(ControllerClient.class);
+    AtomicInteger attempts = new AtomicInteger();
+    ScheduledExecutorService interrupter = Executors.newSingleThreadScheduledExecutor();
+    try {
+      Thread caller = Thread.currentThread();
+      interrupter.schedule(caller::interrupt, 500, TimeUnit.MILLISECONDS);
+      long startMs = System.currentTimeMillis();
+
+      ControllerResponse result = ControllerClient.retryableRequest(client, 3, 10_000, c -> {
+        attempts.incrementAndGet();
+        ControllerResponse errorResponse = new ControllerResponse();
+        errorResponse.setError("controller unavailable");
+        return errorResponse;
+      }, r -> false);
+      long elapsedMs = System.currentTimeMillis() - startMs;
+
+      Assert.assertEquals(attempts.get(), 1, "No attempt may follow an interrupted backoff");
+      Assert.assertTrue(elapsedMs < 5_000, "The backoff must end at the interrupt, but it took " + elapsedMs);
+      Assert.assertEquals(result.getError(), "controller unavailable" + ControllerClient.INTERRUPTED_MESSAGE_SUFFIX);
+      Assert.assertTrue(Thread.currentThread().isInterrupted(), "The interrupt flag must still be set for the caller");
+    } finally {
+      interrupter.shutdownNow();
+    }
+  }
+
+  @Test
+  public void testRetryableRequestDoesNotRepeatTheInterruptedSuffix() {
+    ControllerClient client = Mockito.mock(ControllerClient.class);
+    String error = "Could not reach the controller" + ControllerClient.INTERRUPTED_MESSAGE_SUFFIX;
+
+    ControllerResponse result = ControllerClient.retryableRequest(client, 3, 0, c -> {
+      Thread.currentThread().interrupt();
+      ControllerResponse errorResponse = new ControllerResponse();
+      errorResponse.setError(error);
+      return errorResponse;
+    }, r -> false);
+
+    Assert.assertEquals(result.getError(), error);
+    Assert.assertTrue(Thread.currentThread().isInterrupted(), "The interrupt flag must still be set for the caller");
+  }
+
+  /**
    * Leader discovery through D2 must stop at the first interrupted D2 client instead of moving on to the next one.
    */
   @Test(timeOut = 30_000)

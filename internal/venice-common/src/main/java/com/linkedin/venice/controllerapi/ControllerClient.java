@@ -882,6 +882,10 @@ public class ControllerClient implements Closeable {
                     + INTERRUPTED_MESSAGE_SUFFIX,
                 exception);
           }
+          // Without the suffix, an error that ended on an interrupted backoff reads like exhausted retries.
+          if (!response.getError().contains(INTERRUPTED_MESSAGE_SUFFIX)) {
+            response.setError(response.getError() + INTERRUPTED_MESSAGE_SUFFIX);
+          }
           return response;
         }
       }
