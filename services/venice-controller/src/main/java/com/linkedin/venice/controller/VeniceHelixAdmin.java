@@ -2011,6 +2011,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     StoreMigrationHelper.validateSourceStoreEncryptionKeyForMigration(
         getControllerConfig(destClusterName).isEncryptionCluster(),
+        srcStore.isEncryptionEnabled(),
         srcStore.getPubSubEncryptionKeyUrn(),
         srcClusterName,
         destClusterName,

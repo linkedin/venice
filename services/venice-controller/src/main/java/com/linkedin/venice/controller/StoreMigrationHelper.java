@@ -50,23 +50,28 @@ final class StoreMigrationHelper {
    * would create a destination store that is encryption-enabled with no key, which only fails later when a new
    * version is requested. Fail fast here instead, before any migration state changes.
    *
-   * <p>{@code encryptionEnabled} is only ever set at store-creation time and cannot be changed afterward, so
-   * {@code update-store} cannot set a key for a store where it is false; the error therefore does not prescribe
-   * that as a remedy.
+   * <p>{@code encryptionEnabled} is only ever set at store-creation time and cannot be changed afterward.
+   * {@code update-store} can set an initial key for a store where it is already true (a valid remedy), but not
+   * for a legacy store where it is false; the message is conditioned on that so it never prescribes a fix that
+   * would be rejected.
    */
   static void validateSourceStoreEncryptionKeyForMigration(
       boolean destEncryptionCluster,
+      boolean srcStoreEncryptionEnabled,
       String srcStorePubSubEncryptionKeyUrn,
       String srcClusterName,
       String destClusterName,
       String storeName) {
     if (destEncryptionCluster && StringUtils.isBlank(srcStorePubSubEncryptionKeyUrn)) {
+      String remedy = srcStoreEncryptionEnabled
+          ? "The store is encryption-enabled but has no pubSubEncryptionKeyUrn configured yet; set one via "
+              + "update-store, then retry the migration."
+          : "Its encryptionEnabled flag is set once at store creation and cannot be changed afterward, so "
+              + "update-store cannot set a key for it; this store cannot be migrated into an encryption cluster.";
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
-              + " because the store does not have a pubSubEncryptionKeyUrn configured. Its encryptionEnabled flag "
-              + "is set once at store creation and cannot be changed afterward, so update-store cannot set a key "
-              + "for it; this store cannot be migrated into an encryption cluster.",
+              + " because the store does not have a pubSubEncryptionKeyUrn configured. " + remedy,
           ErrorType.BAD_REQUEST);
     }
   }

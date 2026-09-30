@@ -4502,6 +4502,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (srcStore != null) {
       StoreMigrationHelper.validateSourceStoreEncryptionKeyForMigration(
           getControllerConfig(destClusterName).isEncryptionCluster(),
+          srcStore.isEncryptionEnabled(),
           srcStore.getPubSubEncryptionKeyUrn(),
           srcClusterName,
           destClusterName,
