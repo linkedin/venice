@@ -71,6 +71,11 @@ public class StoreMigrationHelperTest {
   }
 
   @Test
+  public void testAllowsMigrationBetweenEncryptionClusters() {
+    StoreMigrationHelper.validateEncryptionClusterMigration(true, true, SRC_CLUSTER, DEST_CLUSTER, STORE_NAME);
+  }
+
+  @Test
   public void testBlocksMigrationFromEncryptionCluster() {
     assertEncryptionClusterMigrationBlocked(true, false);
   }
@@ -90,6 +95,8 @@ public class StoreMigrationHelperTest {
             DEST_CLUSTER,
             STORE_NAME));
     assertTrue(exception.getHttpStatusCode() == HttpStatus.SC_BAD_REQUEST);
-    assertTrue(exception.getMessage().contains("migration from or to an encryption cluster is not allowed"));
+    assertTrue(
+        exception.getMessage()
+            .contains("migrating between an encryption cluster and a non-encryption cluster is not allowed"));
   }
 }

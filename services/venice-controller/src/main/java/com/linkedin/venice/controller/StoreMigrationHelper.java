@@ -32,11 +32,11 @@ final class StoreMigrationHelper {
       String srcClusterName,
       String destClusterName,
       String storeName) {
-    if (srcEncryptionCluster || destEncryptionCluster) {
+    if (srcEncryptionCluster != destEncryptionCluster) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
-              + " because migration from or to an encryption cluster is not allowed.",
+              + " because migrating between an encryption cluster and a non-encryption cluster is not allowed.",
           ErrorType.BAD_REQUEST);
     }
   }
