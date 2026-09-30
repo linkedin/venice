@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
@@ -68,7 +69,9 @@ public class StoreMigrationHelperTest {
   @Test
   public void testMigrationPropagatesPubSubEncryptionKeyUrn() {
     String urn = "urn:li:pubSubEncryptionKey:test-key";
-    StoreInfo source = StoreInfo.fromStore(TestUtils.createTestStore(STORE_NAME, "owner", 1L));
+    Store store = TestUtils.createTestStore(STORE_NAME, "owner", 1L);
+    store.setEncryptionEnabled(true);
+    StoreInfo source = StoreInfo.fromStore(store);
     source.setPubSubEncryptionKeyUrn(urn);
     ControllerClient destination = mock(ControllerClient.class);
     when(destination.createNewStore(STORE_NAME, "owner", "\"string\"", "\"string\""))
