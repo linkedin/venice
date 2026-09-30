@@ -17,11 +17,14 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -287,6 +290,25 @@ public class FastClientStatsTest {
         .flatMap(md -> md.getLongGaugeData().getPoints().stream())
         .anyMatch(point -> point.getAttributes().equals(expectedStalenessAttrs));
     assertTrue(stalenessCarriesLatestCluster, "Sole staleness data point should carry " + clusterB);
+  }
+
+  @Test
+  public void testClusterMigrationReleasesTheRetiredStalenessGauge() {
+    FastClientStats stats = createStats(InMemoryMetricReader.create());
+    stats.onClusterNameUpdated("venice-cluster-A");
+    MetricScope clusterAScope = stats.getMetadataStalenessScope();
+
+    stats.onClusterNameUpdated("venice-cluster-B");
+    MetricScope clusterBScope = stats.getMetadataStalenessScope();
+
+    // Closing the previous gauge's own scope releases the retired gauge instead of keeping it in the stats' scope.
+    assertNotSame(clusterBScope, clusterAScope);
+    assertTrue(clusterAScope.isClosed());
+    assertFalse(clusterBScope.isClosed());
+
+    // The current gauge's scope still closes with the stats.
+    stats.closeOtelMetrics();
+    assertTrue(clusterBScope.isClosed());
   }
 
   @Test

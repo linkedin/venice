@@ -98,9 +98,10 @@ public class AggVersionedIngestionStats
       return;
     }
     // For metrics reporting purpose the store name for Venice view ingestion will be <storeName>_<viewName>
+    String baseStoreName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
     String storeName = VeniceView.isViewTopic(storeVersionTopic)
         ? VeniceView.parseStoreAndViewFromViewTopic(storeVersionTopic)
-        : Version.parseStoreFromKafkaTopicName(storeVersionTopic);
+        : baseStoreName;
     int version = Version.parseVersionFromKafkaTopicName(storeVersionTopic);
     try {
       /**
@@ -110,6 +111,10 @@ public class AggVersionedIngestionStats
 
       if (emitOtelIngestionStats) {
         otelStats.compute(storeName, stats -> stats.setIngestionTask(version, ingestionTask));
+        if (!storeName.equals(baseStoreName)) {
+          // A view task records its consumption into the base store's stats, which stay open while it runs.
+          otelStats.compute(baseStoreName, stats -> stats.addViewIngestionTask(ingestionTask));
+        }
       }
 
       // Make sure the hybrid store stats are registered
@@ -140,7 +145,10 @@ public class AggVersionedIngestionStats
       });
       if (!storeName.equals(baseStoreName)) {
         // View tasks register under <storeName>_<viewName> but record metrics under the base store name.
-        otelStats.removeIf(baseStoreName, IngestionOtelStats::isIdle);
+        otelStats.removeIf(baseStoreName, stats -> {
+          stats.removeViewIngestionTask(ingestionTask);
+          return stats.isIdle();
+        });
       }
     } catch (Exception e) {
       LOGGER.warn("Failed to detach ingestion task from OTel stats for topic: {}", storeVersionTopic, e);

@@ -20,6 +20,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
@@ -59,7 +60,8 @@ public class FastClientStats extends ClientStats {
   private volatile MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
   private volatile MetricEntityStateOneEnum<RequestRetryType> errorRetry;
   private volatile MetricEntityStateBase retryRequestWin;
-  private volatile AsyncMetricEntityStateBase metadataStalenessHighWatermark;
+  /** Owns the metadata staleness gauge, which each cluster change re-creates with the new cluster's dimensions. */
+  private volatile MetricScope metadataStalenessScope;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
   private long cacheTimeStampInMs = 0;
@@ -262,12 +264,15 @@ public class FastClientStats extends ClientStats {
       metadataStalenessAttrs = metadataStalenessSetup.getBaseAttributes();
     }
 
-    // Close the previous observable gauge (if any) before re-registering.
-    AsyncMetricEntityStateBase previousStaleness = this.metadataStalenessHighWatermark;
-    if (previousStaleness != null) {
-      previousStaleness.close();
+    // Closing the previous gauge's own scope unregisters it and releases it, rather than leaving it retired in this
+    // object's scope, which lives as long as the client config.
+    MetricScope previousStalenessScope = this.metadataStalenessScope;
+    if (previousStalenessScope != null) {
+      previousStalenessScope.close();
     }
-    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.createWithState(
+    MetricScope stalenessScope = getMetricScope().register(new MetricScope());
+    this.metadataStalenessScope = stalenessScope;
+    AsyncMetricEntityStateBase.createWithState(
         METADATA_STALENESS_DURATION.getMetricEntity(),
         otelRepository,
         (sensorName, stats) -> registerSensor(sensorName, stats),
@@ -280,7 +285,7 @@ public class FastClientStats extends ClientStats {
                 FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
         metadataStalenessDims,
         metadataStalenessAttrs,
-        getMetricScope(),
+        stalenessScope,
         () -> {
           if (!isReporting.getAsBoolean()) {
             return null;
@@ -288,6 +293,11 @@ public class FastClientStats extends ClientStats {
           return this.cacheTimeStampInMs == 0 ? 0L : (System.currentTimeMillis() - this.cacheTimeStampInMs);
         },
         Long::longValue);
+  }
+
+  /** Visible for testing. */
+  MetricScope getMetadataStalenessScope() {
+    return metadataStalenessScope;
   }
 
   @Override

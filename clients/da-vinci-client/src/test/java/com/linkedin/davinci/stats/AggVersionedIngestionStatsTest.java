@@ -16,6 +16,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -437,6 +438,34 @@ public class AggVersionedIngestionStatsTest {
   }
 
   @Test
+  public void testBaseOtelStatsStayOpenUntilTheLastViewTaskStops() throws Exception {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository repo = createOtelEnabledRepo(reader)) {
+      AggVersionedIngestionStats aggStats = createAggStats(true, repo);
+      String firstViewTopic = viewTopic(VERSION_1, "firstView");
+      String secondViewTopic = viewTopic(VERSION_1, "secondView");
+      setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1);
+      setStoreVersionInfo(aggStats, VeniceView.parseStoreAndViewFromViewTopic(firstViewTopic), VERSION_1, VERSION_1);
+      setStoreVersionInfo(aggStats, VeniceView.parseStoreAndViewFromViewTopic(secondViewTopic), VERSION_1, VERSION_1);
+      StoreIngestionTask firstViewTask = mockTask();
+      StoreIngestionTask secondViewTask = mockTask();
+      Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
+
+      // Two views ingest on this host without a task of the base store, and both record into its stats.
+      aggStats.setIngestionTask(firstViewTopic, firstViewTask);
+      aggStats.setIngestionTask(secondViewTopic, secondViewTask);
+      IngestionOtelStats baseStats = otelStatsMap.get(STORE_NAME);
+      assertNotNull(baseStats);
+
+      aggStats.removeIngestionTask(firstViewTopic, firstViewTask);
+      assertSame(otelStatsMap.get(STORE_NAME), baseStats);
+
+      aggStats.removeIngestionTask(secondViewTopic, secondViewTask);
+      assertNull(otelStatsMap.get(STORE_NAME));
+    }
+  }
+
+  @Test
   public void testViewTopicDetachRetiresViewAndIdleBaseOtelStats() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     try (VeniceMetricsRepository repo = createOtelEnabledRepo(reader)) {
@@ -558,7 +587,11 @@ public class AggVersionedIngestionStatsTest {
   }
 
   private static String viewTopic(int version) {
-    return versionTopic(version) + VeniceView.VIEW_NAME_SEPARATOR + "testView"
+    return viewTopic(version, "testView");
+  }
+
+  private static String viewTopic(int version, String viewName) {
+    return versionTopic(version) + VeniceView.VIEW_NAME_SEPARATOR + viewName
         + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
   }
 

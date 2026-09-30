@@ -47,6 +47,14 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
+  public void addViewIngestionTask(StoreIngestionTask task) {
+  }
+
+  @Override
+  public void removeViewIngestionTask(StoreIngestionTask task) {
+  }
+
+  @Override
   public boolean isIdle() {
     return true;
   }

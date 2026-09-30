@@ -96,6 +96,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 
@@ -113,6 +114,9 @@ public class IngestionOtelStats implements StoreOtelStats {
 
   // Store ingestion tasks by version for ASYNC_GAUGE callbacks
   private final Map<Integer, StoreIngestionTask> ingestionTasksByVersion;
+
+  // View ingestion tasks, registered under their own view store names, that record into these stats
+  private final Set<StoreIngestionTask> viewIngestionTasks;
 
   // Push timeout gauge values by version
   private final Map<Integer, Integer> pushTimeoutByVersion;
@@ -221,6 +225,7 @@ public class IngestionOtelStats implements StoreOtelStats {
     this.otelRepository = null;
     this.baseDimensionsMap = null;
     this.ingestionTasksByVersion = Collections.emptyMap();
+    this.viewIngestionTasks = Collections.emptySet();
     this.pushTimeoutByVersion = Collections.emptyMap();
     this.idleTimeByVersion = Collections.emptyMap();
     this.taskErrorCountByRole = null;
@@ -305,6 +310,7 @@ public class IngestionOtelStats implements StoreOtelStats {
 
     // Initialize per-version state maps
     this.ingestionTasksByVersion = new VeniceConcurrentHashMap<>();
+    this.viewIngestionTasks = VeniceConcurrentHashMap.newKeySet();
     this.pushTimeoutByVersion = new VeniceConcurrentHashMap<>();
     this.idleTimeByVersion = new VeniceConcurrentHashMap<>();
 
@@ -510,9 +516,20 @@ public class IngestionOtelStats implements StoreOtelStats {
     return !ingestionTasksByVersion.isEmpty();
   }
 
-  /** True once no task is registered and no push timeout is still reported. */
+  /** Keeps these stats open while {@code task}, a view task registered under its view store name, records here. */
+  public void addViewIngestionTask(StoreIngestionTask task) {
+    if (task != null) {
+      viewIngestionTasks.add(task);
+    }
+  }
+
+  public void removeViewIngestionTask(StoreIngestionTask task) {
+    viewIngestionTasks.remove(task);
+  }
+
+  /** True once no task, including a view task, records here and no push timeout is still reported. */
   public boolean isIdle() {
-    return ingestionTasksByVersion.isEmpty() && pushTimeoutByVersion.isEmpty();
+    return ingestionTasksByVersion.isEmpty() && viewIngestionTasks.isEmpty() && pushTimeoutByVersion.isEmpty();
   }
 
   /**
