@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
@@ -66,8 +67,42 @@ public class StoreMigrationHelperTest {
   }
 
   @Test
+  public void testMigrationPropagatesPubSubEncryptionKeyUrn() {
+    String urn = "urn:li:pubSubEncryptionKey:test-key";
+    Store store = TestUtils.createTestStore(STORE_NAME, "owner", 1L);
+    store.setEncryptionEnabled(true);
+    StoreInfo source = StoreInfo.fromStore(store);
+    source.setPubSubEncryptionKeyUrn(urn);
+    ControllerClient destination = mock(ControllerClient.class);
+    when(destination.createNewStore(STORE_NAME, "owner", "\"string\"", "\"string\""))
+        .thenReturn(new NewStoreResponse());
+    when(destination.addValueSchema(anyString(), anyString())).thenReturn(new SchemaResponse());
+    when(destination.updateStore(eq(STORE_NAME), any())).thenReturn(new ControllerResponse());
+
+    StoreMigrationHelper.cloneDestinationStoreAndSyncConfigs(
+        destination,
+        source,
+        "\"string\"",
+        Collections.singletonList(new SchemaEntry(1, "\"string\"")),
+        Collections.singletonMap(STORE_NAME, Collections.emptyMap()),
+        DEST_CLUSTER,
+        STORE_NAME,
+        "region",
+        LogManager.getLogger(StoreMigrationHelperTest.class));
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(destination).updateStore(eq(STORE_NAME), captor.capture());
+    assertEquals(captor.getValue().getPubSubEncryptionKeyUrn(), Optional.of(urn));
+  }
+
+  @Test
   public void testAllowsMigrationBetweenNonEncryptionClusters() {
     StoreMigrationHelper.validateEncryptionClusterMigration(false, false, SRC_CLUSTER, DEST_CLUSTER, STORE_NAME);
+  }
+
+  @Test
+  public void testAllowsMigrationBetweenEncryptionClusters() {
+    StoreMigrationHelper.validateEncryptionClusterMigration(true, true, SRC_CLUSTER, DEST_CLUSTER, STORE_NAME);
   }
 
   @Test
@@ -90,6 +125,8 @@ public class StoreMigrationHelperTest {
             DEST_CLUSTER,
             STORE_NAME));
     assertTrue(exception.getHttpStatusCode() == HttpStatus.SC_BAD_REQUEST);
-    assertTrue(exception.getMessage().contains("migration from or to an encryption cluster is not allowed"));
+    assertTrue(
+        exception.getMessage()
+            .contains("migrating between an encryption cluster and a non-encryption cluster is not allowed"));
   }
 }
