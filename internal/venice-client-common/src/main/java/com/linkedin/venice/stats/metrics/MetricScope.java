@@ -35,6 +35,14 @@ public class MetricScope implements AutoCloseable {
     return closed;
   }
 
+  /** Closes one registered resource ahead of the rest and stops holding it, so retiring it retains nothing here. */
+  public void retire(AutoCloseable resource) {
+    synchronized (this) {
+      resources.remove(resource);
+    }
+    closeResource(resource);
+  }
+
   @Override
   public void close() {
     List<AutoCloseable> toClose;

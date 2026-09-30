@@ -1939,7 +1939,9 @@ public class DispatchingAvroGenericStoreClientTest {
         .build();
     Supplier<DispatchingAvroGenericStoreClient> newClient =
         () -> new DispatchingAvroGenericStoreClient(mock(StoreMetadata.class), config, mock(TransportClient.class));
+    // As a metadata refresh would: the current version, and a fetch timestamp for the stats it updates.
     config.getClusterStats().updateCurrentVersion(2);
+    config.getStats(RequestType.SINGLE_GET).updateCacheTimestamp(System.currentTimeMillis());
     String currentVersion = ClusterMetricEntity.STORE_VERSION_CURRENT.getMetricEntity().getMetricName();
     String staleness = FastClientMetricEntity.METADATA_STALENESS_DURATION.getMetricEntity().getMetricName();
 

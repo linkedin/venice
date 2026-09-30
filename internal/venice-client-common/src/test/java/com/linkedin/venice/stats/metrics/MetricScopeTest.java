@@ -2,6 +2,7 @@ package com.linkedin.venice.stats.metrics;
 
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
@@ -12,7 +13,7 @@ import org.mockito.InOrder;
 import org.testng.annotations.Test;
 
 
-/** Tests {@link MetricScope} close ordering, idempotency and late registration. */
+/** Tests {@link MetricScope} close ordering, idempotency, late registration and early retirement. */
 public class MetricScopeTest {
   @Test
   public void testRegisterReturnsResourceAndCloseIsOrderedAndIdempotent() throws Exception {
@@ -44,5 +45,21 @@ public class MetricScopeTest {
     assertSame(scope.register(resource), resource);
 
     verify(resource, times(1)).close();
+  }
+
+  @Test
+  public void testRetireClosesOneResourceAndStopsHoldingIt() throws Exception {
+    MetricScope scope = new MetricScope();
+    AutoCloseable retired = scope.register(mock(AutoCloseable.class));
+    AutoCloseable kept = scope.register(mock(AutoCloseable.class));
+
+    scope.retire(retired);
+    verify(retired, times(1)).close();
+    verify(kept, never()).close();
+
+    // The scope no longer holds the retired resource, so closing the scope doesn't close it again.
+    scope.close();
+    verify(retired, times(1)).close();
+    verify(kept, times(1)).close();
   }
 }

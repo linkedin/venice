@@ -64,7 +64,7 @@ public class FastClientStats extends ClientStats {
   private volatile MetricScope metadataStalenessScope;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
-  private long cacheTimeStampInMs = 0;
+  private volatile long cacheTimeStampInMs = 0;
 
   /**
    * Preserves registration of all optional feature metrics for callers without client feature flags.
@@ -264,11 +264,11 @@ public class FastClientStats extends ClientStats {
       metadataStalenessAttrs = metadataStalenessSetup.getBaseAttributes();
     }
 
-    // Closing the previous gauge's own scope unregisters it and releases it, rather than leaving it retired in this
-    // object's scope, which lives as long as the client config.
+    // Retiring the previous gauge's own scope unregisters that gauge and drops it from this object's scope, which lives
+    // as long as the client config, so cluster changes retain nothing.
     MetricScope previousStalenessScope = this.metadataStalenessScope;
     if (previousStalenessScope != null) {
-      previousStalenessScope.close();
+      getMetricScope().retire(previousStalenessScope);
     }
     MetricScope stalenessScope = getMetricScope().register(new MetricScope());
     this.metadataStalenessScope = stalenessScope;
@@ -287,10 +287,13 @@ public class FastClientStats extends ClientStats {
         metadataStalenessAttrs,
         stalenessScope,
         () -> {
-          if (!isReporting.getAsBoolean()) {
+          // Only the stats that the metadata refresh updates get a timestamp. The other request types' gauges share its
+          // attributes, so they emit nothing rather than a 0 that could replace its value.
+          long cacheTimestampMs = this.cacheTimeStampInMs;
+          if (!isReporting.getAsBoolean() || cacheTimestampMs == 0) {
             return null;
           }
-          return this.cacheTimeStampInMs == 0 ? 0L : (System.currentTimeMillis() - this.cacheTimeStampInMs);
+          return System.currentTimeMillis() - cacheTimestampMs;
         },
         Long::longValue);
   }
