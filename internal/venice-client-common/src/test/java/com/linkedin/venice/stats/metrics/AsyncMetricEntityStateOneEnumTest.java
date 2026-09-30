@@ -77,7 +77,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
 
     assertTrue(metricState.emitOpenTelemetryMetrics());
     // Exactly one SDK instrument registered, regardless of |E|.
-    verify(mockOtelRepository, times(1)).registerObservableGauge(eq(mockMetricEntity), any());
+    verify(mockOtelRepository, times(1)).registerObservableGauge(eq(mockMetricEntity), any(), any());
     // Attributes precomputed for every enum value.
     assertEquals(metricState.getAttributesByEnum().size(), DimensionEnum1.values().length);
     for (DimensionEnum1 v: DimensionEnum1.values()) {
@@ -266,7 +266,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
     assertFalse(metricState.emitOpenTelemetryMetrics());
     assertNull(metricState.getAttributesByEnum());
     assertNull(metricState.getInstrument());
-    verify(mockOtelRepository, times(0)).registerObservableGauge(eq(mockMetricEntity), any());
+    verify(mockOtelRepository, times(0)).registerObservableGauge(eq(mockMetricEntity), any(), any());
   }
 
   /**
@@ -354,7 +354,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   @SuppressWarnings("unchecked")
   private ArgumentCaptor<Consumer<GaugeObservation>> captureLongCallback() {
     ArgumentCaptor<Consumer<GaugeObservation>> captor = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
+    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), any(), captor.capture())).thenReturn(null);
     return captor;
   }
 
@@ -362,7 +362,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   @SuppressWarnings("unchecked")
   private ArgumentCaptor<Consumer<GaugeObservation>> captureDoubleCallback() {
     ArgumentCaptor<Consumer<GaugeObservation>> captor = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
+    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), any(), captor.capture())).thenReturn(null);
     return captor;
   }
 }

@@ -424,8 +424,6 @@ public class SystemStoreRepairTaskTest {
             .setOtelAdditionalMetricsReader(metricReader)
             .build());
     SystemStoreHealthCheckStats realStats = new SystemStoreHealthCheckStats(metricsRepo, clusterName);
-    // run() marks a leader's counts as measured; this test calls repairBadSystemStore directly.
-    realStats.setMeasured(true);
     Map<String, SystemStoreHealthCheckStats> statsMap = new HashMap<>();
     statsMap.put(clusterName, realStats);
 
@@ -472,7 +470,9 @@ public class SystemStoreRepairTaskTest {
     systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertTrue(unhealthySystemStoreSet.isEmpty());
 
-    // After Push Completed: all counts should be 0
+    // After Push Completed: all counts should be 0. run() publishes the counts once a round completes; this test calls
+    // repairBadSystemStore directly.
+    realStats.setMeasured(true);
     verifySystemStoreMetrics(metricsRepo, metricReader, clusterName, metricPrefix, 0, 0, 0);
 
     // Poll throws exception, should be caught inside.
@@ -483,6 +483,7 @@ public class SystemStoreRepairTaskTest {
     Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
 
     // After Poll throws: systemStore is a meta store, so badMeta=1, badPushStatus=0, notRepairable=1
+    realStats.setMeasured(true);
     verifySystemStoreMetrics(metricsRepo, metricReader, clusterName, metricPrefix, 1, 0, 1);
   }
 

@@ -194,6 +194,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       if (metricType == MetricType.ASYNC_DOUBLE_GAUGE || metricType == MetricType.ASYNC_GAUGE) {
         instrument = metricsRepository.registerObservableGauge(
             metricEntity,
+            new MetricScope(),
             observation -> observation.observe(baseAttributes, () -> 10L, value -> value));
       } else {
         instrument = metricsRepository.createInstrument(metricEntity);
@@ -362,8 +363,10 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     Set<VeniceMetricsDimensions> dims = new HashSet<>();
     dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
     MetricEntity entity = new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "d", dims);
-    metricsRepository
-        .registerObservableGauge(entity, observation -> observation.observe(Attributes.empty(), () -> 1L, v -> v));
+    metricsRepository.registerObservableGauge(
+        entity,
+        new MetricScope(),
+        observation -> observation.observe(Attributes.empty(), () -> 1L, v -> v));
   }
 
   @Test
@@ -375,6 +378,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         new MetricEntity("close_long_gauge", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "d", dims);
     Object longGauge = metricsRepository.registerObservableGauge(
         longGaugeEntity,
+        new MetricScope(),
         observation -> observation.observe(Attributes.empty(), () -> 1L, v -> v));
     assertNotNull(longGauge);
     metricsRepository.closeObservableInstrument(longGaugeEntity, longGauge);
@@ -383,6 +387,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         new MetricEntity("close_double_gauge", MetricType.ASYNC_DOUBLE_GAUGE, MetricUnit.NUMBER, "d", dims);
     Object doubleGauge = metricsRepository.registerObservableGauge(
         doubleGaugeEntity,
+        new MetricScope(),
         observation -> observation.observe(Attributes.empty(), () -> 1.0, v -> v));
     assertNotNull(doubleGauge);
     metricsRepository.closeObservableInstrument(doubleGaugeEntity, doubleGauge);
@@ -1194,9 +1199,11 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
       otelRepo.registerObservableGauge(
           metricEntity,
+          new MetricScope(),
           observation -> observation.observe(storeAAttributes, () -> 42L, value -> value));
       otelRepo.registerObservableGauge(
           metricEntity,
+          new MetricScope(),
           observation -> observation.observe(storeBAttributes, () -> 99L, value -> value));
 
       Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
@@ -1516,6 +1523,38 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           () -> 99L,
           Long::longValue);
       assertNoGaugePoint(deltaReader.collectAllMetrics(), "test_scope_late_gauge", MetricType.ASYNC_GAUGE, attributes);
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  @Test
+  public void testMetricScopeClosesGaugeRegisteredDirectly() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(reader);
+    try {
+      MetricEntity gaugeEntity = createStoreGaugeMetricEntity("test_scoped_direct_gauge", MetricType.ASYNC_GAUGE);
+      Map<VeniceMetricsDimensions, String> dimensions = singletonStoreDimensions(TEST_STORE_NAME);
+      Attributes attributes = otelRepo.createAttributes(gaugeEntity, dimensions);
+      MetricScope scope = new MetricScope();
+      Object gauge = otelRepo.registerObservableGauge(
+          gaugeEntity,
+          scope,
+          observation -> observation.observe(attributes, () -> 7L, Long::longValue));
+      OpenTelemetryDataTestUtils
+          .validateLongPointDataFromGauge(reader, 7L, attributes, gaugeEntity.getMetricName(), TEST_PREFIX);
+
+      scope.close();
+      assertNoGaugePoint(reader.collectAllMetrics(), gaugeEntity.getMetricName(), MetricType.ASYNC_GAUGE, attributes);
+      // Another owner closing it again is harmless.
+      otelRepo.closeObservableInstrument(gaugeEntity, gauge);
+
+      // A gauge registered on a closed scope is closed at once.
+      otelRepo.registerObservableGauge(
+          gaugeEntity,
+          scope,
+          observation -> observation.observe(attributes, () -> 9L, Long::longValue));
+      assertNoGaugePoint(reader.collectAllMetrics(), gaugeEntity.getMetricName(), MetricType.ASYNC_GAUGE, attributes);
     } finally {
       otelRepo.close();
     }

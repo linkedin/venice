@@ -119,7 +119,7 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
       attributesByEnum.put(e1, inner);
     }
 
-    Object instrument = otelRepository.registerObservableGauge(metricEntity, observation -> {
+    Object instrument = otelRepository.registerObservableGauge(metricEntity, scope, observation -> {
       for (E1 e1: enum1Constants) {
         EnumMap<E2, Attributes> inner = attributesByEnum.get(e1);
         for (E2 e2: enum2Constants) {

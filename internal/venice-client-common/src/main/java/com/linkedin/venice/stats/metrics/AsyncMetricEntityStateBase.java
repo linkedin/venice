@@ -28,6 +28,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes,
+      MetricScope scope,
       LiveStateResolver<S> liveStateResolver,
       ValueResolver<S> valueResolver) {
     super(
@@ -37,6 +38,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
         tehutiMetricStats,
+        scope,
         liveStateResolver,
         valueResolver,
         baseAttributes);
@@ -67,18 +69,19 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       MetricScope scope,
       @Nonnull LiveStateResolver<S> liveStateResolver,
       @Nonnull ValueResolver<S> valueResolver) {
-    return Objects.requireNonNull(scope, "scope")
-        .register(
-            new AsyncMetricEntityStateBase(
-                metricEntity,
-                otelRepository,
-                null,
-                null,
-                Collections.emptyList(),
-                baseDimensionsMap,
-                baseAttributes,
-                liveStateResolver,
-                valueResolver));
+    Objects.requireNonNull(scope, "scope");
+    return scope.register(
+        new AsyncMetricEntityStateBase(
+            metricEntity,
+            otelRepository,
+            null,
+            null,
+            Collections.emptyList(),
+            baseDimensionsMap,
+            baseAttributes,
+            scope,
+            liveStateResolver,
+            valueResolver));
   }
 
   /** Same as above, plus a Tehuti sensor; the resolvers apply to OTel only. */
@@ -93,17 +96,18 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       MetricScope scope,
       @Nonnull LiveStateResolver<S> liveStateResolver,
       @Nonnull ValueResolver<S> valueResolver) {
-    return Objects.requireNonNull(scope, "scope")
-        .register(
-            new AsyncMetricEntityStateBase(
-                metricEntity,
-                otelRepository,
-                registerTehutiSensorFn,
-                tehutiMetricNameEnum,
-                tehutiMetricStats,
-                baseDimensionsMap,
-                baseAttributes,
-                liveStateResolver,
-                valueResolver));
+    Objects.requireNonNull(scope, "scope");
+    return scope.register(
+        new AsyncMetricEntityStateBase(
+            metricEntity,
+            otelRepository,
+            registerTehutiSensorFn,
+            tehutiMetricNameEnum,
+            tehutiMetricStats,
+            baseDimensionsMap,
+            baseAttributes,
+            scope,
+            liveStateResolver,
+            valueResolver));
   }
 }

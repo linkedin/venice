@@ -46,7 +46,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
-  /** Open clients built from this config, which share its stats; their OTel gauges report only while this is > 0. */
+  /** Started, unclosed clients built from this config, which share its stats; their OTel gauges report while > 0. */
   private final AtomicInteger openClients = new AtomicInteger();
   private final Executor deserializationExecutor;
   private final ScheduledExecutorService metadataRefreshExecutor;

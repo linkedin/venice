@@ -83,7 +83,7 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         (state, e1, e2) -> 1L);
 
     assertTrue(metricState.emitOpenTelemetryMetrics());
-    verify(mockOtelRepository, times(1)).registerObservableGauge(eq(mockMetricEntity), any());
+    verify(mockOtelRepository, times(1)).registerObservableGauge(eq(mockMetricEntity), any(), any());
 
     int leafCount = 0;
     for (DimensionEnum1 e1: DimensionEnum1.values()) {
@@ -276,7 +276,7 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
     assertFalse(metricState.emitOpenTelemetryMetrics());
     assertNull(metricState.getAttributesByEnum());
     assertNull(metricState.getInstrument());
-    verify(mockOtelRepository, times(0)).registerObservableGauge(eq(mockMetricEntity), any());
+    verify(mockOtelRepository, times(0)).registerObservableGauge(eq(mockMetricEntity), any(), any());
   }
 
   /**
@@ -372,14 +372,14 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
   @SuppressWarnings("unchecked")
   private ArgumentCaptor<Consumer<GaugeObservation>> captureLongCallback() {
     ArgumentCaptor<Consumer<GaugeObservation>> captor = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
+    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), any(), captor.capture())).thenReturn(null);
     return captor;
   }
 
   @SuppressWarnings("unchecked")
   private ArgumentCaptor<Consumer<GaugeObservation>> captureDoubleCallback() {
     ArgumentCaptor<Consumer<GaugeObservation>> captor = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), captor.capture())).thenReturn(null);
+    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), any(), captor.capture())).thenReturn(null);
     return captor;
   }
 }

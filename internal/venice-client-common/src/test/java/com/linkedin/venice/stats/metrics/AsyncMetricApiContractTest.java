@@ -57,7 +57,9 @@ public class AsyncMetricApiContractTest {
         + "    role -> role, (state, role) -> 1L);\n"
         + "AsyncMetricEntityStateTwoEnums.create(metric, repository, dimensions,\n"
         + "    VersionRole.class, RequestType.class,\n"
-        + "    scope, (role, request) -> role, (state, role, request) -> 1L);";
+        + "    scope, (role, request) -> role, (state, role, request) -> 1L);\n"
+        + "repository.registerObservableGauge(metric, scope,\n"
+        + "    observation -> observation.observe(attributes, () -> 1L, value -> value));";
     StringBuilder diagnostics = new StringBuilder();
     Set<String> diagnosticCodes = new HashSet<>();
     assertTrue(compiles(positive, diagnostics, diagnosticCodes), "Supported API must compile:\n" + diagnostics);
@@ -67,6 +69,8 @@ public class AsyncMetricApiContractTest {
             + "    () -> 1L, value -> value);",
         "repository.registerObservableLongGauge(metric, measurement -> measurement.record(1L, attributes));",
         "repository.registerObservableDoubleGauge(metric, measurement -> measurement.record(1.0, attributes));",
+        "repository.registerObservableGauge(metric,\n"
+            + "    observation -> observation.observe(attributes, () -> 1L, value -> value));",
         "AsyncMetricEntityStateOneEnum.create(metric, repository, dimensions, VersionRole.class, scope);",
         "AsyncMetricEntityStateOneEnum.create(metric, repository, dimensions, VersionRole.class,\n"
             + "    role -> role, (state, role) -> 1L);",

@@ -147,7 +147,7 @@ public class AsyncMetricEntityStateTest {
   public void testCreateMetricWithOtelEnabled() {
     when(mockMetricEntity.getMetricType()).thenReturn(ASYNC_GAUGE);
     ObservableLongGauge mockLongGauge = mock(ObservableLongGauge.class);
-    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(mockLongGauge);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any(), any())).thenReturn(mockLongGauge);
 
     // ASYNC_GAUGE (state resolver) without tehuti sensor
     AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.createWithState(
@@ -181,7 +181,7 @@ public class AsyncMetricEntityStateTest {
     // ASYNC_DOUBLE_GAUGE (state resolver) without tehuti sensor
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
     ObservableDoubleGauge mockDoubleGauge = mock(ObservableDoubleGauge.class);
-    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(mockDoubleGauge);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any(), any())).thenReturn(mockDoubleGauge);
 
     metricEntityState = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
@@ -467,7 +467,7 @@ public class AsyncMetricEntityStateTest {
 
     // case 4: MetricType is ASYNC_DOUBLE_GAUGE, but tehuti has Count instead of AsyncGauge
     ObservableDoubleGauge mockGauge = mock(ObservableDoubleGauge.class);
-    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(mockGauge);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any(), any())).thenReturn(mockGauge);
     MetricEntity ratioEntity = new MetricEntity(
         "test_ratio",
         MetricType.ASYNC_DOUBLE_GAUGE,
@@ -626,7 +626,7 @@ public class AsyncMetricEntityStateTest {
   @Test
   public void testCloseClosesAsyncGaugeOnce() {
     ObservableLongGauge gauge = mock(ObservableLongGauge.class);
-    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any())).thenReturn(gauge);
+    when(mockOtelRepository.registerObservableGauge(any(MetricEntity.class), any(), any())).thenReturn(gauge);
     AsyncMetricEntityStateBase state = AsyncMetricEntityStateBase.createWithState(
         mockMetricEntity,
         mockOtelRepository,

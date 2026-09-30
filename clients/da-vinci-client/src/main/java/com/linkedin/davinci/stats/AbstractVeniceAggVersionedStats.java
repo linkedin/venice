@@ -250,6 +250,11 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    */
   protected final class PerStoreVersionedOtelStats<OTEL_STATS extends StoreOtelStats> {
     private final Map<String, OTEL_STATS> statsByStore = new VeniceConcurrentHashMap<>();
+    /**
+     * The latest versions given for each store, kept while it has no stats, so stats created right after an update
+     * that found none to update still get that update's versions.
+     */
+    private final Map<String, StoreVersions> latestVersions = new VeniceConcurrentHashMap<>();
     private final Function<String, OTEL_STATS> statsFactory;
 
     private PerStoreVersionedOtelStats(Function<String, OTEL_STATS> statsFactory) {
@@ -266,25 +271,15 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       if (existing != null) {
         return existing;
       }
-      int currentVersion = getCurrentVersion(storeName);
-      int futureVersion = getFutureVersion(storeName);
-      return statsByStore.computeIfAbsent(storeName, name -> {
-        OTEL_STATS stats = statsFactory.apply(name);
-        stats.updateVersionInfo(currentVersion, futureVersion);
-        return stats;
-      });
+      StoreVersions versions = readVersions(storeName);
+      return statsByStore.computeIfAbsent(storeName, name -> create(name, versions));
     }
 
     /** Runs {@code action} on the store's stats, creating them if absent, atomically with {@link #removeIf}. */
     public void compute(String storeName, Consumer<OTEL_STATS> action) {
-      int currentVersion = getCurrentVersion(storeName);
-      int futureVersion = getFutureVersion(storeName);
+      StoreVersions versions = readVersions(storeName);
       statsByStore.compute(storeName, (name, existing) -> {
-        OTEL_STATS stats = existing;
-        if (stats == null) {
-          stats = statsFactory.apply(name);
-          stats.updateVersionInfo(currentVersion, futureVersion);
-        }
+        OTEL_STATS stats = existing != null ? existing : create(name, versions);
         action.accept(stats);
         return stats;
       });
@@ -306,7 +301,23 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       return statsByStore;
     }
 
+    private StoreVersions readVersions(String storeName) {
+      return new StoreVersions(getCurrentVersion(storeName), getFutureVersion(storeName));
+    }
+
+    /**
+     * Creates a store's stats under its map lock. An update that ran after {@code versionsReadEarlier} were read found
+     * no stats to update, so the versions it recorded take precedence.
+     */
+    private OTEL_STATS create(String storeName, StoreVersions versionsReadEarlier) {
+      OTEL_STATS stats = statsFactory.apply(storeName);
+      StoreVersions versions = latestVersions.getOrDefault(storeName, versionsReadEarlier);
+      stats.updateVersionInfo(versions.currentVersion, versions.futureVersion);
+      return stats;
+    }
+
     private void updateVersionInfo(String storeName, int currentVersion, int futureVersion) {
+      latestVersions.put(storeName, new StoreVersions(currentVersion, futureVersion));
       statsByStore.computeIfPresent(storeName, (name, stats) -> {
         stats.updateVersionInfo(currentVersion, futureVersion);
         return stats;
@@ -314,10 +325,22 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     }
 
     private void remove(String storeName) {
+      latestVersions.remove(storeName);
       statsByStore.computeIfPresent(storeName, (name, stats) -> {
         stats.close();
         return null;
       });
+    }
+  }
+
+  /** A store's current and future versions. */
+  private static final class StoreVersions {
+    private final int currentVersion;
+    private final int futureVersion;
+
+    private StoreVersions(int currentVersion, int futureVersion) {
+      this.currentVersion = currentVersion;
+      this.futureVersion = futureVersion;
     }
   }
 }

@@ -1299,6 +1299,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             "Cannot get latest position for admin topic: {}, skip this round of lag metrics emission",
             adminTopicPartition);
         stats.setAdminConsumptionOffsetLag(Long.MAX_VALUE);
+        stats.markAdminConsumptionOffsetLagsUnknown();
         return;
       }
 
@@ -1313,6 +1314,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.setMaxAdminConsumptionOffsetLag(
           topicManager.diffPosition(adminTopicPartition, latestPosition, lastPersistedPosition) - 1);
     } catch (Exception e) {
+      stats.markAdminConsumptionOffsetLagsUnknown();
       LOGGER.error(
           "Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
     }

@@ -113,7 +113,7 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
       attributesByEnum.put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue));
     }
 
-    Object instrument = otelRepository.registerObservableGauge(metricEntity, observation -> {
+    Object instrument = otelRepository.registerObservableGauge(metricEntity, scope, observation -> {
       for (E enumValue: enumConstants) {
         observation.observe(
             attributesByEnum.get(enumValue),

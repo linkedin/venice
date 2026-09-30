@@ -89,6 +89,12 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * the maxAdminConsumptionOffsetLag is equal to adminConsumptionOffsetLag, unless there is a failed admin message.
    */
   private volatile Long maxAdminConsumptionOffsetLag;
+  /**
+   * Whether each lag above comes from a collection since the last failed or incomplete one. OTel reports a lag only
+   * while its flag is set; Tehuti always reports the last value.
+   */
+  private volatile boolean adminConsumptionOffsetLagCollected;
+  private volatile boolean maxAdminConsumptionOffsetLagCollected;
 
   /**
    * Total end to end latency from the time when the message was first generated in the parent controller to when it's
@@ -249,6 +255,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         baseAttributes,
         getMetricScope(),
         () -> {
+          if (!adminConsumptionOffsetLagCollected) {
+            return null;
+          }
           Long value = this.adminConsumptionOffsetLag;
           return value == null || value == Long.MAX_VALUE ? null : value;
         },
@@ -266,7 +275,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes,
         getMetricScope(),
-        () -> this.maxAdminConsumptionOffsetLag,
+        () -> maxAdminConsumptionOffsetLagCollected ? this.maxAdminConsumptionOffsetLag : null,
         Long::longValue);
 
     // Tehuti-only
@@ -328,10 +337,21 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {
     this.adminConsumptionOffsetLag = adminConsumptionOffsetLag;
+    this.adminConsumptionOffsetLagCollected = true;
   }
 
   public void setMaxAdminConsumptionOffsetLag(long maxAdminConsumptionOffsetLag) {
     this.maxAdminConsumptionOffsetLag = maxAdminConsumptionOffsetLag;
+    this.maxAdminConsumptionOffsetLagCollected = true;
+  }
+
+  /**
+   * Marks both lags unknown after a lag collection fails or can't find the admin topic's end position: OTel omits
+   * each lag until it is collected again, and Tehuti keeps reporting the last values.
+   */
+  public void markAdminConsumptionOffsetLagsUnknown() {
+    this.adminConsumptionOffsetLagCollected = false;
+    this.maxAdminConsumptionOffsetLagCollected = false;
   }
 
   /** Clears both lags once this controller stops consuming the admin topic: Tehuti reads 0 and OTel omits them. */

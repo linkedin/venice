@@ -1927,7 +1927,7 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   @Test
-  public void testConfigOtelGaugesReportOnlyWhileAClientOfTheConfigIsOpen() {
+  public void testConfigOtelGaugesReportOnlyWhileAStartedClientOfTheConfigIsOpen() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
@@ -1937,20 +1937,34 @@ public class DispatchingAvroGenericStoreClientTest {
         .setClusterDiscoveryD2Service("test_server_discovery")
         .setMetricsRepository(metricsRepository)
         .build();
-    Supplier<DispatchingAvroGenericStoreClient> openClient =
+    Supplier<DispatchingAvroGenericStoreClient> newClient =
         () -> new DispatchingAvroGenericStoreClient(mock(StoreMetadata.class), config, mock(TransportClient.class));
     config.getClusterStats().updateCurrentVersion(2);
     String currentVersion = ClusterMetricEntity.STORE_VERSION_CURRENT.getMetricEntity().getMetricName();
     String staleness = FastClientMetricEntity.METADATA_STALENESS_DURATION.getMetricEntity().getMetricName();
+
+    // Neither a client that is never started nor one whose start fails counts as open.
+    DispatchingAvroGenericStoreClient unstarted = newClient.get();
+    StoreMetadata failingMetadata = mock(StoreMetadata.class);
+    doThrow(new VeniceClientException("Mock start failure")).when(failingMetadata).start();
+    DispatchingAvroGenericStoreClient failedStart =
+        new DispatchingAvroGenericStoreClient(failingMetadata, config, mock(TransportClient.class));
+    Assert.assertThrows(VeniceClientException.class, failedStart::start);
     assertFalse(hasGaugePoint(reader, currentVersion));
     assertFalse(hasGaugePoint(reader, staleness));
 
-    DispatchingAvroGenericStoreClient first = openClient.get();
-    DispatchingAvroGenericStoreClient second = openClient.get();
+    DispatchingAvroGenericStoreClient first = newClient.get();
+    DispatchingAvroGenericStoreClient second = newClient.get();
+    first.start();
+    second.start();
+    second.start();
     assertTrue(hasGaugePoint(reader, currentVersion));
     assertTrue(hasGaugePoint(reader, staleness));
 
-    // Clients of one config share its stats, so the gauges stay while any of them is open; a repeated close is a no-op.
+    // Clients of one config share its stats, so the gauges stay while any started one is open. Closing a client that
+    // never started, or closing one again, changes nothing.
+    unstarted.close();
+    failedStart.close();
     first.close();
     first.close();
     assertTrue(hasGaugePoint(reader, currentVersion));
@@ -1961,7 +1975,8 @@ public class DispatchingAvroGenericStoreClientTest {
     assertFalse(hasGaugePoint(reader, staleness));
     assertNotNull(metricsRepository.getMetric("." + STORE_NAME + "--current_version.Gauge"));
 
-    DispatchingAvroGenericStoreClient reopened = openClient.get();
+    DispatchingAvroGenericStoreClient reopened = newClient.get();
+    reopened.start();
     assertTrue(hasGaugePoint(reader, currentVersion));
     assertTrue(hasGaugePoint(reader, staleness));
     reopened.close();

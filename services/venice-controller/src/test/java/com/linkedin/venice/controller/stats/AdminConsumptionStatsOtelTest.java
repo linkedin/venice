@@ -433,6 +433,54 @@ public class AdminConsumptionStatsOtelTest {
   }
 
   @Test
+  public void testUnknownOffsetLagsAreOmittedUntilCollectedAgain() {
+    stats.setAdminConsumptionOffsetLag(1000L);
+    stats.setMaxAdminConsumptionOffsetLag(2000L);
+    validateGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        1000,
+        clusterAttributes());
+    validateGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG
+            .getMetricName(),
+        2000,
+        clusterAttributes());
+
+    stats.markAdminConsumptionOffsetLagsUnknown();
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        clusterAttributes());
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG
+            .getMetricName(),
+        clusterAttributes());
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        1000.0);
+    validateTehutiMetric(
+        AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG,
+        "Gauge",
+        2000.0);
+
+    // Each lag reports again once it is collected again.
+    stats.setMaxAdminConsumptionOffsetLag(1500L);
+    validateGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG
+            .getMetricName(),
+        1500,
+        clusterAttributes());
+    validateNoGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        clusterAttributes());
+    stats.setAdminConsumptionOffsetLag(500L);
+    validateGauge(
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricName(),
+        500,
+        clusterAttributes());
+  }
+
+  @Test
   public void testAsyncGaugesOmitBeforeFirstUpdate() {
     validateNoGauge(
         AdminConsumptionStats.AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT.getMetricName(),

@@ -88,6 +88,7 @@ public abstract class AsyncMetricEntityState implements AutoCloseable {
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
+      MetricScope scope,
       LiveStateResolver<S> liveStateResolver,
       ValueResolver<S> valueResolver,
       Attributes asyncAttributes) {
@@ -110,6 +111,7 @@ public abstract class AsyncMetricEntityState implements AutoCloseable {
       setOtelMetric(
           otelRepository.registerObservableGauge(
               this.metricEntity,
+              scope,
               observation -> observation.observe(asyncAttributes, liveStateResolver, valueResolver)));
     }
     registerTehutiSensor(registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);

@@ -11,6 +11,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.GaugeObservation;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -55,6 +56,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -246,6 +248,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
+  /** Gauges from {@link #registerObservableGauge} that are still open, so each is closed only once. */
+  private final Set<Object> openObservableGauges = VeniceConcurrentHashMap.newKeySet();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -514,10 +518,15 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * Registers an async gauge whose callback emits through {@link GaugeObservation#of}, so null state, non-finite
-   * values and resolver failures emit no sample. Close the returned handle with {@link #closeObservableInstrument}.
+   * Registers an async gauge owned by {@code scope}: closing the scope stops it, as does closing it earlier with
+   * {@link #closeObservableInstrument}. Its callback emits through {@link GaugeObservation#of}, so null state,
+   * non-finite values and resolver failures emit no sample.
    */
-  public Object registerObservableGauge(MetricEntity metricEntity, @Nonnull Consumer<GaugeObservation> reportCallback) {
+  public Object registerObservableGauge(
+      MetricEntity metricEntity,
+      @Nonnull MetricScope scope,
+      @Nonnull Consumer<GaugeObservation> reportCallback) {
+    Objects.requireNonNull(scope, "scope");
     MetricType metricType = metricEntity.getMetricType();
     if (metricType != MetricType.ASYNC_GAUGE && metricType != MetricType.ASYNC_DOUBLE_GAUGE) {
       throw new IllegalArgumentException(
@@ -527,9 +536,16 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
+    Object gauge = buildObservableGauge(metricEntity, reportCallback);
+    openObservableGauges.add(gauge);
+    scope.register(() -> closeObservableInstrument(metricEntity, gauge));
+    return gauge;
+  }
+
+  private Object buildObservableGauge(MetricEntity metricEntity, Consumer<GaugeObservation> reportCallback) {
     Consumer<Exception> onFailure = e -> recordFailureMetric(metricEntity, e);
     try {
-      if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
+      if (metricEntity.getMetricType() == MetricType.ASYNC_DOUBLE_GAUGE) {
         return meter.gaugeBuilder(getFullMetricName(metricEntity))
             .setUnit(metricEntity.getUnit().name())
             .setDescription(getMetricDescription(metricEntity, metricsConfig))
@@ -550,7 +566,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    * methods, so the OTel SDK stops invoking its callback. The SDK retains every callback until the
    * returned handle is closed, so callers that re-register an observable must close the previous
    * handle to avoid leaking callbacks and emitting duplicate data points under stale attributes.
-   * No-op if the handle is null (OTel disabled).
+   * No-op if the handle is null (OTel disabled). A gauge closes only once, however many of its owners close it.
    */
   public void closeObservableInstrument(MetricEntity metricEntity, Object instrument) {
     if (instrument == null) {
@@ -558,10 +574,14 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
     switch (metricEntity.getMetricType()) {
       case ASYNC_GAUGE:
-        ((ObservableLongGauge) instrument).close();
+        if (openObservableGauges.remove(instrument)) {
+          ((ObservableLongGauge) instrument).close();
+        }
         break;
       case ASYNC_DOUBLE_GAUGE:
-        ((ObservableDoubleGauge) instrument).close();
+        if (openObservableGauges.remove(instrument)) {
+          ((ObservableDoubleGauge) instrument).close();
+        }
         break;
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
         ((ObservableLongCounter) instrument).close();

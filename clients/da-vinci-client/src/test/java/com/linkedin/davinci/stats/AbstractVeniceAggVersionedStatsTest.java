@@ -95,6 +95,26 @@ public class AbstractVeniceAggVersionedStatsTest {
     assertEquals(stats.getOtelStats(STORE_NAME).updateCount, 1);
   }
 
+  @Test
+  public void testStoreChangeWhileCreatingStatsIsNotLost() {
+    Store store = createStore(STORE_NAME, 1, createVersion(STORE_NAME, 1, VersionStatus.ONLINE));
+    TestAggStats stats = createStats(store, true);
+    Store updated = createStore(
+        STORE_NAME,
+        2,
+        createVersion(STORE_NAME, 1, VersionStatus.ONLINE),
+        createVersion(STORE_NAME, 2, VersionStatus.ONLINE),
+        createVersion(STORE_NAME, 3, VersionStatus.STARTED));
+    // The store changes after getOrCreate reads its versions but before it creates the stats, so the change finds no
+    // stats to update.
+    stats.afterReadingVersions = () -> stats.handleStoreChanged(updated);
+
+    TestStoreOtelStats storeStats = stats.getOrCreateOtelStats(STORE_NAME);
+
+    assertEquals(storeStats.currentVersion, 2);
+    assertEquals(storeStats.futureVersion, 3);
+  }
+
   private void assertStoreDeletionClosesAndRemovesStats(boolean unregisterMetricForDeletedStoreEnabled) {
     Store store = createStore(STORE_NAME, 1, createVersion(STORE_NAME, 1, VersionStatus.ONLINE));
     TestAggStats stats = createStats(store, unregisterMetricForDeletedStoreEnabled);
@@ -130,6 +150,8 @@ public class AbstractVeniceAggVersionedStatsTest {
 
   private static class TestAggStats extends AbstractVeniceAggVersionedStats<Object, TestStatsReporter> {
     private final PerStoreVersionedOtelStats<TestStoreOtelStats> otelStats;
+    /** Runs once, right after the registry reads a store's future version. */
+    private Runnable afterReadingVersions;
 
     TestAggStats(
         MetricsRepository metricsRepository,
@@ -142,6 +164,17 @@ public class AbstractVeniceAggVersionedStatsTest {
           TestStatsReporter::new,
           unregisterMetricForDeletedStoreEnabled);
       otelStats = createPerStoreOtelStats(TestStoreOtelStats::new);
+    }
+
+    @Override
+    protected int getFutureVersion(String storeName) {
+      int futureVersion = super.getFutureVersion(storeName);
+      Runnable hook = afterReadingVersions;
+      afterReadingVersions = null;
+      if (hook != null) {
+        hook.run();
+      }
+      return futureVersion;
     }
 
     TestStoreOtelStats getOrCreateOtelStats(String storeName) {

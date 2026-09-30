@@ -54,7 +54,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -79,7 +79,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final ClientConfig config;
   private final TransportClient transportClient;
   private final Executor deserializationExecutor;
-  private final AtomicBoolean closed = new AtomicBoolean();
+
+  /** Only a started client that is not closed yet counts as open for its config's shared OTel gauges. */
+  private enum Lifecycle {
+    NEW, STARTED, CLOSED
+  }
+
+  private final AtomicReference<Lifecycle> lifecycle = new AtomicReference<>(Lifecycle.NEW);
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
@@ -130,7 +136,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     } else {
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
     }
-    config.onClientOpened();
   }
 
   protected StoreMetadata getStoreMetadata() {
@@ -757,6 +762,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public void start() throws VeniceClientException {
     metadata.start();
+    // A client counts as open only once started, so one that fails to construct or start never keeps the config's
+    // gauges reporting.
+    if (lifecycle.compareAndSet(Lifecycle.NEW, Lifecycle.STARTED)) {
+      config.onClientOpened();
+    }
   }
 
   protected RecordSerializer<K> getKeySerializer(Schema keySchema) {
@@ -776,7 +786,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     } catch (Exception e) {
       throw new VeniceClientException("Failed to close store metadata", e);
     } finally {
-      if (closed.compareAndSet(false, true)) {
+      if (lifecycle.getAndSet(Lifecycle.CLOSED) == Lifecycle.STARTED) {
         config.onClientClosed();
       }
     }
