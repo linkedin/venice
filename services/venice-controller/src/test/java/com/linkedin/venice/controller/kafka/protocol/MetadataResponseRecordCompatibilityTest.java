@@ -2,16 +2,47 @@ package com.linkedin.venice.controller.kafka.protocol;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.GenericRecordBuilder;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibilityTest {
+  @Test
+  public void testStagedV5Compatibility() throws IOException, InterruptedException {
+    // Validate the staged resource independently of the active protocol and generated record.
+    Schema v4 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v4/MetadataResponseRecord.avsc");
+    Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
+    Map<Integer, Schema> schemaMap = new HashMap<>();
+    schemaMap.put(4, v4);
+    schemaMap.put(5, v5);
+    testProtocolCompatibility(schemaMap, 5);
+
+    GenericRecord v4Record = new GenericRecordBuilder(v4).set("versions", Collections.emptyList()).build();
+    byte[] v4Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v4).serialize(v4Record);
+    GenericRecord v5Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v4, v5).deserialize(v4Bytes);
+    Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "");
+
+    GenericRecord v5Record = new GenericRecordBuilder(v5).set("versions", Collections.emptyList())
+        .set("batchGetLimit", 500)
+        .set("multiKeyLongTailRetryThresholdsInMs", "1-:8")
+        .build();
+    byte[] v5Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v5).serialize(v5Record);
+    GenericRecord v4Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v5, v4).deserialize(v5Bytes);
+    Assert.assertEquals(v4Reader.get("batchGetLimit"), 500);
+    Assert.assertNull(v4Reader.getSchema().getField("multiKeyLongTailRetryThresholdsInMs"));
+  }
+
   @Test
   public void testMetadataResponseRecordCompatibility() throws InterruptedException {
     Map<Integer, Schema> schemaMap = initMetadataResponseRecordSchemaMap();
