@@ -118,7 +118,8 @@ public class TestEncryptedStoreMigration {
     StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
     StoreMigrationTestUtil.completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
 
-    try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+    try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
+        ControllerClient childDestControllerClient = new ControllerClient(destClusterName, childControllerUrl0)) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse destStoreResponse = destParentControllerClient.getStore(storeName);
         Assert.assertFalse(destStoreResponse.isError());
@@ -126,6 +127,17 @@ public class TestEncryptedStoreMigration {
             destStoreResponse.getStore().getPubSubEncryptionKeyUrn(),
             keyUrn,
             "The migrated store's key URN must match the source store's key URN");
+      });
+
+      // requestTopicForWrites succeeds off the parent's persisted key alone, so it would miss a destination child
+      // that never applied the migration's clone update-store message. Confirm the child's local state directly.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse childDestStoreResponse = childDestControllerClient.getStore(storeName);
+        Assert.assertFalse(childDestStoreResponse.isError());
+        Assert.assertEquals(
+            childDestStoreResponse.getStore().getPubSubEncryptionKeyUrn(),
+            keyUrn,
+            "The destination child region must have the migrated key URN persisted locally");
       });
 
       VersionCreationResponse versionCreationResponse = destParentControllerClient.requestTopicForWrites(
