@@ -384,8 +384,8 @@ public abstract class AsyncMetricEntityState implements AutoCloseable {
   }
 
   /**
-   * Stops OTel reporting. Gauges stop at once. Observable counters retire from their own callback after
-   * the next collection reports their final totals, so increments since the previous export are kept.
+   * Stops OTel reporting. Gauges stop at once. Observable counters report their final totals for one more collection
+   * per metric reader, then retire from their own callback, so increments since the previous export are kept.
    */
   @Override
   public void close() {

@@ -271,6 +271,37 @@ public class MetricEntityStateTest {
   }
 
   @Test
+  public void testCloseRetiresObservableCounterAfterOneReportPerReader() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES);
+    when(mockOtelRepository.getMetricReaderCount()).thenReturn(2);
+    ObservableLongCounter counter = mock(ObservableLongCounter.class);
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callback = ArgumentCaptor.forClass(Consumer.class);
+    when(mockOtelRepository.registerObservableLongCounter(eq(mockMetricEntity), callback.capture()))
+        .thenReturn(counter);
+
+    MetricEntityStateBase metricEntityState =
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+    metricEntityState.record(3L);
+    metricEntityState.close();
+
+    // Each of the two readers collects the final total; the counter retires after the second collection.
+    ObservableLongMeasurement firstReader = mock(ObservableLongMeasurement.class);
+    callback.getValue().accept(firstReader);
+    verify(firstReader).record(3L, baseAttributes);
+    verify(mockOtelRepository, never()).closeObservableInstrument(any(), any());
+
+    ObservableLongMeasurement secondReader = mock(ObservableLongMeasurement.class);
+    callback.getValue().accept(secondReader);
+    verify(secondReader).record(3L, baseAttributes);
+    verify(mockOtelRepository, times(1)).closeObservableInstrument(mockMetricEntity, counter);
+
+    // A collection that was already running when it retired doesn't close it again.
+    callback.getValue().accept(mock(ObservableLongMeasurement.class));
+    verify(mockOtelRepository, times(1)).closeObservableInstrument(mockMetricEntity, counter);
+  }
+
+  @Test
   public void testRecordOtelMetricGauge() {
     LongGauge longGauge = mock(LongGauge.class);
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.GAUGE);

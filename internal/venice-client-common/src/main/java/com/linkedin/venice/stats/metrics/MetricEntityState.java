@@ -11,6 +11,7 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.ObjDoubleConsumer;
 import java.util.function.ObjLongConsumer;
 
@@ -26,6 +27,8 @@ import java.util.function.ObjLongConsumer;
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
   private final boolean isObservableCounter;
+  /** Observable-counter reports since this state closed; see {@link #reportToMeasurement}. */
+  private final AtomicInteger reportsSinceClose = new AtomicInteger();
   /** define both long and double consumer to avoid unnecessary conversions **/
   private final ObjDoubleConsumer<MetricAttributesData> otelDoubleRecordingStrategy;
   private final ObjLongConsumer<MetricAttributesData> otelLongRecordingStrategy;
@@ -91,8 +94,10 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
    * counter values when traffic varied between collection intervals.
    */
   private void reportToMeasurement(ObservableLongMeasurement measurement) {
-    // Read before reporting so that, once closed, this report carries the final totals before retiring.
-    boolean retire = isClosed();
+    // Each reader collects separately, so once closed the counter retires only after one report per reader, and every
+    // reader gets the final totals. Read before reporting so that this report carries them.
+    boolean retire =
+        isClosed() && reportsSinceClose.incrementAndGet() == Math.max(1, otelRepository.getMetricReaderCount());
     Iterable<MetricAttributesData> allData = getAllMetricAttributesData();
     if (allData != null) {
       for (MetricAttributesData holder: allData) {

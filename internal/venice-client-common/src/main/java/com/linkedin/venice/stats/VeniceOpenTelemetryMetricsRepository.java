@@ -77,6 +77,11 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final OpenTelemetry openTelemetry;
   /** SdkMeterProvider that is used to create the OpenTelemetry instance */
   private SdkMeterProvider sdkMeterProvider = null;
+  /**
+   * Readers that each collect every observable instrument separately. It stays 1 when the application initialized
+   * OpenTelemetry, because its readers aren't visible here.
+   */
+  private int metricReaderCount = 1;
 
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
@@ -138,6 +143,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     this.metricPrefix = newMetricPrefix;
     this.openTelemetry = parent.openTelemetry;
     this.sdkMeterProvider = null; // Child does not own the provider
+    this.metricReaderCount = parent.metricReaderCount;
     validateMetricName(getMetricPrefix());
 
     if (emitOpenTelemetryMetrics && openTelemetry != null) {
@@ -161,6 +167,11 @@ public class VeniceOpenTelemetryMetricsRepository {
     return new VeniceOpenTelemetryMetricsRepository(this, newMetricPrefix);
   }
 
+  /** The number of readers that each collect every observable instrument separately; at least 1. */
+  public int getMetricReaderCount() {
+    return metricReaderCount;
+  }
+
   private OpenTelemetry initializeOpenTelemetry(VeniceMetricsConfig metricsConfig) {
     OpenTelemetry otel;
     if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
@@ -182,6 +193,7 @@ public class VeniceOpenTelemetryMetricsRepository {
         metricsConfig.toString());
     try {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+      int readerCount = 0;
 
       if (metricsConfig.exportOtelMetricsToEndpoint()) {
         MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
@@ -189,6 +201,7 @@ public class VeniceOpenTelemetryMetricsRepository {
             PeriodicMetricReader.builder(httpExporter)
                 .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
                 .build());
+        readerCount++;
       }
 
       if (metricsConfig.exportOtelMetricsToLog()) {
@@ -197,13 +210,16 @@ public class VeniceOpenTelemetryMetricsRepository {
             PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
                 .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
                 .build());
+        readerCount++;
       }
 
       if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
         // additional metrics reader apart from the above. For instance,
         // an in-memory metric reader can be passed in for testing purposes.
         builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
+        readerCount++;
       }
+      this.metricReaderCount = Math.max(1, readerCount);
 
       if (metricsConfig.useOtelExponentialHistogram()) {
         setExponentialHistogramAggregation(builder, metricsConfig);

@@ -1585,6 +1585,28 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     }
   }
 
+  @Test
+  public void testMetricReaderCountCountsEveryRegisteredReader() {
+    VeniceOpenTelemetryMetricsRepository oneReader = createOtelRepoForTest(InMemoryMetricReader.create());
+    VeniceOpenTelemetryMetricsRepository twoReaders = new VeniceOpenTelemetryMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName("test_service")
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setExportOtelMetricsToEndpoint(false)
+            .setExportOtelMetricsToLog(true)
+            .setUseOtelExponentialHistogram(false)
+            .setOtelAdditionalMetricsReader(InMemoryMetricReader.create())
+            .build());
+    try {
+      assertEquals(oneReader.getMetricReaderCount(), 1);
+      assertEquals(twoReaders.getMetricReaderCount(), 2);
+      assertEquals(twoReaders.cloneWithNewMetricPrefix("child_prefix").getMetricReaderCount(), 2);
+    } finally {
+      oneReader.close();
+      twoReaders.close();
+    }
+  }
+
   /** Creates a VeniceOpenTelemetryMetricsRepository with the given reader for test use. */
   private static VeniceOpenTelemetryMetricsRepository createOtelRepoForTest(InMemoryMetricReader reader) {
     VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
