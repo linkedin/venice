@@ -2009,6 +2009,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
+    StoreMigrationHelper.validateSourceStoreEncryptionKeyForMigration(
+        getControllerConfig(destClusterName).isEncryptionCluster(),
+        srcStore.getPubSubEncryptionKeyUrn(),
+        srcClusterName,
+        destClusterName,
+        storeName);
+
     if (!isParent()) {
       // Update store and storeConfig to support single datacenter store migration
       this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));

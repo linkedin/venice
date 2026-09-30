@@ -129,4 +129,30 @@ public class StoreMigrationHelperTest {
         exception.getMessage()
             .contains("migrating between an encryption cluster and a non-encryption cluster is not allowed"));
   }
+
+  @Test
+  public void testBlocksMigrationOfLegacyKeylessStoreIntoEncryptionCluster() {
+    VeniceHttpException exception = expectThrows(
+        VeniceHttpException.class,
+        () -> StoreMigrationHelper
+            .validateSourceStoreEncryptionKeyForMigration(true, null, SRC_CLUSTER, DEST_CLUSTER, STORE_NAME));
+    assertTrue(exception.getHttpStatusCode() == HttpStatus.SC_BAD_REQUEST);
+    assertTrue(exception.getMessage().contains("does not have a pubSubEncryptionKeyUrn configured"));
+  }
+
+  @Test
+  public void testAllowsMigrationOfKeyedStoreIntoEncryptionCluster() {
+    StoreMigrationHelper.validateSourceStoreEncryptionKeyForMigration(
+        true,
+        "urn:li:pubSubEncryptionKey:test-key",
+        SRC_CLUSTER,
+        DEST_CLUSTER,
+        STORE_NAME);
+  }
+
+  @Test
+  public void testAllowsMigrationOfKeylessStoreIntoNonEncryptionCluster() {
+    StoreMigrationHelper
+        .validateSourceStoreEncryptionKeyForMigration(false, null, SRC_CLUSTER, DEST_CLUSTER, STORE_NAME);
+  }
 }

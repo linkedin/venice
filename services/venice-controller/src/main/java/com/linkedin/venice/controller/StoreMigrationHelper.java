@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.Logger;
 
@@ -37,6 +38,30 @@ final class StoreMigrationHelper {
           HttpStatus.SC_BAD_REQUEST,
           "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
               + " because migrating between an encryption cluster and a non-encryption cluster is not allowed.",
+          ErrorType.BAD_REQUEST);
+    }
+  }
+
+  /**
+   * The destination store is created with its own {@code encryptionEnabled} flag derived from the destination
+   * cluster's current policy, independent of the source store's (possibly stale) flag. So a store created before
+   * its source cluster became an encryption cluster can have no pubSubEncryptionKeyUrn, yet still pass
+   * {@link #validateEncryptionClusterMigration} once both clusters are encryption clusters. Migrating it as-is
+   * would create a destination store that is encryption-enabled with no key, which only fails later when a new
+   * version is requested. Fail fast here instead, before any migration state changes.
+   */
+  static void validateSourceStoreEncryptionKeyForMigration(
+      boolean destEncryptionCluster,
+      String srcStorePubSubEncryptionKeyUrn,
+      String srcClusterName,
+      String destClusterName,
+      String storeName) {
+    if (destEncryptionCluster && StringUtils.isBlank(srcStorePubSubEncryptionKeyUrn)) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
+              + " because the store does not have a pubSubEncryptionKeyUrn configured; set pubSubEncryptionKeyUrn "
+              + "through update-store before migrating into an encryption cluster.",
           ErrorType.BAD_REQUEST);
     }
   }

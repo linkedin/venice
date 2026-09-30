@@ -4496,6 +4496,18 @@ public class VeniceParentHelixAdmin implements Admin {
         destClusterName,
         storeName);
 
+    // Store not-found is handled by the updateStore call below, which throws today; skip the key check here so we
+    // don't change that behavior.
+    Store srcStore = getVeniceHelixAdmin().getStore(srcClusterName, storeName);
+    if (srcStore != null) {
+      StoreMigrationHelper.validateSourceStoreEncryptionKeyForMigration(
+          getControllerConfig(destClusterName).isEncryptionCluster(),
+          srcStore.getPubSubEncryptionKeyUrn(),
+          srcClusterName,
+          destClusterName,
+          storeName);
+    }
+
     MigrateStore migrateStore = (MigrateStore) AdminMessageType.MIGRATE_STORE.getNewInstance();
     migrateStore.srcClusterName = srcClusterName;
     migrateStore.destClusterName = destClusterName;
