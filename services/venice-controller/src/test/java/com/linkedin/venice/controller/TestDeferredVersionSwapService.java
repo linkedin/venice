@@ -7,10 +7,13 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
@@ -29,6 +32,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -110,6 +114,7 @@ public class TestDeferredVersionSwapService {
       Map<Integer, VersionStatus> versions,
       String name) {
     Store store = mock(Store.class);
+    doReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS).when(store).getBootstrapToOnlineTimeoutInHours();
     doReturn(waitTime).when(store).getTargetSwapRegionWaitTime();
     doReturn(targetRegions).when(store).getTargetSwapRegion();
     doReturn(currentVersion).when(store).getCurrentVersion();
@@ -118,6 +123,7 @@ public class TestDeferredVersionSwapService {
     versions.forEach((n, s) -> {
       Version v = mock(Version.class);
       doReturn(n).when(v).getNumber();
+      doReturn(System.currentTimeMillis()).when(v).getCreatedTime();
       doReturn(s).when(v).getStatus();
       doReturn(v).when(store).getVersion(n);
       doReturn(targetRegions).when(v).getTargetSwapRegion();
@@ -194,6 +200,12 @@ public class TestDeferredVersionSwapService {
     doReturn(veniceHelixAdmin).when(admin).getVeniceHelixAdmin();
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     repository = mock(ReadWriteStoreRepository.class);
+    doAnswer(
+        invocation -> admin.getAllStores(clusterName)
+            .stream()
+            .filter(store -> store.getName().equals(invocation.getArgument(0)))
+            .findFirst()
+            .orElse(null)).when(repository).getStore(anyString());
     doReturn(repository).when(resources).getStoreMetadataRepository();
     doReturn(resources).when(veniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
 
@@ -1123,5 +1135,437 @@ public class TestDeferredVersionSwapService {
     });
 
     service.stopInner();
+  }
+
+  @DataProvider
+  public Object[][] rolloutModes() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testMissingVersionRecoversAfterMoreThanFivePasses(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      for (int pass = 0; pass < 8; pass++) {
+        context.runPass();
+        context.time.addMilliseconds(veniceControllerMultiClusterConfig.getDeferredVersionSwapSleepMs());
+        Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+        Assert.assertEquals(context.parent.getCurrentVersion(), versionOne);
+      }
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionTwo);
+      verify(admin, times(1)).rollForwardToFutureVersion(clusterName, context.storeName, region2);
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testUnavailableChildMetadataRemainsPending(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      StoreResponse unavailable = new StoreResponse();
+      unavailable.setError("Temporarily unavailable");
+      doReturn(unavailable).when(context.clients.get(region2)).getStore(anyString(), anyInt());
+      for (int pass = 0; pass < 8; pass++) {
+        context.runPass();
+      }
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+      doReturn(context.childResponse).when(context.clients.get(region2)).getStore(anyString(), anyInt());
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+    }
+  }
+
+  @DataProvider
+  public Object[][] terminalRetryStates() {
+    List<Object[]> cases = new ArrayList<>();
+    for (boolean sequential: new boolean[] { false, true }) {
+      for (VersionStatus status: Arrays.asList(
+          VersionStatus.KILLED,
+          VersionStatus.ERROR,
+          VersionStatus.ROLLED_BACK,
+          VersionStatus.PARTIALLY_ONLINE)) {
+        cases.add(new Object[] { sequential, status });
+      }
+    }
+    return cases.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "terminalRetryStates")
+  public void testTerminalParentStopsPendingRetry(boolean sequential, VersionStatus status) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.runPass();
+      context.parent.updateVersionStatus(versionTwo, status);
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), status);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionOne);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "terminalRetryStates")
+  public void testTerminalParentDuringChildLookupCannotBePromoted(boolean sequential, VersionStatus status)
+      throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      doAnswer(invocation -> {
+        context.parent.updateVersionStatus(versionTwo, status);
+        return context.childResponse;
+      }).when(context.clients.get(region2)).getStore(anyString(), anyInt());
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), status);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testSupersededVersionCannotResumeOrOverwriteParent(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.runPass();
+      context.parent.addVersion(new VersionImpl(context.storeName, 3));
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      context.service.updateStore(clusterName, context.storeName, VersionStatus.ONLINE, context.scheduledVersion);
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionOne);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testSupersessionWhileAcquiringPromotionLockStopsDispatch(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      doAnswer(invocation -> {
+        context.parent.addVersion(new VersionImpl(context.storeName, 3));
+        return null;
+      }).when(admin).acquireAdminMessageLock(clusterName, context.storeName);
+      context.runPass();
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+      verify(admin).releaseAdminMessageLock(clusterName, context.storeName);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionOne);
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testRetryDeadlineSurvivesRestartAndStopsLateArrival(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.time.setTime(context.deadline);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+      context.service.stopInner();
+      context.service = context.newService();
+      context.time.addMilliseconds(1);
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PARTIALLY_ONLINE);
+      context.runPass();
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testArrivalAtDeadlineCanStillBePromoted(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.time.setTime(context.deadline);
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+      verify(admin).rollForwardToFutureVersion(clusterName, context.storeName, region2);
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testDeadlineDuringChildLookupStopsPromotion(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      doAnswer(invocation -> {
+        context.time.setTime(context.deadline + 1);
+        return context.childResponse;
+      }).when(context.clients.get(region2)).getStore(anyString(), anyInt());
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PARTIALLY_ONLINE);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testDeadlineWithoutAnyPromotedRegionIsError(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.parent.setVersionTargetRegionPromoted(versionTwo, false);
+      context.currentVersions.put(region1, versionOne);
+      context.time.setTime(context.deadline + 1);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ERROR);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionOne);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testAlreadyServingVersionRemainsOnlineAfterDeadline(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.parent.updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      context.parent.setCurrentVersion(versionTwo);
+      context.currentVersions.put(region2, versionTwo);
+      context.time.setTime(context.deadline + 1);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testOnlineVersionIsNotDowngradedByUnavailableMetadataAfterDeadline(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.parent.updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      context.parent.setCurrentVersion(versionTwo);
+      context.currentVersions.clear();
+      context.time.setTime(context.deadline + 1);
+      context.runPass();
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+      verify(repository, never()).updateStore(any());
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testConcurrentCompletionIsNotDowngradedByStaleExpiry(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      doAnswer(invocation -> context.parent.cloneStore()).when(repository).getStore(context.storeName);
+      doAnswer(invocation -> {
+        Store updatedStore = invocation.getArgument(0);
+        context.parent.updateVersionStatus(versionTwo, updatedStore.getVersionStatus(versionTwo));
+        context.parent.setCurrentVersion(updatedStore.getCurrentVersion());
+        return null;
+      }).when(repository).updateStore(any());
+      doAnswer(invocation -> {
+        context.parent.updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+        context.parent.setCurrentVersion(versionTwo);
+        return context.currentVersions;
+      }).when(admin).getCurrentVersionsForMultiColos(clusterName, context.storeName);
+      context.time.setTime(context.deadline + 1);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionTwo);
+      verify(repository, never()).updateStore(any());
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testTargetFailureStopsRetryDespiteHistoricalPushCompletion(boolean sequential) throws Exception {
+    for (VersionStatus status: Arrays.asList(VersionStatus.ERROR, VersionStatus.KILLED, VersionStatus.ROLLED_BACK)) {
+      try (RetryTestContext context = new RetryTestContext(sequential)) {
+        context.runPass();
+        context.targetResponse.getStore().getVersion(versionTwo).get().setStatus(status);
+        context.targetResponse.getStore().setCurrentVersion(versionOne);
+        context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+        context.runPass();
+        Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ERROR);
+        context.runPass();
+        verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+      }
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testTargetRollbackDuringChildLookupStopsDispatch(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      doAnswer(invocation -> {
+        context.targetResponse.getStore().getVersion(versionTwo).get().setStatus(VersionStatus.ROLLED_BACK);
+        return context.childResponse;
+      }).when(context.clients.get(region2)).getStore(anyString(), anyInt());
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ERROR);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testSupersededTargetRegionStopsRetry(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.runPass();
+      context.targetResponse.getStore().setCurrentVersion(3);
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testRecreatedVersionRejectsStalePromotionAndMetadataUpdate(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.runPass();
+      context.parent.deleteVersion(versionTwo);
+      Version replacement = new VersionImpl(
+          context.storeName,
+          versionTwo,
+          context.time.getMilliseconds(),
+          "replacement-push",
+          1,
+          null,
+          null);
+      replacement.setVersionSwapDeferred(true);
+      replacement.setTargetSwapRegion(region1);
+      replacement.setStatus(VersionStatus.PUSHED);
+      context.parent.addVersion(replacement);
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      context.service.updateStore(clusterName, context.storeName, VersionStatus.ONLINE, context.scheduledVersion);
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionOne);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testNewerChildCurrentVersionPreventsRollForward(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.runPass();
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.childResponse.getStore().setCurrentVersion(3);
+      context.currentVersions.put(region2, 3);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testChildTerminalFailureStopsMissingVersionRetry(boolean sequential) throws Exception {
+    for (VersionStatus status: Arrays.asList(VersionStatus.ERROR, VersionStatus.KILLED, VersionStatus.ROLLED_BACK)) {
+      try (RetryTestContext context = new RetryTestContext(sequential)) {
+        context.runPass();
+        context.makeMissingVersionAvailable(status);
+        context.runPass();
+        Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PARTIALLY_ONLINE);
+        verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+      }
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testArrivalStillHonorsRolloutWaitGate(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.runPass();
+      context.parent.setTargetSwapRegionWaitTime(60);
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testRetryStopsOnLeadershipLossAndVersionDeletion(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.runPass();
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      doReturn(false).when(admin).isLeaderControllerFor(clusterName);
+      context.runPass();
+      doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+      context.parent.deleteVersion(versionTwo);
+      context.runPass();
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  private class RetryTestContext implements AutoCloseable {
+    private final String storeName = "retryStore";
+    private final TestMockTime time = new TestMockTime();
+    private final Store parent = TestUtils.createTestStore(storeName, "owner", time.getMilliseconds());
+    private final Store scheduledStore;
+    private final Version scheduledVersion;
+    private final StoreResponse targetResponse;
+    private final StoreResponse childResponse = getStoreResponse(new ArrayList<>());
+    private final Map<String, ControllerClient> clients = new HashMap<>();
+    private final Map<String, Integer> currentVersions = new HashMap<>();
+    private final List<String> rolloutOrder;
+    private final long deadline;
+    private DeferredVersionSwapService service;
+
+    private RetryTestContext(boolean sequential) {
+      clearInvocations(admin);
+      parent.setTargetSwapRegion(region1);
+      parent.setTargetSwapRegionWaitTime(0);
+      parent.setBootstrapToOnlineTimeoutInHours(1);
+      parent.addVersion(new VersionImpl(storeName, versionOne));
+      parent.updateVersionStatus(versionOne, VersionStatus.ONLINE);
+      parent.setCurrentVersion(versionOne);
+      Version version = new VersionImpl(storeName, versionTwo, time.getMilliseconds(), "retry-push", 1, null, null);
+      version.setVersionSwapDeferred(true);
+      version.setTargetSwapRegion(region1);
+      version.setTargetRegionPromoted(true);
+      parent.addVersion(version);
+      parent.updateVersionStatus(versionTwo, VersionStatus.PUSHED);
+      scheduledStore = parent.cloneStore();
+      scheduledVersion = scheduledStore.getVersion(versionTwo);
+      deadline = version.getCreatedTime() + TimeUnit.HOURS.toMillis(1);
+      rolloutOrder = sequential ? Arrays.asList(region1, region2) : Collections.emptyList();
+
+      clients.put(region1, mock(ControllerClient.class));
+      clients.put(region2, mock(ControllerClient.class));
+      mockVeniceHelixAdmin(clients);
+      doReturn(parent).when(repository).getStore(storeName);
+      doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+      currentVersions.put(region1, versionTwo);
+      currentVersions.put(region2, versionOne);
+      doReturn(currentVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName);
+
+      targetResponse = getStoreResponse(Collections.singletonList(version.cloneVersion()));
+      targetResponse.getStore().setCurrentVersion(versionTwo);
+      targetResponse.getStore().setLatestVersionPromoteToCurrentTimestamp(time.getMilliseconds());
+      doReturn(targetResponse).when(clients.get(region1)).getStore(anyString(), anyInt());
+      childResponse.getStore().setCurrentVersion(versionOne);
+      doReturn(childResponse).when(clients.get(region2)).getStore(anyString(), anyInt());
+      long nowSeconds = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+      doReturn(
+          getOfflinePushStatusInfo(
+              ExecutionStatus.COMPLETED.toString(),
+              ExecutionStatus.COMPLETED.toString(),
+              nowSeconds,
+              nowSeconds)).when(admin)
+                  .getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionTwo));
+      doAnswer(invocation -> {
+        currentVersions.put(region2, versionTwo);
+        childResponse.getStore().setCurrentVersion(versionTwo);
+        childResponse.getStore().getVersion(versionTwo).get().setStatus(VersionStatus.ONLINE);
+        return null;
+      }).when(admin).rollForwardToFutureVersion(clusterName, storeName, region2);
+      service = newService();
+    }
+
+    private DeferredVersionSwapService newService() {
+      return new DeferredVersionSwapService(
+          admin,
+          veniceControllerMultiClusterConfig,
+          mock(DeferredVersionSwapStats.class),
+          metricsRepository,
+          time);
+    }
+
+    private void makeMissingVersionAvailable(VersionStatus status) {
+      Version childVersion = new VersionImpl(storeName, versionTwo);
+      childVersion.setStatus(status);
+      childResponse.getStore().setVersions(Collections.singletonList(childVersion));
+    }
+
+    private void runPass() {
+      service.processStore(clusterName, scheduledStore, clients, rolloutOrder, scheduledVersion);
+    }
+
+    @Override
+    public void close() throws Exception {
+      service.stopInner();
+    }
   }
 }
