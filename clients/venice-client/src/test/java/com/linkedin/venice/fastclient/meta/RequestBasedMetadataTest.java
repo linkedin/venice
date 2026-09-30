@@ -63,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -782,6 +783,98 @@ public class RequestBasedMetadataTest {
       assertTrue(
           elapsedMs < 10 * Time.MS_PER_SECOND,
           "the fetch must fail fast rather than orphan the future, took: " + elapsedMs + "ms");
+    }
+  }
+
+  /**
+   * The server omits a partition from the routing info when it has no assignment in its customized view, so the
+   * per-partition lookup must tolerate a missing entry rather than dereferencing null. An NPE here would abort the
+   * whole refresh, including the dictionary fetch that now runs after this loop.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRefreshToleratesPartitionMissingFromRoutingInfo() throws Exception {
+    String storeName = "testStore";
+    Client r2Client =
+        RequestBasedMetadataTestUtils.getMockR2ClientWithDictionaryOnlyOn(RequestBasedMetadataTestUtils.REPLICA1_NAME);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(
+        CompletableFuture.completedFuture(
+            RequestBasedMetadataTestUtils.buildMetadataResponseWithMissingPartitionRouting(CURRENT_VERSION)))
+                .when(d2TransportClient)
+                .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+
+      // The partition that is present is still routed, and the dictionary fetch still runs off it.
+      assertEquals(
+          requestBasedMetadata.getReplicas(CURRENT_VERSION, 0),
+          Collections.singletonList(RequestBasedMetadataTestUtils.REPLICA1_NAME));
+      assertTrue(requestBasedMetadata.getReplicas(CURRENT_VERSION, 1).isEmpty());
+      assertEquals(
+          requestBasedMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION),
+          RequestBasedMetadataTestUtils.getZstdVeniceCompressor(storeName));
+    }
+  }
+
+  /**
+   * The refresh thread waits a bounded time for the dictionary future and then gives up and retries on the next
+   * refresh. The retry chain must observe that and stop, otherwise it keeps issuing requests in the background and
+   * overlaps with the chain started by the next refresh.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDictionaryFetchStopsRetryingOnceTheCallerHasGivenUp() throws Exception {
+    String storeName = "testStore";
+    Client r2Client = mock(Client.class);
+    doAnswer(invocation -> {
+      R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+      callback.getValueFuture().complete(null);
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(argument -> argument.getURI().toString().contains(QueryAction.HEALTH.toString().toLowerCase())),
+            any(Callback.class));
+
+    // Dictionary requests are parked rather than answered, so the caller is forced to time out on the future.
+    List<R2TransportClient.R2TransportClientCallback> parkedCallbacks = new CopyOnWriteArrayList<>();
+    doAnswer(invocation -> {
+      parkedCallbacks.add(invocation.getArgument(1));
+      return null;
+    }).when(r2Client)
+        .restRequest(
+            argThat(
+                argument -> argument.getURI()
+                    .toString()
+                    .contains("/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/")),
+            any(Callback.class));
+
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    doReturn(CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)))
+        .when(d2TransportClient)
+        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+
+      Assert.assertThrows(Exception.class, () -> requestBasedMetadata.updateCache(true));
+      assertEquals(parkedCallbacks.size(), 1, "exactly one dictionary request should have been issued so far");
+
+      // The reply finally lands as a 404, well after the caller stopped waiting: it must not start another attempt.
+      parkedCallbacks.get(0).getValueFuture().complete(null);
+      Thread.sleep(500);
+      assertEquals(
+          parkedCallbacks.size(),
+          1,
+          "no further dictionary request must be issued once the caller has given up on the future");
     }
   }
 

@@ -549,6 +549,42 @@ public class RequestBasedMetadataTestUtils {
     return new TransportClientResponse(metadataResponseSchemaId, CompressionStrategy.NO_OP, body);
   }
 
+  /**
+   * Routing info that omits partition 1 altogether while the version still reports a partition count of 2. This is
+   * what the server emits for a partition that has no assignment in its customized view yet, since
+   * {@code ServerReadMetadataRepository#getRoutingInfo} only iterates the partitions present in that view.
+   */
+  public static TransportClientResponse buildMetadataResponseWithMissingPartitionRouting(int currentVersion) {
+    Map<String, String> partitionerParams = new HashMap<>();
+    partitionerParams.put("testKey", "testValue");
+    VersionProperties versionProperties = new VersionProperties(
+        currentVersion,
+        CompressionStrategy.ZSTD_WITH_DICT.getValue(),
+        2,
+        "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
+        Collections.unmodifiableMap(partitionerParams),
+        1,
+        StorageMode.INTERNAL.getValue());
+    Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
+    routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
+    Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
+    helixGroupMap.put(REPLICA1_NAME, 0);
+    MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
+        versionProperties,
+        Collections.singletonList(currentVersion),
+        Collections.singletonMap("1", KEY_SCHEMA),
+        Collections.singletonMap("1", VALUE_SCHEMA),
+        1,
+        routeMap,
+        helixGroupMap,
+        150,
+        ExternalStorageReadMode.VENICE_ONLY.getValue());
+    byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
+        .serialize(metadataResponse);
+    int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
+    return new TransportClientResponse(metadataResponseSchemaId, CompressionStrategy.NO_OP, body);
+  }
+
   public static RouterBackedSchemaReader getMockRouterBackedSchemaReader() {
     RouterBackedSchemaReader metadataResponseSchemaReader = mock(RouterBackedSchemaReader.class);
     int latestSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();

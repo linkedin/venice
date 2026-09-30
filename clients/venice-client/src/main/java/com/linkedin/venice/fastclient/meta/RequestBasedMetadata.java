@@ -482,8 +482,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
       for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
         String key = getVersionPartitionMapKey(fetchedCurrentVersion, partitionId);
+        /*
+         * The server builds the routing info from the partitions present in its customized view, so a partition that
+         * has no assignment yet (e.g. mid-rebalance) is simply absent from the map rather than mapped to an empty
+         * list.
+         */
         List<String> replicas = routingInfo.get(partitionId);
-        if (!replicas.isEmpty()) {
+        if (replicas != null && !replicas.isEmpty()) {
           readyToServeInstancesMap.put(key, replicas);
         }
       }
@@ -526,6 +531,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
         }
       } catch (TimeoutException e) {
+        /*
+         * Completing the future here stops any in-flight retry chain from issuing further requests in the background
+         * once this thread has stopped waiting on it, so it cannot overlap with the fetch started by the next refresh.
+         */
+        dictionaryFetchFuture.completeExceptionally(e);
         LOGGER.warn(
             "Dictionary fetch operation could not complete in time for some of the versions. "
                 + "Will be retried on next refresh",
@@ -856,7 +866,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
                   + " because no ready-to-serve replica was found in the metadata response"));
       return compressionDictionaryFuture;
     }
-    attemptDictionaryFetch(version, replicas, 0, compressionDictionaryFuture);
+    /*
+     * The refresh thread only waits ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS for this future and then gives up and retries
+     * on the next refresh, so the retry chain is bounded by the same deadline. Without it the chain would keep
+     * issuing requests in the background after the caller has moved on, overlapping with the chain started by the
+     * next refresh.
+     */
+    long deadlineMs = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS);
+    attemptDictionaryFetch(version, replicas, 0, deadlineMs, compressionDictionaryFuture);
     return compressionDictionaryFuture;
   }
 
@@ -864,7 +881,12 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       int version,
       List<String> replicas,
       int attempt,
+      long deadlineMs,
       CompletableFuture<TransportClientResponse> compressionDictionaryFuture) {
+    if (compressionDictionaryFuture.isDone()) {
+      // The caller already gave up (or another attempt won the race); do not issue further requests.
+      return;
+    }
     int maxAttempts = Math.min(replicas.size(), MAX_DICTIONARY_FETCH_ATTEMPTS);
     String replica = replicas.get(attempt % replicas.size());
     String url = replica + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
@@ -905,6 +927,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
             maxAttempts,
             url,
             failure,
+            deadlineMs,
             compressionDictionaryFuture);
       });
     } catch (Throwable t) {
@@ -912,7 +935,15 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
        * The transport can fail synchronously while building the URI or dispatching the request, in which case no
        * future is ever returned. Route it through the same failure path so the dictionary future is still completed.
        */
-      handleDictionaryFetchFailure(version, replicas, attempt, maxAttempts, url, t, compressionDictionaryFuture);
+      handleDictionaryFetchFailure(
+          version,
+          replicas,
+          attempt,
+          maxAttempts,
+          url,
+          t,
+          deadlineMs,
+          compressionDictionaryFuture);
     }
   }
 
@@ -923,9 +954,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       int maxAttempts,
       String url,
       Throwable failure,
+      long deadlineMs,
       CompletableFuture<TransportClientResponse> compressionDictionaryFuture) {
     int nextAttempt = attempt + 1;
-    if (nextAttempt < maxAttempts) {
+    boolean deadlineExpired = System.currentTimeMillis() >= deadlineMs;
+    if (nextAttempt < maxAttempts && !deadlineExpired && !compressionDictionaryFuture.isDone()) {
       LOGGER.warn(
           "Problem fetching zstd compression dictionary from URL: {} for store: {}, version: {}. "
               + "Retrying against another replica ({}/{}).",
@@ -935,15 +968,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           nextAttempt + 1,
           maxAttempts,
           failure);
-      attemptDictionaryFetch(version, replicas, nextAttempt, compressionDictionaryFuture);
+      attemptDictionaryFetch(version, replicas, nextAttempt, deadlineMs, compressionDictionaryFuture);
       return;
     }
 
     String message = String.format(
-        "Problem fetching zstd compression dictionary for store:%s , version:%d after %d attempt(s), last URL:%s",
+        "Problem fetching zstd compression dictionary for store:%s , version:%d after %d attempt(s)%s, last URL:%s",
         storeName,
         version,
-        maxAttempts,
+        nextAttempt,
+        deadlineExpired ? " (gave up because the dictionary fetch deadline expired)" : "",
         url);
     LOGGER.warn(message, failure);
     compressionDictionaryFuture.completeExceptionally(new VeniceClientException(message, failure));
