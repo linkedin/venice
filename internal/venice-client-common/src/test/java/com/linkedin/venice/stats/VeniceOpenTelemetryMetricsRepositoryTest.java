@@ -1475,6 +1475,31 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   }
 
   @Test
+  public void testObservableGaugeCallbackExceptionOutsideObserveRecordsFailure() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(reader);
+    try {
+      MetricEntity gaugeEntity = createStoreGaugeMetricEntity("test_throwing_callback_gauge", MetricType.ASYNC_GAUGE);
+      Attributes attributes = otelRepo.createAttributes(gaugeEntity, singletonStoreDimensions(TEST_STORE_NAME));
+      otelRepo.registerObservableGauge(gaugeEntity, new MetricScope(), observation -> {
+        observation.observe(attributes, () -> 3L, Long::longValue);
+        throw new IllegalStateException("callback");
+      });
+
+      // The sample observed before the exception is kept, and the exception is recorded as a failure.
+      Collection<MetricData> metricsData = reader.collectAllMetrics();
+      assertEquals(
+          OpenTelemetryDataTestUtils
+              .getLongPointDataFromGauge(metricsData, gaugeEntity.getMetricName(), TEST_PREFIX, attributes)
+              .getValue(),
+          3L);
+      assertEquals(lookupFailurePoint(metricsData, gaugeEntity.getMetricName()).getValue(), 1L);
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  @Test
   public void testMetricScopeCloseRetiresGaugeImmediatelyAndObservableCounterAfterFinalDelta() {
     InMemoryMetricReader deltaReader = InMemoryMetricReader.createDelta();
     VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(deltaReader);

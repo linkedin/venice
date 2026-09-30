@@ -549,15 +549,29 @@ public class VeniceOpenTelemetryMetricsRepository {
         return meter.gaugeBuilder(getFullMetricName(metricEntity))
             .setUnit(metricEntity.getUnit().name())
             .setDescription(getMetricDescription(metricEntity, metricsConfig))
-            .buildWithCallback(measurement -> reportCallback.accept(GaugeObservation.of(measurement, onFailure)));
+            .buildWithCallback(
+                measurement -> reportGauge(reportCallback, GaugeObservation.of(measurement, onFailure), onFailure));
       }
       return meter.gaugeBuilder(getFullMetricName(metricEntity))
           .ofLongs()
           .setUnit(metricEntity.getUnit().name())
           .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(measurement -> reportCallback.accept(GaugeObservation.of(measurement, onFailure)));
+          .buildWithCallback(
+              measurement -> reportGauge(reportCallback, GaugeObservation.of(measurement, onFailure), onFailure));
     } catch (RuntimeException e) {
       throw new VeniceException("Failed to register ObservableGauge for metric: " + metricEntity.getMetricName(), e);
+    }
+  }
+
+  /** Runs a gauge callback; an exception it throws outside {@link GaugeObservation#observe} is a failure too. */
+  private static void reportGauge(
+      Consumer<GaugeObservation> reportCallback,
+      GaugeObservation observation,
+      Consumer<Exception> onFailure) {
+    try {
+      reportCallback.accept(observation);
+    } catch (Exception e) {
+      onFailure.accept(e);
     }
   }
 
