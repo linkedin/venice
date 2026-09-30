@@ -49,6 +49,10 @@ final class StoreMigrationHelper {
    * {@link #validateEncryptionClusterMigration} once both clusters are encryption clusters. Migrating it as-is
    * would create a destination store that is encryption-enabled with no key, which only fails later when a new
    * version is requested. Fail fast here instead, before any migration state changes.
+   *
+   * <p>{@code encryptionEnabled} is only ever set at store-creation time and cannot be changed afterward, so
+   * {@code update-store} cannot set a key for a store where it is false; the error therefore does not prescribe
+   * that as a remedy.
    */
   static void validateSourceStoreEncryptionKeyForMigration(
       boolean destEncryptionCluster,
@@ -60,8 +64,9 @@ final class StoreMigrationHelper {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
-              + " because the store does not have a pubSubEncryptionKeyUrn configured; set pubSubEncryptionKeyUrn "
-              + "through update-store before migrating into an encryption cluster.",
+              + " because the store does not have a pubSubEncryptionKeyUrn configured. Its encryptionEnabled flag "
+              + "is set once at store creation and cannot be changed afterward, so update-store cannot set a key "
+              + "for it; this store cannot be migrated into an encryption cluster.",
           ErrorType.BAD_REQUEST);
     }
   }
