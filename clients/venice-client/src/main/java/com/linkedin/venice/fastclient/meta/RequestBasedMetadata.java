@@ -490,6 +490,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         List<String> replicas = routingInfo.get(partitionId);
         if (replicas != null && !replicas.isEmpty()) {
           readyToServeInstancesMap.put(key, replicas);
+        } else {
+          /*
+           * The partition has no ready-to-serve replica any more. The eviction below is version scoped, so without
+           * this the previous entry would survive for as long as the version stays active and requests would keep
+           * being routed to replicas that have since stopped serving this partition.
+           */
+          readyToServeInstancesMap.remove(key);
         }
       }
 

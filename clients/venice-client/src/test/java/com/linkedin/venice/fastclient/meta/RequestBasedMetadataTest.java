@@ -823,6 +823,49 @@ public class RequestBasedMetadataTest {
   }
 
   /**
+   * A partition can drop out of the routing info while its version stays active (e.g. it loses every ready-to-serve
+   * replica during a rebalance). The eviction pass in updateCache is version scoped, so the per-partition entry has
+   * to be dropped here or reads would keep being routed to replicas that no longer serve that partition.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStaleReplicasAreEvictedWhenPartitionDropsOutOfRoutingInfo() throws Exception {
+    String storeName = "testStore";
+    Client r2Client =
+        RequestBasedMetadataTestUtils.getMockR2ClientWithDictionaryOnlyOn(RequestBasedMetadataTestUtils.REPLICA1_NAME);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, null, r2Client);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    // First refresh routes both partitions; the second one no longer reports partition 1 at all.
+    doReturn(
+        CompletableFuture.completedFuture(RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION)),
+        CompletableFuture.completedFuture(
+            RequestBasedMetadataTestUtils.buildMetadataResponseWithMissingPartitionRouting(CURRENT_VERSION)))
+                .when(d2TransportClient)
+                .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata
+          .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.start();
+
+      assertEquals(
+          requestBasedMetadata.getReplicas(CURRENT_VERSION, 1),
+          Collections.singletonList(RequestBasedMetadataTestUtils.REPLICA2_NAME));
+
+      requestBasedMetadata.updateCache(false);
+
+      assertTrue(
+          requestBasedMetadata.getReplicas(CURRENT_VERSION, 1).isEmpty(),
+          "a partition that dropped out of the routing info must not keep serving its previous replicas");
+      // The version itself is still active, so this must be a per-partition eviction rather than a version-wide one.
+      assertEquals(
+          requestBasedMetadata.getReplicas(CURRENT_VERSION, 0),
+          Collections.singletonList(RequestBasedMetadataTestUtils.REPLICA1_NAME));
+    }
+  }
+
+  /**
    * The refresh thread waits a bounded time for the dictionary future and then gives up and retries on the next
    * refresh. The retry chain must observe that and stop, otherwise it keeps issuing requests in the background and
    * overlaps with the chain started by the next refresh.
