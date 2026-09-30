@@ -66,6 +66,33 @@ public class StoreMigrationHelperTest {
   }
 
   @Test
+  public void testMigrationPropagatesPubSubEncryptionKeyUrn() {
+    String urn = "urn:li:pubSubEncryptionKey:test-key";
+    StoreInfo source = StoreInfo.fromStore(TestUtils.createTestStore(STORE_NAME, "owner", 1L));
+    source.setPubSubEncryptionKeyUrn(urn);
+    ControllerClient destination = mock(ControllerClient.class);
+    when(destination.createNewStore(STORE_NAME, "owner", "\"string\"", "\"string\""))
+        .thenReturn(new NewStoreResponse());
+    when(destination.addValueSchema(anyString(), anyString())).thenReturn(new SchemaResponse());
+    when(destination.updateStore(eq(STORE_NAME), any())).thenReturn(new ControllerResponse());
+
+    StoreMigrationHelper.cloneDestinationStoreAndSyncConfigs(
+        destination,
+        source,
+        "\"string\"",
+        Collections.singletonList(new SchemaEntry(1, "\"string\"")),
+        Collections.singletonMap(STORE_NAME, Collections.emptyMap()),
+        DEST_CLUSTER,
+        STORE_NAME,
+        "region",
+        LogManager.getLogger(StoreMigrationHelperTest.class));
+
+    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(destination).updateStore(eq(STORE_NAME), captor.capture());
+    assertEquals(captor.getValue().getPubSubEncryptionKeyUrn(), Optional.of(urn));
+  }
+
+  @Test
   public void testAllowsMigrationBetweenNonEncryptionClusters() {
     StoreMigrationHelper.validateEncryptionClusterMigration(false, false, SRC_CLUSTER, DEST_CLUSTER, STORE_NAME);
   }
