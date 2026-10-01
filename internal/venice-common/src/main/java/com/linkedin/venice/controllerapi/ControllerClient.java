@@ -1582,18 +1582,6 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 
-  public AdminTopicMetadataResponse getAdminTopicMetadata(Optional<String> storeName, int timeoutMs) {
-    QueryParams params = newParams().add(NAME, storeName);
-    return request(
-        ControllerRoute.GET_ADMIN_TOPIC_METADATA,
-        params,
-        AdminTopicMetadataResponse.class,
-        timeoutMs,
-        1,
-        null,
-        null);
-  }
-
   public AdminTopicMetadataResponse updateAdminTopicMetadata(
       long executionId,
       Optional<String> storeName,

@@ -346,10 +346,13 @@ public class ParticipantStoreTest {
     ControllerResponse rollForward = parentControllerClient.rollForwardToFutureVersion(storeName, null);
 
     assertFalse(rollForward.isError(), rollForward.getError());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertTrue(
+          controllerClient.getAdminTopicMetadata(Optional.of(storeName)).getExecutionId() > beforeRollForward,
+          "Roll-forward must be consumed from the child admin topic");
+      assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), version.getVersion());
+    });
     long afterRollForward = controllerClient.getAdminTopicMetadata(Optional.of(storeName)).getExecutionId();
-    assertTrue(afterRollForward > beforeRollForward, "Roll-forward must be consumed from the child admin topic");
-    assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), version.getVersion());
-    assertEquals(parentControllerClient.getStore(storeName).getStore().getCurrentVersion(), version.getVersion());
 
     ControllerResponse kill = parentControllerClient.killOfflinePushJob(version.getKafkaTopic());
     assertFalse(kill.isError(), kill.getError());

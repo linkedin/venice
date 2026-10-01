@@ -61,7 +61,6 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
-import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -4312,20 +4311,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, String> future = Collections.singletonMap("r1", "5");
     doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
 
-    doAnswer(invocation -> {
-      AdminOperation operation = invocation.getArgument(2);
-      operation.executionId = 10;
-      return null;
-    }).when(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
     controllerClients.clear();
     ControllerClient child = mock(ControllerClient.class);
     controllerClients.put("r1", child);
-    AdminTopicMetadataResponse pending = new AdminTopicMetadataResponse();
-    pending.setExecutionId(9);
-    AdminTopicMetadataResponse consumed = new AdminTopicMetadataResponse();
-    consumed.setExecutionId(10);
-    doReturn(pending, consumed).when(child).getAdminTopicMetadata(Optional.of(storeName), 5000);
-    doReturn(rollForwardStoreResponse(5)).when(child).getStore(storeName, 5000);
 
     Map<String, Integer> after = Collections.singletonMap("r1", 5);
     doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
@@ -4343,7 +4333,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(payload.clusterName.toString(), clusterName);
     assertEquals(payload.storeName.toString(), storeName);
     assertEquals(payload.regionsFilter.toString(), "r1");
-    verify(child, times(2)).getAdminTopicMetadata(Optional.of(storeName), 5000);
+    verify(child, never()).getAdminTopicMetadata(any());
     verify(child, never()).rollForwardToFutureVersion(any(), any(), anyInt());
     verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
     verify(store).setCurrentVersion(5);
@@ -4371,8 +4361,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
   }
 
-  @Test
-  public void testRollForwardNotAllRegionsServingFutureVersionSkipsParentUpdate() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRollForwardNotAllRegionsServingFutureVersionSkipsParentUpdate(boolean firstRegionSwapped) {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
@@ -4385,9 +4375,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
 
-    // r1 rolled forward to version 5, but r2 is still on version 4
+    // The request must succeed even if a targeted child has not consumed the command yet.
     Map<String, Integer> currentVersions = new HashMap<>();
-    currentVersions.put("r1", 5);
+    currentVersions.put("r1", firstRegionSwapped ? 5 : 4);
     currentVersions.put("r2", 4);
     doReturn(currentVersions).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
 
@@ -4401,61 +4391,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ControllerClient r2 = mock(ControllerClient.class);
     controllerClients.put("r1", r1);
     controllerClients.put("r2", r2);
-    AdminTopicMetadataResponse consumed = new AdminTopicMetadataResponse();
-    consumed.setExecutionId(10);
-    doReturn(consumed).when(r1).getAdminTopicMetadata(Optional.of(storeName), 5000);
-    doReturn(rollForwardStoreResponse(5)).when(r1).getStore(storeName, 5000);
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
     // Parent store should NOT be updated to ONLINE since not all regions are serving the future version
     verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
     verify(store, never()).setCurrentVersion(anyInt());
-    verify(r2, never()).getAdminTopicMetadata(any(), anyInt());
+    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    verify(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    verify(r1, never()).getAdminTopicMetadata(any());
+    verify(r2, never()).getAdminTopicMetadata(any());
     verify(r2, never()).getStore(anyString(), anyInt());
     verify(r1, never()).rollForwardToFutureVersion(any(), any(), anyInt());
     verify(r2, never()).rollForwardToFutureVersion(any(), any(), anyInt());
-  }
-
-  @DataProvider(name = "rollForwardConsumption")
-  public Object[][] rollForwardConsumption() {
-    return new Object[][] { { 9L, 5, false, false }, { 10L, 4, false, false }, { 10L, 5, true, false },
-        { 10L, 5, false, true }, { 11L, 5, false, true } };
-  }
-
-  @Test(dataProvider = "rollForwardConsumption")
-  public void testRollForwardConsumptionRequiresAcknowledgementAndPromotion(
-      long consumedExecutionId,
-      int currentVersion,
-      boolean metadataError,
-      boolean succeeds) {
-    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
-    controllerClients.clear();
-    ControllerClient child = mock(ControllerClient.class);
-    controllerClients.put("r1", child);
-    AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
-    response.setExecutionId(consumedExecutionId);
-    if (metadataError) {
-      response.setError("child unavailable");
-    }
-    doReturn(response).when(child).getAdminTopicMetadata(Optional.of(storeName), 5000);
-    doReturn(rollForwardStoreResponse(currentVersion)).when(child).getStore(storeName, 5000);
-    if (succeeds) {
-      adminSpy.verifyRollForwardConsumption(clusterName, storeName, null, 10, Collections.singletonMap("r1", "5"));
-    } else {
-      VeniceException failure = expectThrows(
-          VeniceException.class,
-          () -> adminSpy
-              .verifyRollForwardConsumption(clusterName, storeName, null, 10, Collections.singletonMap("r1", "5")));
-      assertTrue(failure.getMessage().contains("r1"));
-    }
-  }
-
-  private StoreResponse rollForwardStoreResponse(int currentVersion) {
-    StoreInfo childStore = new StoreInfo();
-    childStore.setCurrentVersion(currentVersion);
-    StoreResponse response = new StoreResponse();
-    response.setStore(childStore);
-    return response;
   }
 
   @Test

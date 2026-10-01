@@ -80,7 +80,6 @@ import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
-import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -234,7 +233,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
-  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
   private static final int ROLLBACK_STATUS_POLL_MAX_ATTEMPTS = 15;
   private static final Duration ROLLBACK_STATUS_POLL_MAX_DURATION = Duration.ofMinutes(2);
@@ -2281,28 +2279,13 @@ public class VeniceParentHelixAdmin implements Admin {
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
       message.payloadUnion = rollForward;
+      // Wait for parent consumption only; child consumers execute and retry the command asynchronously.
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      // The send only waits for local parent consumption. Confirm this store's execution in
-      // the selected children, as well as promotion, before reporting success. A timeout does
-      // not cancel the queued command; the existing protocol selects the future version at consumption.
-      RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> verifyRollForwardConsumption(
-              clusterName,
-              storeName,
-              regionFilter,
-              message.executionId,
-              futureVersionsBeforeRollForward),
-          60,
-          Duration.ofMillis(100),
-          Duration.ofSeconds(1),
-          Duration.ofMillis(ROLL_FORWARD_REQUEST_TIMEOUT),
-          RETRY_FAILURE_TYPES);
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
 
-      // Verify that all regions are serving the future version after roll forward
-      // before marking status as ONLINE
+      // Child consumption may still be pending. Only update parent metadata if all regions
+      // are already serving the future version; do not wait for child completion here.
       Map<String, Integer> coloToCurrentVersion = getCurrentVersionsForMultiColos(clusterName, storeName);
       boolean allRegionsServingFutureVersion =
           !controllerClients.isEmpty() && coloToCurrentVersion.keySet().containsAll(controllerClients.keySet());
@@ -2346,52 +2329,6 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
-    }
-  }
-
-  @VisibleForTesting
-  void verifyRollForwardConsumption(
-      String clusterName,
-      String storeName,
-      String regionFilter,
-      long executionId,
-      Map<String, String> expectedFutureVersions) {
-    Map<String, String> failures = new HashMap<>();
-    boolean hasTargetRegion = false;
-    for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
-        .entrySet()) {
-      String region = entry.getKey();
-      if (!isRegionPartOfRegionsFilterList(region, regionFilter)) {
-        continue;
-      }
-      hasTargetRegion = true;
-      AdminTopicMetadataResponse response =
-          entry.getValue().getAdminTopicMetadata(Optional.of(storeName), CONTROLLER_STORE_POLL_TIMEOUT);
-      if (response.isError()) {
-        failures.put(region, response.getError());
-      } else if (response.getExecutionId() < executionId) {
-        failures.put(region, "Roll-forward admin message has not been consumed");
-      } else {
-        String expected = expectedFutureVersions.get(region);
-        if (expected == null) {
-          failures.put(region, "Future version was unavailable before roll-forward");
-        } else if (Integer.parseInt(expected) > 0) {
-          StoreResponse childStore = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
-          if (childStore.isError()) {
-            failures.put(region, childStore.getError());
-          } else if (childStore.getStore() == null) {
-            failures.put(region, "Store metadata unavailable after roll-forward");
-          } else if (Integer.parseInt(expected) != childStore.getStore().getCurrentVersion()) {
-            failures.put(
-                region,
-                "Expected current version " + expected + ", found " + childStore.getStore().getCurrentVersion());
-          }
-        }
-      }
-    }
-    if (!hasTargetRegion || !failures.isEmpty()) {
-      throw new VeniceException(
-          "Roll forward failed in the following regions: " + failures + "; region filter: " + regionFilter);
     }
   }
 
