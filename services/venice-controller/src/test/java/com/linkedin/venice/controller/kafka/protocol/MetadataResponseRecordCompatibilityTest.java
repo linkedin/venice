@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.protocol;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -9,8 +10,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.GenericRecordBuilder;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -26,21 +27,32 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
     schemaMap.put(5, v5);
     testProtocolCompatibility(schemaMap, 5);
 
-    GenericRecord v4Record = new GenericRecordBuilder(v4).set("versions", Collections.emptyList()).build();
+    GenericRecord v4Record = createMetadataRecord(v4);
     byte[] v4Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v4).serialize(v4Record);
     GenericRecord v5Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v4, v5).deserialize(v4Bytes);
     Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "");
 
-    GenericRecord v5Record = new GenericRecordBuilder(v5).set("versions", Collections.emptyList())
-        .set("batchGetLimit", 500)
-        .set("multiKeyLongTailRetryThresholdsInMs", "1-:8")
-        .build();
+    GenericRecord v5Record = createMetadataRecord(v5);
+    v5Record.put("batchGetLimit", 500);
+    v5Record.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
     byte[] v5Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v5).serialize(v5Record);
     GenericRecord v4Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v5, v4).deserialize(v5Bytes);
     Assert.assertEquals(v4Reader.get("batchGetLimit"), 500);
     Assert.assertNull(v4Reader.getSchema().getField("multiKeyLongTailRetryThresholdsInMs"));
+  }
+
+  private GenericRecord createMetadataRecord(Schema schema) {
+    GenericRecord record = new GenericData.Record(schema);
+    for (Schema.Field field: schema.getFields()) {
+      record.put(
+          field.name(),
+          "versions".equals(field.name())
+              ? Collections.emptyList()
+              : AvroCompatibilityHelper.getGenericDefaultValue(field));
+    }
+    return record;
   }
 
   @Test
