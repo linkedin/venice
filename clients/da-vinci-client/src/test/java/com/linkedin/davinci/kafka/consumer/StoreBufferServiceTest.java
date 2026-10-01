@@ -38,6 +38,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.TestUtils;
@@ -231,6 +232,7 @@ public class StoreBufferServiceTest {
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(10000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
     doReturn(queueLeaderWrites).when(serverConfig).isStoreWriterBufferAfterLeaderLogicEnabled();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(serverConfig).getWritePathThreadPriority();
     SeparatedStoreBufferService bufferService =
         new SeparatedStoreBufferService(serverConfig, mockMetricRepo, "test-cluster");
     for (int partition = 0; partition < partitionCount; ++partition) {
@@ -394,6 +396,31 @@ public class StoreBufferServiceTest {
     doReturn(true).when(mockTask).isHybridMode();
     bufferService.putConsumerRecord(cr4, mockTask, null, partition1, kafkaUrl, 0);
     verify(unsortedSBS).putConsumerRecord(cr4, mockTask, null, partition1, kafkaUrl, 0);
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testStoreWriterThreadFactoryUsesConfiguredPriority(boolean sorted) throws Exception {
+    int priority = Thread.NORM_PRIORITY - 2;
+    AtomicReference<List<?>> constructorArguments = new AtomicReference<>();
+    try (MockedConstruction<DaemonThreadFactory> ignored =
+        mockConstruction(DaemonThreadFactory.class, (mock, context) -> {
+          constructorArguments.set(context.arguments());
+          doAnswer(invocation -> {
+            Thread thread = new Thread(invocation.getArgument(0, Runnable.class));
+            thread.setDaemon(true);
+            return thread;
+          }).when(mock).newThread(any());
+        })) {
+      StoreBufferService bufferService =
+          new StoreBufferService(1, 10000, 1000, false, null, mockMetricRepo, sorted, "test-cluster", 0, priority);
+      try {
+        bufferService.start();
+        Assert.assertEquals(constructorArguments.get().get(0), sorted ? "Store-writer-sorted" : "Store-writer-hybrid");
+        Assert.assertEquals(constructorArguments.get().get(1), priority);
+      } finally {
+        bufferService.stop();
+      }
+    }
   }
 
   /**

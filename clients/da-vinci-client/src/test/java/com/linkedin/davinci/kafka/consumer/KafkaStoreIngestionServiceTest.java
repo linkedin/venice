@@ -236,6 +236,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         .getConsumerPoolStrategyType();
     doReturn(2).when(mockVeniceServerConfig).getAaWCIngestionStorageLookupThreadPoolSize();
     doReturn(1).when(mockVeniceServerConfig).getStoreWriterNumber();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(mockVeniceServerConfig)
+        .getWritePathThreadPriority();
     doReturn(5).when(mockVeniceServerConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
     doReturn(1).when(mockVeniceServerConfig).getStoreChangeNotifierThreadPoolSize();
     doReturn(
@@ -936,6 +938,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(serverConfig)
         .getConsumerPoolStrategyType();
     doReturn(1).when(serverConfig).getStoreWriterNumber();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(serverConfig).getWritePathThreadPriority();
     doReturn(0).when(serverConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
     doReturn(1).when(serverConfig).getStoreChangeNotifierThreadPoolSize();
     doReturn(

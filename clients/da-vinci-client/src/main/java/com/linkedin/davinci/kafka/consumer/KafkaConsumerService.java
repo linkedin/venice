@@ -96,7 +96,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private final ExecutorService crossTpProcessingPool;
   private final ExecutorService batchUnsubscribeExecutor;
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
-  private static final int CONSUMER_THREAD_PRIORITY = Thread.NORM_PRIORITY - 1;
   // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
@@ -137,8 +136,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
     // Initialize consumers and consumerExecutor
     String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
-    threadFactory =
-        new RandomAccessDaemonThreadFactory(consumerNamePrefix, CONSUMER_THREAD_PRIORITY, serverConfig.getLogContext());
+    threadFactory = new RandomAccessDaemonThreadFactory(
+        consumerNamePrefix,
+        serverConfig.getWritePathThreadPriority(),
+        serverConfig.getLogContext());
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
 
     // Use the shared cross-TP processing pool passed from AggKafkaConsumerService
@@ -180,7 +181,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        */
       contextBuilder.setConsumerName(i + poolType.getStatSuffix());
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          pubSubConsumerAdapterFactory.create(contextBuilder.build()),
+          createPubSubConsumerAdapter(
+              pubSubConsumerAdapterFactory,
+              contextBuilder.build(),
+              serverConfig.getWritePathThreadPriority()),
           aggStats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription,
@@ -233,6 +237,23 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
     serverIngestionInfoLogLineLimit = serverConfig.getServerIngestionInfoLogLineLimit();
     LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
+  }
+
+  private PubSubConsumerAdapter createPubSubConsumerAdapter(
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
+      PubSubConsumerAdapterContext pubSubConsumerAdapterContext,
+      int writePathThreadPriority) {
+    Thread currentThread = Thread.currentThread();
+    int originalPriority = currentThread.getPriority();
+    if (originalPriority == writePathThreadPriority) {
+      return pubSubConsumerAdapterFactory.create(pubSubConsumerAdapterContext);
+    }
+    currentThread.setPriority(writePathThreadPriority);
+    try {
+      return pubSubConsumerAdapterFactory.create(pubSubConsumerAdapterContext);
+    } finally {
+      currentThread.setPriority(originalPriority);
+    }
   }
 
   /** May be overridden to clean up state in sub-classes */
