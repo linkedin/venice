@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -31,6 +32,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -40,13 +42,16 @@ import io.tehuti.metrics.Sensor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedConstruction;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -471,6 +476,29 @@ public class AggKafkaConsumerServiceTest {
     Assert.assertEquals(result, "");
 
     verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
+  }
+
+  @Test
+  public void testCrossTpProcessingPoolUsesConfiguredPriority() {
+    int writePathThreadPriority = Thread.NORM_PRIORITY - 2;
+    doReturn(true).when(serverConfig).isCrossTpParallelProcessingEnabled();
+    doReturn(3).when(serverConfig).getCrossTpParallelProcessingThreadPoolSize();
+    doReturn(writePathThreadPriority).when(serverConfig).getWritePathThreadPriority();
+
+    List<List<?>> daemonThreadFactoryArgs = new ArrayList<>();
+    try (MockedConstruction<DaemonThreadFactory> ignored = mockConstruction(
+        DaemonThreadFactory.class,
+        (mock, context) -> daemonThreadFactoryArgs.add(new ArrayList<>(context.arguments())))) {
+      try (AggKafkaConsumerService testService = createTestService()) {
+        Assert.assertNotNull(testService);
+        Assert.assertTrue(
+            daemonThreadFactoryArgs.stream()
+                .anyMatch(
+                    args -> args.size() == 3 && "cross-tp-parallel-processing".equals(args.get(0))
+                        && args.get(1).equals(writePathThreadPriority)),
+            "Cross-TP processing pool should use the configured write-path thread priority");
+      }
+    }
   }
 
   private AggKafkaConsumerService createTestService() {

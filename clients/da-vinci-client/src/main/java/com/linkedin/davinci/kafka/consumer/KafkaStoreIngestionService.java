@@ -545,7 +545,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
-        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getLogContext()));
+        new DaemonThreadFactory(
+            "AA_WC_INGESTION_STORAGE_LOOKUP",
+            serverConfig.getWritePathThreadPriority(),
+            serverConfig.getLogContext()));
     new ThreadPoolStats(
         metricsRepository,
         (ThreadPoolExecutor) aaWCIngestionStorageLookupThreadPool,

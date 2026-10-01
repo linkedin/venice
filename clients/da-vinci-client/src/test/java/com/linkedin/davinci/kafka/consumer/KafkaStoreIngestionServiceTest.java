@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -72,6 +73,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -86,8 +88,10 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
@@ -101,6 +105,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedConstruction;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -922,6 +927,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     String dummyKafkaUrl = "localhost:16637";
 
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    int writePathThreadPriority = Thread.NORM_PRIORITY - 2;
     doReturn(-1L).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
     doReturn(-1L).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
     doReturn(-1L).when(serverConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
@@ -938,7 +944,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(serverConfig)
         .getConsumerPoolStrategyType();
     doReturn(1).when(serverConfig).getStoreWriterNumber();
-    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(serverConfig).getWritePathThreadPriority();
+    doReturn(writePathThreadPriority).when(serverConfig).getWritePathThreadPriority();
     doReturn(0).when(serverConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
     doReturn(1).when(serverConfig).getStoreChangeNotifierThreadPoolSize();
     doReturn(
@@ -978,75 +984,98 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
-    // Create the ingestion service
-    KafkaStoreIngestionService service = new KafkaStoreIngestionService(
-        mockStorageService,
-        configLoader,
-        storageMetadataService,
-        mockClusterInfoProvider,
-        mockMetadataRepo,
-        mockSchemaRepo,
-        mockLiveClusterConfigRepo,
-        metricsRepository,
-        Optional.empty(),
-        Optional.empty(),
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        Optional.empty(),
-        null,
-        compressorFactory,
-        Optional.empty(),
-        false,
-        null,
-        mockPubSubClientsFactory,
-        Optional.empty(),
-        heartbeatMonitoringService,
-        null,
-        null,
-        Optional.empty());
+    List<List<?>> daemonThreadFactoryArgs = new ArrayList<>();
+    try (MockedConstruction<DaemonThreadFactory> ignored = mockConstruction(
+        DaemonThreadFactory.class,
+        (mock, context) -> daemonThreadFactoryArgs.add(new ArrayList<>(context.arguments())))) {
+      // Create the ingestion service
+      KafkaStoreIngestionService service = new KafkaStoreIngestionService(
+          mockStorageService,
+          configLoader,
+          storageMetadataService,
+          mockClusterInfoProvider,
+          mockMetadataRepo,
+          mockSchemaRepo,
+          mockLiveClusterConfigRepo,
+          metricsRepository,
+          Optional.empty(),
+          Optional.empty(),
+          AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+          Optional.empty(),
+          null,
+          compressorFactory,
+          Optional.empty(),
+          false,
+          null,
+          mockPubSubClientsFactory,
+          Optional.empty(),
+          heartbeatMonitoringService,
+          null,
+          null,
+          Optional.empty());
 
-    try {
-      // Verify that AA/WC parallel processing thread pool stats are registered
-      assertNotNull(
-          reporter.query(".aa_wc_parallel_processing_thread_pool--active_thread_number.LambdaStat"),
-          "AA/WC parallel processing thread pool active_thread_number metric should be registered");
-      assertNotNull(
-          reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat"),
-          "AA/WC parallel processing thread pool max_thread_number metric should be registered");
-      assertNotNull(
-          reporter.query(".aa_wc_parallel_processing_thread_pool--queued_task_count_gauge.LambdaStat"),
-          "AA/WC parallel processing thread pool queued_task_count_gauge metric should be registered");
-
-      // Verify that AA/WC ingestion storage lookup thread pool stats are registered
-      assertNotNull(
-          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--active_thread_number.LambdaStat"),
-          "AA/WC ingestion storage lookup thread pool active_thread_number metric should be registered");
-      assertNotNull(
-          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat"),
-          "AA/WC ingestion storage lookup thread pool max_thread_number metric should be registered");
-      assertNotNull(
-          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.LambdaStat"),
-          "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
-
-      // Metric registration may complete asynchronously; retry until values are available.
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        assertEquals(
-            (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
-            4,
-            "AA/WC parallel processing thread pool should have 4 threads");
-        assertEquals(
-            (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
-            2,
-            "AA/WC ingestion storage lookup thread pool should have 2 threads");
-      });
-    } finally {
-      service.close();
-      metricsRepository.close();
       try {
-        gaugeExecutor.close();
-      } catch (Exception e) {
-        // best-effort cleanup
+        assertTrue(
+            hasDaemonThreadFactoryArgs(daemonThreadFactoryArgs, "AA_WC_PARALLEL_PROCESSING", writePathThreadPriority),
+            "AA/WC workload processing pool should use the configured write-path thread priority");
+        assertTrue(
+            hasDaemonThreadFactoryArgs(
+                daemonThreadFactoryArgs,
+                "AA_WC_INGESTION_STORAGE_LOOKUP",
+                writePathThreadPriority),
+            "AA/WC ingestion storage lookup pool should use the configured write-path thread priority");
+
+        // Verify that AA/WC parallel processing thread pool stats are registered
+        assertNotNull(
+            reporter.query(".aa_wc_parallel_processing_thread_pool--active_thread_number.LambdaStat"),
+            "AA/WC parallel processing thread pool active_thread_number metric should be registered");
+        assertNotNull(
+            reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat"),
+            "AA/WC parallel processing thread pool max_thread_number metric should be registered");
+        assertNotNull(
+            reporter.query(".aa_wc_parallel_processing_thread_pool--queued_task_count_gauge.LambdaStat"),
+            "AA/WC parallel processing thread pool queued_task_count_gauge metric should be registered");
+
+        // Verify that AA/WC ingestion storage lookup thread pool stats are registered
+        assertNotNull(
+            reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--active_thread_number.LambdaStat"),
+            "AA/WC ingestion storage lookup thread pool active_thread_number metric should be registered");
+        assertNotNull(
+            reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat"),
+            "AA/WC ingestion storage lookup thread pool max_thread_number metric should be registered");
+        assertNotNull(
+            reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.LambdaStat"),
+            "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
+
+        // Metric registration may complete asynchronously; retry until values are available.
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          assertEquals(
+              (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
+              4,
+              "AA/WC parallel processing thread pool should have 4 threads");
+          assertEquals(
+              (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
+              2,
+              "AA/WC ingestion storage lookup thread pool should have 2 threads");
+        });
+      } finally {
+        service.close();
+        metricsRepository.close();
+        try {
+          gaugeExecutor.close();
+        } catch (Exception e) {
+          // best-effort cleanup
+        }
       }
     }
+  }
+
+  private static boolean hasDaemonThreadFactoryArgs(
+      List<List<?>> daemonThreadFactoryArgs,
+      String threadNamePrefix,
+      int priority) {
+    return daemonThreadFactoryArgs.stream()
+        .anyMatch(args -> args.size() == 3 && threadNamePrefix.equals(args.get(0)) && args.get(1).equals(priority));
   }
 
   @Test
