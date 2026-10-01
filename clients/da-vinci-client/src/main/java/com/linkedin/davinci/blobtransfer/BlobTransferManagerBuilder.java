@@ -167,7 +167,8 @@ public class BlobTransferManagerBuilder {
           blobTransferConfig.getSnapshotRetentionTimeInMin(),
           blobTransferConfig.getTransferSnapshotTableFormat(),
           blobTransferConfig.getSnapshotCleanupIntervalInMins(),
-          logContext);
+          logContext,
+          blobTransferConfig.getWritePathThreadPriority());
 
       BlobTransferManager<Void> blobTransferManager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(
@@ -183,7 +184,8 @@ public class BlobTransferManagerBuilder {
               blobTransferConfig.getMaxChunkSizeBytes(),
               blobTransferConfig.getClientCapacityPercent(),
               blobTransferConfig.isServerAcceptClientBlobRequestEnabled(),
-              blobTransferConfig.isDedicatedAllocatorEnabled()),
+              blobTransferConfig.isDedicatedAllocatorEnabled(),
+              blobTransferConfig.getWritePathThreadPriority()),
           new NettyFileTransferClient(
               blobTransferConfig.getP2pTransferClientPort(),
               blobTransferConfig.getBaseDir(),
@@ -197,12 +199,14 @@ public class BlobTransferManagerBuilder {
               sslFactory,
               veniceNotifier,
               logContext,
-              blobTransferConfig.isDedicatedAllocatorEnabled()),
+              blobTransferConfig.isDedicatedAllocatorEnabled(),
+              blobTransferConfig.getWritePathThreadPriority()),
           blobFinder,
           blobTransferConfig.getBaseDir(),
           getAggBlobTransferStats().getAggVersionedBlobTransferStats(),
           blobTransferConfig.getMaxConcurrentBlobReceiveReplicas(),
-          logContext);
+          logContext,
+          blobTransferConfig.getWritePathThreadPriority());
 
       // start the P2P blob transfer manager
       blobTransferManager.start();
