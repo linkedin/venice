@@ -34,7 +34,6 @@ public class AsyncMetricApiContractTest {
       + "import io.opentelemetry.api.common.Attributes;\n" + "import java.util.Map;\n" + "class GaugeContract {\n"
       + "  void configure(VeniceOpenTelemetryMetricsRepository repository, MetricEntity metric,\n"
       + "      MetricScope scope, Attributes attributes, Map<VeniceMetricsDimensions, String> dimensions) {\n";
-  /** Negative snippets must fail on API resolution or access, not on syntax. */
   private static final Set<String> API_ERROR_CODES = new HashSet<>(
       Arrays.asList(
           "compiler.err.cant.apply.symbol",

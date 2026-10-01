@@ -243,17 +243,10 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     void close();
   }
 
-  /**
-   * One {@link StoreOtelStats} per store. Registries can only be created through
-   * {@link AbstractVeniceAggVersionedStats#createPerStoreOtelStats}, so every store's stats get version updates and
-   * are closed on store deletion.
-   */
+  /** One {@link StoreOtelStats} per store, given its versions and closed on store deletion. */
   protected final class PerStoreVersionedOtelStats<OTEL_STATS extends StoreOtelStats> {
     private final Map<String, OTEL_STATS> statsByStore = new VeniceConcurrentHashMap<>();
-    /**
-     * The latest versions given for each store, kept while it has no stats, so stats created right after an update
-     * that found none to update still get that update's versions.
-     */
+    /** Latest versions per store, kept while it has no stats so stats created after an update still get them. */
     private final Map<String, StoreVersions> latestVersions = new VeniceConcurrentHashMap<>();
     private final Function<String, OTEL_STATS> statsFactory;
 
@@ -296,19 +289,11 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       });
     }
 
-    /** Visible for testing. */
-    public Map<String, OTEL_STATS> getStatsByStore() {
-      return statsByStore;
-    }
-
     private StoreVersions readVersions(String storeName) {
       return new StoreVersions(getCurrentVersion(storeName), getFutureVersion(storeName));
     }
 
-    /**
-     * Creates a store's stats under its map lock. An update that ran after {@code versionsReadEarlier} were read found
-     * no stats to update, so the versions it recorded take precedence.
-     */
+    /** Creates a store's stats under its map lock, preferring versions an update recorded after the given ones. */
     private OTEL_STATS create(String storeName, StoreVersions versionsReadEarlier) {
       OTEL_STATS stats = statsFactory.apply(storeName);
       StoreVersions versions = latestVersions.getOrDefault(storeName, versionsReadEarlier);

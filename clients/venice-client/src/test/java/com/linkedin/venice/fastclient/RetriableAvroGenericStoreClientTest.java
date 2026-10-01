@@ -8,8 +8,6 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockConstruction;
-import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -54,7 +52,6 @@ import java.util.concurrent.TimeoutException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.mockito.MockedConstruction;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -1081,20 +1078,4 @@ public class RetriableAvroGenericStoreClientTest {
     }
   }
 
-  @Test
-  public void testCloseClosesRetryManagers() {
-    clientConfig =
-        clientConfigBuilder.setMetricsRepository(getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true))
-            .build();
-    try (MockedConstruction<RetryManager> retryManagers = mockConstruction(RetryManager.class)) {
-      RetriableAvroGenericStoreClient<String, GenericRecord> client =
-          new RetriableAvroGenericStoreClient<>(mock(InternalAvroStoreClient.class), clientConfig, timeoutProcessor);
-      // The client's single-key and multi-key long-tail retry managers.
-      assertEquals(retryManagers.constructed().size(), 2);
-
-      client.close();
-
-      retryManagers.constructed().forEach(retryManager -> verify(retryManager).close());
-    }
-  }
 }

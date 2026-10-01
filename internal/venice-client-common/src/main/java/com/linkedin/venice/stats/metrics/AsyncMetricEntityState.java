@@ -73,8 +73,8 @@ public abstract class AsyncMetricEntityState implements AutoCloseable {
         false);
     validateAsyncCallback(false);
     if (emitOpenTelemetryMetrics()) {
-      // Observable counters return null from createInstrument() and are registered later by
-      // MetricEntityState#registerObservableCounterIfNeeded().
+      // Observable counters return null from createInstrument() and are registered when a MetricScope registers
+      // them (MetricEntityState#startObservableCounter()).
       setOtelMetric(otelRepository.createInstrument(this.metricEntity));
     }
     registerTehutiSensor(registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);

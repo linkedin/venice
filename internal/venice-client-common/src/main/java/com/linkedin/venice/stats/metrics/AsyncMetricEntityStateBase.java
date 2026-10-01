@@ -70,18 +70,17 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       @Nonnull LiveStateResolver<S> liveStateResolver,
       @Nonnull ValueResolver<S> valueResolver) {
     Objects.requireNonNull(scope, "scope");
-    return scope.register(
-        new AsyncMetricEntityStateBase(
-            metricEntity,
-            otelRepository,
-            null,
-            null,
-            Collections.emptyList(),
-            baseDimensionsMap,
-            baseAttributes,
-            scope,
-            liveStateResolver,
-            valueResolver));
+    return new AsyncMetricEntityStateBase(
+        metricEntity,
+        otelRepository,
+        null,
+        null,
+        Collections.emptyList(),
+        baseDimensionsMap,
+        baseAttributes,
+        scope,
+        liveStateResolver,
+        valueResolver);
   }
 
   /** Same as above, plus a Tehuti sensor; the resolvers apply to OTel only. */
@@ -97,17 +96,16 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       @Nonnull LiveStateResolver<S> liveStateResolver,
       @Nonnull ValueResolver<S> valueResolver) {
     Objects.requireNonNull(scope, "scope");
-    return scope.register(
-        new AsyncMetricEntityStateBase(
-            metricEntity,
-            otelRepository,
-            registerTehutiSensorFn,
-            tehutiMetricNameEnum,
-            tehutiMetricStats,
-            baseDimensionsMap,
-            baseAttributes,
-            scope,
-            liveStateResolver,
-            valueResolver));
+    return new AsyncMetricEntityStateBase(
+        metricEntity,
+        otelRepository,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        baseDimensionsMap,
+        baseAttributes,
+        scope,
+        liveStateResolver,
+        valueResolver);
   }
 }

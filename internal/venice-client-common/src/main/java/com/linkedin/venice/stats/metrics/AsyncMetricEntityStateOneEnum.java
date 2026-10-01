@@ -3,13 +3,18 @@ package com.linkedin.venice.stats.metrics;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolver;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolver;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
 import io.opentelemetry.api.common.Attributes;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 
 /**
@@ -97,32 +102,26 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
     // If OTel is disabled (or no repo supplied), short-circuit
     boolean emitOtel = otelRepository != null && otelRepository.emitOpenTelemetryMetrics();
     if (!emitOtel) {
-      return scope.register(new AsyncMetricEntityStateOneEnum<>(false, null, null, metricEntity, otelRepository));
+      return new AsyncMetricEntityStateOneEnum<>(false, null, null, metricEntity, otelRepository);
     }
 
-    /*
-     * Cache the enum constants array once. Class#getEnumConstants() clones its internal array on
-     * every call; the callback below runs on every OTel collection cycle, so caching avoids
-     * per-cycle allocation.
-     */
-    E[] enumConstants = enumTypeClass.getEnumConstants();
-
-    // Precompute the Attributes once per enum value at construction time.
+    // Attributes and per-enum resolvers are built once here, so a collection allocates nothing per enum value.
     EnumMap<E, Attributes> attributesByEnum = new EnumMap<>(enumTypeClass);
-    for (E enumValue: enumConstants) {
-      attributesByEnum.put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue));
+    List<Consumer<GaugeObservation>> samples = new ArrayList<>();
+    for (E enumValue: enumTypeClass.getEnumConstants()) {
+      Attributes attributes = otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue);
+      attributesByEnum.put(enumValue, attributes);
+      LiveStateResolver<S> stateResolver = () -> liveStateResolver.resolve(enumValue);
+      ValueResolver<S> enumValueResolver = state -> valueResolver.extractValue(state, enumValue);
+      samples.add(observation -> observation.observe(attributes, stateResolver, enumValueResolver));
     }
 
     Object instrument = otelRepository.registerObservableGauge(metricEntity, scope, observation -> {
-      for (E enumValue: enumConstants) {
-        observation.observe(
-            attributesByEnum.get(enumValue),
-            () -> liveStateResolver.resolve(enumValue),
-            state -> valueResolver.extractValue(state, enumValue));
+      for (Consumer<GaugeObservation> sample: samples) {
+        sample.accept(observation);
       }
     });
-    return scope.register(
-        new AsyncMetricEntityStateOneEnum<>(true, attributesByEnum, instrument, metricEntity, otelRepository));
+    return new AsyncMetricEntityStateOneEnum<>(true, attributesByEnum, instrument, metricEntity, otelRepository);
   }
 
   public boolean emitOpenTelemetryMetrics() {

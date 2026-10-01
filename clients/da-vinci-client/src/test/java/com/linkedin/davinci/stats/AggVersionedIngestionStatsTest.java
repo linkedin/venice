@@ -383,11 +383,11 @@ public class AggVersionedIngestionStatsTest {
           1L);
 
       aggStats.cleanupVersionResources(STORE_NAME, VERSION_2);
-      assertNoGaugePoint(
-          reader,
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          reader.collectAllMetrics(),
           INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity().getMetricName(),
-          STORE_NAME,
-          VersionRole.FUTURE);
+          TEST_PREFIX,
+          attributes(STORE_NAME, VersionRole.FUTURE));
     }
   }
 
@@ -429,71 +429,56 @@ public class AggVersionedIngestionStatsTest {
           1L);
 
       aggStats.removeIngestionTask(versionTopic(VERSION_2), futureTask);
-      assertNoGaugePoint(
-          reader,
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          reader.collectAllMetrics(),
           INGESTION_TASK_COUNT.getMetricEntity().getMetricName(),
-          STORE_NAME,
-          VersionRole.FUTURE);
+          TEST_PREFIX,
+          attributes(STORE_NAME, VersionRole.FUTURE));
     }
   }
 
   @Test
-  public void testBaseOtelStatsStayOpenUntilTheLastViewTaskStops() throws Exception {
+  public void testViewTopicDetachRetiresViewsAndIdleBaseAfterLastViewTaskStops() throws Exception {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     try (VeniceMetricsRepository repo = createOtelEnabledRepo(reader)) {
       AggVersionedIngestionStats aggStats = createAggStats(true, repo);
       String firstViewTopic = viewTopic(VERSION_1, "firstView");
       String secondViewTopic = viewTopic(VERSION_1, "secondView");
+      String firstViewStoreName = VeniceView.parseStoreAndViewFromViewTopic(firstViewTopic);
+      String secondViewStoreName = VeniceView.parseStoreAndViewFromViewTopic(secondViewTopic);
       setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1);
-      setStoreVersionInfo(aggStats, VeniceView.parseStoreAndViewFromViewTopic(firstViewTopic), VERSION_1, VERSION_1);
-      setStoreVersionInfo(aggStats, VeniceView.parseStoreAndViewFromViewTopic(secondViewTopic), VERSION_1, VERSION_1);
+      setStoreVersionInfo(aggStats, firstViewStoreName, VERSION_1, VERSION_1);
+      setStoreVersionInfo(aggStats, secondViewStoreName, VERSION_1, VERSION_1);
       StoreIngestionTask firstViewTask = mockTask();
       StoreIngestionTask secondViewTask = mockTask();
       Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
+      String taskCount = INGESTION_TASK_COUNT.getMetricEntity().getMetricName();
+      String recordsConsumed = INGESTION_RECORDS_CONSUMED.getMetricEntity().getMetricName();
+      Attributes baseLeaderCurrent = attributes(STORE_NAME, VersionRole.CURRENT, ReplicaType.LEADER);
 
-      // Two views ingest on this host without a task of the base store, and both record into its stats.
       aggStats.setIngestionTask(firstViewTopic, firstViewTask);
       aggStats.setIngestionTask(secondViewTopic, secondViewTask);
       IngestionOtelStats baseStats = otelStatsMap.get(STORE_NAME);
       assertNotNull(baseStats);
+      aggStats.recordLeaderConsumed(STORE_NAME, VERSION_1, 7);
+      assertGaugeValue(reader, taskCount, firstViewStoreName, VersionRole.CURRENT, 1L);
 
       aggStats.removeIngestionTask(firstViewTopic, firstViewTask);
       assertSame(otelStatsMap.get(STORE_NAME), baseStats);
 
       aggStats.removeIngestionTask(secondViewTopic, secondViewTask);
       assertNull(otelStatsMap.get(STORE_NAME));
-    }
-  }
-
-  @Test
-  public void testViewTopicDetachRetiresViewAndIdleBaseOtelStats() {
-    InMemoryMetricReader reader = InMemoryMetricReader.create();
-    try (VeniceMetricsRepository repo = createOtelEnabledRepo(reader)) {
-      AggVersionedIngestionStats aggStats = createAggStats(true, repo);
-      String viewTopic = viewTopic(VERSION_1);
-      String viewStoreName = VeniceView.parseStoreAndViewFromViewTopic(viewTopic);
-      setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1);
-      setStoreVersionInfo(aggStats, viewStoreName, VERSION_1, VERSION_1);
-      StoreIngestionTask viewTask = mockTask();
-
-      String taskCount = INGESTION_TASK_COUNT.getMetricEntity().getMetricName();
-      String recordsConsumed = INGESTION_RECORDS_CONSUMED.getMetricEntity().getMetricName();
-      Attributes baseLeaderCurrent = attributes(STORE_NAME, VersionRole.CURRENT, ReplicaType.LEADER);
-
-      aggStats.setIngestionTask(viewTopic, viewTask);
-      // The view task records under the base store name, as StoreIngestionTask does.
-      aggStats.recordLeaderConsumed(STORE_NAME, VERSION_1, 7);
-      assertGaugeValue(reader, taskCount, viewStoreName, VersionRole.CURRENT, 1L);
-      aggStats.removeIngestionTask(viewTopic, viewTask);
-
-      // Gauges stop at once; the closed base-store counter reports its final total once, then stops.
       Collection<MetricData> firstCollection = reader.collectAllMetrics();
-      assertNull(
-          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
-              firstCollection,
-              taskCount,
-              TEST_PREFIX,
-              attributes(viewStoreName, VersionRole.CURRENT)));
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          firstCollection,
+          taskCount,
+          TEST_PREFIX,
+          attributes(firstViewStoreName, VersionRole.CURRENT));
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          firstCollection,
+          taskCount,
+          TEST_PREFIX,
+          attributes(secondViewStoreName, VersionRole.CURRENT));
       assertEquals(
           OpenTelemetryDataTestUtils
               .getLongPointDataFromSum(firstCollection, recordsConsumed, TEST_PREFIX, baseLeaderCurrent)
@@ -638,19 +623,6 @@ public class AggVersionedIngestionStatsTest {
         .validateLongPointDataFromGauge(reader, expected, attributes(storeName, role), metricName, TEST_PREFIX);
   }
 
-  private static void assertNoGaugePoint(
-      InMemoryMetricReader reader,
-      String metricName,
-      String storeName,
-      VersionRole role) {
-    assertNull(
-        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
-            reader.collectAllMetrics(),
-            metricName,
-            TEST_PREFIX,
-            attributes(storeName, role)));
-  }
-
   // Helper methods to access private fields and methods via reflection
 
   @SuppressWarnings("unchecked")
@@ -658,9 +630,9 @@ public class AggVersionedIngestionStatsTest {
     Field field = AggVersionedIngestionStats.class.getDeclaredField("otelStats");
     field.setAccessible(true);
     Object registry = field.get(stats);
-    Method method = registry.getClass().getDeclaredMethod("getStatsByStore");
-    method.setAccessible(true);
-    return (Map<String, IngestionOtelStats>) method.invoke(registry);
+    Field map = registry.getClass().getDeclaredField("statsByStore");
+    map.setAccessible(true);
+    return (Map<String, IngestionOtelStats>) map.get(registry);
   }
 
   private void invokeCleanupVersionResources(AggVersionedIngestionStats stats, String storeName, int version)

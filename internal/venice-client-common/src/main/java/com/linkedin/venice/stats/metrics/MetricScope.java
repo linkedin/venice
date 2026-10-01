@@ -9,7 +9,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * Groups the observable metric states of one component (e.g. a store's stats) so they can be
  * closed together when that component is genuinely retired, instead of reporting stale values forever.
- * Every async gauge factory requires a scope, so no gauge exists outside one.
+ * Every async gauge factory requires a scope, so no gauge exists outside one, and an observable counter starts
+ * reporting only once a scope registers it, so none reports outside one either.
  * Closing is idempotent; anything registered after close is closed immediately.
  */
 public class MetricScope implements AutoCloseable {
@@ -27,6 +28,8 @@ public class MetricScope implements AutoCloseable {
     }
     if (closeNow) {
       closeResource(resource);
+    } else if (resource instanceof MetricEntityState) {
+      ((MetricEntityState) resource).startObservableCounter();
     }
     return resource;
   }

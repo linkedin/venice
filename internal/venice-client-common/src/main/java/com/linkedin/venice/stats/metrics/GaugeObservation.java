@@ -5,9 +5,8 @@ import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolver;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.ObjDoubleConsumer;
-import java.util.function.ObjLongConsumer;
 import javax.annotation.Nonnull;
 
 
@@ -23,29 +22,33 @@ public interface GaugeObservation {
 
   /** Records into a long gauge: integral values exactly, finite floating-point values truncated. */
   static GaugeObservation of(ObservableLongMeasurement measurement, Consumer<Exception> onFailure) {
-    return of(
-        (attributes, value) -> measurement.record(value, attributes),
-        (attributes, value) -> measurement.record((long) value, attributes),
-        onFailure);
+    return of((attributes, value) -> {
+      if (value instanceof Double || value instanceof Float) {
+        double doubleValue = value.doubleValue();
+        if (Double.isFinite(doubleValue)) {
+          measurement.record((long) doubleValue, attributes);
+        }
+      } else {
+        measurement.record(value.longValue(), attributes);
+      }
+    }, onFailure);
   }
 
-  /** Records into a double gauge. */
+  /** Records finite values into a double gauge. */
   static GaugeObservation of(ObservableDoubleMeasurement measurement, Consumer<Exception> onFailure) {
-    return of(
-        (attributes, value) -> measurement.record((double) value, attributes),
-        (attributes, value) -> measurement.record(value, attributes),
-        onFailure);
+    return of((attributes, value) -> {
+      double doubleValue = value.doubleValue();
+      if (Double.isFinite(doubleValue)) {
+        measurement.record(doubleValue, attributes);
+      }
+    }, onFailure);
   }
 
   /**
-   * Records a sample only for non-null state: {@code Double} and {@code Float} values go to {@code doubleRecorder} when
-   * finite, and other values go to {@code longRecorder} as {@link Number#longValue()}. A resolver exception skips the
+   * Passes each sample's value to {@code recorder}, only for non-null state. A resolver or recorder exception skips the
    * sample and is passed to {@code onFailure}.
    */
-  static GaugeObservation of(
-      ObjLongConsumer<Attributes> longRecorder,
-      ObjDoubleConsumer<Attributes> doubleRecorder,
-      Consumer<Exception> onFailure) {
+  static GaugeObservation of(BiConsumer<Attributes, Number> recorder, Consumer<Exception> onFailure) {
     return new GaugeObservation() {
       @Override
       public <S> void observe(
@@ -54,17 +57,8 @@ public interface GaugeObservation {
           @Nonnull ValueResolver<S> valueResolver) {
         try {
           S state = stateResolver.resolve();
-          if (state == null) {
-            return;
-          }
-          Number value = valueResolver.extractValue(state);
-          if (value instanceof Double || value instanceof Float) {
-            double doubleValue = value.doubleValue();
-            if (Double.isFinite(doubleValue)) {
-              doubleRecorder.accept(attributes, doubleValue);
-            }
-          } else {
-            longRecorder.accept(attributes, value.longValue());
+          if (state != null) {
+            recorder.accept(attributes, valueResolver.extractValue(state));
           }
         } catch (Exception e) {
           onFailure.accept(e);

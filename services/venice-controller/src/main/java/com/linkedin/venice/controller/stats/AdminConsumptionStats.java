@@ -10,6 +10,7 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolver;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -28,6 +29,7 @@ import io.tehuti.metrics.stats.Min;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 
 public class AdminConsumptionStats extends AbstractVeniceStats {
@@ -204,82 +206,61 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    AsyncMetricEntityStateBase.createWithState(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT,
         AdminConsumptionTehutiMetricNameEnum.PENDING_ADMIN_MESSAGES_COUNT,
-        Arrays.asList(
-            new AsyncGauge(
-                (ignored, ignored2) -> pendingAdminMessagesCountGauge != null ? pendingAdminMessagesCountGauge : 0D,
-                AdminConsumptionTehutiMetricNameEnum.PENDING_ADMIN_MESSAGES_COUNT.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        getMetricScope(),
-        () -> {
-          Double value = pendingAdminMessagesCountGauge;
-          return value == null || value == UNASSIGNED_PENDING_COUNT ? null : value;
-        },
-        Double::doubleValue);
-
-    AsyncMetricEntityStateBase.createWithState(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_STORE_PENDING_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+        () -> pendingAdminMessagesCountGauge,
+        () -> known(pendingAdminMessagesCountGauge, UNASSIGNED_PENDING_COUNT));
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_STORE_PENDING_COUNT,
         AdminConsumptionTehutiMetricNameEnum.STORES_WITH_PENDING_ADMIN_MESSAGES_COUNT,
-        Arrays.asList(
-            new AsyncGauge(
-                (ignored, ignored2) -> storesWithPendingAdminMessagesCountGauge != null
-                    ? storesWithPendingAdminMessagesCountGauge
-                    : 0D,
-                AdminConsumptionTehutiMetricNameEnum.STORES_WITH_PENDING_ADMIN_MESSAGES_COUNT.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        getMetricScope(),
-        () -> {
-          Double value = storesWithPendingAdminMessagesCountGauge;
-          return value == null || value == UNASSIGNED_PENDING_COUNT ? null : value;
-        },
-        Double::doubleValue);
-
-    AsyncMetricEntityStateBase.createWithState(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+        () -> storesWithPendingAdminMessagesCountGauge,
+        () -> known(storesWithPendingAdminMessagesCountGauge, UNASSIGNED_PENDING_COUNT));
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG,
         AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG,
-        Arrays.asList(new AsyncGauge((ignored, ignored2) -> {
-          Long lag = this.adminConsumptionOffsetLag;
-          return lag == null ? 0D : lag.doubleValue();
-        }, AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        getMetricScope(),
-        () -> {
-          if (!adminConsumptionOffsetLagCollected) {
-            return null;
-          }
-          Long value = this.adminConsumptionOffsetLag;
-          return value == null || value == Long.MAX_VALUE ? null : value;
-        },
-        Long::longValue);
-
-    AsyncMetricEntityStateBase.createWithState(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+        () -> adminConsumptionOffsetLag,
+        () -> adminConsumptionOffsetLagCollected ? known(adminConsumptionOffsetLag, Long.MAX_VALUE) : null);
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG,
         AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG,
-        Arrays.asList(new AsyncGauge((ignored, ignored2) -> {
-          Long lag = this.maxAdminConsumptionOffsetLag;
-          return lag == null ? 0D : lag.doubleValue();
-        }, AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        getMetricScope(),
-        () -> maxAdminConsumptionOffsetLagCollected ? this.maxAdminConsumptionOffsetLag : null,
-        Long::longValue);
+        () -> maxAdminConsumptionOffsetLag,
+        () -> maxAdminConsumptionOffsetLagCollected ? maxAdminConsumptionOffsetLag : null);
 
     // Tehuti-only
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
+  }
+
+  /** Tehuti reports {@code value}, or 0 before it is set; OTel reports {@code otelState}, omitting it when null. */
+  private <T extends Number> void registerGauge(
+      OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData,
+      AdminConsumptionOtelMetricEntity otelMetric,
+      AdminConsumptionTehutiMetricNameEnum tehutiMetric,
+      Supplier<T> value,
+      LiveStateResolver<T> otelState) {
+    AsyncMetricEntityStateBase.createWithState(
+        otelMetric.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensorIfAbsent,
+        tehutiMetric,
+        Arrays.asList(new AsyncGauge((ignored, ignored2) -> {
+          T current = value.get();
+          return current == null ? 0D : current.doubleValue();
+        }, tehutiMetric.getMetricName())),
+        otelData.getBaseDimensionsMap(),
+        otelData.getBaseAttributes(),
+        getMetricScope(),
+        otelState,
+        state -> state);
+  }
+
+  /** {@code value}, or null while it is unset or the sentinel for a value this controller doesn't know. */
+  private static <T extends Number> T known(T value, T unknown) {
+    return value == null || value.equals(unknown) ? null : value;
   }
 
   /**

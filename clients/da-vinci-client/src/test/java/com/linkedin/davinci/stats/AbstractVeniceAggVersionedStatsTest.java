@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.Collections;
@@ -48,14 +49,9 @@ public class AbstractVeniceAggVersionedStatsTest {
     assertEquals(storeStats.updateCount, 2);
   }
 
-  @Test
-  public void testStoreDeletionClosesAndRemovesStatsWithTehutiUnregistrationEnabled() {
-    assertStoreDeletionClosesAndRemovesStats(true);
-  }
-
-  @Test
-  public void testStoreDeletionClosesAndRemovesStatsWithTehutiUnregistrationDisabled() {
-    assertStoreDeletionClosesAndRemovesStats(false);
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStoreDeletionClosesAndRemovesStats(boolean unregisterMetricForDeletedStoreEnabled) {
+    assertStoreDeletionClosesAndRemovesStats(unregisterMetricForDeletedStoreEnabled);
   }
 
   @Test

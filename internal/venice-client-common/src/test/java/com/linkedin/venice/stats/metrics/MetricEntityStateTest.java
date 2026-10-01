@@ -44,6 +44,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -245,15 +246,9 @@ public class MetricEntityStateTest {
 
   @Test
   public void testCloseRetiresHighPerfObservableCounterAfterFinalReport() {
-    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES);
     ObservableLongCounter counter = mock(ObservableLongCounter.class);
-    @SuppressWarnings("unchecked")
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callback = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableLongCounter(eq(mockMetricEntity), callback.capture()))
-        .thenReturn(counter);
-
-    MetricEntityStateBase metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callback = captureObservableCounter(counter);
+    MetricEntityStateBase metricEntityState = new MetricScope().register(createHighPerfObservableCounter());
     metricEntityState.record(3L);
 
     metricEntityState.close();
@@ -272,17 +267,11 @@ public class MetricEntityStateTest {
 
   @Test
   public void testCloseRetiresObservableCounterOnceTheRetireDelayHasPassed() {
-    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES);
     // With several readers, a closed counter keeps reporting its final total for an export interval.
     when(mockOtelRepository.getObservableCounterRetireDelayMs()).thenReturn(60_000L);
     ObservableLongCounter counter = mock(ObservableLongCounter.class);
-    @SuppressWarnings("unchecked")
-    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callback = ArgumentCaptor.forClass(Consumer.class);
-    when(mockOtelRepository.registerObservableLongCounter(eq(mockMetricEntity), callback.capture()))
-        .thenReturn(counter);
-
-    MetricEntityStateBase metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callback = captureObservableCounter(counter);
+    MetricEntityStateBase metricEntityState = new MetricScope().register(createHighPerfObservableCounter());
     metricEntityState.record(3L);
     metricEntityState.close();
 
@@ -303,6 +292,58 @@ public class MetricEntityStateTest {
 
     callback.getValue().accept(mock(ObservableLongMeasurement.class));
     verify(mockOtelRepository, times(1)).closeObservableInstrument(mockMetricEntity, counter);
+  }
+
+  @Test
+  public void testObservableCounterStartsOnlyWhenAScopeRegistersIt() {
+    MetricEntityStateBase counter = createHighPerfObservableCounter();
+    verify(mockOtelRepository, never()).registerObservableLongCounter(any(), any());
+
+    // It starts once, however many scopes register it.
+    MetricScope scope = new MetricScope();
+    scope.register(counter);
+    scope.register(counter);
+    new MetricScope().register(counter);
+    verify(mockOtelRepository, times(1)).registerObservableLongCounter(eq(mockMetricEntity), any());
+
+    // A counter closed before any scope registers it never starts.
+    MetricEntityStateBase closedFirst = createHighPerfObservableCounter();
+    closedFirst.close();
+    scope.register(closedFirst);
+    verify(mockOtelRepository, times(1)).registerObservableLongCounter(eq(mockMetricEntity), any());
+  }
+
+  @Test
+  public void testObservableCounterClosedWhileStartingRetiresOnceItsInstrumentIsStored() {
+    ObservableLongCounter instrument = mock(ObservableLongCounter.class);
+    MetricEntityStateBase counter = createHighPerfObservableCounter();
+    AtomicReference<Consumer<ObservableLongMeasurement>> callback = new AtomicReference<>();
+    when(mockOtelRepository.registerObservableLongCounter(eq(mockMetricEntity), any())).thenAnswer(invocation -> {
+      // The owner closes the counter, and a collection runs, before registration returns the instrument.
+      callback.set(invocation.getArgument(1));
+      counter.close();
+      callback.get().accept(mock(ObservableLongMeasurement.class));
+      return instrument;
+    });
+
+    new MetricScope().register(counter);
+    verify(mockOtelRepository, never()).closeObservableInstrument(any(), any());
+
+    callback.get().accept(mock(ObservableLongMeasurement.class));
+    verify(mockOtelRepository, times(1)).closeObservableInstrument(mockMetricEntity, instrument);
+  }
+
+  private MetricEntityStateBase createHighPerfObservableCounter() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES);
+    return MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+  }
+
+  @SuppressWarnings("unchecked")
+  private ArgumentCaptor<Consumer<ObservableLongMeasurement>> captureObservableCounter(ObservableLongCounter counter) {
+    ArgumentCaptor<Consumer<ObservableLongMeasurement>> callback = ArgumentCaptor.forClass(Consumer.class);
+    when(mockOtelRepository.registerObservableLongCounter(eq(mockMetricEntity), callback.capture()))
+        .thenReturn(counter);
+    return callback;
   }
 
   @Test

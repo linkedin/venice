@@ -39,6 +39,7 @@ import java.util.Collection;
 import java.util.Collections;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -491,38 +492,35 @@ public class DIVStatsOtelTest {
     validateCounter(OTEL_PRODUCER_FAILURE_COUNT, 2, buildRoleOnlyAttributes(TEST_STORE_NAME, VersionRole.CURRENT));
   }
 
-  @Test
-  public void testStoreDeletionRetiresMessageCountAfterFinalReport() {
+  @Test(dataProvider = "messageCountRetirementScenarios")
+  public void testClosingStoreStatsRetiresMessageCountAfterFinalReport(boolean closeByStoreDeletion) {
     setUpStoreVersions(TEST_STORE_NAME);
-    stats.recordSuccessMsg(TEST_STORE_NAME, 1);
     Attributes attributes = buildMessageAttributes(TEST_STORE_NAME, VersionRole.CURRENT, VeniceDIVResult.SUCCESS);
+    StoreIngestionTask currentVersionTask = mock(StoreIngestionTask.class);
+    StoreIngestionTask futureVersionTask = mock(StoreIngestionTask.class);
+    if (!closeByStoreDeletion) {
+      stats.setIngestionTask(TEST_STORE_NAME, currentVersionTask);
+      stats.setIngestionTask(TEST_STORE_NAME, futureVersionTask);
+    }
+    stats.recordSuccessMsg(TEST_STORE_NAME, 1);
     validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
 
-    stats.handleStoreDeleted(TEST_STORE_NAME);
+    if (closeByStoreDeletion) {
+      stats.handleStoreDeleted(TEST_STORE_NAME);
+    } else {
+      stats.removeIngestionTask(TEST_STORE_NAME, currentVersionTask);
+      validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
+      validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
+      stats.removeIngestionTask(TEST_STORE_NAME, futureVersionTask);
+    }
 
-    // The closed counter reports its final total once, then stops.
     validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
     assertNoMessageCount(attributes);
   }
 
-  @Test
-  public void testLastIngestionTaskDetachRetiresOtelMetrics() {
-    setUpStoreVersions(TEST_STORE_NAME);
-    StoreIngestionTask currentVersionTask = mock(StoreIngestionTask.class);
-    StoreIngestionTask futureVersionTask = mock(StoreIngestionTask.class);
-    stats.setIngestionTask(TEST_STORE_NAME, currentVersionTask);
-    stats.setIngestionTask(TEST_STORE_NAME, futureVersionTask);
-    stats.recordSuccessMsg(TEST_STORE_NAME, 1);
-    Attributes attributes = buildMessageAttributes(TEST_STORE_NAME, VersionRole.CURRENT, VeniceDIVResult.SUCCESS);
-
-    // A task is still running, so the counter keeps reporting on every collection.
-    stats.removeIngestionTask(TEST_STORE_NAME, currentVersionTask);
-    validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
-    validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
-
-    stats.removeIngestionTask(TEST_STORE_NAME, futureVersionTask);
-    validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
-    assertNoMessageCount(attributes);
+  @DataProvider(name = "messageCountRetirementScenarios")
+  public Object[][] messageCountRetirementScenarios() {
+    return new Object[][] { { true }, { false } };
   }
 
   @Test

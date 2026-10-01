@@ -78,10 +78,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   /** SdkMeterProvider that is used to create the OpenTelemetry instance */
   private SdkMeterProvider sdkMeterProvider = null;
   /**
-   * How long a closed observable counter keeps reporting its final totals before it retires. With exactly one reader it
-   * is 0, since that reader's next collection gets them. With several readers, or readers of an OpenTelemetry the
-   * application initialized (which aren't visible here), it is one export interval, so each reader's next collection
-   * gets them.
+   * How long a closed observable counter keeps reporting its final totals: 0 with exactly one known reader, else one
+   * export interval (several readers, or an application-initialized OpenTelemetry whose readers aren't visible here).
    */
   private long observableCounterRetireDelayMs = 0;
 

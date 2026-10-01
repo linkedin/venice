@@ -21,10 +21,7 @@ public final class AsyncMetricResolvers {
     S resolve();
   }
 
-  /**
-   * Reads the value from non-null state. Long gauges record integral values exactly; {@code Double} and {@code Float}
-   * values are recorded only when finite.
-   */
+  /** Reads the value from non-null state; {@link GaugeObservation} records it. */
   @FunctionalInterface
   public interface ValueResolver<S> {
     @Nonnull
@@ -63,9 +60,7 @@ public final class AsyncMetricResolvers {
   }
 
   /**
-   * Reads the value from a non-null state plus the enum dimension, recorded as described in {@link ValueResolver}.
-   * Used by {@link AsyncMetricEntityStateOneEnum} on combos for which {@link LiveStateResolverOneEnum#resolve}
-   * returned non-null.
+   * {@link ValueResolver} for {@link AsyncMetricEntityStateOneEnum}, also given the enum value.
    *
    * @param <S> the backing state type
    * @param <E> the enum dimension type
@@ -77,9 +72,7 @@ public final class AsyncMetricResolvers {
   }
 
   /**
-   * Reads the value from a non-null state plus both enum dimensions, recorded as described in {@link ValueResolver}.
-   * Used by {@link AsyncMetricEntityStateTwoEnums} on pairs for which {@link LiveStateResolverTwoEnums#resolve}
-   * returned non-null.
+   * {@link ValueResolver} for {@link AsyncMetricEntityStateTwoEnums}, also given both enum values.
    *
    * @param <S>  the backing state type
    * @param <E1> the first enum dimension type

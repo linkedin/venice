@@ -28,6 +28,8 @@ import java.util.function.ObjLongConsumer;
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
   private final boolean isObservableCounter;
+  /** Whether {@link #startObservableCounter} registered this observable counter's instrument. */
+  private volatile boolean started;
   /** When this observable counter first reported after it closed; 0 until then. See {@link #isRetirementDue}. */
   private final AtomicLong firstReportAfterCloseMs = new AtomicLong();
   private final AtomicBoolean retired = new AtomicBoolean();
@@ -63,25 +65,33 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   protected abstract Iterable<MetricAttributesData> getAllMetricAttributesData();
 
   /**
-   * Registers the Observable Counter with the OTel repository if this metric uses async recording.
-   * Supports both ASYNC_COUNTER_FOR_HIGH_PERF_CASES and ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES.
-   * This must be called by subclasses after their constructor completes and the metricAttributesData map is initialized.
+   * Starts OTel reporting for an observable counter (ASYNC_COUNTER_FOR_HIGH_PERF_CASES or
+   * ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES). {@link MetricScope#register} calls it, so a counter reports only while
+   * a scope owns it and stops when that scope closes. Does nothing for other types, once started, or once closed.
    */
-  protected final void registerObservableCounterIfNeeded() {
-    if (!isObservableCounter || !emitOpenTelemetryMetrics() || getOtelRepository() == null) {
+  final void startObservableCounter() {
+    if (!isObservableCounter) {
       return;
     }
-    switch (getMetricEntity().getMetricType()) {
-      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
-        setOtelMetric(getOtelRepository().registerObservableLongCounter(getMetricEntity(), this::reportToMeasurement));
-        break;
-      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
-        setOtelMetric(
-            getOtelRepository().registerObservableLongUpDownCounter(getMetricEntity(), this::reportToMeasurement));
-        break;
-      default:
-        throw new IllegalStateException(
-            "Unexpected metric type for observable counter registration: " + getMetricEntity().getMetricType());
+    synchronized (this) {
+      if (started || isClosed() || !emitOpenTelemetryMetrics() || getOtelRepository() == null) {
+        return;
+      }
+      switch (getMetricEntity().getMetricType()) {
+        case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+          setOtelMetric(
+              getOtelRepository().registerObservableLongCounter(getMetricEntity(), this::reportToMeasurement));
+          break;
+        case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+          setOtelMetric(
+              getOtelRepository().registerObservableLongUpDownCounter(getMetricEntity(), this::reportToMeasurement));
+          break;
+        default:
+          throw new IllegalStateException(
+              "Unexpected metric type for observable counter registration: " + getMetricEntity().getMetricType());
+      }
+      // Set after the instrument is stored, so a callback that sees it can close the instrument.
+      started = true;
     }
   }
 
@@ -97,7 +107,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
    */
   private void reportToMeasurement(ObservableLongMeasurement measurement) {
     // Read before reporting so that the report that retires the counter still carries its final totals.
-    boolean retire = isClosed() && isRetirementDue();
+    boolean retire = isClosed() && started && isRetirementDue();
     Iterable<MetricAttributesData> allData = getAllMetricAttributesData();
     if (allData != null) {
       for (MetricAttributesData holder: allData) {
@@ -112,9 +122,8 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   }
 
   /**
-   * Whether this closed counter may stop reporting. Each metric reader collects it separately, and the callback doesn't
-   * say which one is collecting, so the counter keeps reporting its final totals until the repository's retirement
-   * delay has passed since its first report after close.
+   * Whether this closed counter may stop reporting: the callback can't tell which reader is collecting, so the final
+   * totals keep reporting until the retirement delay has passed since the first report after close.
    */
   private boolean isRetirementDue() {
     long nowMs = System.currentTimeMillis();

@@ -191,8 +191,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   }
 
   /**
-   * Volatile reference cleared by {@link #closeRMDBlockCache()} before the native Cache is freed.
-   * Callbacks copy it locally to avoid null dereferences; shutdown-time native free races are unchanged.
+   * Volatile reference cleared by {@link #closeRMDBlockCache()} before the native Cache is freed. Callbacks copy it
+   * locally to avoid null dereferences, but one that already holds the copy can still read the cache as it is freed.
    */
   private volatile Cache rmdCache;
 
@@ -220,8 +220,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   }
 
   /**
-   * Must be called before closing the native Cache object to prevent use-after-free.
-   * Nulls out the volatile reference so in-flight and future callbacks return 0.
+   * Must be called before closing the native Cache object. Clears the reference, so later callbacks report 0 to Tehuti
+   * and no RMD block cache sample to OTel.
    */
   public void closeRMDBlockCache() {
     this.rmdCache = null;

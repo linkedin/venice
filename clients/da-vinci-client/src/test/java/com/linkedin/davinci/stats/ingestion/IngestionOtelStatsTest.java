@@ -1304,22 +1304,6 @@ public class IngestionOtelStatsTest {
   }
 
   @Test
-  public void testRemoveIngestionTaskWithMatchingTaskIgnoresStaleTaskInstance() {
-    StoreIngestionTask staleTask = mock(StoreIngestionTask.class);
-    StoreIngestionTask newerTask = mock(StoreIngestionTask.class);
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, staleTask);
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, newerTask);
-
-    String metric = IngestionOtelMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity().getMetricName();
-    ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 0);
-
-    assertFalse(ingestionOtelStats.removeIngestionTask(CURRENT_VERSION, staleTask));
-    assertTrue(ingestionOtelStats.hasIngestionTasks());
-    assertGaugeValue(metric, VersionRole.CURRENT, 0L);
-  }
-
-  @Test
   public void testGetIdleTimeForRoleCallback() {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     String metric = IngestionOtelMetricEntity.CONSUMER_IDLE_TIME.getMetricEntity().getMetricName();

@@ -25,6 +25,7 @@ import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -235,38 +236,35 @@ public class StorageUtilizationManagerTest {
     }
   }
 
-  @Test
-  public void testDiskQuotaUsageIsHostUsageOverItsShareOfStoreQuota() {
-    // This host holds 2 of the 10 partitions, using 5 bytes each: 10 bytes against 2/10 of the 100-byte quota.
-    quotaEnforcer.enforcePartitionQuota(1, 5);
-    quotaEnforcer.enforcePartitionQuota(2, 5);
-    Assert.assertEquals(quotaEnforcer.getDiskQuotaUsage(), 0.5);
+  @Test(dataProvider = "diskQuotaUsageScenarios")
+  public void testDiskQuotaUsage(long storeQuota, int[] partitions, int[][] usageByPartition, double expectedUsage) {
+    StorageUtilizationManager manager = createManagerHostingPartitions(storeQuota, partitions);
+    if (storeQuota < storePartitionCount) {
+      Assert.assertEquals(manager.getPartitionQuotaInBytes(), 0L);
+    }
+    if (storeQuota == 0) {
+      manager.initPartition(1);
+      Assert.assertTrue(Double.isNaN(manager.getDiskQuotaUsage()));
+      manager.enforcePartitionQuota(1, 10);
+      Assert.assertEquals(manager.getDiskQuotaUsage(), Double.POSITIVE_INFINITY);
+      return;
+    }
+    for (int[] usage: usageByPartition) {
+      manager.enforcePartitionQuota(usage[0], usage[1]);
+    }
+    if (storeQuota == 5L) {
+      for (int partition: partitions) {
+        verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionStateMap.get(partition));
+      }
+    }
+    Assert.assertEquals(manager.getDiskQuotaUsage(), expectedUsage);
   }
 
-  @Test
-  public void testDiskQuotaUsageStaysFiniteWhenQuotaIsSmallerThanPartitionCount() {
-    // 5 bytes over 10 partitions leaves each partition a 0-byte enforcement quota.
-    StorageUtilizationManager manager = createManagerHostingPartitions(5L, 1, 2);
-    Assert.assertEquals(manager.getPartitionQuotaInBytes(), 0L);
-
-    manager.enforcePartitionQuota(1, 10);
-    manager.enforcePartitionQuota(2, 10);
-
-    // Enforcement still treats both partitions as over quota; the ratio uses this host's exact 1-byte share.
-    verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionStateMap.get(1));
-    verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionStateMap.get(2));
-    Assert.assertEquals(manager.getDiskQuotaUsage(), 20.0);
-  }
-
-  @Test
-  public void testDiskQuotaUsageHasNoFiniteValueForZeroQuota() {
-    // A zero quota has no meaningful ratio; OTel omits these non-finite values.
-    StorageUtilizationManager manager = createManagerHostingPartitions(0L, 1);
-    manager.initPartition(1);
-    Assert.assertTrue(Double.isNaN(manager.getDiskQuotaUsage()));
-
-    manager.enforcePartitionQuota(1, 10);
-    Assert.assertEquals(manager.getDiskQuotaUsage(), Double.POSITIVE_INFINITY);
+  @DataProvider(name = "diskQuotaUsageScenarios")
+  public Object[][] diskQuotaUsageScenarios() {
+    return new Object[][] { { storeQuotaInBytes, new int[] { 1, 2 }, new int[][] { { 1, 5 }, { 2, 5 } }, 0.5 },
+        { 5L, new int[] { 1, 2 }, new int[][] { { 1, 10 }, { 2, 10 } }, 20.0 },
+        { 0L, new int[] { 1 }, new int[][] {}, Double.NaN } };
   }
 
   /** A manager for a host that holds only {@code partitions} of the store's partitions. */

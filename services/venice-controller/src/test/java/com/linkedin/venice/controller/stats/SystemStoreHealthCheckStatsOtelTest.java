@@ -5,7 +5,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SYSTEM_STORE_TYPE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -136,13 +135,7 @@ public class SystemStoreHealthCheckStatsOtelTest {
 
   @Test
   public void testEveryVeniceSystemStoreTypeEmitsADataPoint() {
-    // Guards against two failure modes of the OTel liveStateResolver switch in
-    // SystemStoreHealthCheckStats:
-    // (a) a new VeniceSystemStoreType value was added but the switch wasn't updated — default
-    // returns null, so no data point is emitted for that value;
-    // (b) an existing case was deleted or broken — same outcome.
-    // Both cause silent loss of coverage at runtime, which this test catches by iterating every
-    // enum value and asserting emission.
+    // Every VeniceSystemStoreType must have a live state resolver and backing counter.
     stats.getBadMetaSystemStoreCounter().set(1);
     stats.getBadPushStatusSystemStoreCounter().set(1);
     stats.setMeasured(true);
@@ -286,28 +279,25 @@ public class SystemStoreHealthCheckStatsOtelTest {
   private void assertNoGauges() {
     Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
     for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
-      assertNull(
-          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
-              metrics,
-              SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT
-                  .getMetricName(),
-              TEST_METRIC_PREFIX,
-              clusterAndSystemStoreTypeAttributes(type)));
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          metrics,
+          SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT
+              .getMetricName(),
+          TEST_METRIC_PREFIX,
+          clusterAndSystemStoreTypeAttributes(type));
     }
-    assertNull(
-        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
-            metrics,
-            SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT
-                .getMetricName(),
-            TEST_METRIC_PREFIX,
-            clusterAttributes()));
-    assertNull(
-        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
-            metrics,
-            SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT
-                .getMetricName(),
-            TEST_METRIC_PREFIX,
-            clusterAttributes()));
+    OpenTelemetryDataTestUtils.assertNoDataPoint(
+        metrics,
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT
+            .getMetricName(),
+        TEST_METRIC_PREFIX,
+        clusterAttributes());
+    OpenTelemetryDataTestUtils.assertNoDataPoint(
+        metrics,
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT
+            .getMetricName(),
+        TEST_METRIC_PREFIX,
+        clusterAttributes());
   }
 
   private void validateTehutiMetric(

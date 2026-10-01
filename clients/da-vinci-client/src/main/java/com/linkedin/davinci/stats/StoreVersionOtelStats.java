@@ -34,14 +34,8 @@ import org.apache.logging.log4j.Logger;
  * <p>This class implements {@link StoreDataChangedListener} and should be registered once per process
  * on the metadata repository via {@link #register(ReadOnlyStoreRepository)}. Per-store state is
  * created lazily on first store change and bounded by the number of distinct store names ever
- * observed by the process (entries are not removed on deletion — see cleanup limitation below).
- *
- * <p><b>Cleanup limitation:</b> the OTel SDK does support per-instrument deregistration via
- * {@code ObservableLongGauge.close()}, but the current Venice wrapper
- * ({@link AsyncMetricEntityStateBase}) doesn't surface the SDK instrument handle, so callbacks
- * remain registered until the {@link MetricsRepository} is closed. On store deletion, version
- * info is reset to {@link VersionInfo#NON_EXISTING} rather than removed — see
- * {@link #handleStoreDeleted} for why removing the map entry is unsafe given the current wrapper.
+ * observed by the process: a deleted store keeps its entry and reports nothing (see {@link #handleStoreDeleted}),
+ * and all callbacks close together on {@link #close()}.
  */
 public class StoreVersionOtelStats implements StoreDataChangedListener, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreVersionOtelStats.class);
@@ -152,12 +146,9 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
   }
 
   /**
-   * Resets version info to {@link VersionInfo#NON_EXISTING} rather than removing the map entry.
-   * The async-gauge callback closes over the {@link AtomicReference}, which the Venice wrapper
-   * doesn't currently surface for de-registration. Removing the map entry would orphan the live
-   * callback (SDK keeps polling stale data); a subsequent re-create would register a second
-   * callback emitting under the same attributes. Resetting keeps one live callback pointed at
-   * the right state across delete→re-create cycles.
+   * Resets version info to {@link VersionInfo#NON_EXISTING}, so the store reports nothing, rather than removing its
+   * entry: the store's callbacks close only with this class's scope, so a removed entry would leave them polling and a
+   * re-created store would register a second set under the same attributes.
    */
   @Override
   public void handleStoreDeleted(String storeName) {

@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.metrics.MetricType.COUNTER;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -14,10 +15,14 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
+import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 
@@ -92,5 +97,22 @@ public abstract class MetricEntityStateEnumTestBase {
       sb.append("Enum").append(i + 1).append(((Enum<?>) enums[i]).name());
     }
     return sb.toString();
+  }
+
+  /** Wraps a measurement the way the repository does, recording failures on the mocked repository. */
+  protected GaugeObservation asObservation(ObservableLongMeasurement measurement) {
+    return GaugeObservation.of(measurement, e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
+  }
+
+  protected GaugeObservation asObservation(ObservableDoubleMeasurement measurement) {
+    return GaugeObservation.of(measurement, e -> mockOtelRepository.recordFailureMetric(mockMetricEntity, e));
+  }
+
+  /** Captures the callback of the gauge registered next on the mocked repository. */
+  @SuppressWarnings("unchecked")
+  protected ArgumentCaptor<Consumer<GaugeObservation>> captureGaugeCallback() {
+    ArgumentCaptor<Consumer<GaugeObservation>> captor = ArgumentCaptor.forClass(Consumer.class);
+    when(mockOtelRepository.registerObservableGauge(eq(mockMetricEntity), any(), captor.capture())).thenReturn(null);
+    return captor;
   }
 }
