@@ -696,6 +696,33 @@ public class KafkaConsumerServiceTest {
   }
 
   @Test(timeOut = 30000)
+  public void testBatchUnsubscribeUsesConfiguredPriority() {
+    int writePathThreadPriority = Thread.NORM_PRIORITY - 2;
+    doReturn(writePathThreadPriority).when(mockVeniceServerConfig).getWritePathThreadPriority();
+    PubSubTopic versionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString("priority_store"), 1));
+
+    SharedKafkaConsumer consumer = mock(SharedKafkaConsumer.class);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    Set<PubSubTopicPartition> partitions = new HashSet<>();
+    partitions.add(topicPartition);
+
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerToPartitions = new HashMap<>();
+    consumerToPartitions.put(consumer, partitions);
+
+    KafkaConsumerService service = createServiceWithConsumers(consumerToPartitions, versionTopic);
+    AtomicReference<Integer> actualThreadPriority = new AtomicReference<>();
+    doAnswer(invocation -> {
+      actualThreadPriority.set(Thread.currentThread().getPriority());
+      return null;
+    }).when(consumer).batchUnsubscribe(any());
+
+    service.batchUnsubscribe(versionTopic, partitions);
+
+    Assert.assertEquals(actualThreadPriority.get(), Integer.valueOf(writePathThreadPriority));
+  }
+
+  @Test(timeOut = 30000)
   public void testBatchUnsubscribeExecutorShutdownInStopInner() throws Exception {
     PubSubTopic versionTopic =
         pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString("shutdown_store"), 1));

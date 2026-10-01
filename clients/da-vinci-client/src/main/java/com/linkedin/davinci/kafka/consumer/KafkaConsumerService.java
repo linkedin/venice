@@ -151,6 +151,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         numOfConsumersPerKafkaCluster,
         new DaemonThreadFactory(
             "KafkaConsumerService-batch-unsub-" + kafkaUrlForLogger + "-" + poolType.getStatSuffix(),
+            serverConfig.getWritePathThreadPriority(),
             serverConfig.getLogContext()));
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
