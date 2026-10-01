@@ -5151,6 +5151,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // the future version replica is ready
       int previousVersion = store.getCurrentVersion();
       Version futureVersionObj = store.getVersion(futureVersion);
+      // Selection happened before acquiring the write lock; retirement, kill, or another swap
+      // may have invalidated the candidate in the meantime.
+      if (futureVersionObj == null || futureVersion == previousVersion
+          || (futureVersionObj.getStatus() != ONLINE && futureVersionObj.getStatus() != PUSHED)
+          || store.getVersions().stream().anyMatch(version -> version.getNumber() > futureVersion)) {
+        throw new VeniceException(
+            "Unable to roll forward store: " + storeName + " to version: " + futureVersion
+                + " because it is no longer an eligible latest non-current version");
+      }
       if (futureVersionObj.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersionObj.getTargetSwapRegion())) {
         int partitionCount = futureVersionObj.getPartitionCount();
         int minActiveReplicas = futureVersionObj.getMinActiveReplicas();
@@ -5194,7 +5203,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           true,
           store.isMigrating(),
           resources::isSourceCluster);
-      if (pushedFutureVersion != Store.NON_EXISTING_VERSION) {
+      if (futureVersionObj.getStatus() == PUSHED) {
         store.updateVersionStatus(futureVersion, VersionStatus.ONLINE);
       }
 
@@ -5216,7 +5225,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // hooks should not run).
     if (capturedStore[0] != null) {
       try {
-        StoreVersionLifecycleEventOutcome outcome = storeLifecycleHooksCache.invokePostVersionSwapHooks(
+        StoreVersionLifecycleEventOutcome outcome = getStoreLifecycleHooksCache().invokePostVersionSwapHooks(
             clusterName,
             capturedStore[0],
             futureVersion,
@@ -7728,8 +7737,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return;
         }
         if (version != null) {
+          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+          Store store = repository.getStore(storeName);
           VersionStatus status = version.getStatus();
-          if (VersionStatus.isBootstrapCompleted(status)) {
+          if (status == ONLINE || version.getNumber() == store.getCurrentVersion()) {
             /**
              * This is trying to avoid kill job entry in participant store if the version is already online.
              * This won't solve all the edge cases since the following race condition could still happen, but it is fine.
@@ -7748,7 +7759,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * So in the new fabric, we need the kill-job message to be as accurate as possible to
              * avoid the discrepancy.
              */
-            LOGGER.info("Resource: {} has finished bootstrapping, so kill job will be skipped", kafkaTopic);
+            LOGGER.info("Resource: {} is ONLINE or current, so kill job will be skipped", kafkaTopic);
             return;
           }
 
@@ -7762,15 +7773,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
 
           // Update version status to KILLED on ZkNode.
-          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-          Store store = repository.getStore(storeName);
           store.updateVersionStatus(version.getNumber(), KILLED);
           repository.updateStore(store);
         }
       }
     }
 
-    if (multiClusterConfigs.getControllerConfig(clusterName).isAdminHelixMessagingChannelEnabled()) {
+    if (getMultiClusterConfigs().getControllerConfig(clusterName).isAdminHelixMessagingChannelEnabled()) {
       StatusMessageChannel messageChannel = resources.getMessageChannel();
       // As we should already have retry outside of this function call, so we do not need to retry again inside.
       int retryCount = 1;
@@ -7787,7 +7796,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // our cluster is not too big, so it's not a big deal here.
       messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
     }
-    if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()
+    if (getMultiClusterConfigs().getControllerConfig(clusterName).isParticipantMessageStoreEnabled()
         && participantMessageStoreRTTMap.containsKey(clusterName)) {
       sendKillMessageToParticipantStore(clusterName, kafkaTopic);
     }

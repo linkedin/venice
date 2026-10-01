@@ -3,13 +3,71 @@ package com.linkedin.venice.controllerapi;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
+import java.util.Optional;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ControllerClientTest {
+  @DataProvider(name = "adminMetadataTimeout")
+  public Object[][] adminMetadataTimeout() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "adminMetadataTimeout")
+  public void testAdminTopicMetadataUsesSingleBoundedAttempt(boolean timesOut) throws Exception {
+    ControllerClient client = Mockito.mock(ControllerClient.class);
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    Mockito.doReturn("http://controller").when(client).getLeaderControllerUrl();
+    QueryParams params = new QueryParams();
+    Mockito.doReturn(params).when(client).newParams();
+    Mockito.doCallRealMethod().when(client).getAdminTopicMetadata(Optional.of("store"), 5000);
+    AdminTopicMetadataResponse success = new AdminTopicMetadataResponse();
+    success.setExecutionId(10);
+    if (timesOut) {
+      Mockito.when(
+          transport.request(
+              "http://controller",
+              ControllerRoute.GET_ADMIN_TOPIC_METADATA,
+              params,
+              AdminTopicMetadataResponse.class,
+              5000,
+              null))
+          .thenThrow(new TimeoutException("poll timed out"));
+    } else {
+      Mockito.when(
+          transport.request(
+              "http://controller",
+              ControllerRoute.GET_ADMIN_TOPIC_METADATA,
+              params,
+              AdminTopicMetadataResponse.class,
+              5000,
+              null))
+          .thenReturn(success);
+    }
+
+    AdminTopicMetadataResponse result = client.getAdminTopicMetadata(Optional.of("store"), 5000);
+
+    Assert.assertEquals(result.isError(), timesOut);
+    if (!timesOut) {
+      Assert.assertSame(result, success);
+    }
+    Mockito.verify(transport)
+        .request(
+            "http://controller",
+            ControllerRoute.GET_ADMIN_TOPIC_METADATA,
+            params,
+            AdminTopicMetadataResponse.class,
+            5000,
+            null);
+    Assert.assertEquals(params.getString(ControllerApiConstants.NAME).get(), "store");
+  }
+
   /**
    * A transient failure on an earlier attempt must not mask a later successful attempt: the retry state is cleared
    * at the start of every attempt, so the first success is returned rather than the run throwing on a stale failure.

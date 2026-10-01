@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPU
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -32,6 +33,8 @@ import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -39,6 +42,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -189,6 +193,84 @@ public class AdminExecutionTaskTest {
     regionName = "test-region";
     lastPersistedExecutionId = 0L;
     isParentController = false;
+  }
+
+  @DataProvider(name = "rollForwardMessages")
+  public Object[][] rollForwardMessages() {
+    return new Object[][] { { false, null, true }, { false, "", false }, { false, "test-region", true },
+        { true, null, true }, { true, "", false }, { true, "test-region", true } };
+  }
+
+  @Test(dataProvider = "rollForwardMessages")
+  public void testRollForwardAndKillUseStoreQueue(boolean parent, String filter, boolean killFirst) {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    AdminOperationWrapper rollForwardWrapper = createMockAdminOperationWrapper(killFirst ? 2L : 1L);
+    RollForwardCurrentVersion rollForward =
+        (RollForwardCurrentVersion) AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getNewInstance();
+    rollForward.clusterName = clusterName;
+    rollForward.storeName = storeName;
+    rollForward.regionsFilter = filter;
+    rollForwardWrapper.getAdminOperation().operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
+    rollForwardWrapper.getAdminOperation().payloadUnion = rollForward;
+    AdminOperationSerializer serializer = new AdminOperationSerializer();
+    rollForwardWrapper.getAdminOperation().payloadUnion = serializer.deserialize(
+        ByteBuffer.wrap(serializer.serialize(rollForwardWrapper.getAdminOperation(), 76)),
+        76).payloadUnion;
+    AdminOperationWrapper killWrapper = createMockAdminOperationWrapper(killFirst ? 1L : 2L);
+    KillOfflinePushJob kill = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
+    kill.clusterName = clusterName;
+    kill.kafkaTopic = topic;
+    killWrapper.getAdminOperation().operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue();
+    killWrapper.getAdminOperation().payloadUnion = kill;
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(killFirst ? killWrapper : rollForwardWrapper);
+    queue.add(killFirst ? rollForwardWrapper : killWrapper);
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        parent,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+
+    if (!parent && !killFirst) {
+      // A candidate invalidated by local cleanup fails once; retry must acknowledge the now-absent
+      // future version so the following kill is not stuck behind a permanently stale command.
+      when(mockAdmin.getRegionName()).thenReturn(regionName);
+      when(mockAdmin.getFutureVersionWithStatus(eq(clusterName), eq(storeName), any()))
+          .thenReturn(Store.NON_EXISTING_VERSION);
+      doThrow(new VeniceException("candidate was concurrently deleted")).doCallRealMethod()
+          .when(mockAdmin)
+          .rollForwardToFutureVersion(clusterName, storeName, filter);
+      expectThrows(VeniceException.class, task::call);
+      assertEquals(queue.size(), 2);
+      assertNull(lastSucceededExecutionIdMap.get(storeName));
+      verify(mockAdmin, never()).killOfflinePush(any(), any(), anyBoolean());
+    }
+    task.call();
+
+    assertTrue(queue.isEmpty());
+    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(2L));
+    if (parent) {
+      verify(mockAdmin, never()).rollForwardToFutureVersion(any(), any(), any());
+      verify(mockAdmin, never()).killOfflinePush(any(), any(), anyBoolean());
+    } else {
+      InOrder order = inOrder(mockAdmin);
+      if (killFirst) {
+        order.verify(mockAdmin).killOfflinePush(clusterName, topic, false);
+        order.verify(mockAdmin).rollForwardToFutureVersion(clusterName, storeName, filter);
+      } else {
+        order.verify(mockAdmin).rollForwardToFutureVersion(clusterName, storeName, filter);
+        order.verify(mockAdmin).killOfflinePush(clusterName, topic, false);
+      }
+    }
   }
 
   /**
