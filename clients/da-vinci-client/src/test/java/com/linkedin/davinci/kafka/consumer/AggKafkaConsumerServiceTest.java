@@ -103,6 +103,7 @@ public class AggKafkaConsumerServiceTest {
         .thenReturn(PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY);
     when(serverConfig.getPubSubPositionTypeRegistry())
         .thenReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+    when(serverConfig.getWritePathThreadPriority()).thenReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
     Sensor dummySensor = mock(Sensor.class);
     when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
     PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
