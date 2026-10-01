@@ -1,6 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.CONCURRENT_PUSH_DETECTION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED;
@@ -77,11 +76,6 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
     // Required for the prior-current preservation test which uses a target-region push w/ deferred swap.
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
-    // Use parent-version-status-based concurrent-push detection so a KILLED prior version
-    // releases the future-version guard at VeniceParentHelixAdmin:1964. The default TOPIC_BASED_ONLY
-    // strategy always treats target-region-deferred-swap topics as "in flight" regardless of KILLED
-    // status (VeniceParentHelixAdmin:1481-1487), which would block the v3 push in this scenario.
-    controllerProps.put(CONCURRENT_PUSH_DETECTION_STRATEGY, "PARENT_VERSION_STATUS_ONLY");
     return controllerProps;
   }
 
@@ -231,8 +225,7 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
 
         parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
 
-        // Parent honors KILL; waiting for KILLED at parent releases the future-version guard at
-        // VeniceParentHelixAdmin:1964 so the subsequent v3 push can proceed.
+        // Wait for the parent to record KILLED so its version-status-based push admission allows v3.
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           com.linkedin.venice.meta.StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
           java.util.Optional<Version> parentV2 = parentStore.getVersion(2);
