@@ -35,12 +35,18 @@ public class MetricScope implements AutoCloseable {
     return closed;
   }
 
-  /** Closes one registered resource ahead of the rest and stops holding it, so retiring it retains nothing here. */
+  /**
+   * Closes a registered resource ahead of the rest and stops holding it, so retiring it retains nothing here. Does
+   * nothing if this scope no longer holds it, because it was already retired or closed with the scope.
+   */
   public void retire(AutoCloseable resource) {
+    boolean removed;
     synchronized (this) {
-      resources.remove(resource);
+      removed = resources.remove(resource);
     }
-    closeResource(resource);
+    if (removed) {
+      closeResource(resource);
+    }
   }
 
   @Override

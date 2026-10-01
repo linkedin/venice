@@ -78,10 +78,12 @@ public class VeniceOpenTelemetryMetricsRepository {
   /** SdkMeterProvider that is used to create the OpenTelemetry instance */
   private SdkMeterProvider sdkMeterProvider = null;
   /**
-   * Readers that each collect every observable instrument separately. It stays 1 when the application initialized
-   * OpenTelemetry, because its readers aren't visible here.
+   * How long a closed observable counter keeps reporting its final totals before it retires. With exactly one reader it
+   * is 0, since that reader's next collection gets them. With several readers, or readers of an OpenTelemetry the
+   * application initialized (which aren't visible here), it is one export interval, so each reader's next collection
+   * gets them.
    */
-  private int metricReaderCount = 1;
+  private long observableCounterRetireDelayMs = 0;
 
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
@@ -143,7 +145,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     this.metricPrefix = newMetricPrefix;
     this.openTelemetry = parent.openTelemetry;
     this.sdkMeterProvider = null; // Child does not own the provider
-    this.metricReaderCount = parent.metricReaderCount;
+    this.observableCounterRetireDelayMs = parent.observableCounterRetireDelayMs;
     validateMetricName(getMetricPrefix());
 
     if (emitOpenTelemetryMetrics && openTelemetry != null) {
@@ -167,9 +169,9 @@ public class VeniceOpenTelemetryMetricsRepository {
     return new VeniceOpenTelemetryMetricsRepository(this, newMetricPrefix);
   }
 
-  /** The number of readers that each collect every observable instrument separately; at least 1. */
-  public int getMetricReaderCount() {
-    return metricReaderCount;
+  /** See {@link #observableCounterRetireDelayMs}. */
+  public long getObservableCounterRetireDelayMs() {
+    return observableCounterRetireDelayMs;
   }
 
   private OpenTelemetry initializeOpenTelemetry(VeniceMetricsConfig metricsConfig) {
@@ -183,6 +185,9 @@ public class VeniceOpenTelemetryMetricsRepository {
             metricsConfig.getServiceName());
       } else {
         LOGGER.info("Successfully obtained globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
+        // The application's readers aren't visible here, so allow each of them an export interval to collect.
+        this.observableCounterRetireDelayMs =
+            TimeUnit.SECONDS.toMillis(metricsConfig.getExportOtelMetricsIntervalInSeconds());
         return otel;
       }
     }
@@ -219,7 +224,8 @@ public class VeniceOpenTelemetryMetricsRepository {
         builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
         readerCount++;
       }
-      this.metricReaderCount = Math.max(1, readerCount);
+      this.observableCounterRetireDelayMs =
+          readerCount > 1 ? TimeUnit.SECONDS.toMillis(metricsConfig.getExportOtelMetricsIntervalInSeconds()) : 0;
 
       if (metricsConfig.useOtelExponentialHistogram()) {
         setExponentialHistogramAggregation(builder, metricsConfig);

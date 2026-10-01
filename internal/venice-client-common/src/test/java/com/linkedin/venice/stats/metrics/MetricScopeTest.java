@@ -62,4 +62,19 @@ public class MetricScopeTest {
     verify(retired, times(1)).close();
     verify(kept, times(1)).close();
   }
+
+  @Test
+  public void testRetireClosesOnlyAResourceTheScopeStillHolds() throws Exception {
+    MetricScope scope = new MetricScope();
+    AutoCloseable retiredTwice = scope.register(mock(AutoCloseable.class));
+    scope.retire(retiredTwice);
+    scope.retire(retiredTwice);
+    verify(retiredTwice, times(1)).close();
+
+    // A resource the scope already closed isn't closed again by a later retire.
+    AutoCloseable closedWithScope = scope.register(mock(AutoCloseable.class));
+    scope.close();
+    scope.retire(closedWithScope);
+    verify(closedWithScope, times(1)).close();
+  }
 }

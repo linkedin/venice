@@ -11,7 +11,8 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.ObjDoubleConsumer;
 import java.util.function.ObjLongConsumer;
 
@@ -27,8 +28,9 @@ import java.util.function.ObjLongConsumer;
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
   private final boolean isObservableCounter;
-  /** Observable-counter reports since this state closed; see {@link #reportToMeasurement}. */
-  private final AtomicInteger reportsSinceClose = new AtomicInteger();
+  /** When this observable counter first reported after it closed; 0 until then. See {@link #isRetirementDue}. */
+  private final AtomicLong firstReportAfterCloseMs = new AtomicLong();
+  private final AtomicBoolean retired = new AtomicBoolean();
   /** define both long and double consumer to avoid unnecessary conversions **/
   private final ObjDoubleConsumer<MetricAttributesData> otelDoubleRecordingStrategy;
   private final ObjLongConsumer<MetricAttributesData> otelLongRecordingStrategy;
@@ -94,10 +96,8 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
    * counter values when traffic varied between collection intervals.
    */
   private void reportToMeasurement(ObservableLongMeasurement measurement) {
-    // Each reader collects separately, so once closed the counter retires only after one report per reader, and every
-    // reader gets the final totals. Read before reporting so that this report carries them.
-    boolean retire =
-        isClosed() && reportsSinceClose.incrementAndGet() == Math.max(1, otelRepository.getMetricReaderCount());
+    // Read before reporting so that the report that retires the counter still carries its final totals.
+    boolean retire = isClosed() && isRetirementDue();
     Iterable<MetricAttributesData> allData = getAllMetricAttributesData();
     if (allData != null) {
       for (MetricAttributesData holder: allData) {
@@ -106,9 +106,20 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
         }
       }
     }
-    if (retire) {
+    if (retire && retired.compareAndSet(false, true)) {
       closeOtelInstrument();
     }
+  }
+
+  /**
+   * Whether this closed counter may stop reporting. Each metric reader collects it separately, and the callback doesn't
+   * say which one is collecting, so the counter keeps reporting its final totals until the repository's retirement
+   * delay has passed since its first report after close.
+   */
+  private boolean isRetirementDue() {
+    long nowMs = System.currentTimeMillis();
+    firstReportAfterCloseMs.compareAndSet(0, nowMs);
+    return nowMs - firstReportAfterCloseMs.get() >= otelRepository.getObservableCounterRetireDelayMs();
   }
 
   /** Returns whether this metric entity state is for an Observable Counter */

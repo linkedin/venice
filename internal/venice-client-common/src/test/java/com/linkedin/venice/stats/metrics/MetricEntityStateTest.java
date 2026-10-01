@@ -271,9 +271,10 @@ public class MetricEntityStateTest {
   }
 
   @Test
-  public void testCloseRetiresObservableCounterAfterOneReportPerReader() {
+  public void testCloseRetiresObservableCounterOnceTheRetireDelayHasPassed() {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES);
-    when(mockOtelRepository.getMetricReaderCount()).thenReturn(2);
+    // With several readers, a closed counter keeps reporting its final total for an export interval.
+    when(mockOtelRepository.getObservableCounterRetireDelayMs()).thenReturn(60_000L);
     ObservableLongCounter counter = mock(ObservableLongCounter.class);
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Consumer<ObservableLongMeasurement>> callback = ArgumentCaptor.forClass(Consumer.class);
@@ -285,18 +286,21 @@ public class MetricEntityStateTest {
     metricEntityState.record(3L);
     metricEntityState.close();
 
-    // Each of the two readers collects the final total; the counter retires after the second collection.
-    ObservableLongMeasurement firstReader = mock(ObservableLongMeasurement.class);
-    callback.getValue().accept(firstReader);
-    verify(firstReader).record(3L, baseAttributes);
+    // However many collections happen within the delay, from any readers, each gets the final total.
+    for (int i = 0; i < 3; i++) {
+      ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
+      callback.getValue().accept(measurement);
+      verify(measurement).record(3L, baseAttributes);
+    }
     verify(mockOtelRepository, never()).closeObservableInstrument(any(), any());
 
-    ObservableLongMeasurement secondReader = mock(ObservableLongMeasurement.class);
-    callback.getValue().accept(secondReader);
-    verify(secondReader).record(3L, baseAttributes);
+    // Once the delay has passed, the next collection still gets the final total and retires the counter, once.
+    when(mockOtelRepository.getObservableCounterRetireDelayMs()).thenReturn(0L);
+    ObservableLongMeasurement lastCollection = mock(ObservableLongMeasurement.class);
+    callback.getValue().accept(lastCollection);
+    verify(lastCollection).record(3L, baseAttributes);
     verify(mockOtelRepository, times(1)).closeObservableInstrument(mockMetricEntity, counter);
 
-    // A collection that was already running when it retired doesn't close it again.
     callback.getValue().accept(mock(ObservableLongMeasurement.class));
     verify(mockOtelRepository, times(1)).closeObservableInstrument(mockMetricEntity, counter);
   }

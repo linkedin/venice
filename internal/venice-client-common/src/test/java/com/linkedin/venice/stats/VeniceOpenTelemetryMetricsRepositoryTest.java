@@ -1586,7 +1586,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   }
 
   @Test
-  public void testMetricReaderCountCountsEveryRegisteredReader() {
+  public void testObservableCounterRetireDelayGivesEveryReaderAnExportInterval() {
     VeniceOpenTelemetryMetricsRepository oneReader = createOtelRepoForTest(InMemoryMetricReader.create());
     VeniceOpenTelemetryMetricsRepository twoReaders = new VeniceOpenTelemetryMetricsRepository(
         new VeniceMetricsConfig.Builder().setServiceName("test_service")
@@ -1594,13 +1594,15 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
             .setEmitOtelMetrics(true)
             .setExportOtelMetricsToEndpoint(false)
             .setExportOtelMetricsToLog(true)
+            .setExportOtelMetricsIntervalInSeconds(30)
             .setUseOtelExponentialHistogram(false)
             .setOtelAdditionalMetricsReader(InMemoryMetricReader.create())
             .build());
     try {
-      assertEquals(oneReader.getMetricReaderCount(), 1);
-      assertEquals(twoReaders.getMetricReaderCount(), 2);
-      assertEquals(twoReaders.cloneWithNewMetricPrefix("child_prefix").getMetricReaderCount(), 2);
+      // The only reader's next collection gets a closed counter's final totals; several readers get an interval.
+      assertEquals(oneReader.getObservableCounterRetireDelayMs(), 0L);
+      assertEquals(twoReaders.getObservableCounterRetireDelayMs(), 30_000L);
+      assertEquals(twoReaders.cloneWithNewMetricPrefix("child_prefix").getObservableCounterRetireDelayMs(), 30_000L);
     } finally {
       oneReader.close();
       twoReaders.close();
