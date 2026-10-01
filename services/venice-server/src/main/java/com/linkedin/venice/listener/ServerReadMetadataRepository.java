@@ -48,6 +48,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   private final String serverCluster;
   private final boolean sslEnabled;
   private final ServerMetadataServiceStats serverMetadataServiceStats;
+  private final String multiKeyLongTailRetryThresholdsInMs;
   private final ReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
@@ -82,7 +83,30 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture,
       boolean sslEnabled) {
+    this(
+        serverCluster,
+        metricsRepository,
+        storeRepository,
+        schemaRepository,
+        storeConfigRepository,
+        customizedViewFuture,
+        helixInstanceFuture,
+        sslEnabled,
+        "");
+  }
+
+  public ServerReadMetadataRepository(
+      String serverCluster,
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository storeRepository,
+      ReadOnlySchemaRepository schemaRepository,
+      HelixReadOnlyStoreConfigRepository storeConfigRepository,
+      Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
+      Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture,
+      boolean sslEnabled,
+      String multiKeyLongTailRetryThresholdsInMs) {
     this.serverCluster = serverCluster;
+    this.multiKeyLongTailRetryThresholdsInMs = multiKeyLongTailRetryThresholdsInMs;
     this.sslEnabled = sslEnabled;
     this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository, serverCluster);
     this.storeRepository = storeRepository;
@@ -159,6 +183,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
       response.setRoutingInfo(routingInfo);
       response.setHelixGroupInfo(helixGroupInfo);
+      response.setMultiKeyLongTailRetryThresholdsInMs(multiKeyLongTailRetryThresholdsInMs);
       if (store.getBatchGetLimit() > 0) {
         response.setBatchGetLimit(store.getBatchGetLimit());
       } else {
