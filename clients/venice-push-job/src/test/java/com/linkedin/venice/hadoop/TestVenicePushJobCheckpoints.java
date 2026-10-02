@@ -43,6 +43,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
@@ -489,7 +490,8 @@ public class TestVenicePushJobCheckpoints {
 
   /**
    * The controller client stops at the first interrupted attempt, so a push that fails while its thread is interrupted
-   * must be reported and killed with the interrupt cleared, and the interrupt must be restored afterwards.
+   * must be reported and killed with the interrupt cleared, and the interrupt must be restored after all cleanup,
+   * including stopping the heartbeat sender, which can swallow an interrupt.
    */
   @Test
   public void testFailedPushIsReportedAndKilledWhenTheThreadWasInterrupted() throws Exception {
@@ -518,6 +520,14 @@ public class TestVenicePushJobCheckpoints {
       return reportResponse;
     }).when(controllerClient).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
 
+    // Like DefaultPushJobHeartbeatSender, whose last send swallows an InterruptedException.
+    PushJobHeartbeatSender heartbeatSender = mock(PushJobHeartbeatSender.class);
+    List<Boolean> interruptedWhileStoppingHeartbeat = new ArrayList<>();
+    doAnswer(invocation -> {
+      interruptedWhileStoppingHeartbeat.add(Thread.interrupted());
+      return null;
+    }).when(heartbeatSender).stop();
+
     // The data writer job fails after restoring an interrupt, the way an interrupted task is expected to.
     JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
     when(jobClientWrapper.runJobWithConfig(any())).thenAnswer(invocation -> {
@@ -540,6 +550,8 @@ public class TestVenicePushJobCheckpoints {
               false));
       venicePushJob.setVeniceWriter(createVeniceWriterMock());
       venicePushJob.setSentPushJobDetailsTracker(new SentPushJobDetailsTrackerImpl());
+      venicePushJob.setPushJobHeartbeatSenderFactory(
+          (kafkaUrl, properties, heartbeatControllerClient, sslProperties) -> heartbeatSender);
 
       Assert.expectThrows(VeniceException.class, venicePushJob::run);
       interruptedAfterRun = Thread.interrupted();
@@ -551,7 +563,11 @@ public class TestVenicePushJobCheckpoints {
     Assert.assertEquals(interruptedWhileKilling, Collections.singletonList(false), "The failed push must be killed");
     Assert.assertFalse(interruptedWhileReporting.isEmpty(), "The failure must be reported to the controller");
     Assert.assertFalse(interruptedWhileReporting.get(interruptedWhileReporting.size() - 1));
-    Assert.assertTrue(interruptedAfterRun, "The interrupt must be restored after the failure handling");
+    Assert.assertEquals(
+        interruptedWhileStoppingHeartbeat,
+        Collections.singletonList(false),
+        "The heartbeat sender must be stopped once, with the interrupt cleared");
+    Assert.assertTrue(interruptedAfterRun, "The interrupt must be restored after all cleanup");
   }
 
   private void testHandleErrorsInCounter(
