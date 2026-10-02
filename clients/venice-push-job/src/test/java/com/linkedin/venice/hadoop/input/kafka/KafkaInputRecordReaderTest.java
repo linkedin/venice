@@ -1,8 +1,11 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -37,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
 import org.testng.Assert;
@@ -135,6 +139,47 @@ public class KafkaInputRecordReaderTest {
         Assert.assertEquals(value.valueType, MapperValueType.PUT);
         Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
       }
+    }
+  }
+
+  /**
+   * Regression test for the V2 (li-crypt) dictionary decryption bug: KafkaInputRecordReader's
+   * createConsumer(JobConf) previously never wired a pubSubEncryptionKeyUrnLookup into the
+   * PubSubConsumerAdapterContext it builds, so a repush reading from a V2-encrypted source topic
+   * would fail to decrypt. Unlike testNext() above, which bypasses createConsumer(JobConf) by
+   * injecting a pre-built mock consumer, this uses the three-arg constructor so the reader builds
+   * its own consumer, exercising the real production path.
+   */
+  @Test
+  public void testCreateConsumerPassesEncryptionKeyUrnLookup() throws IOException {
+    KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.reset();
+
+    JobConf conf = new JobConf();
+    conf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "kafkaAddress");
+    conf.set(KAFKA_BOOTSTRAP_SERVERS, "kafkaAddress");
+    conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
+    String topic = "1_v1";
+    conf.set(KAFKA_INPUT_TOPIC, topic);
+    conf.set(
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.class.getName());
+    conf.set(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:dataEncryptionKey:test-key");
+
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), 0);
+    PubSubPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(1L);
+    KafkaInputSplit split = new KafkaInputSplit(
+        new PubSubPartitionSplit(TOPIC_REPOSITORY, topicPartition, startPosition, endPosition, 1, 0, 0L));
+    DataWriterTaskTracker taskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(Reporter.NULL);
+
+    try (KafkaInputRecordReader reader = new KafkaInputRecordReader(split, conf, taskTracker)) {
+      Function<String, String> observedLookup =
+          KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup();
+      Assert.assertNotNull(
+          observedLookup,
+          "Consumer context should carry a non-null pubSubEncryptionKeyUrnLookup when " + PUB_SUB_ENCRYPTION_KEY_URN
+              + " is configured");
+      Assert.assertEquals(observedLookup.apply("any-store"), "urn:li:dataEncryptionKey:test-key");
     }
   }
 }

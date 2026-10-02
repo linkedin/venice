@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLA
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -15,6 +16,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -43,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
@@ -139,6 +142,58 @@ public class TestKafkaInputDictTrainer {
     assertFalse(
         consumerProperties.containsKey(KAFKA_INPUT_TOPIC),
         "Building trainer properties must not mutate the supplied consumer properties");
+  }
+
+  /**
+   * Regression test for the V2 (li-crypt) dictionary decryption bug: trainDict()'s reused-consumer
+   * builder previously never wired a pubSubEncryptionKeyUrnLookup into the PubSubConsumerAdapterContext
+   * it builds when no consumer is injected by the caller. Unlike the other tests in this file, which all
+   * call trainDict(Optional.of(mock(...))) and thus bypass that builder, this calls the public no-arg
+   * trainDict(), exercising the real production path.
+   */
+  @Test
+  public void testTrainDictWiresEncryptionKeyUrnLookupWhenBuildingItsOwnConsumer() throws IOException {
+    KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.reset();
+
+    KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
+    PubSubPosition position0 = ApacheKafkaOffsetPosition.of(0);
+    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(
+        new PubSubPartitionSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, position0, position0, 0L, 0, 0L)) };
+    doReturn(splits).when(mockFormat).getSplits(any(VeniceProperties.class));
+    RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockRecordReader = mock(RecordReader.class);
+    doReturn(false).when(mockRecordReader).next(any(), any());
+    doReturn(mockRecordReader).when(mockFormat).getRecordReader(any(), any(), any(), any());
+
+    Properties consumerProperties = new Properties();
+    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "test_url");
+    consumerProperties.setProperty(
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.class.getName());
+    consumerProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:dataEncryptionKey:test-key");
+
+    KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(
+        mockFormat,
+        Optional.empty(),
+        getParam(100, CompressionStrategy.NO_OP, consumerProperties),
+        getCompressorBuilder(new NoopCompressor()));
+    try {
+      // No consumer is injected here, so trainDict() must build its own via the orElseGet(...)
+      // branch that contains the fix under test.
+      trainer.trainDict();
+      fail("Expected training on an empty topic to fail");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().startsWith("No record"));
+    }
+
+    Function<String, String> observedLookup =
+        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup();
+    assertNotNull(
+        observedLookup,
+        "Consumer context should carry a non-null pubSubEncryptionKeyUrnLookup when " + PUB_SUB_ENCRYPTION_KEY_URN
+            + " is configured");
+    assertEquals(observedLookup.apply("test_topic"), "urn:li:dataEncryptionKey:test-key");
   }
 
   interface ResettableRecordReader<K, V> extends RecordReader<K, V> {
