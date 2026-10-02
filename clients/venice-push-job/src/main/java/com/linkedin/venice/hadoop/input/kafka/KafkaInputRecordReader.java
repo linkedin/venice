@@ -30,6 +30,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator.PubSubInputRecord;
@@ -72,6 +73,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
                 .setVeniceProperties(consumerProps)
                 .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(consumerProps))
                 .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
+                .setPubSubEncryptionKeyUrnLookup(PubSubEncryptionUtils.getKeyUrnLookup(consumerProps.toProperties()))
                 .setPubSubMessageDeserializer(
                     new PubSubMessageDeserializer(
                         KafkaInputUtils.getKafkaValueSerializer(job),

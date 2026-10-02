@@ -44,11 +44,16 @@ public class DictionaryUtils {
   }
 
   /**
+   * Named distinctly from the {@code (String, VeniceProperties, PubSubMessageDeserializer)} overload below rather
+   * than overloaded on parameter type: a {@link Function} and a {@link PubSubMessageDeserializer} are unrelated
+   * reference types, so a caller passing a literal {@code null} third argument to either would otherwise make
+   * them ambiguous and fail to compile.
+   *
    * @param pubSubEncryptionKeyUrnLookup Optional store-name to raw encryption-key URN lookup. Required to decode a
    *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
    *                                     source topic is not V2-encrypted.
    */
-  public static ByteBuffer readDictionaryFromKafka(
+  public static ByteBuffer readDictionaryFromKafkaWithEncryptionLookup(
       String topicName,
       VeniceProperties props,
       Function<String, String> pubSubEncryptionKeyUrnLookup) {

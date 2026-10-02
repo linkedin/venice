@@ -127,8 +127,10 @@ public class KafkaInputUtils {
       // getConsumerProperties(). Without this, the dictionary consumer created here could silently
       // connect to the wrong (destination) broker instead of the intended source broker.
       props.setProperty(PUBSUB_BROKER_ADDRESS, kafkaUrl);
-      ByteBuffer dict = DictionaryUtils
-          .readDictionaryFromKafka(topic, new VeniceProperties(props), PubSubEncryptionUtils.getKeyUrnLookup(props));
+      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafkaWithEncryptionLookup(
+          topic,
+          new VeniceProperties(props),
+          PubSubEncryptionUtils.getKeyUrnLookup(props));
       return compressorFactory
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
     }
