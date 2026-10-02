@@ -4425,6 +4425,51 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     return new Object[][] { { false, true, "" }, { true, false, "" }, { true, true, "r1" } };
   }
 
+  @DataProvider(name = "rollForwardParentVersionStatuses")
+  public Object[][] rollForwardParentVersionStatuses() {
+    return new Object[][] { { VersionStatus.PUSHED }, { VersionStatus.ONLINE }, { VersionStatus.KILLED },
+        { VersionStatus.ERROR } };
+  }
+
+  @Test(dataProvider = "rollForwardParentVersionStatuses")
+  public void testRollForwardPreservesTerminalParentVersionWithStaleChild(VersionStatus status) {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    // A child may still advertise the future version before consuming a preceding kill.
+    doReturn(Collections.singletonMap("r1", "5")).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    Store parentStore = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    parentStore.addVersion(new VersionImpl(storeName, 4, "current-push"));
+    parentStore.setCurrentVersion(4);
+    Version futureVersion = new VersionImpl(storeName, 5, "future-push");
+    futureVersion.setVersionSwapDeferred(true);
+    parentStore.addVersion(futureVersion);
+    parentStore.updateVersionStatus(5, status);
+    ReadWriteStoreRepository repository =
+        internalAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+    doReturn(parentStore).when(repository).getStore(storeName);
+
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    if (status == VersionStatus.KILLED || status == VersionStatus.ERROR) {
+      assertEquals(parentStore.getVersion(5).getStatus(), status);
+      assertEquals(parentStore.getCurrentVersion(), 4);
+      verify(repository, never()).updateStore(any());
+    } else {
+      assertEquals(parentStore.getVersion(5).getStatus(), VersionStatus.ONLINE);
+      assertEquals(parentStore.getCurrentVersion(), 5);
+      verify(repository).updateStore(parentStore);
+    }
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+  }
+
   @Test(dataProvider = "rollForwardParentUpdateEligibility")
   public void testRollForwardPreservesParentUpdateEligibility(
       boolean versionExists,
