@@ -1841,7 +1841,7 @@ public class TestVeniceHelixAdmin {
     doReturn(store).when(admin).getStore(clusterName, storeName);
     doReturn(store).when(repository).getStore(storeName);
     doCallRealMethod().when(admin).killOfflinePush(clusterName, topic, forced);
-    boolean eligible = !current && (status == VersionStatus.PUSHED || status == VersionStatus.STARTED);
+    boolean eligible = status == VersionStatus.PUSHED || status == VersionStatus.STARTED;
 
     admin.killOfflinePush(clusterName, topic, forced);
 

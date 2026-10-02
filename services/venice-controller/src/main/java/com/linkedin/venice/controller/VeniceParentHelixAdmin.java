@@ -2291,7 +2291,7 @@ public class VeniceParentHelixAdmin implements Admin {
           (RollForwardCurrentVersion) AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getNewInstance();
       rollForward.clusterName = clusterName;
       rollForward.storeName = storeName;
-      rollForward.regionsFilter = regionFilter;
+      rollForward.regionsFilter = regionFilter == null ? "" : regionFilter;
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
       message.payloadUnion = rollForward;

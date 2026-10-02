@@ -4305,8 +4305,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "");
   }
 
-  @Test
-  public void testRollForwardSuccess() {
+  @DataProvider(name = "rollForwardRegionFilters")
+  public Object[][] rollForwardRegionFilters() {
+    return new Object[][] { { null }, { "" }, { "r1" } };
+  }
+
+  @Test(dataProvider = "rollForwardRegionFilters")
+  public void testRollForwardSuccess(String regionFilter) {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
@@ -4324,7 +4329,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(version).when(store).getVersion(5);
     doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
-    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
 
     ArgumentCaptor<AdminOperation> operation = ArgumentCaptor.forClass(AdminOperation.class);
     verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), operation.capture());
@@ -4332,7 +4337,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     RollForwardCurrentVersion payload = (RollForwardCurrentVersion) operation.getValue().payloadUnion;
     assertEquals(payload.clusterName.toString(), clusterName);
     assertEquals(payload.storeName.toString(), storeName);
-    assertEquals(payload.regionsFilter.toString(), "r1");
+    assertEquals(payload.regionsFilter.toString(), regionFilter == null ? "" : regionFilter);
+    AdminOperationSerializer serializer = new AdminOperationSerializer();
+    RollForwardCurrentVersion legacyPayload = (RollForwardCurrentVersion) serializer
+        .deserialize(ByteBuffer.wrap(serializer.serialize(operation.getValue(), 76)), 76).payloadUnion;
+    assertEquals(legacyPayload.getRegionsFilter().toString(), regionFilter == null ? "" : regionFilter);
     verify(child, never()).getAdminTopicMetadata(any());
     verify(child, never()).rollForwardToFutureVersion(any(), any(), anyInt());
     verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
