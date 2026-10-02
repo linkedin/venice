@@ -105,7 +105,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   /**
    * D2 service that the routers of every cluster announce for cluster discovery. The producer looks up which cluster
    * hosts a store through this service in its local region, instead of through a controller. Defaults to
-   * {@link ClientConfig#DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME}, the service the thin, fast and Da Vinci clients use.
+   * {@link ClientConfig#DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME}.
    */
   public static final String VENICE_CLUSTER_DISCOVERY_D2_SERVICE = "venice.cluster.discovery.d2.service";
 
