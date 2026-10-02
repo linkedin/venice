@@ -42,11 +42,14 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
@@ -61,9 +64,11 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
@@ -72,6 +77,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -84,12 +91,14 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Optional;
@@ -104,6 +113,7 @@ import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -232,6 +242,120 @@ public class TestStoreMigration {
               destParentControllerClient,
               storeName,
               srcClusterName));
+    }
+  }
+
+  @DataProvider(name = "migrationSchemaIds")
+  public Object[][] migrationSchemaIds() {
+    return new Object[][] { { new int[] { 1, 2 } }, { new int[] { 1, 274, 315 } }, { new int[] { 274, 288, 315 } } };
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "migrationSchemaIds")
+  public void testMigrationPreservesSparseSchemaIdsInVersionTopic(int[] schemaIds) throws Exception {
+    String storeName = Utils.getUniqueString("sparseSchemaMigration");
+    Set<Integer> sourceIds = Arrays.stream(schemaIds).boxed().collect(Collectors.toSet());
+    Set<Integer> destinationIds = new HashSet<>(sourceIds);
+    destinationIds.add(1);
+    VeniceClusterWrapper sourceCluster = multiClusterWrapper.getClusters().get(srcClusterName);
+    VeniceHelixAdmin sourceParentAdmin = ((VeniceParentHelixAdmin) twoLayerMultiRegionMultiClusterWrapper
+        .getLeaderParentControllerWithRetries(srcClusterName)
+        .getVeniceAdmin()).getVeniceHelixAdmin();
+    VeniceHelixAdmin sourceChildAdmin = sourceCluster.getLeaderVeniceController().getVeniceHelixAdmin();
+    try (ControllerClient sourceParent = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient sourceChild = new ControllerClient(srcClusterName, childControllerUrl0);
+        ControllerClient destinationParent = new ControllerClient(destClusterName, parentControllerUrl);
+        ControllerClient destinationChild = new ControllerClient(destClusterName, childControllerUrl0)) {
+      TestUtils.assertCommand(sourceParent.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        TestUtils.assertCommand(sourceChild.getStore(storeName));
+        assertNotNull(findById(TestUtils.assertCommand(sourceChild.getAllValueSchema(storeName)), 1));
+      });
+      for (VeniceHelixAdmin admin: Arrays.asList(sourceParentAdmin, sourceChildAdmin)) {
+        ReadWriteSchemaRepository schemas = admin.getHelixVeniceClusterResources(srcClusterName).getSchemaRepository();
+        for (int id: schemaIds) {
+          if (id != 1) {
+            schemas.addValueSchema(storeName, "\"string\"", id);
+          }
+        }
+        if (!sourceIds.contains(1)) {
+          schemas.removeValueSchema(storeName, 1);
+        }
+      }
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        assertSchemaIds(sourceParent, storeName, sourceIds);
+        assertSchemaIds(sourceChild, storeName, sourceIds);
+      });
+      TestUtils.assertCommand(
+          sourceParent.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setPartitionCount(1).setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
+      VersionCreationResponse version = TestUtils.assertCommand(
+          sourceParent.requestTopicForWrites(
+              storeName,
+              1024,
+              Version.PushType.BATCH,
+              Version.guidBasedDummyPushId(),
+              true,
+              false,
+              false,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              -1));
+      try (VeniceWriter<String, String, byte[]> writer = sourceCluster.getVeniceWriter(version.getKafkaTopic())) {
+        writer.broadcastStartOfPush(Collections.emptyMap());
+        for (int id: schemaIds) {
+          writer.put("key-" + id, "value-" + id, id).get();
+        }
+        writer.broadcastEndOfPush(Collections.emptyMap(), Collections.singletonMap(0, (long) schemaIds.length));
+      }
+      TestUtils.waitForNonDeterministicPushCompletion(version.getKafkaTopic(), sourceParent, 60, TimeUnit.SECONDS);
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        assertSchemaIds(destinationParent, storeName, destinationIds);
+        assertSchemaIds(destinationChild, storeName, destinationIds);
+        StoreInfo destination = TestUtils.assertCommand(destinationChild.getStore(storeName)).getStore();
+        assertEquals(destination.getCurrentVersion(), version.getVersion());
+        assertEquals(destination.getVersion(version.getVersion()).get().getStatus(), VersionStatus.ONLINE);
+      });
+      StoreMigrationTestUtil
+          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          for (int id: schemaIds) {
+            assertEquals(client.get("key-" + id).get().toString(), "value-" + id);
+          }
+        });
+      }
+      assertSchemaIds(sourceParent, storeName, sourceIds);
+      assertSchemaIds(sourceChild, storeName, sourceIds);
+      assertSchemaIds(destinationParent, storeName, destinationIds);
+      assertSchemaIds(destinationChild, storeName, destinationIds);
+      SchemaResponse duplicate = TestUtils.assertCommand(destinationParent.addValueSchema(storeName, "\"string\""));
+      assertTrue(destinationIds.contains(duplicate.getId()));
+      assertSchemaIds(destinationParent, storeName, destinationIds);
+      ReadWriteSchemaRepository destinationSchemas = multiClusterWrapper.getClusters()
+          .get(destClusterName)
+          .getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixVeniceClusterResources(destClusterName)
+          .getSchemaRepository();
+      SchemaEntry next =
+          destinationSchemas.addValueSchema(storeName, "\"bytes\"", DirectionalSchemaCompatibilityType.NONE);
+      assertEquals(next.getId(), Collections.max(sourceIds) + 1);
+    }
+  }
+
+  private static void assertSchemaIds(ControllerClient controller, String storeName, Set<Integer> expectedIds) {
+    MultiSchemaResponse schemas = TestUtils.assertCommand(controller.getAllValueSchema(storeName));
+    assertEquals(
+        Arrays.stream(schemas.getSchemas()).map(MultiSchemaResponse.Schema::getId).collect(Collectors.toSet()),
+        expectedIds);
+    for (MultiSchemaResponse.Schema schema: schemas.getSchemas()) {
+      assertEquals(new Schema.Parser().parse(schema.getSchemaStr()), Schema.create(Schema.Type.STRING));
     }
   }
 

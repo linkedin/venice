@@ -2094,6 +2094,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     versionMigrationConsumer.accept(storeName);
   }
 
+  public boolean isStoreMigrationDestination(String clusterName, String storeName) {
+    return storeSchemaManager.isMigrationDestination(clusterName, storeName);
+  }
+
   /**
    * Clear KILL messages from a participant system store.
    */

@@ -3,6 +3,8 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
@@ -28,6 +30,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -251,25 +254,48 @@ class StoreSchemaManager {
    * @return possibly-coerced schema string that is guaranteed to pass strict parsing.
    */
   String normalizeSchemaForMigration(String clusterName, String storeName, String schemaStr) {
+    if (!isMigrationDestination(clusterName, storeName)) {
+      return schemaStr;
+    }
+    return normalizeMigrationSchema(schemaStr);
+  }
+
+  boolean isMigrationDestination(String clusterName, String storeName) {
     ZkStoreConfigAccessor accessor = admin.getStoreConfigAccessor(clusterName);
     if (!accessor.containsConfig(storeName)) {
-      return schemaStr;
+      return false;
     }
-    StoreConfig cfg = accessor.getStoreConfig(storeName);
-    if (cfg == null || !clusterName.equals(cfg.getMigrationDestCluster())) {
-      return schemaStr;
+    StoreConfig config = accessor.getStoreConfig(storeName);
+    if (config == null || config.isDeleting() || !clusterName.equals(config.getMigrationDestCluster())
+        || clusterName.equals(config.getMigrationSrcCluster())) {
+      return false;
     }
+    if (!clusterName.equals(config.getCluster())) {
+      return true;
+    }
+    // After discovery moves here, stale provenance alone must not enable migration-only imports.
+    Store store = admin.getStore(clusterName, storeName);
+    return store != null && store.isMigrating();
+  }
+
+  void validateMigrationProvenance(String clusterName, String storeName) {
+    if (!isMigrationDestination(clusterName, storeName)) {
+      throw new VeniceException("Missing migration destination metadata for " + storeName + " in " + clusterName);
+    }
+    StoreConfig config = admin.getStoreConfigAccessor(clusterName).getStoreConfig(storeName);
+    if (config.getMigrationSrcCluster() == null || config.getMigrationSrcCluster().isEmpty()) {
+      throw new VeniceException("Missing migration source metadata for " + storeName + " in " + clusterName);
+    }
+  }
+
+  static String normalizeMigrationSchema(String schemaStr) {
     // Migration context. If strict already passes, leave the string unchanged so we don't
     // introduce gratuitous diffs against the source schema.
     try {
       AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
       return schemaStr;
     } catch (Exception strictFailure) {
-      LOGGER.info(
-          "Strict parse failed for store {} migrating into cluster {}; attempting numeric-default coercion.",
-          storeName,
-          clusterName,
-          strictFailure);
+      LOGGER.info("Strict parse failed for migration schema; attempting numeric-default coercion.", strictFailure);
       String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(schemaStr);
       // Defensive: anything LOOSE_NUMERICS would have been lenient about (union default not first
       // branch, bad names, etc.) is outside the coercion scope and must still fail strict. When it
@@ -281,12 +307,23 @@ class StoreSchemaManager {
         throw coercedFailure;
       }
       if (!coerced.equals(schemaStr)) {
-        LOGGER.info(
-            "Coerced numeric default(s) in value schema for store {} migrating into cluster {}.",
-            storeName,
-            clusterName);
+        LOGGER.info("Coerced numeric default(s) in migration value schema.");
       }
       return coerced;
+    }
+  }
+
+  static boolean schemasMatchForMigration(String firstSchema, String secondSchema) {
+    return migrationSchemaContent(firstSchema).equals(migrationSchemaContent(secondSchema));
+  }
+
+  private static JsonNode migrationSchemaContent(String schemaStr) {
+    Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(normalizeMigrationSchema(schemaStr));
+    // Avro equality omits aliases and enum defaults; full JSON preserves them without depending on object key order.
+    try {
+      return ObjectMapperFactory.getInstance().readTree(schema.toString());
+    } catch (JsonProcessingException e) {
+      throw new VeniceException("Cannot read full schema content: " + schema, e);
     }
   }
 
@@ -318,6 +355,15 @@ class StoreSchemaManager {
     valueSchemaStr = normalizeSchemaForMigration(clusterName, storeName, valueSchemaStr);
     ReadWriteSchemaRepository schemaRepository =
         admin.getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    if (isMigrationDestination(clusterName, storeName)) {
+      SchemaEntry existing =
+          validateMigrationValueSchema(clusterName, storeName, valueSchemaStr, schemaId, compatibilityType);
+      if (existing != null) {
+        return existing;
+      }
+      // Preserve the source writer ID even when identical content already exists at bootstrap ID 1.
+      return schemaRepository.addValueSchema(storeName, valueSchemaStr, schemaId);
+    }
     int newValueSchemaId =
         schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, compatibilityType);
     if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
@@ -328,6 +374,30 @@ class StoreSchemaManager {
               + valueSchemaStr);
     }
     return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+  }
+
+  /** Returns the matching existing schema for an idempotent import, or null when the requested ID is available. */
+  SchemaEntry validateMigrationValueSchema(
+      String clusterName,
+      String storeName,
+      String schemaStr,
+      int schemaId,
+      DirectionalSchemaCompatibilityType compatibilityType) {
+    validateMigrationProvenance(clusterName, storeName);
+    if (schemaId <= 0) {
+      throw new IllegalArgumentException("Value schema ID must be positive");
+    }
+    ReadWriteSchemaRepository repository = admin.getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    SchemaEntry existing = repository.getValueSchema(storeName, schemaId);
+    if (existing == null) {
+      // Validate compatibility without using the allocated ID: source IDs must survive bootstrap ID 1 duplicates.
+      checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, schemaStr, compatibilityType);
+      return null;
+    }
+    if (!schemasMatchForMigration(existing.getSchema().toString(), schemaStr)) {
+      throw new VeniceException("Conflicting migration value schema ID " + schemaId + " for " + storeName);
+    }
+    return existing;
   }
 
   DerivedSchemaEntry addDerivedSchema(

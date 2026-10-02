@@ -14,6 +14,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
@@ -24,6 +25,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
@@ -64,6 +66,62 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
   @AfterMethod
   public void cleanupTestCase() {
     super.cleanupTestCase();
+  }
+
+  @Test(dataProvider = "migrationSchemaContent", dataProviderClass = TestStoreSchemaManager.class)
+  public void testMigrationValueSchemaReadbackUsesRequestedId(
+      String valueSchemaStr,
+      String readbackSchema,
+      boolean matches) {
+    int valueSchemaId = 274;
+    String storeName = "test-store";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setReadComputationEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(1).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    doReturn(true).when(storeSchemaManager).isMigrationDestination(clusterName, storeName);
+    doReturn(new SchemaEntry(valueSchemaId, readbackSchema)).when(internalAdmin)
+        .getValueSchema(clusterName, storeName, valueSchemaId);
+    doReturn(new Schema.Parser().parse(valueSchemaStr)).when(storeSchemaManager)
+        .getSupersetOrLatestValueSchema(clusterName, store);
+
+    parentAdmin.initStorageCluster(clusterName);
+    if (matches) {
+      assertEquals(
+          parentAdmin
+              .addValueSchema(
+                  clusterName,
+                  storeName,
+                  valueSchemaStr,
+                  valueSchemaId,
+                  DirectionalSchemaCompatibilityType.FULL)
+              .getId(),
+          valueSchemaId);
+    } else {
+      VeniceException exception = expectThrows(
+          VeniceException.class,
+          () -> parentAdmin.addValueSchema(
+              clusterName,
+              storeName,
+              valueSchemaStr,
+              valueSchemaId,
+              DirectionalSchemaCompatibilityType.FULL));
+      assertTrue(exception.getMessage().contains("Migration schema readback mismatch"));
+    }
+    verify(internalAdmin, never()).getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    verify(storeSchemaManager).validateMigrationValueSchema(
+        clusterName,
+        storeName,
+        valueSchemaStr,
+        valueSchemaId,
+        DirectionalSchemaCompatibilityType.FULL);
+    ArgumentCaptor<byte[]> message = ArgumentCaptor.forClass(byte[].class);
+    verify(veniceWriter).put(any(), message.capture(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+    AdminOperation operation = adminOperationSerializer.deserialize(
+        ByteBuffer.wrap(message.getValue()),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(operation.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
+    assertEquals(((ValueSchemaCreation) operation.payloadUnion).schemaId, valueSchemaId);
   }
 
   @Test
