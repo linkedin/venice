@@ -9,6 +9,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -62,6 +63,10 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     jobProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "legacy-broker");
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(jobProperties, null)) {
+      // Resolved from store metadata onto pushJobSetting at runtime (not part of jobProperties above);
+      // regression coverage for the controller-to-consumer-properties handoff in
+      // getSourceDictionaryConsumerProperties().
+      pushJob.getPushJobSetting().pubSubEncryptionKeyUrn = "urn:li:dataEncryptionKey:test-key";
       VeniceProperties consumerProperties = pushJob.getSourceDictionaryConsumerProperties("source-broker");
 
       assertEquals(
@@ -73,6 +78,10 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
       assertEquals(consumerProperties.getString("xc.pubsub.broker.url.to.region.name.map"), "northguard:ei4");
       assertEquals(consumerProperties.getString(PUBSUB_BROKER_ADDRESS), "source-broker");
       assertEquals(consumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "source-broker");
+      assertEquals(
+          consumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN),
+          "urn:li:dataEncryptionKey:test-key",
+          "pushJobSetting.pubSubEncryptionKeyUrn should be threaded into the consumer properties");
       assertEquals(
           jobProperties.getProperty(PUBSUB_BROKER_ADDRESS),
           "destination-broker",
