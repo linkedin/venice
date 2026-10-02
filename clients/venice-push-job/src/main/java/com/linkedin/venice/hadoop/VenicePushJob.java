@@ -996,10 +996,11 @@ public class VenicePushJob implements AutoCloseable {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
       if (!pushJobSetting.isTargetedRegionPushEnabled) {
-        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
+        sendTerminalPushJobDetailsToController(PushJobDetailsStatus.COMPLETED);
+      } else {
+        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
+        sendPushJobDetailsToController();
       }
-      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-      sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
       if (!pushJobSetting.isTargetedRegionPushEnabled || pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
@@ -1039,10 +1040,8 @@ public class VenicePushJob implements AutoCloseable {
         } else if (e instanceof VeniceSchemaFieldNotFoundException || e instanceof VeniceSchemaMismatchException) {
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         }
-        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
-        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-        sendPushJobDetailsToController();
+        sendTerminalPushJobDetailsToController(PushJobDetailsStatus.ERROR);
         closeVeniceWriter();
       } catch (Exception ex) {
         LOGGER.error(
@@ -1284,8 +1283,8 @@ public class VenicePushJob implements AutoCloseable {
           false,
           false);
     }
-    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
-    sendPushJobDetailsToController();
+    // Report completion only after post-validation and the data recovery push to the remaining regions.
+    sendTerminalPushJobDetailsToController(PushJobDetailsStatus.COMPLETED);
   }
 
   private PushJobHeartbeatSender createPushJobHeartbeatSender(final boolean sslEnabled) {
@@ -2312,6 +2311,15 @@ public class VenicePushJob implements AutoCloseable {
     } catch (Exception e) {
       LOGGER.error("Exception caught while sending push job details. {}", NON_CRITICAL_EXCEPTION, e);
     }
+  }
+
+  /**
+   * Reports a terminal push status with the total elapsed duration at the point the terminal state is reached.
+   */
+  private void sendTerminalPushJobDetailsToController(PushJobDetailsStatus terminalStatus) {
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(terminalStatus.getValue()));
+    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
+    sendPushJobDetailsToController();
   }
 
   private SentPushJobDetailsTracker getSentPushJobDetailsTracker() {
@@ -3492,13 +3500,13 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void cancel() {
     killJob(pushJobSetting, controllerClient);
+    PushJobDetailsStatus terminalStatus;
     if (StringUtils.isEmpty(pushJobSetting.topic)) {
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
+      terminalStatus = PushJobDetailsStatus.ERROR;
     } else {
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
+      terminalStatus = PushJobDetailsStatus.KILLED;
     }
-    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-    sendPushJobDetailsToController();
+    sendTerminalPushJobDetailsToController(terminalStatus);
   }
 
   void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
