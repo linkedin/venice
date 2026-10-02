@@ -60,6 +60,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.RollbackCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
@@ -103,6 +104,7 @@ import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -232,7 +234,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
-  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
   private static final int ROLLBACK_STATUS_POLL_MAX_ATTEMPTS = 15;
   private static final Duration ROLLBACK_STATUS_POLL_MAX_DURATION = Duration.ofMinutes(2);
@@ -2249,7 +2250,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
-      // get the future version from the interested regions which will be used to compare after roll forward
+      // Get the future version from the selected regions for the parent metadata update.
       Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
       int futureVersionBeforeRollForward = 0;
       for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
@@ -2266,54 +2267,49 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Roll forward failed without any future version");
       }
 
+      for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
+          .entrySet()) {
+        if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
+          continue;
+        }
+        StoreResponse response = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+        if (response == null || response.isError() || response.getStore() == null) {
+          throw new VeniceException(
+              "Unable to verify writes are enabled for store " + storeName + " in region " + entry.getKey() + ": "
+                  + (response == null ? "null response" : response));
+        }
+        if (!response.getStore().isEnableStoreWrites()) {
+          throw new StoreDisabledException(storeName, "roll forward in region " + entry.getKey());
+        }
+      }
+
       LOGGER.info(
           "Sending roll forward command to future version {} for store {} to child controllers",
           futureVersionBeforeRollForward,
           storeName);
-      Set<String> failedRegions = new HashSet<>();
-      Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-      for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-        ControllerClient controllerClient = entry.getValue();
-        RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-          failedRegions.remove(entry.getKey());
-          ControllerResponse response =
-              controllerClient.rollForwardToFutureVersion(storeName, regionFilter, ROLL_FORWARD_REQUEST_TIMEOUT);
-          if (response.isError()) {
-            LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
-            failedRegions.add(entry.getKey());
-            throw new VeniceException(
-                "Roll forward failed in the following regions: " + failedRegions
-                    + " Please try the roll forward action again");
-          }
-        }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
-      }
+      RollForwardCurrentVersion rollForward =
+          (RollForwardCurrentVersion) AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getNewInstance();
+      rollForward.clusterName = clusterName;
+      rollForward.storeName = storeName;
+      rollForward.regionsFilter = regionFilter == null ? "" : regionFilter;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
+      message.payloadUnion = rollForward;
+      // Wait for parent consumption only; child consumers execute and retry the command asynchronously.
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
 
-      // Verify that all regions are serving the future version after roll forward
-      // before marking status as ONLINE
-      Map<String, Integer> coloToCurrentVersion = getCurrentVersionsForMultiColos(clusterName, storeName);
-      boolean allRegionsServingFutureVersion = true;
-      for (Map.Entry<String, Integer> entry: coloToCurrentVersion.entrySet()) {
-        if (!entry.getValue().equals(futureVersionBeforeRollForward)) {
-          allRegionsServingFutureVersion = false;
-          LOGGER.warn(
-              "Region {} is serving version {} instead of future version {} for store {}",
-              entry.getKey(),
-              entry.getValue(),
-              futureVersionBeforeRollForward,
-              storeName);
-        }
-      }
-
+      // Record the accepted roll-forward in parent metadata; child consumers may still be retrying.
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
 
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
-        if (parentVersion != null && StringUtils.isEmpty(parentVersion.getTargetSwapRegion())
-            && parentVersion.isVersionSwapDeferred() && allRegionsServingFutureVersion) {
+        if (parentVersion != null && parentVersion.getStatus() != KILLED && parentVersion.getStatus() != ERROR
+            && parentVersion.getStatus() != STARTED && StringUtils.isEmpty(parentVersion.getTargetSwapRegion())
+            && parentVersion.isVersionSwapDeferred()) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);
           parentStore.setCurrentVersion(version);
@@ -2323,13 +2319,6 @@ public class VeniceParentHelixAdmin implements Admin {
               parentStore.getName(),
               version,
               ONLINE);
-        } else if (!allRegionsServingFutureVersion) {
-          LOGGER.info(
-              "Not all regions are serving future version {} for store {}. Per-region versions: {}. "
-                  + "Skipping parent version status update to ONLINE.",
-              futureVersionBeforeRollForward,
-              storeName,
-              coloToCurrentVersion);
         }
       }
     } finally {
