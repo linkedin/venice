@@ -45,7 +45,6 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -1018,18 +1017,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.getClusterName().toString();
     String storeName = message.getStoreName().toString();
     String regionFilter = message.getRegionsFilter() == null ? null : message.getRegionsFilter().toString();
-    try {
-      admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
-    } catch (StoreDisabledException e) {
-      // Retrying would prevent a subsequent enable-writes command from reaching the head of this queue.
-      stats.recordFailedAdminConsumption();
-      LOGGER.error(
-          "Rejecting roll-forward for store {} in cluster {} because writes are disabled. "
-              + "Consume this command without promotion; a new roll-forward must be submitted after enabling writes.",
-          storeName,
-          clusterName,
-          e);
-    }
+    admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
   }
 
   private void handleRollbackCurrentVersion(RollbackCurrentVersion message) {

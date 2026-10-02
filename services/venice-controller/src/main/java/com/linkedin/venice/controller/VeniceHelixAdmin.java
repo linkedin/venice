@@ -7740,7 +7740,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
           Store store = repository.getStore(storeName);
           VersionStatus status = version.getStatus();
-          if (status == ONLINE) {
+          if (status == ONLINE || version.getNumber() == store.getCurrentVersion()) {
             /**
              * This is trying to avoid kill job entry in participant store if the version is already online.
              * This won't solve all the edge cases since the following race condition could still happen, but it is fine.
@@ -7759,7 +7759,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * So in the new fabric, we need the kill-job message to be as accurate as possible to
              * avoid the discrepancy.
              */
-            LOGGER.info("Resource: {} is ONLINE, so kill job will be skipped", kafkaTopic);
+            LOGGER.info("Resource: {} is ONLINE or current, so kill job will be skipped", kafkaTopic);
             return;
           }
 

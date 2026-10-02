@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -249,6 +250,13 @@ public class AdminExecutionTaskTest {
     if (writesDisabled) {
       doThrow(new StoreDisabledException(storeName, "roll forward", 1)).when(mockAdmin)
           .rollForwardToFutureVersion(clusterName, storeName, filter);
+      expectThrows(StoreDisabledException.class, task::call);
+      assertEquals(queue.size(), 2);
+      assertNull(lastSucceededExecutionIdMap.get(storeName));
+      verify(mockAdmin, never()).killOfflinePush(any(), any(), anyBoolean());
+      verify(mockStats).recordFailedAdminConsumption();
+      // Simulate recovery outside this blocked queue before the consumer retries.
+      doNothing().when(mockAdmin).rollForwardToFutureVersion(clusterName, storeName, filter);
     } else if (!parent && !killFirst) {
       // A candidate invalidated by local cleanup fails once; retry must acknowledge the now-absent
       // future version so the following kill is not stuck behind a permanently stale command.
@@ -267,10 +275,6 @@ public class AdminExecutionTaskTest {
 
     assertTrue(queue.isEmpty());
     assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(2L));
-    if (writesDisabled) {
-      verify(mockStats).recordFailedAdminConsumption();
-      verify(mockLogger).error(anyString(), eq(storeName), eq(clusterName), any(StoreDisabledException.class));
-    }
     if (parent) {
       verify(mockAdmin, never()).rollForwardToFutureVersion(any(), any(), any());
       verify(mockAdmin, never()).killOfflinePush(any(), any(), anyBoolean());
