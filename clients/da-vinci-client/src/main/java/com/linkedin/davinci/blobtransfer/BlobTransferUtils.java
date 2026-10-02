@@ -40,6 +40,8 @@ public class BlobTransferUtils {
   public static final String BLOB_TRANSFER_STATUS = "X-Blob-Transfer-Status";
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
+  /** Blob transfer is not latency-sensitive; these threads yield to the read/write hot path under CPU contention. */
+  public static final int BLOB_TRANSFER_THREAD_PRIORITY = Thread.NORM_PRIORITY - 1;
   /**
    * Protocol version of the {@code PartitionState} schema the requester is compiled
    * against. Set by the client on the blob-transfer request so the server can fail

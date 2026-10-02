@@ -698,6 +698,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isWriteQuotaEnabled() {
+    return zkSharedStore.isWriteQuotaEnabled();
+  }
+
+  @Override
+  public void setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    throwUnsupportedOperationException("setWriteQuotaEnabled");
+  }
+
+  @Override
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
     throwUnsupportedOperationException("setStorageNodeReadQuotaEnabled");
   }

@@ -101,9 +101,11 @@ public class StoreIngestionTaskFactory {
     private volatile boolean built = false;
 
     private VeniceWriterFactory veniceWriterFactory;
+    private VeniceWriterFactory encryptedVeniceWriterFactory;
 
     private HeartbeatMonitoringService heartbeatMonitoringService;
     private VeniceViewWriterFactory veniceViewWriterFactory;
+    private VeniceViewWriterFactory encryptedVeniceViewWriterFactory;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private ReadOnlySchemaRepository schemaRepo;
@@ -145,20 +147,25 @@ public class StoreIngestionTaskFactory {
       return new StoreIngestionTaskFactory(this);
     }
 
-    public VeniceWriterFactory getVeniceWriterFactory() {
-      return veniceWriterFactory;
+    public VeniceWriterFactory getVeniceWriterFactory(Store store) {
+      return store.isEncryptionEnabled() ? encryptedVeniceWriterFactory : veniceWriterFactory;
     }
 
     public HeartbeatMonitoringService getHeartbeatMonitoringService() {
       return heartbeatMonitoringService;
     }
 
-    public VeniceViewWriterFactory getVeniceViewWriterFactory() {
-      return veniceViewWriterFactory;
+    public Builder setVeniceWriterFactory(VeniceWriterFactory writerFactory) {
+      return set(() -> {
+        this.veniceWriterFactory = writerFactory;
+        if (this.encryptedVeniceWriterFactory == null) {
+          this.encryptedVeniceWriterFactory = writerFactory;
+        }
+      });
     }
 
-    public Builder setVeniceWriterFactory(VeniceWriterFactory writerFactory) {
-      return set(() -> this.veniceWriterFactory = writerFactory);
+    public Builder setEncryptedVeniceWriterFactory(VeniceWriterFactory writerFactory) {
+      return set(() -> this.encryptedVeniceWriterFactory = writerFactory);
     }
 
     public Builder setHeartbeatMonitoringService(HeartbeatMonitoringService heartbeatMonitoringService) {
@@ -166,7 +173,20 @@ public class StoreIngestionTaskFactory {
     }
 
     public Builder setVeniceViewWriterFactory(VeniceViewWriterFactory viewWriterFactory) {
-      return set(() -> this.veniceViewWriterFactory = viewWriterFactory);
+      return set(() -> {
+        this.veniceViewWriterFactory = viewWriterFactory;
+        if (this.encryptedVeniceViewWriterFactory == null) {
+          this.encryptedVeniceViewWriterFactory = viewWriterFactory;
+        }
+      });
+    }
+
+    public VeniceViewWriterFactory getVeniceViewWriterFactory(Store store) {
+      return store.isEncryptionEnabled() ? encryptedVeniceViewWriterFactory : veniceViewWriterFactory;
+    }
+
+    public Builder setEncryptedVeniceViewWriterFactory(VeniceViewWriterFactory viewWriterFactory) {
+      return set(() -> this.encryptedVeniceViewWriterFactory = viewWriterFactory);
     }
 
     public Builder setRemoteIngestionRepairService(RemoteIngestionRepairService repairService) {

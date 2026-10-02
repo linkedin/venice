@@ -18,6 +18,10 @@ public class RandomAccessDaemonThreadFactory extends DaemonThreadFactory {
     super(threadNamePrefix, logContext);
   }
 
+  public RandomAccessDaemonThreadFactory(String threadNamePrefix, int priority, LogContext logContext) {
+    super(threadNamePrefix, priority, logContext);
+  }
+
   @Override
   public Thread newThread(Runnable r) {
     int threadNumber;

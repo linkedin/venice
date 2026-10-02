@@ -1,5 +1,7 @@
 package com.linkedin.davinci.blobtransfer.client;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_THREAD_PRIORITY;
+
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferPooledByteBufAllocator;
@@ -68,10 +70,6 @@ public class NettyFileTransferClient {
   // rather than one thread per core.
   private static final int DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE =
       Math.max(4, Runtime.getRuntime().availableProcessors() / 5);
-  // Blob transfer is not latency sensitive, so all of its client thread pools (Netty event loops, checksum validation,
-  // host connect, and timeout checker) run below normal priority so they yield to the read/write hot path under CPU
-  // contention.
-  private static final int BLOB_TRANSFER_CLIENT_THREAD_PRIORITY = 4;
   // Floor for the event-loop pool size: any configured worker thread count at or below this clamps up to it. Also the
   // minimum used by VeniceServerConfig when computing the unset default, so the floor is defined in exactly one place.
   public static final int MIN_NETTY_WORKER_THREADS = 4;
@@ -134,7 +132,7 @@ public class NettyFileTransferClient {
     int resolvedWorkerThreadCount = Math.max(MIN_NETTY_WORKER_THREADS, nettyWorkerThreadCount);
     workerGroup = new NioEventLoopGroup(
         resolvedWorkerThreadCount,
-        new DefaultThreadFactory("Venice-BlobTransfer-Client-Netty", true, BLOB_TRANSFER_CLIENT_THREAD_PRIORITY));
+        new DefaultThreadFactory("Venice-BlobTransfer-Client-Netty", true, BLOB_TRANSFER_THREAD_PRIORITY));
     clientBootstrap.group(workerGroup);
     clientBootstrap.channel(NioSocketChannel.class);
     clientBootstrap.option(ChannelOption.SO_KEEPALIVE, true);
@@ -167,12 +165,12 @@ public class NettyFileTransferClient {
     this.hostConnectExecutorService = Executors.newCachedThreadPool(
         new DaemonThreadFactory(
             "Venice-BlobTransfer-Host-Connect-Executor-Service",
-            BLOB_TRANSFER_CLIENT_THREAD_PRIORITY,
+            BLOB_TRANSFER_THREAD_PRIORITY,
             logContext));
     this.connectTimeoutScheduler = Executors.newSingleThreadScheduledExecutor(
         new DaemonThreadFactory(
             "Venice-BlobTransfer-Client-Timeout-Checker",
-            BLOB_TRANSFER_CLIENT_THREAD_PRIORITY,
+            BLOB_TRANSFER_THREAD_PRIORITY,
             logContext));
     this.checksumValidationExecutorService = new ThreadPoolExecutor(
         DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE,
@@ -182,7 +180,7 @@ public class NettyFileTransferClient {
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory(
             "Venice-BlobTransfer-Checksum-Validation-Executor-Service",
-            BLOB_TRANSFER_CLIENT_THREAD_PRIORITY,
+            BLOB_TRANSFER_THREAD_PRIORITY,
             logContext));
   }
 

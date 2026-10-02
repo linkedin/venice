@@ -4,6 +4,7 @@ import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
@@ -458,12 +459,17 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
-  @Test
-  public void testAddStore() {
+  @DataProvider(name = "writeQuotaCreationValues")
+  public Object[][] writeQuotaCreationValues() {
+    return new Object[][] { { "test-store", false, true }, { "system-store", true, false },
+        { VeniceSystemStoreType.META_STORE.getSystemStoreName("test-store"), false, false } };
+  }
+
+  @Test(dataProvider = "writeQuotaCreationValues")
+  public void testAddStore(String storeName, boolean isSystemStore, boolean expectedWriteQuotaEnabled) {
 
     parentAdmin.initStorageCluster(clusterName);
 
-    String storeName = "test-store";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
@@ -472,10 +478,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr, isSystemStore);
 
     verify(internalAdmin)
-        .checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
+        .checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, isSystemStore, false);
     verify(veniceWriter, times(2)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -508,6 +514,17 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(storeCreationMessage.owner.toString(), owner);
     assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
     assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
+    assertEquals(storeCreationMessage.writeQuotaEnabled, false);
+
+    AdminOperation followUp = adminOperationSerializer
+        .deserialize(ByteBuffer.wrap(valueCaptor.getAllValues().get(1)), schemaCaptor.getAllValues().get(1));
+    assertEquals(followUp.operationType, AdminMessageType.UPDATE_STORE.getValue());
+    UpdateStore update = (UpdateStore) followUp.payloadUnion;
+    assertTrue(update.storageNodeReadQuotaEnabled);
+    assertEquals(update.writeQuotaEnabled, expectedWriteQuotaEnabled);
+    assertEquals(
+        update.updatedConfigsList.stream().anyMatch(config -> WRITE_QUOTA_ENABLED.contentEquals(config)),
+        expectedWriteQuotaEnabled);
   }
 
   @Test

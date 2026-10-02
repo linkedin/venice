@@ -34,6 +34,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_JOB_SLA_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS;
@@ -280,6 +281,23 @@ public class TestVeniceControllerClusterConfig {
     assertEquals(clusterConfig.getPushRetryCooldownMs(), 0);
 
     props.put(CONTROLLER_PUSH_RETRY_COOLDOWN_MS, -1);
+    assertThrows(ConfigurationException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
+  }
+
+  @Test
+  public void testPushJobSlaConfig() {
+    Properties props = getBaseSingleRegionProperties(true);
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    assertEquals(clusterConfig.getPushJobSlaMs(), TimeUnit.HOURS.toMillis(24));
+
+    props.put(CONTROLLER_PUSH_JOB_SLA_MS, TimeUnit.HOURS.toMillis(12));
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    assertEquals(clusterConfig.getPushJobSlaMs(), TimeUnit.HOURS.toMillis(12));
+
+    props.put(CONTROLLER_PUSH_JOB_SLA_MS, 0);
+    assertThrows(ConfigurationException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
+
+    props.put(CONTROLLER_PUSH_JOB_SLA_MS, -1);
     assertThrows(ConfigurationException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
   }
 

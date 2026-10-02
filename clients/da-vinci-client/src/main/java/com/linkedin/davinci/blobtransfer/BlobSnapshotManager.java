@@ -1,5 +1,7 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_THREAD_PRIORITY;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -91,7 +93,10 @@ public class BlobSnapshotManager {
     this.snapshotAccessLocks = new VeniceConcurrentHashMap<>();
 
     this.snapshotCleanupScheduler = Executors.newSingleThreadScheduledExecutor(
-        new DaemonThreadFactory("Venice-BlobTransfer-Snapshot-Cleanup-Scheduler", logContext));
+        new DaemonThreadFactory(
+            "Venice-BlobTransfer-Snapshot-Cleanup-Scheduler",
+            BLOB_TRANSFER_THREAD_PRIORITY,
+            logContext));
 
     scheduleCleanupOutOfRetentionSnapshotTask();
   }

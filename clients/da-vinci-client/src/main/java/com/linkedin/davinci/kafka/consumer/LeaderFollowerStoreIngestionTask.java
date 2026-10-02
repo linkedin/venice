@@ -40,6 +40,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
+import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
@@ -279,7 +280,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     configureNativeReplicationAndDataRecovery(version, true);
 
-    this.veniceWriterFactory = builder.getVeniceWriterFactory();
+    this.veniceWriterFactory = builder.getVeniceWriterFactory(store);
     /**
      * In general, a partition in version topic follows this pattern:
      * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
@@ -314,9 +315,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
     this.localRegionName = serverConfig.getRegionName();
     this.localRegionKafkaClusterId = RegionUtils.getLocalKafkaClusterId(kafkaClusterIdToAliasMap, localRegionName);
-    if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
-        && !store.isFlinkVeniceViewsEnabled()) {
-      viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
+    VeniceViewWriterFactory veniceViewWriterFactory = builder.getVeniceViewWriterFactory(store);
+    if (veniceViewWriterFactory != null && !store.getViewConfigs().isEmpty() && !store.isFlinkVeniceViewsEnabled()) {
+      viewWriters = veniceViewWriterFactory.buildStoreViewWriters(store, version.getNumber());
       boolean tmpValueForHasComplexVenicePartitioner = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {

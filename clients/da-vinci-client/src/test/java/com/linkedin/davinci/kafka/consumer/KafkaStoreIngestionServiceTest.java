@@ -17,7 +17,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -190,7 +189,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
 
   @Test
-  public void testLocalEncryptionKeyLookupReachesProducer() {
+  public void testLocalEncryptionKeyLookupNotAppliedToPlainProducer() {
     Store store = mock(Store.class);
     doReturn("urn:test:key:1").when(store).getPubSubEncryptionKeyUrn();
     doReturn(store).when(mockMetadataRepo).getStoreOrThrow("store");
@@ -200,13 +199,15 @@ public abstract class KafkaStoreIngestionServiceTest {
     assertEquals(lookup.apply("store"), "urn:test:key:1");
     assertNull(lookup.apply("missing"));
 
+    // The plain (non-encrypting) writer factory is not store-scoped, so it must not carry the encryption-key
+    // lookup, even though the shared PubSubContext above still exposes it for other consumers.
     ArgumentCaptor<PubSubProducerAdapterContext> captor = ArgumentCaptor.forClass(PubSubProducerAdapterContext.class);
     doReturn(mock(PubSubProducerAdapter.class)).when(mockPubSubClientsFactory.getProducerAdapterFactory())
         .create(captor.capture());
     try (VeniceWriter writer = kafkaStoreIngestionService.getVeniceWriterFactory()
         .createVeniceWriter(new VeniceWriterOptions.Builder("store_v1").setPartitionCount(1).build())) {
-      assertSame(captor.getValue().getPubSubEncryptionKeyUrnLookup(), lookup);
-      assertEquals(captor.getValue().getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+      assertNull(captor.getValue().getPubSubEncryptionKeyUrnLookup());
+      assertFalse(captor.getValue().isProducerEncryptionEnabled());
     }
     verify(mockMetadataRepo, never()).getStore(anyString());
     verify(mockMetadataRepo, never()).refreshOneStore(anyString());

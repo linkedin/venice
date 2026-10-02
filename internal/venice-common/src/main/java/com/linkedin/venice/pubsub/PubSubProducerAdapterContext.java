@@ -35,6 +35,7 @@ public class PubSubProducerAdapterContext {
   private final boolean shouldValidateProducerConfigStrictly;
   private final PubSubMessageSerializer pubSubMessageSerializer;
   private final boolean isProducerCompressionEnabled;
+  private final boolean isProducerEncryptionEnabled;
   private final String compressionType;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final Function<String, String> pubSubEncryptionKeyUrnLookup;
@@ -49,6 +50,7 @@ public class PubSubProducerAdapterContext {
     this.shouldValidateProducerConfigStrictly = builder.shouldValidateProducerConfigStrictly;
     this.pubSubMessageSerializer = builder.pubSubMessageSerializer;
     this.isProducerCompressionEnabled = builder.isProducerCompressionEnabled;
+    this.isProducerEncryptionEnabled = builder.isProducerEncryptionEnabled;
     this.compressionType = builder.compressionType;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
@@ -95,6 +97,10 @@ public class PubSubProducerAdapterContext {
     return isProducerCompressionEnabled;
   }
 
+  public boolean isProducerEncryptionEnabled() {
+    return isProducerEncryptionEnabled;
+  }
+
   public String getCompressionType() {
     return compressionType;
   }
@@ -119,6 +125,7 @@ public class PubSubProducerAdapterContext {
     private PubSubMessageSerializer pubSubMessageSerializer;
     private boolean shouldValidateProducerConfigStrictly = true;
     private boolean isProducerCompressionEnabled = true;
+    private boolean isProducerEncryptionEnabled = false;
     private String compressionType;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private Function<String, String> pubSubEncryptionKeyUrnLookup;
@@ -171,6 +178,11 @@ public class PubSubProducerAdapterContext {
 
     public Builder setProducerCompressionEnabled(boolean isProducerCompressionEnabled) {
       this.isProducerCompressionEnabled = isProducerCompressionEnabled;
+      return this;
+    }
+
+    public Builder setProducerEncryptionEnabled(boolean isProducerEncryptionEnabled) {
+      this.isProducerEncryptionEnabled = isProducerEncryptionEnabled;
       return this;
     }
 

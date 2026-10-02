@@ -2,6 +2,8 @@ package com.linkedin.venice.controller.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_DATA_WRITER_SINK;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_DURATION_BUCKET;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_EXECUTION_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -27,8 +29,14 @@ public class PushJobOtelMetricEntityTest {
             "push_job.count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Push job completions, differentiated by push type and status",
-            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_PUSH_JOB_TYPE, VENICE_PUSH_JOB_STATUS)));
+            "Push job completions, differentiated by push type, status, duration bucket, and execution state",
+            setOf(
+                VENICE_CLUSTER_NAME,
+                VENICE_STORE_NAME,
+                VENICE_PUSH_JOB_TYPE,
+                VENICE_PUSH_JOB_STATUS,
+                VENICE_PUSH_JOB_DURATION_BUCKET,
+                VENICE_PUSH_JOB_EXECUTION_STATE)));
     map.put(
         PushJobOtelMetricEntity.PUSH_JOB_DATA_WRITER_SINK_WRITE_TIME,
         new MetricEntityExpectation(
