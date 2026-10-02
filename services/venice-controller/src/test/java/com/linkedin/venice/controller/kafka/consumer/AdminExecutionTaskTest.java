@@ -42,6 +42,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
@@ -197,12 +198,17 @@ public class AdminExecutionTaskTest {
 
   @DataProvider(name = "rollForwardMessages")
   public Object[][] rollForwardMessages() {
-    return new Object[][] { { false, null, true }, { false, "", false }, { false, "test-region", true },
-        { true, null, true }, { true, "", false }, { true, "test-region", true } };
+    return new Object[][] { { false, null, true, false }, { false, "", false, false },
+        { false, "test-region", true, false }, { true, null, true, false }, { true, "", false, false },
+        { true, "test-region", true, false }, { false, null, false, true }, { false, "test-region", false, true } };
   }
 
   @Test(dataProvider = "rollForwardMessages")
-  public void testRollForwardAndKillUseStoreQueue(boolean parent, String filter, boolean killFirst) {
+  public void testRollForwardAndKillUseStoreQueue(
+      boolean parent,
+      String filter,
+      boolean killFirst,
+      boolean writesDisabled) {
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
     String topic = Version.composeKafkaTopic(storeName, 1);
     AdminOperationWrapper rollForwardWrapper = createMockAdminOperationWrapper(killFirst ? 2L : 1L);
@@ -240,7 +246,10 @@ public class AdminExecutionTaskTest {
         regionName,
         inflightThreadsByStore);
 
-    if (!parent && !killFirst) {
+    if (writesDisabled) {
+      doThrow(new StoreDisabledException(storeName, "roll forward", 1)).when(mockAdmin)
+          .rollForwardToFutureVersion(clusterName, storeName, filter);
+    } else if (!parent && !killFirst) {
       // A candidate invalidated by local cleanup fails once; retry must acknowledge the now-absent
       // future version so the following kill is not stuck behind a permanently stale command.
       when(mockAdmin.getRegionName()).thenReturn(regionName);
@@ -258,6 +267,10 @@ public class AdminExecutionTaskTest {
 
     assertTrue(queue.isEmpty());
     assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(2L));
+    if (writesDisabled) {
+      verify(mockStats).recordFailedAdminConsumption();
+      verify(mockLogger).error(anyString(), eq(storeName), eq(clusterName), any(StoreDisabledException.class));
+    }
     if (parent) {
       verify(mockAdmin, never()).rollForwardToFutureVersion(any(), any(), any());
       verify(mockAdmin, never()).killOfflinePush(any(), any(), anyBoolean());

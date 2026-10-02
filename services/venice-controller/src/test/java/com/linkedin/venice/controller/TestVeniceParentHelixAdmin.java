@@ -72,6 +72,7 @@ import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -4316,8 +4317,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
     controllerClients.clear();
-    ControllerClient child = mock(ControllerClient.class);
-    controllerClients.put("r1", child);
+    ControllerClient child = mockRollForwardChild("r1");
 
     Version version = mock(Version.class);
     doReturn(true).when(version).isVersionSwapDeferred();
@@ -4349,6 +4349,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     future.put("r1", "5");
     future.put("r2", "5");
     doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    mockRollForwardChild("r2");
 
     doThrow(new VeniceException("admin message publication failed")).when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
@@ -4388,7 +4391,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
     controllerClients.clear();
-    ControllerClient r1 = mock(ControllerClient.class);
+    ControllerClient r1 = mockRollForwardChild("r1");
     ControllerClient r2 = mock(ControllerClient.class);
     controllerClients.put("r1", r1);
     controllerClients.put("r2", r2);
@@ -4422,6 +4425,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
     doReturn(Collections.singletonMap("r1", "5")).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
     Version version = mock(Version.class);
@@ -4435,6 +4440,56 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
     verify(store, never()).setCurrentVersion(anyInt());
     verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+  }
+
+  private ControllerClient mockRollForwardChild(String region) {
+    ControllerClient child = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(new StoreInfo());
+    doReturn(response).when(child).getStore(eq(storeName), anyInt());
+    controllerClients.put(region, child);
+    return child;
+  }
+
+  @DataProvider(name = "rollForwardChildValidation")
+  public Object[][] rollForwardChildValidation() {
+    return new Object[][] { { "disabled", null }, { "disabled", "" }, { "disabled", "r2" }, { "error", "r2" },
+        { "missing-store", "r2" }, { "null-response", "r2" } };
+  }
+
+  @Test(dataProvider = "rollForwardChildValidation")
+  public void testRollForwardRejectsInvalidChildBeforePublication(String condition, String filter) {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    Map<String, String> future = new HashMap<>();
+    future.put("r1", "5");
+    future.put("r2", "5");
+    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    ControllerClient child = mockRollForwardChild("r2");
+    StoreResponse response = new StoreResponse();
+    if (condition.equals("disabled")) {
+      StoreInfo info = new StoreInfo();
+      info.setEnableStoreWrites(false);
+      response.setStore(info);
+    } else if (condition.equals("error")) {
+      response.setError("store read failed");
+    }
+    doReturn(condition.equals("null-response") ? null : response).when(child).getStore(eq(storeName), anyInt());
+
+    VeniceException failure =
+        expectThrows(VeniceException.class, () -> adminSpy.rollForwardToFutureVersion(clusterName, storeName, filter));
+
+    if (condition.equals("disabled")) {
+      assertTrue(failure instanceof StoreDisabledException);
+    }
+    assertTrue(failure.getMessage().contains("r2"));
+    verify(adminSpy, never()).sendAdminMessageAndWaitForConsumed(anyString(), anyString(), any());
+    verify(store, never()).updateVersionStatus(anyInt(), any());
+    verify(store, never()).setCurrentVersion(anyInt());
     verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
   }
 

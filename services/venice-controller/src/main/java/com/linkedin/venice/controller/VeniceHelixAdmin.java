@@ -104,6 +104,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -5143,8 +5144,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int[] capturedPreviousVersion = new int[] { -1 };
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       if (!store.isEnableWrites()) {
-        throw new VeniceException(
-            "Unable to update store:" + storeName + " current version since store does not enable writes");
+        throw new StoreDisabledException(storeName, "roll forward", futureVersion);
       }
       // check whether the future version has enough ready-to-serve instances for all partitions in CV for manual
       // deferred version swap. it is safe to skip this for automatic deferred version swap as ST is stalled until

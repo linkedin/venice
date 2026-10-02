@@ -46,6 +46,7 @@ import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionController
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -1672,6 +1673,39 @@ public class TestVeniceHelixAdmin {
   public Object[][] staleRollForwardCandidates() {
     return new Object[][] { { "deleted" }, { "killed" }, { "errored" }, { "started" }, { "superseded" },
         { "current" } };
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRollForwardRejectsDisabledWritesUnderLock(boolean pushed) {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.addVersion(new VersionImpl(storeName, 1));
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.setCurrentVersion(1);
+    store.addVersion(new VersionImpl(storeName, 2));
+    VersionStatus status = pushed ? VersionStatus.PUSHED : VersionStatus.ONLINE;
+    store.updateVersionStatus(2, status);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(store).when(repository).getStore(storeName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(new ClusterLockManager(clusterName)).when(resources).getClusterLockManager();
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn("test").when(admin).getRegionName();
+    doReturn(2).when(admin).getFutureVersionWithStatus(clusterName, storeName, status);
+    doCallRealMethod().when(admin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    doAnswer(invocation -> {
+      store.setEnableWrites(false);
+      return invocation.callRealMethod();
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    expectThrows(StoreDisabledException.class, () -> admin.rollForwardToFutureVersion(clusterName, storeName, "test"));
+
+    assertEquals(store.getCurrentVersion(), 1);
+    assertEquals(store.getVersionStatus(2), status);
+    verify(repository, never()).updateStore(any());
+    verify(admin, never()).getRealTimeTopicSwitcher();
+    verify(admin, never()).getStoreLifecycleHooksCache();
   }
 
   @Test(dataProvider = "staleRollForwardCandidates")

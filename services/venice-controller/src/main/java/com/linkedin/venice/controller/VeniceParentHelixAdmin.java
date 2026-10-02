@@ -104,6 +104,7 @@ import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -2264,6 +2265,22 @@ public class VeniceParentHelixAdmin implements Admin {
 
       if (futureVersionBeforeRollForward <= 0) {
         throw new VeniceException("Roll forward failed without any future version");
+      }
+
+      for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
+          .entrySet()) {
+        if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
+          continue;
+        }
+        StoreResponse response = entry.getValue().getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+        if (response == null || response.isError() || response.getStore() == null) {
+          throw new VeniceException(
+              "Unable to verify writes are enabled for store " + storeName + " in region " + entry.getKey() + ": "
+                  + (response == null ? "null response" : response));
+        }
+        if (!response.getStore().isEnableStoreWrites()) {
+          throw new StoreDisabledException(storeName, "roll forward in region " + entry.getKey());
+        }
       }
 
       LOGGER.info(
