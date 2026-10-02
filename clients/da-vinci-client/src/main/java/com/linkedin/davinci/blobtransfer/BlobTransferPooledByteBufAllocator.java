@@ -70,6 +70,26 @@ public final class BlobTransferPooledByteBufAllocator {
   }
 
   /**
+   * Whether {@code allocator} is a pool this class created rather than {@link PooledByteBufAllocator#DEFAULT}, which
+   * serves every Netty user in the process and whose totals therefore say nothing about blob transfer. Anything that
+   * attributes a reading to blob transfer has to ask this first.
+   */
+  public static boolean isDedicated(ByteBufAllocator allocator) {
+    return allocator instanceof PooledByteBufAllocator && allocator != PooledByteBufAllocator.DEFAULT;
+  }
+
+  /**
+   * The direct memory charged to {@code allocator} at the moment of the call, or zero when it is not a dedicated blob
+   * transfer allocator and the figure would describe the whole process rather than blob transfer.
+   * <p>
+   * This is the same reading {@link #describeUsage} renders, exposed as a number for callers that compare it against
+   * a budget instead of logging it.
+   */
+  public static long usedDirectMemoryBytes(ByteBufAllocator allocator) {
+    return isDedicated(allocator) ? ((PooledByteBufAllocator) allocator).metric().usedDirectMemory() : 0L;
+  }
+
+  /**
    * Renders the memory charged to {@code allocator} at the moment of the call, or {@code null} when it is not a
    * dedicated blob transfer allocator, since {@link PooledByteBufAllocator#DEFAULT} describes the whole process.
    * <p>
@@ -80,7 +100,7 @@ public final class BlobTransferPooledByteBufAllocator {
    * the baseline: these are instantaneous samples, not peaks.
    */
   public static String describeUsage(ByteBufAllocator allocator) {
-    if (!(allocator instanceof PooledByteBufAllocator) || allocator == PooledByteBufAllocator.DEFAULT) {
+    if (!isDedicated(allocator)) {
       return null;
     }
     PooledByteBufAllocatorMetric metric = ((PooledByteBufAllocator) allocator).metric();

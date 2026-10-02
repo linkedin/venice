@@ -88,14 +88,19 @@ public class BlobTransferIngestionHelper {
     if (!shouldEnableBlobTransfer(store, isDaVinciClient)) {
       return false;
     }
-    return isReplicaLaggedAndNeedBlobTransfer(
+    if (!isReplicaLaggedAndNeedBlobTransfer(
         storeName,
         versionNumber,
         partition,
         replicaId,
         isHybrid,
         kafkaVersionTopic,
-        pubSubContext);
+        pubSubContext)) {
+      return false;
+    }
+    // Last, and only for replicas that would otherwise have gone ahead: decline the transfer if blob transfer is
+    // already holding too much direct memory on this host. The replica bootstraps from the version topic instead.
+    return blobTransferManager.canAcceptNewTransfer(storeName, versionNumber, partition);
   }
 
   /**

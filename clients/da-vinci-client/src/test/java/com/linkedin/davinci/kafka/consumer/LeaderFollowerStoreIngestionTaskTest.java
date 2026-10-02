@@ -3628,6 +3628,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Set up blob transfer manager on builder
     mockBlobTransferManager = mock(BlobTransferManager.class);
+    // The real manager admits unless it is throttling, but a mock answers false, which would read as this host
+    // declining every transfer. These tests are about whether a transfer is wanted, not whether it is affordable.
+    doReturn(true).when(mockBlobTransferManager).canAcceptNewTransfer(anyString(), anyInt(), anyInt());
     builder.setBlobTransferManagerSupplier(() -> mockBlobTransferManager);
 
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
@@ -3768,6 +3771,51 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
 
     assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferDeclinedWhenManagerCannotAcceptTransfer() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Lag above threshold, so this replica genuinely wants a transfer and every earlier guard passes.
+    when(mockOffset.getOffsetLag()).thenReturn(5000L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+    doReturn(false).when(mockBlobTransferManager).canAcceptNewTransfer(anyString(), anyInt(), anyInt());
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction),
+        "A replica that wants a transfer must fall back to Kafka when the manager declines to accept one");
+    verify(mockBlobTransferManager, times(1)).canAcceptNewTransfer(anyString(), anyInt(), anyInt());
+  }
+
+  /**
+   * The admission check must sit after the lag check. If it ran earlier, replicas that never wanted a transfer
+   * would be counted as memory-pressure fallbacks, which is the metric used to tell "the gate is protecting the
+   * host" apart from "the gate is rejecting everything".
+   */
+  @Test
+  public void testShouldStartBlobTransferSkipsAdmissionCheckWhenReplicaIsNotLagged() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Lag below threshold: this replica bootstraps from Kafka regardless of how much memory is available.
+    when(mockOffset.getOffsetLag()).thenReturn(500L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+    doReturn(false).when(mockBlobTransferManager).canAcceptNewTransfer(anyString(), anyInt(), anyInt());
+
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+    verify(mockBlobTransferManager, never()).canAcceptNewTransfer(anyString(), anyInt(), anyInt());
   }
 
   @Test

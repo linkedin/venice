@@ -51,6 +51,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PoolArenaMetric;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
@@ -182,6 +183,7 @@ public class TestNettyP2PBlobTransferManager {
         tmpPartitionDir.toString(),
         versionedBlobTransferStats,
         5,
+        0L,
         LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
     manager.start();
   }
@@ -457,6 +459,7 @@ public class TestNettyP2PBlobTransferManager {
         tmpPartitionDir.toString(),
         versionedBlobTransferStats,
         5,
+        0L,
         LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
     manager.start();
 
@@ -759,6 +762,7 @@ public class TestNettyP2PBlobTransferManager {
         tmpPartitionDir.toString(),
         versionedBlobTransferStats,
         5,
+        0L,
         LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
     newManager.start();
 
@@ -984,5 +988,105 @@ public class TestNettyP2PBlobTransferManager {
     }
 
     Assert.assertTrue(Files.exists(canary), "partition dir must be left intact on schema-mismatch rejection");
+  }
+
+  @Test
+  public void testCanAcceptNewTransferWithDefaultConfigAdmits() {
+    // The manager built in setUp uses the shipped default (threshold 0), which leaves the gate disarmed so that
+    // merging this change cannot alter behaviour until an operator opts in.
+    Assert.assertTrue(manager.canAcceptNewTransfer(TEST_STORE, TEST_VERSION, TEST_PARTITION));
+  }
+
+  @Test
+  public void testCanAcceptNewTransferFollowsTheReceiverAllocator() {
+    // Made deterministic by holding a real buffer on the allocator the manager reads rather than by stubbing the
+    // gate, so this covers the wiring from the manager through to the allocator production reads. The stub supplies
+    // a dedicated allocator because the client built in setUp shares the process-wide default, which the gate
+    // deliberately ignores.
+    PooledByteBufAllocator dedicatedAllocator = new PooledByteBufAllocator(true, 2, 2, 8192, 4);
+    Mockito.doReturn(dedicatedAllocator).when(client).getByteBufAllocator();
+    NettyP2PBlobTransferManager gatedManager = new NettyP2PBlobTransferManager(
+        server,
+        client,
+        finder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        5,
+        8L * 1024 * 1024,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+
+    Assert.assertTrue(gatedManager.canAcceptNewTransfer(TEST_STORE, TEST_VERSION, TEST_PARTITION));
+
+    ByteBuf held = dedicatedAllocator.directBuffer(16 * 1024 * 1024);
+    try {
+      Assert.assertFalse(
+          gatedManager.canAcceptNewTransfer(TEST_STORE, TEST_VERSION, TEST_PARTITION),
+          "a buffer held above the ceiling must decline");
+    } finally {
+      held.release();
+    }
+    Assert.assertTrue(
+        gatedManager.canAcceptNewTransfer(TEST_STORE, TEST_VERSION, TEST_PARTITION),
+        "releasing must let transfers back in");
+  }
+
+  /**
+   * The gate logs the in-flight count when it declines, and that count is only meaningful if it comes back down. A
+   * channel that is tracked but never untracked would make every decline look like a host saturated with transfers,
+   * pointing an investigation at the wrong cause.
+   */
+  @Test
+  public void testInFlightTransferCountReturnsToZeroAfterASuccessfulTransfer() throws Exception {
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Collections.singletonList("localhost"));
+    response.setServerHostNames(Collections.singleton("localhost"));
+    response.setSourceAware(true);
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+    snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
+
+    Assert.assertEquals(client.getInFlightTransferCount(), 0, "No transfer has started yet");
+
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    future.toCompletableFuture().get(1, TimeUnit.MINUTES);
+
+    // The channel is untracked by a completion callback, so it is not necessarily gone the instant the caller's
+    // future resolves.
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(client.getInFlightTransferCount(), 0, "Channel tracking leaked after success"));
+  }
+
+  @Test
+  public void testInFlightTransferCountReturnsToZeroAfterEveryPeerFails() {
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Collections.singletonList("not-a-reachable-host"));
+    response.setServerHostNames(Collections.singleton("not-a-reachable-host"));
+    response.setSourceAware(true);
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Assert.assertThrows(ExecutionException.class, () -> future.toCompletableFuture().get(1, TimeUnit.MINUTES));
+
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(client.getInFlightTransferCount(), 0, "Channel tracking leaked after failure"));
   }
 }
