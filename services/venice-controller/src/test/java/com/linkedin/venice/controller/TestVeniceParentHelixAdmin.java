@@ -4428,11 +4428,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @DataProvider(name = "rollForwardParentVersionStatuses")
   public Object[][] rollForwardParentVersionStatuses() {
     return new Object[][] { { VersionStatus.PUSHED }, { VersionStatus.ONLINE }, { VersionStatus.KILLED },
-        { VersionStatus.ERROR } };
+        { VersionStatus.ERROR }, { VersionStatus.STARTED } };
   }
 
   @Test(dataProvider = "rollForwardParentVersionStatuses")
-  public void testRollForwardPreservesTerminalParentVersionWithStaleChild(VersionStatus status) {
+  public void testRollForwardPreservesIneligibleParentVersionWithAdvertisedChild(VersionStatus status) {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
@@ -4453,11 +4453,31 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ReadWriteStoreRepository repository =
         internalAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     doReturn(parentStore).when(repository).getStore(storeName);
+    Store childStore = parentStore.cloneStore();
 
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
+    if (status == VersionStatus.STARTED) {
+      VeniceHelixAdmin childAdmin = mock(VeniceHelixAdmin.class);
+      doReturn("r1").when(childAdmin).getRegionName();
+      HelixVeniceClusterResources childResources = mock(HelixVeniceClusterResources.class);
+      ReadWriteStoreRepository childRepository = mock(ReadWriteStoreRepository.class);
+      doReturn(childStore).when(childRepository).getStore(storeName);
+      doReturn(childRepository).when(childResources).getStoreMetadataRepository();
+      doReturn(resources.getClusterLockManager()).when(childResources).getClusterLockManager();
+      doReturn(childResources).when(childAdmin).getHelixVeniceClusterResources(clusterName);
+      doCallRealMethod().when(childAdmin).getFutureVersionWithStatus(eq(clusterName), eq(storeName), any());
+      doCallRealMethod().when(childAdmin).rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+      childAdmin.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+      assertEquals(childStore.getVersion(5).getStatus(), VersionStatus.STARTED);
+      assertEquals(childStore.getCurrentVersion(), 4);
+      verify(childAdmin, never()).storeMetadataUpdate(any(), any(), any());
+    }
+
     verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    if (status == VersionStatus.KILLED || status == VersionStatus.ERROR) {
+    if (status == VersionStatus.KILLED || status == VersionStatus.ERROR || status == VersionStatus.STARTED) {
       assertEquals(parentStore.getVersion(5).getStatus(), status);
       assertEquals(parentStore.getCurrentVersion(), 4);
       verify(repository, never()).updateStore(any());
