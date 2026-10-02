@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -56,6 +57,11 @@ public class ClusterStats extends AbstractVeniceStats {
   private final Attributes baseAttributes;
 
   public ClusterStats(MetricsRepository metricsRepository, String storeName) {
+    this(metricsRepository, storeName, () -> true);
+  }
+
+  /** The OTel current version gauge reports only while {@code isReporting} returns true. */
+  public ClusterStats(MetricsRepository metricsRepository, String storeName, BooleanSupplier isReporting) {
     super(metricsRepository, storeName);
     this.storeName = storeName;
 
@@ -79,7 +85,7 @@ public class ClusterStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    this.currentVersionNumber = AsyncMetricEntityStateBase.create(
+    this.currentVersionNumber = AsyncMetricEntityStateBase.createWithState(
         STORE_VERSION_CURRENT.getMetricEntity(),
         otelRepository,
         (sensorName, stats) -> registerSensor(sensorName, stats),
@@ -90,7 +96,9 @@ public class ClusterStats extends AbstractVeniceStats {
                 ClusterTehutiMetricName.CURRENT_VERSION.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        this.currentVersion::get);
+        getMetricScope(),
+        () -> isReporting.getAsBoolean() && this.currentVersion.get() != -1 ? this.currentVersion : null,
+        AtomicLong::get);
 
     // Initialize OTel metrics for instance error counts
     this.blockedInstanceErrorCount = MetricEntityStateOneEnum.create(

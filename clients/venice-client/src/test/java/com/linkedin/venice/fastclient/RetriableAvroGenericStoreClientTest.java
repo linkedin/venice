@@ -1077,4 +1077,5 @@ public class RetriableAvroGenericStoreClientTest {
       assertTrue(e.getCause() instanceof VeniceClientException);
     }
   }
+
 }

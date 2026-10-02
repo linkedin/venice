@@ -62,6 +62,7 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats.StoreOtelStats;
 import com.linkedin.davinci.stats.IngestionStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
@@ -89,11 +90,13 @@ import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 
@@ -101,15 +104,19 @@ import java.util.concurrent.atomic.AtomicLong;
  * OpenTelemetry metrics for ingestion statistics.
  * Note: Tehuti metrics are managed separately in {@link com.linkedin.davinci.stats.IngestionStatsReporter}.
  */
-public class IngestionOtelStats {
+public class IngestionOtelStats implements StoreOtelStats {
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  private final MetricScope metricScope = new MetricScope();
 
   private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
   // Store ingestion tasks by version for ASYNC_GAUGE callbacks
   private final Map<Integer, StoreIngestionTask> ingestionTasksByVersion;
+
+  // View ingestion tasks, registered under their own view store names, that record into these stats
+  private final Set<StoreIngestionTask> viewIngestionTasks;
 
   // Push timeout gauge values by version
   private final Map<Integer, Integer> pushTimeoutByVersion;
@@ -218,6 +225,7 @@ public class IngestionOtelStats {
     this.otelRepository = null;
     this.baseDimensionsMap = null;
     this.ingestionTasksByVersion = Collections.emptyMap();
+    this.viewIngestionTasks = Collections.emptySet();
     this.pushTimeoutByVersion = Collections.emptyMap();
     this.idleTimeByVersion = Collections.emptyMap();
     this.taskErrorCountByRole = null;
@@ -302,6 +310,7 @@ public class IngestionOtelStats {
 
     // Initialize per-version state maps
     this.ingestionTasksByVersion = new VeniceConcurrentHashMap<>();
+    this.viewIngestionTasks = VeniceConcurrentHashMap.newKeySet();
     this.pushTimeoutByVersion = new VeniceConcurrentHashMap<>();
     this.idleTimeByVersion = new VeniceConcurrentHashMap<>();
 
@@ -427,7 +436,7 @@ public class IngestionOtelStats {
     if (activeKeyCountEnabled) {
       activeKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
           ACTIVE_KEY_COUNT.getMetricEntity(),
-          (role, replicaType) -> getTaskForRole(role),
+          this::getTaskWithReplicaType,
           (task, role, replicaType) -> task.getActiveKeyCount(replicaType));
     } else {
       activeKeyCountByRoleAndReplicaType = null;
@@ -436,7 +445,7 @@ public class IngestionOtelStats {
     if (uniqueIngestedKeyCountHllEnabled) {
       uniqueIngestedKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
           UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
-          (role, replicaType) -> getTaskForRole(role),
+          this::getTaskWithReplicaType,
           (task, role, replicaType) -> task.getEstimatedUniqueIngestedKeyCount(replicaType));
     } else {
       uniqueIngestedKeyCountByRoleAndReplicaType = null;
@@ -465,6 +474,12 @@ public class IngestionOtelStats {
     return resolveByRole(role, idleTimeByVersion);
   }
 
+  /** The role's task, or null when none of its local partitions currently has {@code replicaType}. */
+  private StoreIngestionTask getTaskWithReplicaType(VersionRole role, ReplicaType replicaType) {
+    StoreIngestionTask task = getTaskForRole(role);
+    return task != null && task.hasReplicaType(replicaType) ? task : null;
+  }
+
   // Task management methods
 
   /**
@@ -486,15 +501,42 @@ public class IngestionOtelStats {
     idleTimeByVersion.remove(version);
   }
 
+  /** Detaches {@code task} only if it is still the task registered for {@code version}. */
+  public boolean removeIngestionTask(int version, StoreIngestionTask task) {
+    if (!ingestionTasksByVersion.remove(version, task)) {
+      return false;
+    }
+    // A push timeout (1) stays reported until the version is cleaned up.
+    pushTimeoutByVersion.remove(version, 0);
+    idleTimeByVersion.remove(version);
+    return true;
+  }
+
+  public boolean hasIngestionTasks() {
+    return !ingestionTasksByVersion.isEmpty();
+  }
+
+  /** Keeps these stats open while {@code task}, a view task registered under its view store name, records here. */
+  public void addViewIngestionTask(StoreIngestionTask task) {
+    if (task != null) {
+      viewIngestionTasks.add(task);
+    }
+  }
+
+  public void removeViewIngestionTask(StoreIngestionTask task) {
+    viewIngestionTasks.remove(task);
+  }
+
+  /** True once no task, including a view task, records here and no push timeout is still reported. */
+  public boolean isIdle() {
+    return ingestionTasksByVersion.isEmpty() && viewIngestionTasks.isEmpty() && pushTimeoutByVersion.isEmpty();
+  }
+
   /**
-   * Cleans up all per-version state for this store. Call this when the store is being deleted.
-   * After this call each async-gauge's {@code liveStateResolver} returns {@code null} for every
-   * role, so no data points are emitted for this store on subsequent collections. The SDK
-   * instruments themselves are not deregistered (OTel does not support it), so this object is
-   * retained until JVM shutdown — only relevant on store deletion or when no versions remain on
-   * this host.
+   * Cleans up all per-version state for this store and closes the observable callbacks.
    */
   public void close() {
+    metricScope.close();
     ingestionTasksByVersion.clear();
     pushTimeoutByVersion.clear();
     idleTimeByVersion.clear();
@@ -521,14 +563,16 @@ public class IngestionOtelStats {
   // Helper methods
 
   private MetricEntityStateOneEnum<VersionRole> createOneEnumMetric(MetricEntity metricEntity) {
-    return MetricEntityStateOneEnum.create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class);
+    return metricScope
+        .register(MetricEntityStateOneEnum.create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class));
   }
 
   private <E extends Enum<E> & VeniceDimensionInterface> MetricEntityStateTwoEnums<VersionRole, E> createTwoEnumMetric(
       MetricEntity metricEntity,
       Class<E> enumClass) {
-    return MetricEntityStateTwoEnums
-        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, enumClass);
+    return metricScope.register(
+        MetricEntityStateTwoEnums
+            .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, enumClass));
   }
 
   /**
@@ -539,8 +583,14 @@ public class IngestionOtelStats {
       MetricEntity metricEntity,
       LiveStateResolverOneEnum<VersionRole, S> liveStateResolver,
       ValueResolverOneEnum<S, VersionRole> valueResolver) {
-    return AsyncMetricEntityStateOneEnum
-        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, liveStateResolver, valueResolver);
+    return AsyncMetricEntityStateOneEnum.create(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        VersionRole.class,
+        metricScope,
+        liveStateResolver,
+        valueResolver);
   }
 
   /**
@@ -557,6 +607,7 @@ public class IngestionOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         ReplicaType.class,
+        metricScope,
         liveStateResolver,
         valueResolver);
   }

@@ -20,7 +20,6 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.DoubleSupplier;
 
 
 /**
@@ -167,8 +166,8 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
         registerSensor(TehutiMetricName.QUOTA_UNINTENTIONALLY_ALLOWED_KEY_COUNT.getMetricName(), new Count());
 
     // --- AsyncDoubleGauge: usage ratio (joint Tehuti + OTel, no VersionRole dimension) ---
-    // OTel records the raw ratio as a double (e.g., 0.75 = 75% usage). NaN (uninitialized) maps to 0.0.
-    AsyncMetricEntityStateBase.create(
+    // OTel records the raw ratio as a double (e.g., 0.75 = 75% usage); NaN (unavailable) is omitted.
+    AsyncMetricEntityStateBase.createWithState(
         ServerReadQuotaOtelMetricEntity.READ_QUOTA_USAGE_RATIO.getMetricEntity(),
         otelRepository,
         this::registerSensor,
@@ -179,24 +178,25 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
                 TehutiMetricName.QUOTA_REQUESTED_USAGE_RATIO.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        (DoubleSupplier) () -> {
-          Double ratio = getReadQuotaUsageRatio();
-          return ratio.isNaN() ? 0.0 : ratio;
-        });
+        getMetricScope(),
+        this::getReadQuotaUsageRatio,
+        Double::doubleValue);
 
     // --- OTel high-perf counters: request.count and key.count with outcome+role dimensions ---
-    requestCount = MetricEntityStateTwoEnums.create(
-        ServerReadQuotaOtelMetricEntity.READ_QUOTA_REQUEST_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        QuotaRequestOutcome.class,
-        VersionRole.class);
-    keyCount = MetricEntityStateTwoEnums.create(
-        ServerReadQuotaOtelMetricEntity.READ_QUOTA_KEY_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        QuotaRequestOutcome.class,
-        VersionRole.class);
+    requestCount = getMetricScope().register(
+        MetricEntityStateTwoEnums.create(
+            ServerReadQuotaOtelMetricEntity.READ_QUOTA_REQUEST_COUNT.getMetricEntity(),
+            otelRepository,
+            baseDimensionsMap,
+            QuotaRequestOutcome.class,
+            VersionRole.class));
+    keyCount = getMetricScope().register(
+        MetricEntityStateTwoEnums.create(
+            ServerReadQuotaOtelMetricEntity.READ_QUOTA_KEY_COUNT.getMetricEntity(),
+            otelRepository,
+            baseDimensionsMap,
+            QuotaRequestOutcome.class,
+            VersionRole.class));
   }
 
   /**

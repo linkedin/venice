@@ -7,10 +7,12 @@ import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INSTANCE_ERROR_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -165,16 +167,15 @@ public class ClusterStatsTest {
         tehutiMetrics.get(expectedTehutiMetricName).value() == initialVersion,
         "Initial version should be " + initialVersion);
 
-    // Validate OpenTelemetry metrics for initial version
     Attributes expectedAttributes =
         Attributes.builder().put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName).build();
 
-    validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        initialVersion,
-        expectedAttributes,
-        STORE_VERSION_CURRENT.getMetricEntity().getMetricName(),
-        FAST_CLIENT.getMetricsPrefix());
+    assertNull(
+        getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            STORE_VERSION_CURRENT.getMetricEntity().getMetricName(),
+            FAST_CLIENT.getMetricsPrefix(),
+            expectedAttributes));
 
     // Test updating to a new version
     int newVersion = 5;

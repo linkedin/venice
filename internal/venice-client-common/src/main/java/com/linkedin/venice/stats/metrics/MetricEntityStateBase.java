@@ -51,7 +51,6 @@ public class MetricEntityStateBase extends MetricEntityState {
             "Base attributes cannot be null for MetricEntityStateBase for metric: " + metricEntity.getMetricName());
       }
       this.metricAttributesData = new MetricAttributesData(baseAttributes, isObservableCounter());
-      registerObservableCounterIfNeeded();
     } else {
       this.metricAttributesData = null;
     }

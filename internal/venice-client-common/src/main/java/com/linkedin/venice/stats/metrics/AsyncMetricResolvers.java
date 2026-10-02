@@ -6,12 +6,26 @@ import javax.annotation.Nullable;
 
 
 /**
- * Holder for the four named functional interfaces that wire the two-callback (liveness + value)
- * contract used by {@link AsyncMetricEntityStateOneEnum} and {@link AsyncMetricEntityStateTwoEnums}.
+ * The two-callback (liveness + value) contract for async gauges: a live-state resolver returns the state to read, or
+ * {@code null} to emit nothing, and a value resolver reads the value from non-null state.
  * Co-located in a single file because they are only meaningful together.
  */
 public final class AsyncMetricResolvers {
   private AsyncMetricResolvers() {
+  }
+
+  /** Returns the state to read, or {@code null} to emit no sample. */
+  @FunctionalInterface
+  public interface LiveStateResolver<S> {
+    @Nullable
+    S resolve();
+  }
+
+  /** Reads the value from non-null state; {@link GaugeObservation} records it. */
+  @FunctionalInterface
+  public interface ValueResolver<S> {
+    @Nonnull
+    Number extractValue(@Nonnull S state);
   }
 
   /**
@@ -46,22 +60,19 @@ public final class AsyncMetricResolvers {
   }
 
   /**
-   * Reads a {@code double} value from a non-null state plus the enum dimension. Used by
-   * {@link AsyncMetricEntityStateOneEnum} on combos for which
-   * {@link LiveStateResolverOneEnum#resolve} returned non-null.
+   * {@link ValueResolver} for {@link AsyncMetricEntityStateOneEnum}, also given the enum value.
    *
    * @param <S> the backing state type
    * @param <E> the enum dimension type
    */
   @FunctionalInterface
   public interface ValueResolverOneEnum<S, E extends Enum<E> & VeniceDimensionInterface> {
-    double extractValue(@Nonnull S state, E enumValue);
+    @Nonnull
+    Number extractValue(@Nonnull S state, E enumValue);
   }
 
   /**
-   * Reads a {@code double} value from a non-null state plus both enum dimensions. Used by
-   * {@link AsyncMetricEntityStateTwoEnums} on pairs for which
-   * {@link LiveStateResolverTwoEnums#resolve} returned non-null.
+   * {@link ValueResolver} for {@link AsyncMetricEntityStateTwoEnums}, also given both enum values.
    *
    * @param <S>  the backing state type
    * @param <E1> the first enum dimension type
@@ -69,6 +80,7 @@ public final class AsyncMetricResolvers {
    */
   @FunctionalInterface
   public interface ValueResolverTwoEnums<S, E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface> {
-    double extractValue(@Nonnull S state, E1 e1, E2 e2);
+    @Nonnull
+    Number extractValue(@Nonnull S state, E1 e1, E2 e2);
   }
 }

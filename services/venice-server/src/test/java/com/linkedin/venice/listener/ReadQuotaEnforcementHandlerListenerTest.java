@@ -178,6 +178,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
 
     // Delete a store (call store data deleted) verify nothing in buckets or subscriptions
     quotaEnforcer.handleStoreDeleted(store2.getName());
+    verify(stats).removeStore(store2.getName());
     for (int v: new Integer[] { 2, 3, 4 }) {
       assertFalse(
           registeredTopics.contains(Version.composeKafkaTopic(store2.getName(), v)),

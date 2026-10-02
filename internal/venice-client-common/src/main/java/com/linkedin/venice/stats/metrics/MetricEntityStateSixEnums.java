@@ -91,7 +91,6 @@ public class MetricEntityStateSixEnums<E1 extends Enum<E1> & VeniceDimensionInte
     this.enumTypeClass5 = enumTypeClass5;
     this.enumTypeClass6 = enumTypeClass6;
     this.metricAttributesDataEnumMap = createMetricAttributesDataEnumMap();
-    registerObservableCounterIfNeeded();
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */

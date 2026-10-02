@@ -28,7 +28,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.LongSupplier;
 import org.testng.annotations.Test;
 
 
@@ -232,10 +231,14 @@ public class MetricTypeTest {
 
     // Use an array to allow mutation in lambda
     final long[] gaugeValue = { 100L };
-    LongSupplier supplier = () -> gaugeValue[0];
-
-    AsyncMetricEntityStateBase
-        .create(metricEntityAsyncGauge, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes(), supplier);
+    AsyncMetricEntityStateBase.createWithState(
+        metricEntityAsyncGauge,
+        otelMetricsRepository,
+        getBaseDimensionsMap(),
+        getBaseAttributes(),
+        new MetricScope(),
+        () -> gaugeValue[0],
+        Long::longValue);
 
     Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metrics.isEmpty(), "Metrics should not be empty");

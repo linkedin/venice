@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
+import java.util.function.ToLongFunction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.Cache;
@@ -190,10 +191,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   }
 
   /**
-   * Volatile reference cleared by {@link #closeRMDBlockCache()} before the native Cache is freed.
-   * Callbacks read this reference into a local variable — if null, the cache is closed and they
-   * return 0. The local variable pins the reference on the stack, eliminating any TOCTOU race
-   * between the null check and the JNI call without requiring locks.
+   * Volatile reference cleared by {@link #closeRMDBlockCache()} before the native Cache is freed. Callbacks copy it
+   * locally to avoid null dereferences, but one that already holds the copy can still read the cache as it is freed.
    */
   private volatile Cache rmdCache;
 
@@ -203,23 +202,26 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       return;
     }
     this.rmdCache = rmdCache;
-    registerAsyncGauge(
+    registerRmdAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_CAPACITY,
         TehutiMetricName.RMD_BLOCK_CACHE_CAPACITY,
-        () -> rmdCacheCapacity);
-    registerAsyncGauge(
+        () -> rmdCacheCapacity,
+        cache -> rmdCacheCapacity);
+    registerRmdAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_USAGE,
         TehutiMetricName.RMD_BLOCK_CACHE_USAGE,
-        this::getRMDCacheUsage);
-    registerAsyncGauge(
+        this::getRMDCacheUsage,
+        Cache::getUsage);
+    registerRmdAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_PINNED_USAGE,
         TehutiMetricName.RMD_BLOCK_CACHE_PINNED_USAGE,
-        this::getRMDCachePinnedUsage);
+        this::getRMDCachePinnedUsage,
+        Cache::getPinnedUsage);
   }
 
   /**
-   * Must be called before closing the native Cache object to prevent use-after-free.
-   * Nulls out the volatile reference so in-flight and future callbacks return 0.
+   * Must be called before closing the native Cache object. Clears the reference, so later callbacks report 0 to Tehuti
+   * and no RMD block cache sample to OTel.
    */
   public void closeRMDBlockCache() {
     this.rmdCache = null;
@@ -241,7 +243,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       TehutiMetricName tehutiName,
       LongSupplier valueSupplier) {
     String sensorName = tehutiName.getMetricName();
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         otelEntity.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
@@ -249,7 +251,29 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         Collections.singletonList(new AsyncGauge((ig, ig2) -> valueSupplier.getAsLong(), sensorName)),
         baseDimensionsMap,
         baseAttributes,
-        valueSupplier);
+        getMetricScope(),
+        () -> valueSupplier.getAsLong(),
+        Long::longValue);
+  }
+
+  /** Registers a joint Tehuti+OTel RMD cache async gauge metric. */
+  private void registerRmdAsyncGauge(
+      RocksDBMemoryOtelMetricEntity otelEntity,
+      TehutiMetricName tehutiName,
+      LongSupplier tehutiValueSupplier,
+      ToLongFunction<Cache> otelValueResolver) {
+    String sensorName = tehutiName.getMetricName();
+    AsyncMetricEntityStateBase.createWithState(
+        otelEntity.getMetricEntity(),
+        otelRepository,
+        this::registerSensorIfAbsent,
+        tehutiName,
+        Collections.singletonList(new AsyncGauge((ig, ig2) -> tehutiValueSupplier.getAsLong(), sensorName)),
+        baseDimensionsMap,
+        baseAttributes,
+        getMetricScope(),
+        () -> this.rmdCache,
+        cache -> otelValueResolver.applyAsLong(cache));
   }
 
   /**

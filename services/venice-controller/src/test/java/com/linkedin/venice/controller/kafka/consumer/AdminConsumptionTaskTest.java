@@ -482,6 +482,27 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
+  public void testUnknownOrFailedLagCollectionMarksLagsUnknown() {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager("remote.pubsub");
+    AdminConsumptionTask task =
+        getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, "remote.pubsub", 3);
+
+    // No end position for the admin topic.
+    doReturn(PubSubSymbolicPosition.LATEST).when(topicManager).getLatestPositionWithRetries(any(), anyInt());
+    task.recordConsumptionLag();
+    verify(stats).setAdminConsumptionOffsetLag(Long.MAX_VALUE);
+    verify(stats).markAdminConsumptionOffsetLagsUnknown();
+
+    doThrow(new VeniceException("Mock lag collection failure")).when(topicManager)
+        .getLatestPositionWithRetries(any(), anyInt());
+    task.recordConsumptionLag();
+    verify(stats, times(2)).markAdminConsumptionOffsetLagsUnknown();
+    verify(stats, never()).setMaxAdminConsumptionOffsetLag(anyLong());
+  }
+
+  @Test(timeOut = TIMEOUT)
   public void testRunWhenStoreCreationGotExceptionForTheFirstTime()
       throws InterruptedException, IOException, ExecutionException {
     InMemoryPubSubPosition position1 = getPosition(
@@ -567,6 +588,8 @@ public class AdminConsumptionTaskTest {
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
     Assert.assertEquals(getLastPosition(clusterName), PubSubSymbolicPosition.EARLIEST);
+    // Unsubscribing on close clears the lags instead of reporting them as 0.
+    verify(mockStats, atLeastOnce()).clearAdminConsumptionOffsetLags();
   }
 
   @Test(timeOut = TIMEOUT)

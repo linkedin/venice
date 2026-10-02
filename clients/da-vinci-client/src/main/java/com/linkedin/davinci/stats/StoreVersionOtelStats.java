@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.VeniceVersionedStatsOtelMetricEntity.STORE_VERSION;
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -11,6 +12,7 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
@@ -18,7 +20,6 @@ import java.io.Closeable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.LongSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,19 +34,14 @@ import org.apache.logging.log4j.Logger;
  * <p>This class implements {@link StoreDataChangedListener} and should be registered once per process
  * on the metadata repository via {@link #register(ReadOnlyStoreRepository)}. Per-store state is
  * created lazily on first store change and bounded by the number of distinct store names ever
- * observed by the process (entries are not removed on deletion — see cleanup limitation below).
- *
- * <p><b>Cleanup limitation:</b> the OTel SDK does support per-instrument deregistration via
- * {@code ObservableLongGauge.close()}, but the current Venice wrapper
- * ({@link AsyncMetricEntityStateBase}) doesn't surface the SDK instrument handle, so callbacks
- * remain registered until the {@link MetricsRepository} is closed. On store deletion, version
- * info is reset to {@link VersionInfo#NON_EXISTING} rather than removed — see
- * {@link #handleStoreDeleted} for why removing the map entry is unsafe given the current wrapper.
+ * observed by the process: a deleted store keeps its entry and reports nothing (see {@link #handleStoreDeleted}),
+ * and all callbacks close together on {@link #close()}.
  */
 public class StoreVersionOtelStats implements StoreDataChangedListener, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreVersionOtelStats.class);
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  private final MetricScope metricScope = new MetricScope();
 
   /** Per-store version info. Written by metadata-change thread, read by OTel collection thread. */
   private final Map<String, AtomicReference<VersionInfo>> perStoreVersions = new VeniceConcurrentHashMap<>();
@@ -104,6 +100,8 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
       registeredMetadataRepository.unregisterStoreDataChangedListener(this);
       registeredMetadataRepository = null;
     }
+    metricScope.close();
+    perStoreVersions.clear();
   }
 
   @Override
@@ -148,12 +146,9 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
   }
 
   /**
-   * Resets version info to {@link VersionInfo#NON_EXISTING} rather than removing the map entry.
-   * The async-gauge callback closes over the {@link AtomicReference}, which the Venice wrapper
-   * doesn't currently surface for de-registration. Removing the map entry would orphan the live
-   * callback (SDK keeps polling stale data); a subsequent re-create would register a second
-   * callback emitting under the same attributes. Resetting keeps one live callback pointed at
-   * the right state across delete→re-create cycles.
+   * Resets version info to {@link VersionInfo#NON_EXISTING}, so the store reports nothing, rather than removing its
+   * entry: the store's callbacks close only with this class's scope, so a removed entry would leave them polling and a
+   * re-created store would register a second set under the same attributes.
    */
   @Override
   public void handleStoreDeleted(String storeName) {
@@ -173,17 +168,22 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
   private void registerOtelGauge(String storeName, AtomicReference<VersionInfo> versionInfoRef) {
     Map<VeniceMetricsDimensions, String> storeDims = new HashMap<>(baseDimensionsMap);
     storeDims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(storeName));
-    registerRoleGauge(storeDims, VersionRole.CURRENT, () -> versionInfoRef.get().getCurrentVersion());
-    registerRoleGauge(storeDims, VersionRole.FUTURE, () -> versionInfoRef.get().getFutureVersion());
+    registerRoleGauge(storeDims, VersionRole.CURRENT, versionInfoRef);
+    registerRoleGauge(storeDims, VersionRole.FUTURE, versionInfoRef);
   }
 
   private void registerRoleGauge(
       Map<VeniceMetricsDimensions, String> storeDims,
       VersionRole role,
-      LongSupplier callback) {
+      AtomicReference<VersionInfo> versionInfoRef) {
     Map<VeniceMetricsDimensions, String> dims = new HashMap<>(storeDims);
     dims.put(VeniceMetricsDimensions.VENICE_VERSION_ROLE, role.getDimensionValue());
     Attributes attrs = otelRepository.createAttributes(STORE_VERSION.getMetricEntity(), dims);
-    AsyncMetricEntityStateBase.create(STORE_VERSION.getMetricEntity(), otelRepository, dims, attrs, callback);
+    AsyncMetricEntityStateBase
+        .createWithState(STORE_VERSION.getMetricEntity(), otelRepository, dims, attrs, metricScope, () -> {
+          VersionInfo info = versionInfoRef.get();
+          int version = role == VersionRole.CURRENT ? info.getCurrentVersion() : info.getFutureVersion();
+          return version == NON_EXISTING_VERSION ? null : version;
+        }, Integer::intValue);
   }
 }
