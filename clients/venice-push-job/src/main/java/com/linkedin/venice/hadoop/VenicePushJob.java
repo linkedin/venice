@@ -292,7 +292,7 @@ public class VenicePushJob implements AutoCloseable {
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
   private InputStorageQuotaTracker inputStorageQuotaTracker;
-  private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
+  private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
   private ScheduledFuture<?> pushJobKillCheckScheduledFuture;
@@ -720,6 +720,11 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
+  protected void setPushJobHeartbeatSenderFactory(PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory) {
+    this.pushJobHeartbeatSenderFactory = pushJobHeartbeatSenderFactory;
+  }
+
+  // Visible for testing
   protected void setVeniceWriter(VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter) {
     this.veniceWriter = veniceWriter;
   }
@@ -763,6 +768,7 @@ public class VenicePushJob implements AutoCloseable {
    * @throws VeniceException
    */
   public void run() {
+    boolean interruptedWhenFailing = false;
     try {
       initControllerClient(pushJobSetting.storeName);
       pushJobSetting.clusterName = controllerClient.getClusterName();
@@ -1027,6 +1033,13 @@ public class VenicePushJob implements AutoCloseable {
       timeoutExecutor.shutdownNow();
     } catch (Throwable e) {
       LOGGER.error("Failed to run job.", e);
+      /**
+       * Report and kill the failed push even if this thread was interrupted: the controller client stops at the first
+       * interrupted attempt, and a failed push that is not killed can block new pushes to the store. The interrupt is
+       * restored at the end of the finally block below, after all cleanup: stopping the heartbeat sender, for one, can
+       * swallow an interrupt.
+       */
+      interruptedWhenFailing = Thread.interrupted();
       // Make sure all the logic before killing the failed push jobs is captured in the following block
       try {
         if (e instanceof VeniceResourceAccessException) {
@@ -1057,18 +1070,24 @@ public class VenicePushJob implements AutoCloseable {
       }
       throwVeniceException(e);
     } finally {
-      Utils.closeQuietlyWithErrorLogged(inputDataInfoProvider);
-      if (pushJobHeartbeatSender != null) {
-        pushJobHeartbeatSender.stop();
-        pushJobHeartbeatSender = null;
+      try {
+        Utils.closeQuietlyWithErrorLogged(inputDataInfoProvider);
+        if (pushJobHeartbeatSender != null) {
+          pushJobHeartbeatSender.stop();
+          pushJobHeartbeatSender = null;
+        }
+        inputDataInfoProvider = null;
+        if (pushJobSetting.rmdSchemaDir != null) {
+          HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
+        }
+        LOGGER.info("Started shutdown for timeoutExecutor");
+        timeoutExecutor.shutdownNow();
+        LOGGER.info("Completed shutdown for timeoutExecutor");
+      } finally {
+        if (interruptedWhenFailing) {
+          Thread.currentThread().interrupt();
+        }
       }
-      inputDataInfoProvider = null;
-      if (pushJobSetting.rmdSchemaDir != null) {
-        HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
-      }
-      LOGGER.info("Started shutdown for timeoutExecutor");
-      timeoutExecutor.shutdownNow();
-      LOGGER.info("Completed shutdown for timeoutExecutor");
     }
   }
 
