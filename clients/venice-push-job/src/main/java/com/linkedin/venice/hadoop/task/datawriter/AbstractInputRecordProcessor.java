@@ -23,6 +23,7 @@ import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.TriConsumer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.Closeable;
@@ -326,7 +327,8 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
    * ended up hitting the original function always, added an override for this in {@link TestVeniceAvroMapperClass}.
    */
   protected ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    return DictionaryUtils.readDictionaryFromKafka(topicName, props);
+    return DictionaryUtils
+        .readDictionaryFromKafka(topicName, props, PubSubEncryptionUtils.getKeyUrnLookup(props.toProperties()));
   }
 
   private VeniceCompressor getZstdCompressor(VeniceProperties props) {

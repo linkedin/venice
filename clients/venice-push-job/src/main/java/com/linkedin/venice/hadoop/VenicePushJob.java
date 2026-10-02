@@ -873,8 +873,10 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          ByteBuffer sourceDict = DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(
+              pushJobSetting.kafkaInputTopic,
+              getSourceDictionaryConsumerProperties(),
+              PubSubEncryptionUtils.getKeyUrnLookup(pushJobSetting.pubSubEncryptionKeyUrn));
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -1717,8 +1719,10 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          return DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          return DictionaryUtils.readDictionaryFromKafka(
+              pushJobSetting.kafkaInputTopic,
+              getSourceDictionaryConsumerProperties(),
+              PubSubEncryptionUtils.getKeyUrnLookup(pushJobSetting.pubSubEncryptionKeyUrn));
         }
       }
       LOGGER.info(

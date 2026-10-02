@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,13 +40,42 @@ public class DictionaryUtils {
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    return readDictionaryFromKafka(topicName, props, PubSubMessageDeserializer.createDefaultDeserializer());
+    return readDictionaryFromKafka(topicName, props, PubSubMessageDeserializer.createDefaultDeserializer(), null);
+  }
+
+  /**
+   * @param pubSubEncryptionKeyUrnLookup Optional store-name to raw encryption-key URN lookup. Required to decode a
+   *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
+   *                                     source topic is not V2-encrypted.
+   */
+  public static ByteBuffer readDictionaryFromKafka(
+      String topicName,
+      VeniceProperties props,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
+    return readDictionaryFromKafka(
+        topicName,
+        props,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        pubSubEncryptionKeyUrnLookup);
   }
 
   public static ByteBuffer readDictionaryFromKafka(
       String topicName,
       VeniceProperties props,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
+    return readDictionaryFromKafka(topicName, props, pubSubMessageDeserializer, null);
+  }
+
+  /**
+   * @param pubSubEncryptionKeyUrnLookup Optional store-name to raw encryption-key URN lookup. Required to decode a
+   *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
+   *                                     source topic is not V2-encrypted.
+   */
+  public static ByteBuffer readDictionaryFromKafka(
+      String topicName,
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     VeniceProperties pubSubProperties = getKafkaConsumerProps(props);
@@ -54,6 +84,7 @@ public class DictionaryUtils {
             .setPubSubTopicRepository(pubSubTopicRepository)
             .setPubSubMessageDeserializer(pubSubMessageDeserializer)
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
+            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
             .setConsumerName("DictionaryUtilsConsumer")
             .build();
     try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory.create(context)) {

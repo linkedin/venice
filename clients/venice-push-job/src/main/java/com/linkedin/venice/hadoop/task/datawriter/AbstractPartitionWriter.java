@@ -1022,7 +1022,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
         if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {
           String topicName = props.getString(TOPIC_PROP);
-          ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topicName, props);
+          ByteBuffer dict = DictionaryUtils
+              .readDictionaryFromKafka(topicName, props, PubSubEncryptionUtils.getKeyUrnLookup(props.toProperties()));
           return compressorFactory.get()
               .createVersionSpecificCompressorIfNotExist(strategy, topicName, ByteUtils.extractByteArray(dict));
         } else {
