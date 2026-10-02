@@ -1,12 +1,12 @@
 package com.linkedin.davinci.blobtransfer.client;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_THREAD_PRIORITY;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.security.SSLFactory;
@@ -117,7 +117,7 @@ public class TestNettyFileTransferClient {
         Thread thread = executor.submit(Thread::currentThread).get(5, TimeUnit.SECONDS);
         assertEquals(
             thread.getPriority(),
-            BLOB_TRANSFER_THREAD_PRIORITY,
+            VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY,
             "Blob transfer event-loop threads should run below normal priority");
         assertTrue(
             thread.getName().startsWith("Venice-BlobTransfer-Client-Netty"),

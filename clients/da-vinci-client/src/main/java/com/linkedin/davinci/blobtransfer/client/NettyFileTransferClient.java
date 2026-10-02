@@ -1,12 +1,11 @@
 package com.linkedin.davinci.blobtransfer.client;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_THREAD_PRIORITY;
-
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferPooledByteBufAllocator;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -114,6 +113,38 @@ public class NettyFileTransferClient {
       Supplier<VeniceNotifier> notifierSupplier,
       LogContext logContext,
       boolean dedicatedAllocatorEnabled) {
+    this(
+        serverPort,
+        baseDir,
+        storageMetadataService,
+        peersConnectivityFreshnessInSeconds,
+        blobReceiveTimeoutInMin,
+        blobReceiveReaderIdleTimeInSeconds,
+        nettyWorkerThreadCount,
+        globalChannelTrafficShapingHandler,
+        aggBlobTransferStats,
+        sslFactory,
+        notifierSupplier,
+        logContext,
+        dedicatedAllocatorEnabled,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  public NettyFileTransferClient(
+      int serverPort,
+      String baseDir,
+      StorageMetadataService storageMetadataService,
+      int peersConnectivityFreshnessInSeconds,
+      int blobReceiveTimeoutInMin,
+      int blobReceiveReaderIdleTimeInSeconds,
+      int nettyWorkerThreadCount,
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      AggBlobTransferStats aggBlobTransferStats,
+      Optional<SSLFactory> sslFactory,
+      Supplier<VeniceNotifier> notifierSupplier,
+      LogContext logContext,
+      boolean dedicatedAllocatorEnabled,
+      int writePathThreadPriority) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -125,14 +156,14 @@ public class NettyFileTransferClient {
 
     clientBootstrap = new Bootstrap();
     // Explicitly size the event-loop pool (Netty defaults to 2 * available processors, which is far more than a P2P
-    // file-transfer client needs) and run the threads below normal priority since blob transfer is not latency
-    // sensitive. VeniceServerConfig already clamps configured values up to MIN_NETTY_WORKER_THREADS (and warns); this
-    // floor is a defensive net for any other caller so a count of 0 can't make Netty fall back to its 2 * cores default
-    // and a negative count can't throw.
+    // file-transfer client needs) and run the threads with the configured write-path priority. VeniceServerConfig
+    // already clamps configured values up to MIN_NETTY_WORKER_THREADS (and warns); this floor is a defensive net for
+    // any other caller so a count of 0 can't make Netty fall back to its 2 * cores default and a negative count can't
+    // throw.
     int resolvedWorkerThreadCount = Math.max(MIN_NETTY_WORKER_THREADS, nettyWorkerThreadCount);
     workerGroup = new NioEventLoopGroup(
         resolvedWorkerThreadCount,
-        new DefaultThreadFactory("Venice-BlobTransfer-Client-Netty", true, BLOB_TRANSFER_THREAD_PRIORITY));
+        new DefaultThreadFactory("Venice-BlobTransfer-Client-Netty", true, writePathThreadPriority));
     clientBootstrap.group(workerGroup);
     clientBootstrap.channel(NioSocketChannel.class);
     clientBootstrap.option(ChannelOption.SO_KEEPALIVE, true);
@@ -165,13 +196,10 @@ public class NettyFileTransferClient {
     this.hostConnectExecutorService = Executors.newCachedThreadPool(
         new DaemonThreadFactory(
             "Venice-BlobTransfer-Host-Connect-Executor-Service",
-            BLOB_TRANSFER_THREAD_PRIORITY,
+            writePathThreadPriority,
             logContext));
     this.connectTimeoutScheduler = Executors.newSingleThreadScheduledExecutor(
-        new DaemonThreadFactory(
-            "Venice-BlobTransfer-Client-Timeout-Checker",
-            BLOB_TRANSFER_THREAD_PRIORITY,
-            logContext));
+        new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker", writePathThreadPriority, logContext));
     this.checksumValidationExecutorService = new ThreadPoolExecutor(
         DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE,
         DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE,
@@ -180,7 +208,7 @@ public class NettyFileTransferClient {
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory(
             "Venice-BlobTransfer-Checksum-Validation-Executor-Service",
-            BLOB_TRANSFER_THREAD_PRIORITY,
+            writePathThreadPriority,
             logContext));
   }
 
