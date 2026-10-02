@@ -2249,7 +2249,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
-      // get the future version from the interested regions which will be used to compare after roll forward
+      // Get the future version from the selected regions for the parent metadata update.
       Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
       int futureVersionBeforeRollForward = 0;
       for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
@@ -2270,7 +2270,6 @@ public class VeniceParentHelixAdmin implements Admin {
           "Sending roll forward command to future version {} for store {} to child controllers",
           futureVersionBeforeRollForward,
           storeName);
-      Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       RollForwardCurrentVersion rollForward =
           (RollForwardCurrentVersion) AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getNewInstance();
       rollForward.clusterName = clusterName;
@@ -2284,23 +2283,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
 
-      // Child consumption may still be pending. Only update parent metadata if all regions
-      // are already serving the future version; do not wait for child completion here.
-      Map<String, Integer> coloToCurrentVersion = getCurrentVersionsForMultiColos(clusterName, storeName);
-      boolean allRegionsServingFutureVersion =
-          !controllerClients.isEmpty() && coloToCurrentVersion.keySet().containsAll(controllerClients.keySet());
-      for (Map.Entry<String, Integer> entry: coloToCurrentVersion.entrySet()) {
-        if (!entry.getValue().equals(futureVersionBeforeRollForward)) {
-          allRegionsServingFutureVersion = false;
-          LOGGER.warn(
-              "Region {} is serving version {} instead of future version {} for store {}",
-              entry.getKey(),
-              entry.getValue(),
-              futureVersionBeforeRollForward,
-              storeName);
-        }
-      }
-
+      // Record the accepted roll-forward in parent metadata; child consumers may still be retrying.
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -2308,7 +2291,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
         if (parentVersion != null && StringUtils.isEmpty(parentVersion.getTargetSwapRegion())
-            && parentVersion.isVersionSwapDeferred() && allRegionsServingFutureVersion) {
+            && parentVersion.isVersionSwapDeferred()) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);
           parentStore.setCurrentVersion(version);
@@ -2318,13 +2301,6 @@ public class VeniceParentHelixAdmin implements Admin {
               parentStore.getName(),
               version,
               ONLINE);
-        } else if (!allRegionsServingFutureVersion) {
-          LOGGER.info(
-              "Not all regions are serving future version {} for store {}. Per-region versions: {}. "
-                  + "Skipping parent version status update to ONLINE.",
-              futureVersionBeforeRollForward,
-              storeName,
-              coloToCurrentVersion);
         }
       }
     } finally {

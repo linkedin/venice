@@ -26,6 +26,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -139,6 +140,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -4317,8 +4319,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ControllerClient child = mock(ControllerClient.class);
     controllerClients.put("r1", child);
 
-    Map<String, Integer> after = Collections.singletonMap("r1", 5);
-    doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
     Version version = mock(Version.class);
     doReturn(true).when(version).isVersionSwapDeferred();
     doReturn(version).when(store).getVersion(5);
@@ -4358,11 +4358,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(failure.getMessage(), "admin message publication failed");
     verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
     verify(store, never()).setCurrentVersion(anyInt());
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
     verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testRollForwardNotAllRegionsServingFutureVersionSkipsParentUpdate(boolean firstRegionSwapped) {
+  public void testRollForwardUpdatesParentWhileChildrenArePending(boolean firstRegionSwapped) {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
@@ -4393,17 +4394,48 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     controllerClients.put("r2", r2);
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
-    // Parent store should NOT be updated to ONLINE since not all regions are serving the future version
-    verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
-    verify(store, never()).setCurrentVersion(anyInt());
-    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    verify(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
+    InOrder order = inOrder(adminSpy, store);
+    order.verify(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    order.verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
+    order.verify(store).setCurrentVersion(5);
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
     verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
     verify(r1, never()).getAdminTopicMetadata(any());
     verify(r2, never()).getAdminTopicMetadata(any());
     verify(r2, never()).getStore(anyString(), anyInt());
     verify(r1, never()).rollForwardToFutureVersion(any(), any(), anyInt());
     verify(r2, never()).rollForwardToFutureVersion(any(), any(), anyInt());
+  }
+
+  @DataProvider(name = "rollForwardParentUpdateEligibility")
+  public Object[][] rollForwardParentUpdateEligibility() {
+    return new Object[][] { { false, true, "" }, { true, false, "" }, { true, true, "r1" } };
+  }
+
+  @Test(dataProvider = "rollForwardParentUpdateEligibility")
+  public void testRollForwardPreservesParentUpdateEligibility(
+      boolean versionExists,
+      boolean deferred,
+      String targetSwapRegion) {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    doReturn(Collections.singletonMap("r1", "5")).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    Version version = mock(Version.class);
+    doReturn(deferred).when(version).isVersionSwapDeferred();
+    doReturn(targetSwapRegion).when(version).getTargetSwapRegion();
+    doReturn(versionExists ? version : null).when(store).getVersion(5);
+
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
+    verify(store, never()).setCurrentVersion(anyInt());
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
   }
 
   @Test
