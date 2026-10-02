@@ -9,6 +9,7 @@ import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
@@ -966,7 +967,10 @@ public class DataWriterSparkJobRepushTest {
   /**
    * Verify that all job properties (including xc.*, pubsub.*, etc.) are forwarded to the
    * DataFrameReader, matching MR behavior where KafkaInputUtils.getConsumerProperties() copies
-   * ALL JobConf properties to the PubSub consumer.
+   * ALL JobConf properties to the PubSub consumer. Also a regression test for the V2 (li-crypt)
+   * dictionary decryption bug: pushJobSetting.pubSubEncryptionKeyUrn is resolved from store metadata
+   * at runtime, so it is never part of the raw job props forwarded by the bulk loop above; verifies it
+   * is still set explicitly on the DataFrameReader/SparkSession so the source consumer can decrypt.
    */
   @Test
   public void testJobPropertiesForwardedToDataFrameReader() {
@@ -998,6 +1002,13 @@ public class DataWriterSparkJobRepushTest {
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+    // Required so getKafkaInputDataFrame() runs past the KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP line below
+    // instead of NPEing and falling into ConfigTestSparkJob's catch-all, which would otherwise mask the
+    // pubSubEncryptionKeyUrn assertion further down.
+    setting.storeKeySchema = Schema.create(Schema.Type.STRING);
+    // Resolved from store metadata onto pushJobSetting at runtime (never part of the raw job props above);
+    // regression coverage for it failing to reach the source DataFrameReader's options.
+    setting.pubSubEncryptionKeyUrn = "urn:li:dataEncryptionKey:test-key";
 
     job.configure(new VeniceProperties(props), setting);
     job.getKafkaInputDataFrame();
@@ -1014,6 +1025,10 @@ public class DataWriterSparkJobRepushTest {
         spark.conf().get("venice.repush.source.pubsub.broker"),
         "localhost:9092",
         "venice.repush.source.pubsub.broker should be forwarded");
+    assertEquals(
+        spark.conf().get(PUB_SUB_ENCRYPTION_KEY_URN),
+        "urn:li:dataEncryptionKey:test-key",
+        "pubSubEncryptionKeyUrn should reach the source DataFrameReader so it can decrypt V2 records");
   }
 
   /**
