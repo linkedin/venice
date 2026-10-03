@@ -6,8 +6,11 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLA
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -15,6 +18,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -34,6 +38,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -43,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
@@ -84,8 +90,9 @@ public class TestKafkaInputDictTrainer {
         .build();
   }
 
-  @Test
-  public void testConsumerPropertiesPropagateToEmptyTopicTraining() throws IOException {
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testConsumerPropertiesAndOwnedLookupForEmptyTopic(Boolean enabled, String keyUrn, String expectedUrn)
+      throws IOException {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
@@ -109,14 +116,16 @@ public class TestKafkaInputDictTrainer {
     consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "test_url");
     consumerProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "SSL");
     consumerProperties.setProperty("ssl.keystore.location", "credential-keystore");
+    consumerProperties.putAll(PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn));
 
     KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(
         mockFormat,
         Optional.empty(),
         getParam(100, CompressionStrategy.NO_OP, consumerProperties),
         getCompressorBuilder(new NoopCompressor()));
+    PubSubConsumerAdapter suppliedConsumer = mock(PubSubConsumerAdapter.class);
     try {
-      trainer.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
+      trainer.trainDict(Optional.of(suppliedConsumer));
       fail("Expected training on an empty topic to fail");
     } catch (VeniceException e) {
       assertTrue(e.getMessage().startsWith("No record"));
@@ -136,9 +145,39 @@ public class TestKafkaInputDictTrainer {
     assertEquals(actualConsumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "test_url");
     assertEquals(actualConsumerProperties.getString(PUBSUB_SECURITY_PROTOCOL), "SSL");
     assertEquals(actualConsumerProperties.getString("ssl.keystore.location"), "credential-keystore");
+    assertEquals(actualConsumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED), Boolean.TRUE.equals(enabled));
+    assertEquals(
+        actualConsumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null),
+        Boolean.TRUE.equals(enabled) ? keyUrn : null);
+    verify(suppliedConsumer, never()).close();
     assertFalse(
         consumerProperties.containsKey(KAFKA_INPUT_TOPIC),
         "Building trainer properties must not mutate the supplied consumer properties");
+    KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.reset();
+    clearInvocations(mockFormat);
+    KafkaInputDictTrainer ownedTrainer = new KafkaInputDictTrainer(
+        mockFormat,
+        Optional.empty(),
+        getParam(100, CompressionStrategy.NO_OP, KafkaInputUtilsTest.consumerProperties(enabled, keyUrn)),
+        getCompressorBuilder(new NoopCompressor()));
+    boolean invalid = Boolean.TRUE.equals(enabled) && expectedUrn == null;
+    try {
+      ownedTrainer.trainDict();
+      fail("Expected training on an empty topic to fail");
+    } catch (VeniceException e) {
+      assertTrue(invalid ? e.getMessage().contains("missing or blank") : e.getMessage().startsWith("No record"));
+    }
+    if (invalid) {
+      verify(mockFormat, never()).getSplits(any(VeniceProperties.class));
+      assertNull(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedContext());
+      return;
+    }
+
+    Function<String, String> observedLookup =
+        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedContext()
+            .getPubSubEncryptionKeyUrnLookup();
+    assertEquals(observedLookup != null, expectedUrn != null);
+    assertEquals(observedLookup == null ? null : observedLookup.apply("test_topic"), expectedUrn);
   }
 
   interface ResettableRecordReader<K, V> extends RecordReader<K, V> {

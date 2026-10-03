@@ -5,6 +5,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,10 +16,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -34,14 +38,17 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.security.Credentials;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -73,17 +80,29 @@ public class KafkaInputUtilsTest {
         "Receive buffer size should be set to 4MB");
   }
 
-  @Test
-  public void testPrefixedPropertiesAreClippedAndMerged() {
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testPrefixedPropertiesAreClippedAndMerged(Boolean enabled, String keyUrn, String ignoredExpectedUrn) {
     jobConf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9095");
     jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "some.kafka.prop", "value123");
+    PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn)
+        .forEach((key, value) -> jobConf.set((String) key, (String) value));
+    jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + PUB_SUB_ENCRYPTION_ENABLED, "true");
+    jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale");
+    Properties overrides =
+        PubSubEncryptionUtilsTest.encryptionProperties(!Boolean.TRUE.equals(enabled), "urn:li:override");
+    overrides.setProperty("unrelated", "retained");
 
-    VeniceProperties consumerProps = KafkaInputUtils.getConsumerProperties(jobConf);
+    VeniceProperties consumerProps = KafkaInputUtils.getConsumerProperties(jobConf, overrides);
 
     assertEquals(
         consumerProps.getString("some.kafka.prop"),
         "value123",
         "Prefixed Kafka property should be merged correctly");
+    assertEquals(consumerProps.getBoolean(PUB_SUB_ENCRYPTION_ENABLED), Boolean.TRUE.equals(enabled));
+    assertEquals(
+        consumerProps.getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null),
+        Boolean.TRUE.equals(enabled) ? keyUrn : null);
+    assertEquals(consumerProps.getString("unrelated"), "retained");
   }
 
   @Test
@@ -109,12 +128,16 @@ public class KafkaInputUtilsTest {
    * KAFKA_BOOTSTRAP_SERVERS). Verifies PUBSUB_BROKER_ADDRESS is explicitly overridden with the source
    * kafkaUrl, mirroring KafkaInputUtils#getConsumerProperties.
    */
-  @Test
-  public void testGetCompressorOverridesStalePubSubBrokerAddressForZstdWithDict() throws IOException {
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testGetCompressorOverridesStalePubSubBrokerAddressForZstdWithDict(
+      Boolean enabled,
+      String keyUrn,
+      String expectedUrn) throws IOException {
     RecordingPubSubConsumerAdapterFactory.reset();
 
     Properties props = new Properties();
     props.setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
+    props.putAll(PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn));
     // A stale/incorrect broker address already present on the input properties (e.g. left over from the
     // destination cluster config) must not win over the source kafkaUrl passed to getCompressor().
     props.setProperty(PUBSUB_BROKER_ADDRESS, "stale-destination-broker:9999");
@@ -129,6 +152,7 @@ public class KafkaInputUtilsTest {
           "test_store_v1",
           veniceProperties);
       assertNotNull(compressor);
+      assertEquals(expectedUrn != null, Boolean.TRUE.equals(enabled));
       assertEquals(
           RecordingPubSubConsumerAdapterFactory.getObservedBrokerAddress(),
           "correct-source-broker:9092",
@@ -138,6 +162,21 @@ public class KafkaInputUtilsTest {
           RecordingPubSubConsumerAdapterFactory.getObservedBootstrapServers(),
           "correct-source-broker:9092",
           "KAFKA_BOOTSTRAP_SERVERS seen by the dictionary consumer factory should also be the source kafkaUrl");
+      Function<String, String> lookup =
+          RecordingPubSubConsumerAdapterFactory.getObservedContext().getPubSubEncryptionKeyUrnLookup();
+      assertEquals(lookup != null, expectedUrn != null);
+      assertEquals(lookup == null ? null : lookup.apply("test_store"), expectedUrn);
+      if (!Boolean.TRUE.equals(enabled)) {
+        assertNull(
+            RecordingPubSubConsumerAdapterFactory.getObservedContext()
+                .getVeniceProperties()
+                .getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null));
+      }
+    } catch (VeniceException e) {
+      Assert.assertTrue(Boolean.TRUE.equals(enabled));
+      assertNull(expectedUrn);
+      Assert.assertTrue(e.getMessage().contains(PUB_SUB_ENCRYPTION_KEY_URN));
+      assertNull(RecordingPubSubConsumerAdapterFactory.getObservedContext());
     } finally {
       compressorFactory.close();
     }
@@ -155,6 +194,25 @@ public class KafkaInputUtilsTest {
     }
   }
 
+  @Test
+  public void testDictionaryFixtureReturnsDefensiveCopies() {
+    byte[] expected = RecordingPubSubConsumerAdapterFactory.getDictionaryToServe().clone();
+    byte[] dictionary = RecordingPubSubConsumerAdapterFactory.getDictionaryToServe();
+
+    dictionary[0]++;
+
+    assertEquals(RecordingPubSubConsumerAdapterFactory.getDictionaryToServe(), expected);
+  }
+
+  public static Properties consumerProperties(Boolean enabled, String keyUrn) {
+    Properties properties = PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn);
+    properties.setProperty(PUBSUB_BROKER_ADDRESS, "localhost:9092");
+    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "localhost:9092");
+    properties
+        .setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
+    return properties;
+  }
+
   /**
    * Test double for {@link PubSubConsumerAdapterFactory} that records the PUBSUB_BROKER_ADDRESS and
    * KAFKA_BOOTSTRAP_SERVERS properties it's constructed with and returns a mock consumer that serves a
@@ -163,27 +221,32 @@ public class KafkaInputUtilsTest {
    */
   public static class RecordingPubSubConsumerAdapterFactory
       extends PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
-    private static final AtomicReference<String> OBSERVED_BROKER_ADDRESS = new AtomicReference<>();
-    private static final AtomicReference<String> OBSERVED_BOOTSTRAP_SERVERS = new AtomicReference<>();
+    private static final byte[] DICTIONARY_TO_SERVE = { 1, 2, 3, 4 };
+    private static final AtomicReference<PubSubConsumerAdapterContext> OBSERVED_CONTEXT = new AtomicReference<>();
 
-    static void reset() {
-      OBSERVED_BROKER_ADDRESS.set(null);
-      OBSERVED_BOOTSTRAP_SERVERS.set(null);
+    public static void reset() {
+      OBSERVED_CONTEXT.set(null);
+    }
+
+    public static byte[] getDictionaryToServe() {
+      return DICTIONARY_TO_SERVE.clone();
+    }
+
+    public static PubSubConsumerAdapterContext getObservedContext() {
+      return OBSERVED_CONTEXT.get();
     }
 
     static String getObservedBrokerAddress() {
-      return OBSERVED_BROKER_ADDRESS.get();
+      return getObservedContext().getVeniceProperties().getString(PUBSUB_BROKER_ADDRESS);
     }
 
     static String getObservedBootstrapServers() {
-      return OBSERVED_BOOTSTRAP_SERVERS.get();
+      return getObservedContext().getVeniceProperties().getString(KAFKA_BOOTSTRAP_SERVERS);
     }
 
     @Override
     public PubSubConsumerAdapter create(PubSubConsumerAdapterContext context) {
-      VeniceProperties properties = context.getVeniceProperties();
-      OBSERVED_BROKER_ADDRESS.set(properties.getString(PUBSUB_BROKER_ADDRESS));
-      OBSERVED_BOOTSTRAP_SERVERS.set(properties.getString(KAFKA_BOOTSTRAP_SERVERS));
+      OBSERVED_CONTEXT.set(context);
 
       PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);
       when(consumer.getAssignment()).thenReturn(Collections.emptySet());
@@ -203,7 +266,7 @@ public class KafkaInputUtilsTest {
     private static DefaultPubSubMessage createStartOfPushMessage(PubSubTopicPartition topicPartition) {
       StartOfPush startOfPush = new StartOfPush();
       startOfPush.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
-      startOfPush.compressionDictionary = ByteBuffer.wrap(new byte[] { 1, 2, 3, 4 });
+      startOfPush.compressionDictionary = ByteBuffer.wrap(getDictionaryToServe());
 
       ControlMessage controlMessage = new ControlMessage();
       controlMessage.controlMessageType = ControlMessageType.START_OF_PUSH.getValue();
