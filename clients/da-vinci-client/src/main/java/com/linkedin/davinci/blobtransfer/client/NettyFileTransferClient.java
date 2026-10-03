@@ -336,7 +336,7 @@ public class NettyFileTransferClient {
 
       // Remove from tracking when transfer completes
       perHostTransferFuture.toCompletableFuture().whenComplete((result, throwable) -> {
-        activeChannels.remove(replicaId);
+        activeChannels.remove(replicaId, ch);
         if (throwable != null) {
           LOGGER.info(
               "Removed active channel tracking for replica {} after transfer failure: {}",
