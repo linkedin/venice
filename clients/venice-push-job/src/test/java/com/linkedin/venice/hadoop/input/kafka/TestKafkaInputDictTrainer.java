@@ -10,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -153,6 +154,7 @@ public class TestKafkaInputDictTrainer {
         consumerProperties.containsKey(KAFKA_INPUT_TOPIC),
         "Building trainer properties must not mutate the supplied consumer properties");
     KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.reset();
+    clearInvocations(mockFormat);
     KafkaInputDictTrainer ownedTrainer = new KafkaInputDictTrainer(
         mockFormat,
         Optional.empty(),
@@ -166,6 +168,7 @@ public class TestKafkaInputDictTrainer {
       assertTrue(invalid ? e.getMessage().contains("missing or blank") : e.getMessage().startsWith("No record"));
     }
     if (invalid) {
+      verify(mockFormat, never()).getSplits(any(VeniceProperties.class));
       assertNull(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedContext());
       return;
     }

@@ -53,7 +53,7 @@ public class PubSubEncryptionUtilsTest {
   @DataProvider(name = "encryptionConfigurations")
   public static Object[][] encryptionConfigurations() {
     return new Object[][] { { null, KEY_URN, null }, { false, KEY_URN, null }, { true, "  " + KEY_URN + "  ", KEY_URN },
-        { true, null, null } };
+        { true, null, null }, { true, "   ", null } };
   }
 
   public static Properties encryptionProperties(Boolean enabled, String keyUrn) {

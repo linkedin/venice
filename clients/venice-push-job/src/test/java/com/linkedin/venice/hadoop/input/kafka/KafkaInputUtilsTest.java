@@ -81,7 +81,7 @@ public class KafkaInputUtilsTest {
   }
 
   @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
-  public void testPrefixedPropertiesAreClippedAndMerged(Boolean enabled, String keyUrn, String expectedUrn) {
+  public void testPrefixedPropertiesAreClippedAndMerged(Boolean enabled, String keyUrn, String ignoredExpectedUrn) {
     jobConf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9095");
     jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "some.kafka.prop", "value123");
     PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn)
@@ -101,7 +101,7 @@ public class KafkaInputUtilsTest {
     assertEquals(consumerProps.getBoolean(PUB_SUB_ENCRYPTION_ENABLED), Boolean.TRUE.equals(enabled));
     assertEquals(
         consumerProps.getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null),
-        expectedUrn == null ? null : keyUrn);
+        Boolean.TRUE.equals(enabled) ? keyUrn : null);
     assertEquals(consumerProps.getString("unrelated"), "retained");
   }
 

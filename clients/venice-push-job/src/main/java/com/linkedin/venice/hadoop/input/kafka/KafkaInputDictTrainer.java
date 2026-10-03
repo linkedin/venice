@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Function;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
@@ -200,6 +201,10 @@ public class KafkaInputDictTrainer {
     Properties splitProps = new Properties();
     splitProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION.name());
     VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(jobConf, splitProps);
+    Function<String, String> encryptionKeyUrnLookup =
+        !reusedConsumerOptional.isPresent() && veniceProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)
+            ? PubSubEncryptionUtils.getRequiredKeyUrnLookup(veniceProperties)
+            : null;
     KafkaInputSplit[] splits = kafkaInputFormat.getSplits(veniceProperties);
     // The following sort is trying to get a deterministic dict with the same input.
     Arrays.sort(splits, Comparator.comparingInt(o -> o.getTopicPartition().getPartitionNumber()));
@@ -237,8 +242,8 @@ public class KafkaInputDictTrainer {
                       KafkaInputUtils.getKafkaValueSerializer(jobConf),
                       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
                       new LandFillObjectPool<>(KafkaMessageEnvelope::new)));
-      if (veniceProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
-        context.setPubSubEncryptionKeyUrnLookup(PubSubEncryptionUtils.getRequiredKeyUrnLookup(veniceProperties));
+      if (encryptionKeyUrnLookup != null) {
+        context.setPubSubEncryptionKeyUrnLookup(encryptionKeyUrnLookup);
       }
       return PubSubClientsFactory.createConsumerFactory(veniceProperties).create(context.build());
     });
