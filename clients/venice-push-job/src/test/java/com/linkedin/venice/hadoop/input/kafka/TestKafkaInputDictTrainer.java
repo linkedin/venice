@@ -17,7 +17,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -90,8 +89,9 @@ public class TestKafkaInputDictTrainer {
         .build();
   }
 
-  @Test
-  public void testConsumerPropertiesPropagateToEmptyTopicTraining() throws IOException {
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testConsumerPropertiesAndOwnedLookupForEmptyTopic(Boolean enabled, String keyUrn, String expectedUrn)
+      throws IOException {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
@@ -115,8 +115,7 @@ public class TestKafkaInputDictTrainer {
     consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "test_url");
     consumerProperties.setProperty(PUBSUB_SECURITY_PROTOCOL, "SSL");
     consumerProperties.setProperty("ssl.keystore.location", "credential-keystore");
-    consumerProperties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, "true");
-    consumerProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:test-key");
+    consumerProperties.putAll(PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn));
 
     KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(
         mockFormat,
@@ -145,67 +144,37 @@ public class TestKafkaInputDictTrainer {
     assertEquals(actualConsumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "test_url");
     assertEquals(actualConsumerProperties.getString(PUBSUB_SECURITY_PROTOCOL), "SSL");
     assertEquals(actualConsumerProperties.getString("ssl.keystore.location"), "credential-keystore");
-    assertTrue(actualConsumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED));
-    assertEquals(actualConsumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:test-key");
+    assertEquals(actualConsumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED), Boolean.TRUE.equals(enabled));
+    assertEquals(
+        actualConsumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null),
+        Boolean.TRUE.equals(enabled) ? keyUrn : null);
     verify(suppliedConsumer, never()).close();
     assertFalse(
         consumerProperties.containsKey(KAFKA_INPUT_TOPIC),
         "Building trainer properties must not mutate the supplied consumer properties");
-  }
-
-  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
-  public void testOwnedConsumerUsesEncryptionFlag(Boolean enabled, String keyUrn, boolean invalid) throws IOException {
     KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.reset();
-
-    KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
-    PubSubTopicPartition topicPartition =
-        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    PubSubPosition position0 = ApacheKafkaOffsetPosition.of(0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(
-        new PubSubPartitionSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, position0, position0, 0L, 0, 0L)) };
-    doReturn(splits).when(mockFormat).getSplits(any(VeniceProperties.class));
-    RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockRecordReader = mock(RecordReader.class);
-    doReturn(false).when(mockRecordReader).next(any(), any());
-    doReturn(mockRecordReader).when(mockFormat).getRecordReader(any(), any(), any(), any());
-
-    Properties consumerProperties = new Properties();
-    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "test_url");
-    consumerProperties.setProperty(
-        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
-        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.class.getName());
-    if (enabled != null) {
-      consumerProperties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, enabled.toString());
-    }
-    if (keyUrn != null) {
-      consumerProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
-    }
-
-    KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(
+    KafkaInputDictTrainer ownedTrainer = new KafkaInputDictTrainer(
         mockFormat,
         Optional.empty(),
-        getParam(100, CompressionStrategy.NO_OP, consumerProperties),
+        getParam(100, CompressionStrategy.NO_OP, KafkaInputUtilsTest.consumerProperties(enabled, keyUrn)),
         getCompressorBuilder(new NoopCompressor()));
+    boolean invalid = Boolean.TRUE.equals(enabled) && expectedUrn == null;
     try {
-      trainer.trainDict();
+      ownedTrainer.trainDict();
       fail("Expected training on an empty topic to fail");
     } catch (VeniceException e) {
       assertTrue(invalid ? e.getMessage().contains("missing or blank") : e.getMessage().startsWith("No record"));
     }
     if (invalid) {
-      assertEquals(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getCreateCount(), 0);
-      assertEquals(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getPollCount(), 0);
+      assertNull(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedContext());
       return;
     }
 
     Function<String, String> observedLookup =
-        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup();
-    if (Boolean.TRUE.equals(enabled)) {
-      assertNotNull(observedLookup);
-      assertEquals(observedLookup.apply("test_topic"), keyUrn.trim());
-    } else {
-      assertNull(observedLookup);
-    }
-    assertEquals(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getCreateCount(), 1);
+        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedContext()
+            .getPubSubEncryptionKeyUrnLookup();
+    assertEquals(observedLookup != null, expectedUrn != null);
+    assertEquals(observedLookup == null ? null : observedLookup.apply("test_topic"), expectedUrn);
   }
 
   interface ResettableRecordReader<K, V> extends RecordReader<K, V> {

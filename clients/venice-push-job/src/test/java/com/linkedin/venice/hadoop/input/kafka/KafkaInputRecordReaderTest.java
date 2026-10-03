@@ -1,12 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -149,24 +145,17 @@ public class KafkaInputRecordReaderTest {
   }
 
   @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
-  public void testCreateConsumerUsesEncryptionFlag(Boolean enabled, String keyUrn, boolean invalid) throws IOException {
+  public void testCreateConsumerUsesEncryptionFlag(Boolean enabled, String keyUrn, String expectedUrn)
+      throws IOException {
     KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.reset();
 
     JobConf conf = new JobConf();
+    KafkaInputUtilsTest.consumerProperties(enabled, keyUrn)
+        .forEach((key, value) -> conf.set((String) key, (String) value));
     conf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "kafkaAddress");
-    conf.set(KAFKA_BOOTSTRAP_SERVERS, "kafkaAddress");
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = "1_v1";
     conf.set(KAFKA_INPUT_TOPIC, topic);
-    conf.set(
-        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
-        KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.class.getName());
-    if (enabled != null) {
-      conf.setBoolean(PUB_SUB_ENCRYPTION_ENABLED, enabled);
-    }
-    if (keyUrn != null) {
-      conf.set(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
-    }
 
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), 0);
     PubSubPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
@@ -175,22 +164,17 @@ public class KafkaInputRecordReaderTest {
         new PubSubPartitionSplit(TOPIC_REPOSITORY, topicPartition, startPosition, endPosition, 1, 0, 0L));
     DataWriterTaskTracker taskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(Reporter.NULL);
 
-    if (invalid) {
+    if (Boolean.TRUE.equals(enabled) && expectedUrn == null) {
       Assert.expectThrows(VeniceException.class, () -> new KafkaInputRecordReader(split, conf, taskTracker));
-      Assert.assertEquals(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getCreateCount(), 0);
-      Assert.assertEquals(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getPollCount(), 0);
+      Assert.assertNull(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedContext());
       return;
     }
     try (KafkaInputRecordReader reader = new KafkaInputRecordReader(split, conf, taskTracker)) {
       Function<String, String> observedLookup =
-          KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup();
-      if (Boolean.TRUE.equals(enabled)) {
-        Assert.assertNotNull(observedLookup);
-        Assert.assertEquals(observedLookup.apply("any-store"), keyUrn.trim());
-      } else {
-        Assert.assertNull(observedLookup);
-      }
-      Assert.assertEquals(KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getCreateCount(), 1);
+          KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory.getObservedContext()
+              .getPubSubEncryptionKeyUrnLookup();
+      Assert.assertEquals(observedLookup != null, expectedUrn != null);
+      Assert.assertEquals(observedLookup == null ? null : observedLookup.apply("any-store"), expectedUrn);
     }
   }
 }

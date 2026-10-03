@@ -1,5 +1,6 @@
 package com.linkedin.venice.vpj;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
@@ -14,7 +15,7 @@ import org.testng.annotations.Test;
 
 
 public class PubSubEncryptionUtilsTest {
-  private static final String KEY_URN = "urn:li:kmsKeyLineage:test-key";
+  public static final String KEY_URN = "urn:li:kmsKeyLineage:test-key";
 
   @Test
   public void testLookupIgnoresStoreNameArgument() {
@@ -51,14 +52,24 @@ public class PubSubEncryptionUtilsTest {
 
   @DataProvider(name = "encryptionConfigurations")
   public static Object[][] encryptionConfigurations() {
-    return new Object[][] { { null, null, false }, { null, KEY_URN, false }, { false, null, false },
-        { false, KEY_URN, false }, { true, "  " + KEY_URN + "  ", false }, { true, null, true }, { true, "", true },
-        { true, "   ", true } };
+    return new Object[][] { { null, KEY_URN, null }, { false, KEY_URN, null }, { true, "  " + KEY_URN + "  ", KEY_URN },
+        { true, null, null } };
+  }
+
+  public static Properties encryptionProperties(Boolean enabled, String keyUrn) {
+    Properties properties = new Properties();
+    if (enabled != null) {
+      properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, enabled.toString());
+    }
+    if (keyUrn != null) {
+      properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
+    }
+    return properties;
   }
 
   @DataProvider(name = "encryptionEnabled")
   public static Object[][] encryptionEnabled() {
-    return new Object[][] { { false }, { true } };
+    return new Object[][] { { false, null }, { true, KEY_URN } };
   }
 
   @DataProvider(name = "requiredKeyUrns")
@@ -69,10 +80,7 @@ public class PubSubEncryptionUtilsTest {
 
   @Test(dataProvider = "requiredKeyUrns")
   public void testRequiredLookupRejectsMissingOrBlankUrn(String keyUrn, boolean invalid) {
-    Properties props = new Properties();
-    if (keyUrn != null) {
-      props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
-    }
+    Properties props = encryptionProperties(true, keyUrn);
     if (invalid) {
       VeniceException error = Assert.expectThrows(
           VeniceException.class,

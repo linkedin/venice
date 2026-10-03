@@ -3,12 +3,9 @@ package com.linkedin.venice.spark.input.pubsub;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
@@ -57,9 +54,9 @@ public class SparkPubSubPartitionReaderFactoryTest {
   }
 
   @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
-  public void testCreateReaderMaterializesSslAndUsesEncryptionFlag(Boolean enabled, String keyUrn, boolean invalid)
+  public void testCreateReaderMaterializesSslAndUsesEncryptionFlag(Boolean enabled, String keyUrn, String expectedUrn)
       throws Exception {
-    Properties properties = new Properties();
+    Properties properties = PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn);
     properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092");
     properties.setProperty(KAFKA_INPUT_TOPIC, "test-topic");
     properties.setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, "false");
@@ -68,12 +65,6 @@ public class SparkPubSubPartitionReaderFactoryTest {
     properties.setProperty(
         PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
         SparkExecutorTestUtils.AssertingPubSubConsumerAdapterFactory.class.getName());
-    if (enabled != null) {
-      properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, enabled.toString());
-    }
-    if (keyUrn != null) {
-      properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
-    }
 
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic("test-topic"), 0);
@@ -85,9 +76,9 @@ public class SparkPubSubPartitionReaderFactoryTest {
     SparkExecutorTestUtils.withTokenFile(() -> {
       SparkPubSubPartitionReaderFactory factory =
           new SparkPubSubPartitionReaderFactory(new VeniceProperties(properties));
-      if (invalid) {
+      if (Boolean.TRUE.equals(enabled) && expectedUrn == null) {
         Assert.expectThrows(VeniceException.class, () -> factory.createReader(inputPartition));
-        assertEquals(SparkExecutorTestUtils.getConsumerFactoryInvocations(), 0);
+        assertNull(SparkExecutorTestUtils.getObservedContext());
         return;
       }
       try (PartitionReader<?> reader = factory.createReader(inputPartition)) {
@@ -95,13 +86,10 @@ public class SparkPubSubPartitionReaderFactoryTest {
       }
       assertTrue(SparkExecutorTestUtils.getSslConfiguratorInvocations() > 0);
       assertTrue(SparkExecutorTestUtils.getConsumerFactoryInvocations() > 0);
-      Function<String, String> observedLookup = SparkExecutorTestUtils.getObservedEncryptionKeyUrnLookup();
-      if (Boolean.TRUE.equals(enabled)) {
-        assertNotNull(observedLookup);
-        assertEquals(observedLookup.apply("any-store"), keyUrn.trim());
-      } else {
-        assertNull(observedLookup);
-      }
+      Function<String, String> observedLookup =
+          SparkExecutorTestUtils.getObservedContext().getPubSubEncryptionKeyUrnLookup();
+      assertEquals(observedLookup != null, expectedUrn != null);
+      assertEquals(observedLookup == null ? null : observedLookup.apply("any-store"), expectedUrn);
     });
   }
 }

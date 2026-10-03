@@ -43,7 +43,6 @@ import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
@@ -58,9 +57,7 @@ public final class SparkExecutorTestUtils {
   private static final AtomicInteger SSL_CONFIGURATOR_INVOCATIONS = new AtomicInteger();
   private static final AtomicInteger CONSUMER_FACTORY_INVOCATIONS = new AtomicInteger();
   private static final AtomicInteger DICTIONARY_CONSUMER_INVOCATIONS = new AtomicInteger();
-  private static final AtomicReference<Function<String, String>> OBSERVED_ENCRYPTION_KEY_URN_LOOKUP =
-      new AtomicReference<>();
-  private static final AtomicReference<VeniceProperties> OBSERVED_PROPERTIES = new AtomicReference<>();
+  private static final AtomicReference<PubSubConsumerAdapterContext> OBSERVED_CONTEXT = new AtomicReference<>();
 
   private SparkExecutorTestUtils() {
   }
@@ -69,8 +66,7 @@ public final class SparkExecutorTestUtils {
     SSL_CONFIGURATOR_INVOCATIONS.set(0);
     CONSUMER_FACTORY_INVOCATIONS.set(0);
     DICTIONARY_CONSUMER_INVOCATIONS.set(0);
-    OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(null);
-    OBSERVED_PROPERTIES.set(null);
+    OBSERVED_CONTEXT.set(null);
   }
 
   public static int getSslConfiguratorInvocations() {
@@ -85,12 +81,8 @@ public final class SparkExecutorTestUtils {
     return DICTIONARY_CONSUMER_INVOCATIONS.get();
   }
 
-  public static Function<String, String> getObservedEncryptionKeyUrnLookup() {
-    return OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.get();
-  }
-
-  public static VeniceProperties getObservedProperties() {
-    return OBSERVED_PROPERTIES.get();
+  public static PubSubConsumerAdapterContext getObservedContext() {
+    return OBSERVED_CONTEXT.get();
   }
 
   public static byte[] getTestDictionary() {
@@ -144,8 +136,7 @@ public final class SparkExecutorTestUtils {
       VeniceProperties properties = context.getVeniceProperties();
       assertEquals(properties.getString(SSL_KEYSTORE_TYPE), TEST_KEYSTORE_TYPE);
       assertEquals(properties.getString(SSL_TRUSTSTORE_TYPE), TEST_TRUSTSTORE_TYPE);
-      OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(context.getPubSubEncryptionKeyUrnLookup());
-      OBSERVED_PROPERTIES.set(properties);
+      OBSERVED_CONTEXT.set(context);
       CONSUMER_FACTORY_INVOCATIONS.incrementAndGet();
 
       PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);

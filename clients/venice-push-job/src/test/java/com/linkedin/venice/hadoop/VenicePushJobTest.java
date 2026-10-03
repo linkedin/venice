@@ -207,10 +207,10 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
   }
 
   @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
-  public void testStoreValidationResolvesEncryptionWithoutJobOverride(boolean enabled) {
+  public void testStoreValidationResolvesEncryptionWithoutJobOverride(boolean enabled, String expectedUrn) {
     ControllerClient client = getClient(store -> {
       store.setEncryptionEnabled(enabled);
-      store.setPubSubEncryptionKeyUrn("urn:li:store-key");
+      store.setPubSubEncryptionKeyUrn(PubSubEncryptionUtilsTest.KEY_URN);
     });
     Properties properties = getVpjRequiredProperties();
     properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!enabled));
@@ -223,7 +223,7 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
       job.validateStoreSettingAndPopulate(client, setting);
 
       assertEquals(setting.isStoreEncryptionEnabled, enabled);
-      assertEquals(setting.pubSubEncryptionKeyUrn, enabled ? "urn:li:store-key" : null);
+      assertEquals(setting.pubSubEncryptionKeyUrn, expectedUrn);
       verify(client, times(1)).getStore(TEST_STORE);
     }
   }
