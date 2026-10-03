@@ -326,10 +326,15 @@ public class NettyFileTransferClient {
 
       // Track the active channel
       activeChannels.put(replicaId, ch);
+      LOGGER.info(
+          "Tracking active channel for replica {} to remote host {}, inFlightTransfers={}",
+          replicaId,
+          host,
+          activeChannels.size());
 
       // Remove from tracking when transfer completes
       perHostTransferFuture.toCompletableFuture().whenComplete((result, throwable) -> {
-        activeChannels.remove(replicaId);
+        activeChannels.remove(replicaId, ch);
         if (throwable != null) {
           LOGGER.info(
               "Removed active channel tracking for replica {} after transfer failure: {}",
