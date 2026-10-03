@@ -40,14 +40,18 @@ public class DictionaryUtils {
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    return readDictionaryFromKafka(topicName, props, PubSubMessageDeserializer.createDefaultDeserializer(), null);
+    return readDictionaryFromKafka(topicName, props, PubSubMessageDeserializer.createDefaultDeserializer());
   }
 
   /**
-   * Named distinctly from the {@code (String, VeniceProperties, PubSubMessageDeserializer)} overload below rather
-   * than overloaded on parameter type: a {@link Function} and a {@link PubSubMessageDeserializer} are unrelated
-   * reference types, so a caller passing a literal {@code null} third argument to either would otherwise make
-   * them ambiguous and fail to compile.
+   * Every overload that accepts a {@code pubSubEncryptionKeyUrnLookup} uses the {@code WithEncryptionLookup} name
+   * instead of being overloaded on parameter type alongside the lookup-free {@link #readDictionaryFromKafka}
+   * overloads, for two reasons: (1) a {@link Function} and a {@link PubSubMessageDeserializer} are unrelated
+   * reference types, so a caller passing a literal {@code null} argument in that position would otherwise make
+   * the two overload sets ambiguous and fail to compile; (2) the method name alone then tells a caller/reader
+   * whether a given read path resolves V2 (li-crypt) encryption keys — grepping for "WithEncryptionLookup" finds
+   * every encryption-aware call site, while every {@link #readDictionaryFromKafka} call is guaranteed to not
+   * support V2-encrypted dictionaries.
    *
    * @param pubSubEncryptionKeyUrnLookup Optional store-name to raw encryption-key URN lookup. Required to decode a
    *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
@@ -57,7 +61,7 @@ public class DictionaryUtils {
       String topicName,
       VeniceProperties props,
       Function<String, String> pubSubEncryptionKeyUrnLookup) {
-    return readDictionaryFromKafka(
+    return readDictionaryFromKafkaWithEncryptionLookup(
         topicName,
         props,
         PubSubMessageDeserializer.createDefaultDeserializer(),
@@ -68,7 +72,7 @@ public class DictionaryUtils {
       String topicName,
       VeniceProperties props,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
-    return readDictionaryFromKafka(topicName, props, pubSubMessageDeserializer, null);
+    return readDictionaryFromKafkaWithEncryptionLookup(topicName, props, pubSubMessageDeserializer, null);
   }
 
   /**
@@ -76,7 +80,7 @@ public class DictionaryUtils {
    *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
    *                                     source topic is not V2-encrypted.
    */
-  public static ByteBuffer readDictionaryFromKafka(
+  public static ByteBuffer readDictionaryFromKafkaWithEncryptionLookup(
       String topicName,
       VeniceProperties props,
       PubSubMessageDeserializer pubSubMessageDeserializer,
