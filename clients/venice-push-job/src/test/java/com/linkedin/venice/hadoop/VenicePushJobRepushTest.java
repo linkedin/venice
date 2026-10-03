@@ -9,6 +9,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -29,10 +30,12 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -49,8 +52,8 @@ import org.testng.annotations.Test;
  */
 
 public class VenicePushJobRepushTest extends VenicePushJobTestBase {
-  @Test
-  public void testSourceDictionaryConsumerPropertiesRetainPubSubConfigAndOverrideBrokers() {
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testSourceDictionaryConsumerPropertiesRetainPubSubConfigAndOverrideBrokers(boolean enabled) {
     Properties jobProperties = new Properties();
     jobProperties.setProperty(
         PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
@@ -61,11 +64,11 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     jobProperties.setProperty("xc.pubsub.broker.url.to.region.name.map", "northguard:ei4");
     jobProperties.setProperty(PUBSUB_BROKER_ADDRESS, "destination-broker");
     jobProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "legacy-broker");
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!enabled));
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale");
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(jobProperties, null)) {
-      // Resolved from store metadata onto pushJobSetting at runtime (not part of jobProperties above);
-      // regression coverage for the controller-to-consumer-properties handoff in
-      // getSourceDictionaryConsumerProperties().
+      pushJob.getPushJobSetting().isStoreEncryptionEnabled = enabled;
       pushJob.getPushJobSetting().pubSubEncryptionKeyUrn = "urn:li:dataEncryptionKey:test-key";
       VeniceProperties consumerProperties = pushJob.getSourceDictionaryConsumerProperties("source-broker");
 
@@ -79,13 +82,49 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
       assertEquals(consumerProperties.getString(PUBSUB_BROKER_ADDRESS), "source-broker");
       assertEquals(consumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "source-broker");
       assertEquals(
-          consumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN),
-          "urn:li:dataEncryptionKey:test-key",
-          "pushJobSetting.pubSubEncryptionKeyUrn should be threaded into the consumer properties");
+          consumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null),
+          enabled ? "urn:li:dataEncryptionKey:test-key" : null);
+      assertEquals(consumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED), enabled);
+      assertEquals(jobProperties.getProperty(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:stale");
       assertEquals(
           jobProperties.getProperty(PUBSUB_BROKER_ADDRESS),
           "destination-broker",
           "Building consumer properties must not mutate the job properties");
+    }
+  }
+
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testSourceDictionaryReaderUsesPublishedFlag(Boolean enabled, String keyUrn, boolean invalid) {
+    RecordingPubSubConsumerAdapterFactory.reset();
+    Properties properties = new Properties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, "true");
+    properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale");
+    properties
+        .setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
+    try (VenicePushJob job = getSpyVenicePushJob(properties, null)) {
+      PushJobSetting setting = job.getPushJobSetting();
+      setting.isStoreEncryptionEnabled = Boolean.TRUE.equals(enabled);
+      setting.pubSubEncryptionKeyUrn = keyUrn;
+      setting.kafkaInputTopic = "test_store_v1";
+      setting.repushSourcePubsubBroker = "source-broker";
+      if (invalid) {
+        Assert.expectThrows(VeniceException.class, job::readSourceDictionaryFromKafka);
+        assertEquals(RecordingPubSubConsumerAdapterFactory.getCreateCount(), 0);
+        return;
+      }
+
+      assertEquals(
+          job.readSourceDictionaryFromKafka().array(),
+          RecordingPubSubConsumerAdapterFactory.getDictionaryToServe());
+
+      if (Boolean.TRUE.equals(enabled)) {
+        assertEquals(
+            RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup().apply("store"),
+            keyUrn.trim());
+      } else {
+        Assert.assertNull(RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup());
+      }
+      assertEquals(RecordingPubSubConsumerAdapterFactory.getCreateCount(), 1);
     }
   }
 

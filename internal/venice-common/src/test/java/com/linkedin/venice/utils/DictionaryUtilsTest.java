@@ -8,10 +8,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -28,6 +30,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -37,6 +40,7 @@ import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -83,6 +87,7 @@ public class DictionaryUtilsTest {
     verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), any(PubSubPosition.class));
     verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(1)).poll(anyLong());
+    verify(pubSubConsumer, never()).close();
   }
 
   @Test
@@ -190,15 +195,13 @@ public class DictionaryUtilsTest {
     verify(pubSubConsumer, times(2)).poll(anyLong());
   }
 
-  /**
-   * Regression test for the V2 (li-crypt) dictionary decryption bug: readDictionaryFromKafkaWithEncryptionLookup
-   * previously had no direct coverage of its own (it was only exercised indirectly through callers like
-   * KafkaInputUtils#getCompressor), so a future change to a caller's call pattern could silently drop coverage
-   * of this wiring. Verifies the lookup is set on the PubSubConsumerAdapterContext the dictionary consumer is
-   * built with.
-   */
-  @Test
-  public void testReadDictionaryFromKafkaWithEncryptionLookupPassesLookupToConsumerContext() {
+  @DataProvider
+  public Object[][] dictionaryReaderPaths() {
+    return new Object[][] { { false, false }, { false, true }, { true, false } };
+  }
+
+  @Test(dataProvider = "dictionaryReaderPaths")
+  public void testDictionaryReaderPathsPreserveContextAndLifecycle(boolean encrypted, boolean customDeserializer) {
     RecordingPubSubConsumerAdapterFactory.reset();
     Function<String, String> encryptionKeyUrnLookup = storeName -> "urn:li:dataEncryptionKey:test-key";
 
@@ -206,48 +209,60 @@ public class DictionaryUtilsTest {
     props.setProperty(PUBSUB_BROKER_ADDRESS, "localhost:9092");
     props.setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
 
-    ByteBuffer dictionaryFromKafka = DictionaryUtils.readDictionaryFromKafkaWithEncryptionLookup(
-        getTopic().getName(),
-        new VeniceProperties(props),
-        encryptionKeyUrnLookup);
+    PubSubMessageDeserializer deserializer = mock(PubSubMessageDeserializer.class);
+    ByteBuffer dictionaryFromKafka;
+    if (encrypted) {
+      dictionaryFromKafka = DictionaryUtils
+          .readDictionaryFromEncryptedKafka(getTopic().getName(), new VeniceProperties(props), encryptionKeyUrnLookup);
+    } else if (customDeserializer) {
+      dictionaryFromKafka =
+          DictionaryUtils.readDictionaryFromKafka(getTopic().getName(), new VeniceProperties(props), deserializer);
+    } else {
+      dictionaryFromKafka = DictionaryUtils.readDictionaryFromKafka(getTopic().getName(), new VeniceProperties(props));
+    }
 
     Assert.assertEquals(dictionaryFromKafka.array(), RecordingPubSubConsumerAdapterFactory.DICTIONARY_TO_SERVE);
     Function<String, String> observedLookup = RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup();
-    Assert.assertNotNull(observedLookup, "Consumer context should carry the configured pubSubEncryptionKeyUrnLookup");
-    Assert.assertEquals(observedLookup.apply("any-store"), "urn:li:dataEncryptionKey:test-key");
+    if (encrypted) {
+      Assert.assertSame(observedLookup, encryptionKeyUrnLookup);
+    } else {
+      Assert.assertNull(observedLookup);
+    }
+    if (customDeserializer) {
+      Assert.assertSame(
+          RecordingPubSubConsumerAdapterFactory.OBSERVED_CONTEXT.get().getPubSubMessageDeserializer(),
+          deserializer);
+    }
+    verify(RecordingPubSubConsumerAdapterFactory.OBSERVED_CONSUMER.get()).close();
+    verify(RecordingPubSubConsumerAdapterFactory.OBSERVED_CONSUMER.get()).poll(anyLong());
   }
 
-  /**
-   * Companion to the test above: confirms non-encrypted (the common case) dictionary reads are unaffected —
-   * when no lookup is passed in, the consumer context's lookup stays null, same as before the fix.
-   */
   @Test
-  public void testReadDictionaryFromKafkaWithEncryptionLookupLeavesContextLookupNullWhenNotProvided() {
+  public void testEncryptedDictionaryRejectsMissingLookupBeforeConsumerCreation() {
     RecordingPubSubConsumerAdapterFactory.reset();
 
     Properties props = new Properties();
     props.setProperty(PUBSUB_BROKER_ADDRESS, "localhost:9092");
     props.setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
 
-    ByteBuffer dictionaryFromKafka = DictionaryUtils
-        .readDictionaryFromKafkaWithEncryptionLookup(getTopic().getName(), new VeniceProperties(props), null);
-
-    Assert.assertEquals(dictionaryFromKafka.array(), RecordingPubSubConsumerAdapterFactory.DICTIONARY_TO_SERVE);
-    Assert.assertNull(RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup());
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> DictionaryUtils
+            .readDictionaryFromEncryptedKafka(getTopic().getName(), new VeniceProperties(props), null));
+    Assert.assertNull(RecordingPubSubConsumerAdapterFactory.OBSERVED_CONTEXT.get());
   }
 
-  /**
-   * Test double for {@link PubSubConsumerAdapterFactory} that records the pubSubEncryptionKeyUrnLookup it's
-   * constructed with and returns a mock consumer serving a minimal StartOfPush control message, so
-   * readDictionaryFromKafkaWithEncryptionLookup's read succeeds without needing a real Kafka broker.
-   */
   public static class RecordingPubSubConsumerAdapterFactory
       extends PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
     static final byte[] DICTIONARY_TO_SERVE = "TEST_DICT".getBytes();
+    private static final AtomicReference<PubSubConsumerAdapterContext> OBSERVED_CONTEXT = new AtomicReference<>();
+    private static final AtomicReference<PubSubConsumerAdapter> OBSERVED_CONSUMER = new AtomicReference<>();
     private static final AtomicReference<Function<String, String>> OBSERVED_ENCRYPTION_KEY_URN_LOOKUP =
         new AtomicReference<>();
 
     static void reset() {
+      OBSERVED_CONTEXT.set(null);
+      OBSERVED_CONSUMER.set(null);
       OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(null);
     }
 
@@ -257,9 +272,11 @@ public class DictionaryUtilsTest {
 
     @Override
     public PubSubConsumerAdapter create(PubSubConsumerAdapterContext context) {
+      OBSERVED_CONTEXT.set(context);
       OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(context.getPubSubEncryptionKeyUrnLookup());
 
       PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);
+      OBSERVED_CONSUMER.set(consumer);
       AtomicReference<PubSubTopicPartition> subscribedPartition = new AtomicReference<>();
       doAnswer(invocation -> {
         subscribedPartition.set(invocation.getArgument(0));

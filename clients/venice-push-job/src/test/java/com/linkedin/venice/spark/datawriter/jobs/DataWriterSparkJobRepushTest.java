@@ -9,6 +9,7 @@ import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -17,6 +18,14 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PRO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -44,6 +53,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -59,6 +69,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -503,8 +514,8 @@ public class DataWriterSparkJobRepushTest {
    * the SSL configurator and PubSub consumer factory are actually invoked with correctly materialized SSL
    * properties (not just that failure surfaces when SSL setup is skipped).
    */
-  @Test
-  public void testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary() throws Exception {
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary(boolean enabled) throws Exception {
     String testName = "testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary";
 
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
@@ -555,8 +566,12 @@ public class DataWriterSparkJobRepushTest {
       sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
       setting.sourceKafkaInputVersionInfo = sourceVersion;
       setting.sourceVersionCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
+      setting.isStoreEncryptionEnabled = enabled;
+      setting.pubSubEncryptionKeyUrn = "urn:li:store-key";
 
       job.configure(new VeniceProperties(props), setting);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_ENABLED, !enabled);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-session-key");
 
       List<Row> rows =
           Arrays.asList(createChunkedRow("key1", "chunk1", -1, 1L), createChunkedRow("key2", "chunk2", -20, 2L));
@@ -569,6 +584,13 @@ public class DataWriterSparkJobRepushTest {
         assertTrue(SparkExecutorTestUtils.getSslConfiguratorInvocations() > 0);
         assertTrue(SparkExecutorTestUtils.getConsumerFactoryInvocations() > 0);
         assertTrue(SparkExecutorTestUtils.getDictionaryConsumerInvocations() > 0);
+        assertEquals(SparkExecutorTestUtils.getObservedProperties().getBoolean(PUB_SUB_ENCRYPTION_ENABLED), enabled);
+        if (enabled) {
+          assertEquals(SparkExecutorTestUtils.getObservedEncryptionKeyUrnLookup().apply("store"), "urn:li:store-key");
+        } else {
+          assertNull(SparkExecutorTestUtils.getObservedEncryptionKeyUrnLookup());
+          assertFalse(SparkExecutorTestUtils.getObservedProperties().containsKey(PUB_SUB_ENCRYPTION_KEY_URN));
+        }
       });
     } finally {
       deleteDirectory(valueSchemaTempDir);
@@ -589,8 +611,8 @@ public class DataWriterSparkJobRepushTest {
    * SparkChunkAssembler once per Spark task and reuses it across key groups instead of PR #2955's per-task
    * caching refactor.
    */
-  @Test
-  public void testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL() throws Exception {
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL(boolean enabled) throws Exception {
     String testName = "testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL";
 
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
@@ -661,8 +683,12 @@ public class DataWriterSparkJobRepushTest {
       sourceVersion.setChunkingEnabled(true);
       setting.sourceKafkaInputVersionInfo = sourceVersion;
       setting.sourceVersionCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
+      setting.isStoreEncryptionEnabled = enabled;
+      setting.pubSubEncryptionKeyUrn = "urn:li:store-key";
 
       job.configure(new VeniceProperties(props), setting);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_ENABLED, !enabled);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-session-key");
       job.getSparkSession().conf().set("spark.sql.shuffle.partitions", "1");
 
       byte[] chunkedKey = "chunked-key".getBytes();
@@ -690,6 +716,13 @@ public class DataWriterSparkJobRepushTest {
         assertEquals(SparkExecutorTestUtils.getSslConfiguratorInvocations(), 1);
         assertEquals(SparkExecutorTestUtils.getConsumerFactoryInvocations(), 1);
         assertEquals(SparkExecutorTestUtils.getDictionaryConsumerInvocations(), 1);
+        assertEquals(SparkExecutorTestUtils.getObservedProperties().getBoolean(PUB_SUB_ENCRYPTION_ENABLED), enabled);
+        if (enabled) {
+          assertEquals(SparkExecutorTestUtils.getObservedEncryptionKeyUrnLookup().apply("store"), "urn:li:store-key");
+        } else {
+          assertNull(SparkExecutorTestUtils.getObservedEncryptionKeyUrnLookup());
+          assertFalse(SparkExecutorTestUtils.getObservedProperties().containsKey(PUB_SUB_ENCRYPTION_KEY_URN));
+        }
       });
     } finally {
       deleteDirectory(valueSchemaTempDir);
@@ -964,23 +997,9 @@ public class DataWriterSparkJobRepushTest {
         "VALUE_SCHEMA_ID_PROP should be set to pushJobSetting.valueSchemaId for KIF repush");
   }
 
-  /**
-   * Verify that all job properties (including xc.*, pubsub.*, etc.) are forwarded to the
-   * DataFrameReader, matching MR behavior where KafkaInputUtils.getConsumerProperties() copies
-   * ALL JobConf properties to the PubSub consumer. Also a regression test for the V2 (li-crypt)
-   * dictionary decryption bug: pushJobSetting.pubSubEncryptionKeyUrn is resolved from store metadata
-   * at runtime, so it is never part of the raw job props forwarded by the bulk loop above; verifies it
-   * is still set explicitly on the DataFrameReader/SparkSession so the source consumer can decrypt.
-   */
-  @Test
-  public void testJobPropertiesForwardedToDataFrameReader() {
-    String testName = "testJobPropertiesForwardedToDataFrameReader";
-
-    // Uses ConfigTestSparkJob pattern: calls super.getKafkaInputDataFrame() which runs
-    // the real production code (including the bulk forwarding loop), catches the expected
-    // Kafka connection failure, and returns mock data. This ensures the test exercises
-    // the actual DataWriterSparkJob.getKafkaInputDataFrame() method.
-    ConfigTestSparkJob job = new ConfigTestSparkJob();
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testJobPropertiesForwardedToDataFrameReader(boolean enabled) {
+    DataWriterSparkJob job = spy(new DataWriterSparkJob());
     currentTestJob = job;
 
     Properties props = createDefaultTestProperties();
@@ -991,6 +1010,8 @@ public class DataWriterSparkJobRepushTest {
     props.setProperty("pubsub.some.client.config", "test-value");
     // Dynamic pass-through prefix list (same as production voldemort-build-and-push config)
     props.setProperty("pass.through.config.prefixes.list", "pubsub.,xc.");
+    props.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!enabled));
+    props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-job-key");
 
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
@@ -1002,18 +1023,19 @@ public class DataWriterSparkJobRepushTest {
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
-    // Required so getKafkaInputDataFrame() runs past the KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP line below
-    // instead of NPEing and falling into ConfigTestSparkJob's catch-all, which would otherwise mask the
-    // pubSubEncryptionKeyUrn assertion further down.
     setting.storeKeySchema = Schema.create(Schema.Type.STRING);
-    // Resolved from store metadata onto pushJobSetting at runtime (never part of the raw job props above);
-    // regression coverage for it failing to reach the source DataFrameReader's options.
+    setting.isStoreEncryptionEnabled = enabled;
     setting.pubSubEncryptionKeyUrn = "urn:li:dataEncryptionKey:test-key";
 
     job.configure(new VeniceProperties(props), setting);
+    SparkSession spark = job.getSparkSession();
+    SparkSession session = spy(spark);
+    DataFrameReader reader = mock(DataFrameReader.class, RETURNS_SELF);
+    doReturn(reader).when(session).read();
+    doReturn(spark.createDataFrame(Collections.<Row>emptyList(), RAW_PUBSUB_INPUT_TABLE_SCHEMA)).when(reader).load();
+    doReturn(session).when(job).getSparkSession();
     job.getKafkaInputDataFrame();
 
-    SparkSession spark = job.getSparkSession();
     assertEquals(spark.conf().get("xc.tls.key.store.type"), "PKCS12", "xc.tls.* should be forwarded");
     assertEquals(
         spark.conf().get("xc.pubsub.broker.url.to.region.name.map"),
@@ -1025,10 +1047,15 @@ public class DataWriterSparkJobRepushTest {
         spark.conf().get("venice.repush.source.pubsub.broker"),
         "localhost:9092",
         "venice.repush.source.pubsub.broker should be forwarded");
-    assertEquals(
-        spark.conf().get(PUB_SUB_ENCRYPTION_KEY_URN),
-        "urn:li:dataEncryptionKey:test-key",
-        "pubSubEncryptionKeyUrn should reach the source DataFrameReader so it can decrypt V2 records");
+    verify(reader).option(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(enabled));
+    assertEquals(spark.conf().get(PUB_SUB_ENCRYPTION_ENABLED), Boolean.toString(enabled));
+    if (enabled) {
+      verify(reader).option(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:dataEncryptionKey:test-key");
+      assertEquals(spark.conf().get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:dataEncryptionKey:test-key");
+    } else {
+      verify(reader, never()).option(eq(PUB_SUB_ENCRYPTION_KEY_URN), anyString());
+      assertFalse(spark.conf().contains(PUB_SUB_ENCRYPTION_KEY_URN));
+    }
   }
 
   /**
@@ -1267,21 +1294,6 @@ public class DataWriterSparkJobRepushTest {
           createPutRow("key3", "value3", 400L));
 
       return getSparkSession().createDataFrame(testData, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
-    }
-  }
-
-  private static class ConfigTestSparkJob extends DataWriterSparkJob {
-    @Override
-    public Dataset<Row> getKafkaInputDataFrame() {
-      try {
-        return super.getKafkaInputDataFrame();
-      } catch (Exception e) {
-        List<Row> emptyRows = Arrays.asList(
-            new GenericRowWithSchema(
-                new Object[] { "region1", 0, 0L, 0, 1, new byte[0], new byte[0], 0, new byte[0], null },
-                RAW_PUBSUB_INPUT_TABLE_SCHEMA));
-        return getSparkSession().createDataFrame(emptyRows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
-      }
     }
   }
 

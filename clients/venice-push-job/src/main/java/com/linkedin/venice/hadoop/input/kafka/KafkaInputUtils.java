@@ -4,6 +4,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.NEWER_KME_SCHEMAS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
@@ -19,6 +21,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
@@ -88,6 +91,13 @@ public class KafkaInputUtils {
     if (overrideProperties != null) {
       consumerProperties.putAll(overrideProperties);
     }
+    boolean encryptionEnabled = config.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false);
+    consumerProperties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(encryptionEnabled));
+    if (encryptionEnabled && config.get(PUB_SUB_ENCRYPTION_KEY_URN) != null) {
+      consumerProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, config.get(PUB_SUB_ENCRYPTION_KEY_URN));
+    } else {
+      consumerProperties.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
     return new VeniceProperties(consumerProperties);
   }
 
@@ -126,7 +136,16 @@ public class KafkaInputUtils {
       // getConsumerProperties(). Without this, the dictionary consumer created here could silently
       // connect to the wrong (destination) broker instead of the intended source broker.
       props.setProperty(PUBSUB_BROKER_ADDRESS, kafkaUrl);
-      ByteBuffer dict = PubSubEncryptionUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
+      ByteBuffer dict;
+      if (properties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+        dict = DictionaryUtils.readDictionaryFromEncryptedKafka(
+            topic,
+            new VeniceProperties(props),
+            PubSubEncryptionUtils.getRequiredKeyUrnLookup(properties));
+      } else {
+        props.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+        dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
+      }
       return compressorFactory
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
     }

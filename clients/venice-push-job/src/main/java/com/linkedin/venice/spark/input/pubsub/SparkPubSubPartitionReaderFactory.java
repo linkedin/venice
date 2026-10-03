@@ -3,6 +3,7 @@ package com.linkedin.venice.spark.input.pubsub;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
@@ -62,17 +63,18 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
     final String consumerName = String.format("raw_kif_%s_%s", inputRegionBroker, topicPartition);
 
     // Create consumer adapter with proper context
-    final PubSubConsumerAdapterContext consumerContext =
+    final PubSubConsumerAdapterContext.Builder consumerContext =
         new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(inputRegionBroker)
             .setVeniceProperties(configWithSsl)
             .setPubSubTopicRepository(topicRepository)
             .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(configWithSsl))
-            .setPubSubEncryptionKeyUrnLookup(PubSubEncryptionUtils.getKeyUrnLookup(configWithSsl.toProperties()))
-            .setConsumerName(consumerName)
-            .build();
+            .setConsumerName(consumerName);
+    if (jobConfig.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+      consumerContext.setPubSubEncryptionKeyUrnLookup(PubSubEncryptionUtils.getRequiredKeyUrnLookup(jobConfig));
+    }
     final PubSubConsumerAdapter pubSubConsumer =
-        PubSubClientsFactory.createConsumerFactory(configWithSsl).create(consumerContext);
+        PubSubClientsFactory.createConsumerFactory(configWithSsl).create(consumerContext.build());
 
     boolean shouldUseLocallyBuiltIndexAsOffset = configWithSsl.getBoolean(
         PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX,

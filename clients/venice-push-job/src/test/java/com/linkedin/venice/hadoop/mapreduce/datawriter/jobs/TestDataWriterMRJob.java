@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_RMD_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_VALUE_SCHEMA_STRING_PROP;
@@ -209,18 +210,23 @@ public class TestDataWriterMRJob {
   @Test
   public void testStoreDerivedEncryptionKeyUrnOverridesAndClearsCallerValue() {
     PushJobSetting setting = fullyConfigurablePushJobSetting();
+    setting.isStoreEncryptionEnabled = true;
     setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
 
     Properties props = new Properties();
     props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_ENABLED, "false");
     VeniceProperties jobProperties = new VeniceProperties(props);
 
     DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
     dataWriterMRJob.configure(jobProperties, setting);
     Assert.assertEquals(dataWriterMRJob.getJobConf().get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
+    assertTrue(dataWriterMRJob.getJobConf().getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false));
 
-    setting.pubSubEncryptionKeyUrn = null;
-    dataWriterMRJob.configure(jobProperties, setting);
+    setting.isStoreEncryptionEnabled = false;
+    props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_ENABLED, "true");
+    dataWriterMRJob.configure(new VeniceProperties(props), setting);
     assertNull(dataWriterMRJob.getJobConf().get(PUB_SUB_ENCRYPTION_KEY_URN));
+    assertFalse(dataWriterMRJob.getJobConf().getBoolean(PUB_SUB_ENCRYPTION_ENABLED, true));
   }
 }

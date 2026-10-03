@@ -1,13 +1,19 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.reduce;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer.MAP_REDUCE_JOB_ID_PROP;
 import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
@@ -30,9 +36,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory;
 import com.linkedin.venice.hadoop.mapreduce.AbstractTestVeniceMR;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
@@ -56,6 +64,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
@@ -843,8 +852,12 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     verify(childWriter, times(2)).close(anyBoolean());
   }
 
-  @Test
-  public void testCreateCompositeVeniceWriterWithComplexVenicePartitioner() throws IOException {
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testCreateCompositeVeniceWriterWithComplexVenicePartitioner(
+      Boolean enabled,
+      String keyUrn,
+      boolean invalid) throws IOException {
+    RecordingPubSubConsumerAdapterFactory.reset();
     VeniceReducer reducer = new VeniceReducer();
     VeniceWriter mainWriter = mock(VeniceWriter.class);
     ComplexVeniceWriter childWriter = mock(ComplexVeniceWriter.class);
@@ -860,12 +873,36 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     configuration.setStrings(PUSH_JOB_VIEW_CONFIGS, flatViewConfigMapString);
     configuration.setStrings(VALUE_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     configuration.setStrings(RMD_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
+    configuration.set(COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.name());
+    configuration.set(PUBSUB_BROKER_ADDRESS, "localhost:9092");
+    configuration.set(KAFKA_BOOTSTRAP_SERVERS, "localhost:9092");
+    configuration.set(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
+    if (enabled != null) {
+      configuration.setBoolean(PUB_SUB_ENCRYPTION_ENABLED, enabled);
+    }
+    if (keyUrn != null) {
+      configuration.set(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
+    }
     reducer.configure(new JobConf(configuration));
     VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
     reducer.setVeniceWriterFactory(writerFactory);
     doReturn(mainWriter).when(writerFactory).createVeniceWriter(any());
     doReturn(childWriter).when(writerFactory).createComplexVeniceWriter(any());
-    reducer.createBasicVeniceWriter();
+    if (invalid) {
+      Assert.expectThrows(VeniceException.class, reducer::createBasicVeniceWriter);
+      Assert.assertEquals(RecordingPubSubConsumerAdapterFactory.getCreateCount(), 0);
+    } else {
+      reducer.createBasicVeniceWriter();
+      Assert.assertEquals(RecordingPubSubConsumerAdapterFactory.getCreateCount(), 1);
+      if (Boolean.TRUE.equals(enabled)) {
+        Assert.assertEquals(
+            RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup().apply("store"),
+            keyUrn.trim());
+      } else {
+        Assert.assertNull(RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup());
+      }
+    }
+    reducer.close();
   }
 
   private Reporter createZeroCountReporterMock() {

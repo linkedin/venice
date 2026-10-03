@@ -69,6 +69,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
@@ -174,6 +175,7 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
@@ -1671,16 +1673,16 @@ public class VenicePushJob implements AutoCloseable {
     return getSourceDictionaryConsumerProperties(pushJobSetting.repushSourcePubsubBroker);
   }
 
-  /**
-   * Shared by both source-dictionary read sites ({@link #run()}'s initial fetch and the repush dictionary fetch
-   * in {@link #fetchOrBuildCompressionDictionary()}) so the encryption-lookup wiring only needs to be expressed
-   * once. {@link #getSourceDictionaryConsumerProperties()} already threads {@code pushJobSetting.pubSubEncryptionKeyUrn}
-   * into the returned properties, so {@link PubSubEncryptionUtils#readDictionaryFromKafka} can derive the same
-   * lookup from those properties instead of this method deriving and passing a second, independent copy of it.
-   */
-  private ByteBuffer readSourceDictionaryFromKafka() {
-    return PubSubEncryptionUtils
-        .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+  @VisibleForTesting
+  ByteBuffer readSourceDictionaryFromKafka() {
+    VeniceProperties consumerProperties = getSourceDictionaryConsumerProperties();
+    if (consumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+      return DictionaryUtils.readDictionaryFromEncryptedKafka(
+          pushJobSetting.kafkaInputTopic,
+          consumerProperties,
+          PubSubEncryptionUtils.getRequiredKeyUrnLookup(consumerProperties));
+    }
+    return DictionaryUtils.readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, consumerProperties);
   }
 
   @VisibleForTesting
@@ -1689,14 +1691,14 @@ public class VenicePushJob implements AutoCloseable {
         props,
         pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
         sourcePubsubBroker);
-    if (pushJobSetting.pubSubEncryptionKeyUrn == null) {
-      return consumerProperties;
+    Properties properties = consumerProperties.toProperties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(pushJobSetting.isStoreEncryptionEnabled));
+    if (pushJobSetting.isStoreEncryptionEnabled && pushJobSetting.pubSubEncryptionKeyUrn != null) {
+      properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      properties.remove(PUB_SUB_ENCRYPTION_KEY_URN);
     }
-    // The controller-derived URN only lives on pushJobSetting, not in the raw job properties, so it must be
-    // threaded in here for it to reach consumers built from these properties (e.g. KafkaInputDictTrainer).
-    Properties propertiesWithEncryptionUrn = consumerProperties.toProperties();
-    propertiesWithEncryptionUrn.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
-    return new VeniceProperties(propertiesWithEncryptionUrn);
+    return new VeniceProperties(properties);
   }
 
   @VisibleForTesting
@@ -2738,7 +2740,8 @@ public class VenicePushJob implements AutoCloseable {
    * @param jobSetting
    * @return
    */
-  private void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
+  @VisibleForTesting
+  void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
     StoreResponse storeResponse = getStoreResponse(jobSetting.storeName);
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
@@ -2840,7 +2843,9 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
-    if (storeResponse.getStore().isEncryptionEnabled()) {
+    jobSetting.isStoreEncryptionEnabled = storeResponse.getStore().isEncryptionEnabled();
+    jobSetting.pubSubEncryptionKeyUrn = null;
+    if (jobSetting.isStoreEncryptionEnabled) {
       if (StringUtils.isBlank(storeResponse.getStore().getPubSubEncryptionKeyUrn())) {
         throw new VeniceException(
             "Store is encryption enabled but the pubSubEncryptionKeyUrn is not set in the store config.");

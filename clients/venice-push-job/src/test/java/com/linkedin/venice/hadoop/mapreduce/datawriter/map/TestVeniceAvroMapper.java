@@ -1,7 +1,12 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.map;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -20,9 +25,13 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -47,6 +56,41 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
 
   protected VeniceAvroMapper newMapper() {
     return new TestVeniceAvroMapperClass();
+  }
+
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testDictionaryReaderUsesConfigFlag(Boolean enabled, String keyUrn, boolean invalid) {
+    RecordingPubSubConsumerAdapterFactory.reset();
+    Properties properties = new Properties();
+    properties.setProperty(PUBSUB_BROKER_ADDRESS, "localhost:9092");
+    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "localhost:9092");
+    properties
+        .setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
+    if (enabled != null) {
+      properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, enabled.toString());
+    }
+    if (keyUrn != null) {
+      properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
+    }
+    TestVeniceAvroMapperClass mapper = new TestVeniceAvroMapperClass();
+    VeniceProperties config = new VeniceProperties(properties);
+    if (invalid) {
+      Assert.expectThrows(VeniceException.class, () -> mapper.readActualDictionary("test_store_v1", config));
+      Assert.assertEquals(RecordingPubSubConsumerAdapterFactory.getCreateCount(), 0);
+      return;
+    }
+
+    Assert.assertEquals(
+        mapper.readActualDictionary("test_store_v1", config).array(),
+        RecordingPubSubConsumerAdapterFactory.getDictionaryToServe());
+
+    if (Boolean.TRUE.equals(enabled)) {
+      Assert.assertEquals(
+          RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup().apply("store"),
+          keyUrn.trim());
+    } else {
+      Assert.assertNull(RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup());
+    }
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)

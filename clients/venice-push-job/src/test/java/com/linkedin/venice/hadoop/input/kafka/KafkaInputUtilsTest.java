@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
@@ -20,6 +21,7 @@ import static org.testng.Assert.assertNull;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -36,15 +38,18 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.security.Credentials;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -146,25 +151,36 @@ public class KafkaInputUtilsTest {
     }
   }
 
-  /**
-   * Regression test for the V2 (li-crypt) dictionary decryption bug: getCompressor()'s ZSTD_WITH_DICT path
-   * reads the dictionary via DictionaryUtils#readDictionaryFromKafka, which previously never wired a
-   * pubSubEncryptionKeyUrnLookup into the PubSubConsumerAdapterContext it builds. That left the consumer
-   * unable to construct a V2 decryption manager, so any push job backed by a V2-encrypted source topic
-   * threw EncryptionConfigurationException. Verifies the lookup built from PUB_SUB_ENCRYPTION_KEY_URN is
-   * present on the context and resolves to the configured URN.
-   */
-  @Test
-  public void testGetCompressorPassesEncryptionKeyUrnLookupForZstdWithDict() throws IOException {
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testGetCompressorSelectsDictionaryReaderFromFlag(Boolean enabled, String keyUrn, boolean invalid)
+      throws IOException {
     RecordingPubSubConsumerAdapterFactory.reset();
 
     Properties props = new Properties();
     props.setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
-    props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:dataEncryptionKey:test-key");
+    if (enabled != null) {
+      props.setProperty(PUB_SUB_ENCRYPTION_ENABLED, enabled.toString());
+    }
+    if (keyUrn != null) {
+      props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
+    }
     VeniceProperties veniceProperties = new VeniceProperties(props);
 
     CompressorFactory compressorFactory = new CompressorFactory();
     try {
+      if (invalid) {
+        Assert.expectThrows(
+            VeniceException.class,
+            () -> KafkaInputUtils.getCompressor(
+                compressorFactory,
+                CompressionStrategy.ZSTD_WITH_DICT,
+                "correct-source-broker:9092",
+                "test_store_v1",
+                veniceProperties));
+        assertEquals(RecordingPubSubConsumerAdapterFactory.getCreateCount(), 0);
+        assertEquals(RecordingPubSubConsumerAdapterFactory.getPollCount(), 0);
+        return;
+      }
       VeniceCompressor compressor = KafkaInputUtils.getCompressor(
           compressorFactory,
           CompressionStrategy.ZSTD_WITH_DICT,
@@ -174,45 +190,46 @@ public class KafkaInputUtilsTest {
       assertNotNull(compressor);
       Function<String, String> observedLookup =
           RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup();
-      assertNotNull(
-          observedLookup,
-          "Dictionary consumer context should carry a non-null pubSubEncryptionKeyUrnLookup when "
-              + PUB_SUB_ENCRYPTION_KEY_URN + " is configured");
-      assertEquals(observedLookup.apply("test_store_v1"), "urn:li:dataEncryptionKey:test-key");
+      if (Boolean.TRUE.equals(enabled)) {
+        assertNotNull(observedLookup);
+        assertEquals(observedLookup.apply("test_store"), keyUrn.trim());
+      } else {
+        assertNull(observedLookup);
+        assertNull(
+            RecordingPubSubConsumerAdapterFactory.getObservedContext()
+                .getVeniceProperties()
+                .getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null));
+      }
+      assertEquals(RecordingPubSubConsumerAdapterFactory.getCreateCount(), 1);
+      assertEquals(RecordingPubSubConsumerAdapterFactory.getPollCount(), 1);
     } finally {
       compressorFactory.close();
     }
   }
 
-  /**
-   * Companion to the test above: confirms non-encrypted (the common case) push jobs are unaffected by the
-   * fix — when PUB_SUB_ENCRYPTION_KEY_URN isn't configured, the dictionary consumer context's lookup stays
-   * null, same as before the fix.
-   */
-  @Test
-  public void testGetCompressorLeavesEncryptionKeyUrnLookupNullWhenNotConfigured() throws IOException {
-    RecordingPubSubConsumerAdapterFactory.reset();
-
-    Properties props = new Properties();
-    props.setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, RecordingPubSubConsumerAdapterFactory.class.getName());
-    VeniceProperties veniceProperties = new VeniceProperties(props);
-
-    CompressorFactory compressorFactory = new CompressorFactory();
-    try {
-      VeniceCompressor compressor = KafkaInputUtils.getCompressor(
-          compressorFactory,
-          CompressionStrategy.ZSTD_WITH_DICT,
-          "correct-source-broker:9092",
-          "test_store_v1",
-          veniceProperties);
-      assertNotNull(compressor);
-      assertNull(
-          RecordingPubSubConsumerAdapterFactory.getObservedEncryptionKeyUrnLookup(),
-          "Dictionary consumer context should carry a null pubSubEncryptionKeyUrnLookup when "
-              + PUB_SUB_ENCRYPTION_KEY_URN + " isn't configured");
-    } finally {
-      compressorFactory.close();
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testReaderOverridesCannotChangeEncryptionConfig(Boolean enabled, String keyUrn, boolean invalid) {
+    jobConf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "source-broker");
+    if (enabled != null) {
+      jobConf.setBoolean(PUB_SUB_ENCRYPTION_ENABLED, enabled);
     }
+    if (keyUrn != null) {
+      jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, keyUrn);
+    }
+    jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + PUB_SUB_ENCRYPTION_ENABLED, "true");
+    jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale");
+    Properties overrides = new Properties();
+    overrides.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!Boolean.TRUE.equals(enabled)));
+    overrides.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:override");
+    overrides.setProperty("unrelated", "retained");
+
+    VeniceProperties actual = KafkaInputUtils.getConsumerProperties(jobConf, overrides);
+
+    assertEquals(actual.getBoolean(PUB_SUB_ENCRYPTION_ENABLED), Boolean.TRUE.equals(enabled));
+    assertEquals(
+        actual.getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null),
+        Boolean.TRUE.equals(enabled) ? keyUrn : null);
+    assertEquals(actual.getString("unrelated"), "retained");
   }
 
   /**
@@ -227,26 +244,51 @@ public class KafkaInputUtilsTest {
     }
   }
 
-  /**
-   * Test double for {@link PubSubConsumerAdapterFactory} that records the PUBSUB_BROKER_ADDRESS and
-   * KAFKA_BOOTSTRAP_SERVERS properties it's constructed with and returns a mock consumer that serves a
-   * minimal StartOfPush control message, so getCompressor()'s ZSTD_WITH_DICT dictionary read succeeds
-   * without needing a real Kafka broker. Reused as-is (rather than duplicated) by
-   * {@code KafkaInputRecordReaderTest} and {@code PubSubEncryptionUtilsTest}, which is why the lookup/dictionary
-   * accessors below are public.
-   */
+  @Test
+  public void testDictionaryFixtureReturnsDefensiveCopies() {
+    byte[] expected = RecordingPubSubConsumerAdapterFactory.getDictionaryToServe().clone();
+    byte[] dictionary = RecordingPubSubConsumerAdapterFactory.getDictionaryToServe();
+
+    dictionary[0]++;
+
+    assertEquals(RecordingPubSubConsumerAdapterFactory.getDictionaryToServe(), expected);
+  }
+
+  /** Records consumer context and serves a synthetic dictionary SOP without a broker. */
   public static class RecordingPubSubConsumerAdapterFactory
       extends PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
-    public static final byte[] DICTIONARY_TO_SERVE = { 1, 2, 3, 4 };
+    private static final byte[] DICTIONARY_TO_SERVE = { 1, 2, 3, 4 };
+    private static final AtomicInteger CREATE_COUNT = new AtomicInteger();
+    private static final AtomicInteger POLL_COUNT = new AtomicInteger();
+    private static final AtomicReference<PubSubConsumerAdapterContext> OBSERVED_CONTEXT = new AtomicReference<>();
     private static final AtomicReference<String> OBSERVED_BROKER_ADDRESS = new AtomicReference<>();
     private static final AtomicReference<String> OBSERVED_BOOTSTRAP_SERVERS = new AtomicReference<>();
     private static final AtomicReference<Function<String, String>> OBSERVED_ENCRYPTION_KEY_URN_LOOKUP =
         new AtomicReference<>();
 
     public static void reset() {
+      CREATE_COUNT.set(0);
+      POLL_COUNT.set(0);
+      OBSERVED_CONTEXT.set(null);
       OBSERVED_BROKER_ADDRESS.set(null);
       OBSERVED_BOOTSTRAP_SERVERS.set(null);
       OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(null);
+    }
+
+    public static int getCreateCount() {
+      return CREATE_COUNT.get();
+    }
+
+    public static byte[] getDictionaryToServe() {
+      return DICTIONARY_TO_SERVE.clone();
+    }
+
+    public static int getPollCount() {
+      return POLL_COUNT.get();
+    }
+
+    public static PubSubConsumerAdapterContext getObservedContext() {
+      return OBSERVED_CONTEXT.get();
     }
 
     static String getObservedBrokerAddress() {
@@ -263,6 +305,8 @@ public class KafkaInputUtilsTest {
 
     @Override
     public PubSubConsumerAdapter create(PubSubConsumerAdapterContext context) {
+      CREATE_COUNT.incrementAndGet();
+      OBSERVED_CONTEXT.set(context);
       VeniceProperties properties = context.getVeniceProperties();
       OBSERVED_BROKER_ADDRESS.set(properties.getString(PUBSUB_BROKER_ADDRESS));
       OBSERVED_BOOTSTRAP_SERVERS.set(properties.getString(KAFKA_BOOTSTRAP_SERVERS));
@@ -276,6 +320,7 @@ public class KafkaInputUtilsTest {
         return null;
       }).when(consumer).subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class));
       doAnswer(invocation -> {
+        POLL_COUNT.incrementAndGet();
         PubSubTopicPartition topicPartition = subscribedPartition.get();
         return Collections
             .singletonMap(topicPartition, Collections.singletonList(createStartOfPushMessage(topicPartition)));
@@ -286,7 +331,7 @@ public class KafkaInputUtilsTest {
     private static DefaultPubSubMessage createStartOfPushMessage(PubSubTopicPartition topicPartition) {
       StartOfPush startOfPush = new StartOfPush();
       startOfPush.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
-      startOfPush.compressionDictionary = ByteBuffer.wrap(DICTIONARY_TO_SERVE);
+      startOfPush.compressionDictionary = ByteBuffer.wrap(getDictionaryToServe());
 
       ControlMessage controlMessage = new ControlMessage();
       controlMessage.controlMessageType = ControlMessageType.START_OF_PUSH.getValue();

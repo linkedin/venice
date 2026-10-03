@@ -60,6 +60,7 @@ public final class SparkExecutorTestUtils {
   private static final AtomicInteger DICTIONARY_CONSUMER_INVOCATIONS = new AtomicInteger();
   private static final AtomicReference<Function<String, String>> OBSERVED_ENCRYPTION_KEY_URN_LOOKUP =
       new AtomicReference<>();
+  private static final AtomicReference<VeniceProperties> OBSERVED_PROPERTIES = new AtomicReference<>();
 
   private SparkExecutorTestUtils() {
   }
@@ -69,6 +70,7 @@ public final class SparkExecutorTestUtils {
     CONSUMER_FACTORY_INVOCATIONS.set(0);
     DICTIONARY_CONSUMER_INVOCATIONS.set(0);
     OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(null);
+    OBSERVED_PROPERTIES.set(null);
   }
 
   public static int getSslConfiguratorInvocations() {
@@ -85,6 +87,10 @@ public final class SparkExecutorTestUtils {
 
   public static Function<String, String> getObservedEncryptionKeyUrnLookup() {
     return OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.get();
+  }
+
+  public static VeniceProperties getObservedProperties() {
+    return OBSERVED_PROPERTIES.get();
   }
 
   public static byte[] getTestDictionary() {
@@ -139,6 +145,7 @@ public final class SparkExecutorTestUtils {
       assertEquals(properties.getString(SSL_KEYSTORE_TYPE), TEST_KEYSTORE_TYPE);
       assertEquals(properties.getString(SSL_TRUSTSTORE_TYPE), TEST_TRUSTSTORE_TYPE);
       OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(context.getPubSubEncryptionKeyUrnLookup());
+      OBSERVED_PROPERTIES.set(properties);
       CONSUMER_FACTORY_INVOCATIONS.incrementAndGet();
 
       PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);

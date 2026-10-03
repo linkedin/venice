@@ -161,6 +161,9 @@ public final class VenicePushJobConstants {
    */
   public static final String VENICE_REPUSH_SOURCE_PUBSUB_BROKER = "venice.repush.source.pubsub.broker";
 
+  /** Carries the resolved store encryption flag to dictionary and record readers. */
+  public static final String PUB_SUB_ENCRYPTION_ENABLED = PUBSUB_CLIENT_CONFIG_PREFIX + "encryption.enabled";
+
   /** Carries the store-derived key URN from the driver to its writer tasks. */
   public static final String PUB_SUB_ENCRYPTION_KEY_URN = PUBSUB_CLIENT_CONFIG_PREFIX + "encryption.key.urn";
 

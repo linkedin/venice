@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -8,7 +9,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -43,77 +43,46 @@ public class DictionaryUtils {
     return readDictionaryFromKafka(topicName, props, PubSubMessageDeserializer.createDefaultDeserializer());
   }
 
-  /**
-   * Every overload that accepts a {@code pubSubEncryptionKeyUrnLookup} uses the {@code WithEncryptionLookup} name
-   * instead of being overloaded on parameter type alongside the lookup-free {@link #readDictionaryFromKafka}
-   * overloads, for two reasons: (1) a {@link Function} and a {@link PubSubMessageDeserializer} are unrelated
-   * reference types, so a caller passing a literal {@code null} argument in that position would otherwise make
-   * the two overload sets ambiguous and fail to compile; (2) the method name alone then tells a caller/reader
-   * whether a given read path resolves V2 (li-crypt) encryption keys — grepping for "WithEncryptionLookup" finds
-   * every encryption-aware call site, while every {@link #readDictionaryFromKafka} call is guaranteed to not
-   * support V2-encrypted dictionaries.
-   *
-   * @param pubSubEncryptionKeyUrnLookup Optional store-name to raw encryption-key URN lookup. Required to decode a
-   *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
-   *                                     source topic is not V2-encrypted.
-   */
-  public static ByteBuffer readDictionaryFromKafkaWithEncryptionLookup(
+  /** Reads an encrypted dictionary using the caller's required store-to-key lookup. */
+  public static ByteBuffer readDictionaryFromEncryptedKafka(
       String topicName,
       VeniceProperties props,
       Function<String, String> pubSubEncryptionKeyUrnLookup) {
-    return readDictionaryFromKafkaWithEncryptionLookup(
-        topicName,
-        props,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        pubSubEncryptionKeyUrnLookup);
+    if (pubSubEncryptionKeyUrnLookup == null) {
+      throw new VeniceException("Encryption key URN lookup is required for encrypted dictionary reads");
+    }
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    PubSubConsumerAdapterContext context =
+        dictionaryConsumerContext(props, PubSubMessageDeserializer.createDefaultDeserializer(), topicRepository)
+            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
+            .build();
+    try (PubSubConsumerAdapter consumer = PubSubClientsFactory.createConsumerFactory(props).create(context)) {
+      return readDictionaryFromKafka(topicName, consumer, topicRepository);
+    }
   }
 
   public static ByteBuffer readDictionaryFromKafka(
       String topicName,
       VeniceProperties props,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
-    return buildConsumerAndReadDictionary(topicName, props, pubSubMessageDeserializer, null);
-  }
-
-  /**
-   * Explicitly branches on whether a lookup was supplied, rather than silently threading a possibly-{@code null}
-   * lookup into the consumer builder, so the "no V2 encryption to resolve" case is visible here instead of being
-   * implicit in {@link PubSubConsumerAdapterContext.Builder}'s handling of a {@code null} setter argument.
-   *
-   * @param pubSubEncryptionKeyUrnLookup Optional store-name to raw encryption-key URN lookup. Required to decode a
-   *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
-   *                                     source topic is not V2-encrypted.
-   */
-  public static ByteBuffer readDictionaryFromKafkaWithEncryptionLookup(
-      String topicName,
-      VeniceProperties props,
-      PubSubMessageDeserializer pubSubMessageDeserializer,
-      Function<String, String> pubSubEncryptionKeyUrnLookup) {
-    if (pubSubEncryptionKeyUrnLookup == null) {
-      return readDictionaryFromKafka(topicName, props, pubSubMessageDeserializer);
-    }
-    return buildConsumerAndReadDictionary(topicName, props, pubSubMessageDeserializer, pubSubEncryptionKeyUrnLookup);
-  }
-
-  private static ByteBuffer buildConsumerAndReadDictionary(
-      String topicName,
-      VeniceProperties props,
-      PubSubMessageDeserializer pubSubMessageDeserializer,
-      Function<String, String> pubSubEncryptionKeyUrnLookup) {
-    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(props);
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    VeniceProperties pubSubProperties = getKafkaConsumerProps(props);
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     PubSubConsumerAdapterContext context =
-        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
-            .setPubSubTopicRepository(pubSubTopicRepository)
-            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
-            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
-            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
-            .setConsumerName("DictionaryUtilsConsumer")
-            .build();
-    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory.create(context)) {
-      return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
+        dictionaryConsumerContext(props, pubSubMessageDeserializer, topicRepository).build();
+    try (PubSubConsumerAdapter consumer = PubSubClientsFactory.createConsumerFactory(props).create(context)) {
+      return readDictionaryFromKafka(topicName, consumer, topicRepository);
     }
+  }
+
+  private static PubSubConsumerAdapterContext.Builder dictionaryConsumerContext(
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      PubSubTopicRepository topicRepository) {
+    VeniceProperties pubSubProperties = getKafkaConsumerProps(props);
+    return new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
+        .setPubSubTopicRepository(topicRepository)
+        .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+        .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
+        .setConsumerName("DictionaryUtilsConsumer");
   }
 
   /**

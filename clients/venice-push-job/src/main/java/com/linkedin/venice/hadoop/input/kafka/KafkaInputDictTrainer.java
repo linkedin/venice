@@ -6,6 +6,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -225,22 +226,22 @@ public class KafkaInputDictTrainer {
     long totalSampledRecordCnt = 0;
 
     // Reuse the same Kafka Consumer across all partitions avoid log flooding
-    PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(
-        () -> PubSubClientsFactory.createConsumerFactory(veniceProperties)
-            .create(
-                new PubSubConsumerAdapterContext.Builder()
-                    .setConsumerName("KafkaInputDictTrainer-for-" + sourceTopicName)
-                    .setVeniceProperties(veniceProperties)
-                    .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
-                    .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
-                    .setPubSubEncryptionKeyUrnLookup(
-                        PubSubEncryptionUtils.getKeyUrnLookup(veniceProperties.toProperties()))
-                    .setPubSubMessageDeserializer(
-                        new PubSubMessageDeserializer(
-                            KafkaInputUtils.getKafkaValueSerializer(jobConf),
-                            new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                            new LandFillObjectPool<>(KafkaMessageEnvelope::new)))
-                    .build()));
+    PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(() -> {
+      PubSubConsumerAdapterContext.Builder context =
+          new PubSubConsumerAdapterContext.Builder().setConsumerName("KafkaInputDictTrainer-for-" + sourceTopicName)
+              .setVeniceProperties(veniceProperties)
+              .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
+              .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
+              .setPubSubMessageDeserializer(
+                  new PubSubMessageDeserializer(
+                      KafkaInputUtils.getKafkaValueSerializer(jobConf),
+                      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                      new LandFillObjectPool<>(KafkaMessageEnvelope::new)));
+      if (veniceProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+        context.setPubSubEncryptionKeyUrnLookup(PubSubEncryptionUtils.getRequiredKeyUrnLookup(veniceProperties));
+      }
+      return PubSubClientsFactory.createConsumerFactory(veniceProperties).create(context.build());
+    });
     try {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;
