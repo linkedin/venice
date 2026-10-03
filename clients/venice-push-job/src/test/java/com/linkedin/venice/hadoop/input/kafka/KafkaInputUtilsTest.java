@@ -231,16 +231,19 @@ public class KafkaInputUtilsTest {
    * Test double for {@link PubSubConsumerAdapterFactory} that records the PUBSUB_BROKER_ADDRESS and
    * KAFKA_BOOTSTRAP_SERVERS properties it's constructed with and returns a mock consumer that serves a
    * minimal StartOfPush control message, so getCompressor()'s ZSTD_WITH_DICT dictionary read succeeds
-   * without needing a real Kafka broker.
+   * without needing a real Kafka broker. Reused as-is (rather than duplicated) by
+   * {@code KafkaInputRecordReaderTest} and {@code PubSubEncryptionUtilsTest}, which is why the lookup/dictionary
+   * accessors below are public.
    */
   public static class RecordingPubSubConsumerAdapterFactory
       extends PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
+    public static final byte[] DICTIONARY_TO_SERVE = { 1, 2, 3, 4 };
     private static final AtomicReference<String> OBSERVED_BROKER_ADDRESS = new AtomicReference<>();
     private static final AtomicReference<String> OBSERVED_BOOTSTRAP_SERVERS = new AtomicReference<>();
     private static final AtomicReference<Function<String, String>> OBSERVED_ENCRYPTION_KEY_URN_LOOKUP =
         new AtomicReference<>();
 
-    static void reset() {
+    public static void reset() {
       OBSERVED_BROKER_ADDRESS.set(null);
       OBSERVED_BOOTSTRAP_SERVERS.set(null);
       OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.set(null);
@@ -254,7 +257,7 @@ public class KafkaInputUtilsTest {
       return OBSERVED_BOOTSTRAP_SERVERS.get();
     }
 
-    static Function<String, String> getObservedEncryptionKeyUrnLookup() {
+    public static Function<String, String> getObservedEncryptionKeyUrnLookup() {
       return OBSERVED_ENCRYPTION_KEY_URN_LOOKUP.get();
     }
 
@@ -283,7 +286,7 @@ public class KafkaInputUtilsTest {
     private static DefaultPubSubMessage createStartOfPushMessage(PubSubTopicPartition topicPartition) {
       StartOfPush startOfPush = new StartOfPush();
       startOfPush.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
-      startOfPush.compressionDictionary = ByteBuffer.wrap(new byte[] { 1, 2, 3, 4 });
+      startOfPush.compressionDictionary = ByteBuffer.wrap(DICTIONARY_TO_SERVE);
 
       ControlMessage controlMessage = new ControlMessage();
       controlMessage.controlMessageType = ControlMessageType.START_OF_PUSH.getValue();

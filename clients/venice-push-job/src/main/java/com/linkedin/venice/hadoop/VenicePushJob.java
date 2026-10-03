@@ -174,7 +174,6 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
@@ -874,10 +873,7 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafkaWithEncryptionLookup(
-              pushJobSetting.kafkaInputTopic,
-              getSourceDictionaryConsumerProperties(),
-              PubSubEncryptionUtils.getKeyUrnLookup(pushJobSetting.pubSubEncryptionKeyUrn));
+          ByteBuffer sourceDict = readSourceDictionaryFromKafka();
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -1675,6 +1671,18 @@ public class VenicePushJob implements AutoCloseable {
     return getSourceDictionaryConsumerProperties(pushJobSetting.repushSourcePubsubBroker);
   }
 
+  /**
+   * Shared by both source-dictionary read sites ({@link #run()}'s initial fetch and the repush dictionary fetch
+   * in {@link #fetchOrBuildCompressionDictionary()}) so the encryption-lookup wiring only needs to be expressed
+   * once. {@link #getSourceDictionaryConsumerProperties()} already threads {@code pushJobSetting.pubSubEncryptionKeyUrn}
+   * into the returned properties, so {@link PubSubEncryptionUtils#readDictionaryFromKafka} can derive the same
+   * lookup from those properties instead of this method deriving and passing a second, independent copy of it.
+   */
+  private ByteBuffer readSourceDictionaryFromKafka() {
+    return PubSubEncryptionUtils
+        .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+  }
+
   @VisibleForTesting
   VeniceProperties getSourceDictionaryConsumerProperties(String sourcePubsubBroker) {
     VeniceProperties consumerProperties = buildSourceDictionaryConsumerProperties(
@@ -1728,10 +1736,7 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          return DictionaryUtils.readDictionaryFromKafkaWithEncryptionLookup(
-              pushJobSetting.kafkaInputTopic,
-              getSourceDictionaryConsumerProperties(),
-              PubSubEncryptionUtils.getKeyUrnLookup(pushJobSetting.pubSubEncryptionKeyUrn));
+          return readSourceDictionaryFromKafka();
         }
       }
       LOGGER.info(

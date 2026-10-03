@@ -66,7 +66,6 @@ import com.linkedin.venice.throttle.GuavaRateLimiter;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -1022,10 +1021,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
         if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {
           String topicName = props.getString(TOPIC_PROP);
-          ByteBuffer dict = DictionaryUtils.readDictionaryFromKafkaWithEncryptionLookup(
-              topicName,
-              props,
-              PubSubEncryptionUtils.getKeyUrnLookup(props.toProperties()));
+          ByteBuffer dict = PubSubEncryptionUtils.readDictionaryFromKafka(topicName, props);
           return compressorFactory.get()
               .createVersionSpecificCompressorIfNotExist(strategy, topicName, ByteUtils.extractByteArray(dict));
         } else {

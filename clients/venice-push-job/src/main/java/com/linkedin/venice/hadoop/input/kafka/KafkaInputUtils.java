@@ -19,7 +19,6 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
@@ -127,10 +126,7 @@ public class KafkaInputUtils {
       // getConsumerProperties(). Without this, the dictionary consumer created here could silently
       // connect to the wrong (destination) broker instead of the intended source broker.
       props.setProperty(PUBSUB_BROKER_ADDRESS, kafkaUrl);
-      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafkaWithEncryptionLookup(
-          topic,
-          new VeniceProperties(props),
-          PubSubEncryptionUtils.getKeyUrnLookup(props));
+      ByteBuffer dict = PubSubEncryptionUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
       return compressorFactory
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
     }

@@ -72,15 +72,30 @@ public class DictionaryUtils {
       String topicName,
       VeniceProperties props,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
-    return readDictionaryFromKafkaWithEncryptionLookup(topicName, props, pubSubMessageDeserializer, null);
+    return buildConsumerAndReadDictionary(topicName, props, pubSubMessageDeserializer, null);
   }
 
   /**
+   * Explicitly branches on whether a lookup was supplied, rather than silently threading a possibly-{@code null}
+   * lookup into the consumer builder, so the "no V2 encryption to resolve" case is visible here instead of being
+   * implicit in {@link PubSubConsumerAdapterContext.Builder}'s handling of a {@code null} setter argument.
+   *
    * @param pubSubEncryptionKeyUrnLookup Optional store-name to raw encryption-key URN lookup. Required to decode a
    *                                     V2 (li-crypt) encrypted Start Of Push message; pass {@code null} when the
    *                                     source topic is not V2-encrypted.
    */
   public static ByteBuffer readDictionaryFromKafkaWithEncryptionLookup(
+      String topicName,
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
+    if (pubSubEncryptionKeyUrnLookup == null) {
+      return readDictionaryFromKafka(topicName, props, pubSubMessageDeserializer);
+    }
+    return buildConsumerAndReadDictionary(topicName, props, pubSubMessageDeserializer, pubSubEncryptionKeyUrnLookup);
+  }
+
+  private static ByteBuffer buildConsumerAndReadDictionary(
       String topicName,
       VeniceProperties props,
       PubSubMessageDeserializer pubSubMessageDeserializer,
