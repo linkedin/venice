@@ -9,10 +9,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -23,6 +26,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -50,13 +54,19 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
@@ -70,12 +80,15 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.ParseException;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -734,5 +747,104 @@ public class TestAdminTool {
     when(bothCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(true);
     when(bothCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(true);
     expectThrows(Exception.class, () -> AdminTool.parsePositionFromArgs(bothCmd, deserializer, true));
+  }
+
+  @DataProvider(name = "pubSubEncryptionKeyUrnLookups")
+  public static Object[][] pubSubEncryptionKeyUrnLookups() {
+    Function<String, String> lookup = storeName -> "urn:li:key";
+    return new Object[][] { { lookup }, { null } };
+  }
+
+  @Test(dataProvider = "pubSubEncryptionKeyUrnLookups")
+  public void testGetConsumerSetsPubSubEncryptionKeyUrnLookup(Function<String, String> lookup) {
+    Properties properties = new Properties();
+    PubSubUtil.addPubSubBrokerAddress(properties, "localhost:1234");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+    ConsumerContext context = new ConsumerContext(veniceProperties, registry, new PubSubPositionDeserializer(registry));
+    PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(null, consumerAdapterFactory, null);
+    PubSubMessageDeserializer optimizedDeserializer = mock(PubSubMessageDeserializer.class);
+
+    try (MockedStatic<PubSubMessageDeserializer> deserializerMockedStatic =
+        Mockito.mockStatic(PubSubMessageDeserializer.class)) {
+      deserializerMockedStatic.when(PubSubMessageDeserializer::createOptimizedDeserializer)
+          .thenReturn(optimizedDeserializer);
+      AdminTool.getConsumer(pubSubClientsFactory, context, lookup);
+    }
+
+    ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
+        ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    verify(consumerAdapterFactory).create(contextCaptor.capture());
+    PubSubConsumerAdapterContext consumerAdapterContext = contextCaptor.getValue();
+    assertSame(consumerAdapterContext.getPubSubEncryptionKeyUrnLookup(), lookup);
+    assertSame(consumerAdapterContext.getPubSubMessageDeserializer(), optimizedDeserializer);
+    assertTrue(
+        consumerAdapterContext.getConsumerName().contains("admin-tool-topic-dumper"),
+        consumerAdapterContext.getConsumerName());
+  }
+
+  @Test
+  public void testResolvePubSubEncryptionKeyUrnLookupSkipsNonStoreTopics() {
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    String adminTopic = AdminTopicUtils.getTopicNameFromClusterName("test-cluster");
+    assertNull(AdminTool.resolvePubSubEncryptionKeyUrnLookup(controllerClient, adminTopic));
+    verifyNoInteractions(controllerClient);
+  }
+
+  @Test
+  public void testResolvePubSubEncryptionKeyUrnLookupThrowsOnControllerError() {
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    StoreResponse storeResponse = new StoreResponse();
+    storeResponse.setError("store does not exist");
+    when(controllerClient.getStore("test_store")).thenReturn(storeResponse);
+    String versionTopic = Version.composeKafkaTopic("test_store", 1);
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> AdminTool.resolvePubSubEncryptionKeyUrnLookup(controllerClient, versionTopic));
+    assertTrue(e.getMessage().contains("store does not exist"), e.getMessage());
+  }
+
+  @DataProvider(name = "storeTopics")
+  public static Object[][] storeTopics() {
+    return new Object[][] { { Version.composeKafkaTopic("test_store", 1) },
+        { Utils.composeRealTimeTopic("test_store") } };
+  }
+
+  @Test(dataProvider = "storeTopics")
+  public void testResolvePubSubEncryptionKeyUrnLookupForEncryptedStore(String topic) {
+    ControllerClient controllerClient = mockGetStore(true, "urn:li:key");
+    Function<String, String> lookup = AdminTool.resolvePubSubEncryptionKeyUrnLookup(controllerClient, topic);
+    assertNotNull(lookup);
+    assertEquals(lookup.apply("test_store"), "urn:li:key");
+    verify(controllerClient).getStore("test_store");
+  }
+
+  @Test
+  public void testResolvePubSubEncryptionKeyUrnLookupForUnencryptedStore() {
+    ControllerClient controllerClient = mockGetStore(false, null);
+    assertNull(
+        AdminTool.resolvePubSubEncryptionKeyUrnLookup(controllerClient, Version.composeKafkaTopic("test_store", 1)));
+  }
+
+  @Test
+  public void testResolvePubSubEncryptionKeyUrnLookupRejectsEncryptedStoreWithoutKeyUrn() {
+    ControllerClient controllerClient = mockGetStore(true, "");
+    String versionTopic = Version.composeKafkaTopic("test_store", 1);
+    expectThrows(
+        VeniceException.class,
+        () -> AdminTool.resolvePubSubEncryptionKeyUrnLookup(controllerClient, versionTopic));
+  }
+
+  private static ControllerClient mockGetStore(boolean encryptionEnabled, String keyUrn) {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setName("test_store");
+    storeInfo.setEncryptionEnabled(encryptionEnabled);
+    storeInfo.setPubSubEncryptionKeyUrn(keyUrn);
+    StoreResponse storeResponse = new StoreResponse();
+    storeResponse.setStore(storeInfo);
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    when(controllerClient.getStore("test_store")).thenReturn(storeResponse);
+    return controllerClient;
   }
 }

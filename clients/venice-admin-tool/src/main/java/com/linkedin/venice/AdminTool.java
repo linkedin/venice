@@ -1948,7 +1948,8 @@ public class AdminTool {
     String progressInterval = getOptionalArgument(cmd, Arg.PROGRESS_INTERVAL);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
     ConsumerContext context = createConsumerContext(cmd);
-    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
+    Function<String, String> keyUrnLookup = resolvePubSubEncryptionKeyUrnLookup(controllerClient, topic);
+    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context, keyUrnLookup)) {
       TopicMessageFinder.find(
           controllerClient,
           consumer,
@@ -2015,7 +2016,8 @@ public class AdminTool {
         logRmdRecord,
         logTsRecord,
         startingPosition);
-    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
+    Function<String, String> keyUrnLookup = resolvePubSubEncryptionKeyUrnLookup(controllerClient, topic);
+    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context, keyUrnLookup)) {
       PubSubTopicPartition topicPartition =
           new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), partitionNumber);
       PubSubPosition startPosition =
@@ -4091,6 +4093,14 @@ public class AdminTool {
   }
 
   private static PubSubConsumerAdapter getConsumer(PubSubClientsFactory pubSubClientsFactory, ConsumerContext context) {
+    return getConsumer(pubSubClientsFactory, context, null);
+  }
+
+  @VisibleForTesting
+  static PubSubConsumerAdapter getConsumer(
+      PubSubClientsFactory pubSubClientsFactory,
+      ConsumerContext context,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
     return pubSubClientsFactory.getConsumerAdapterFactory()
         .create(
             new PubSubConsumerAdapterContext.Builder()
@@ -4098,6 +4108,26 @@ public class AdminTool {
                 .setPubSubPositionTypeRegistry(context.getPositionTypeRegistry())
                 .setVeniceProperties(context.getVeniceProperties())
                 .setConsumerName("admin-tool-topic-dumper")
+                .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
                 .build());
+  }
+
+  /**
+   * Resolves the PubSub encryption-key URN lookup for the store that owns {@code topic}.
+   *
+   * @return the lookup, or null when the topic does not belong to a store or the store has encryption disabled
+   */
+  @VisibleForTesting
+  static Function<String, String> resolvePubSubEncryptionKeyUrnLookup(ControllerClient controllerClient, String topic) {
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    if (StringUtils.isBlank(storeName)) {
+      return null;
+    }
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Failed to get store info for store: " + storeName + " with error: " + storeResponse.getError());
+    }
+    return PubSubUtil.getPubSubEncryptionKeyUrnLookup(storeResponse.getStore());
   }
 }
