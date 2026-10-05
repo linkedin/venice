@@ -69,6 +69,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
@@ -879,8 +881,7 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          ByteBuffer sourceDict = DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          ByteBuffer sourceDict = readSourceDictionaryFromKafka();
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -1692,11 +1693,31 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   @VisibleForTesting
+  ByteBuffer readSourceDictionaryFromKafka() {
+    VeniceProperties consumerProperties = getSourceDictionaryConsumerProperties();
+    if (consumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+      return DictionaryUtils.readDictionaryFromEncryptedKafka(
+          pushJobSetting.kafkaInputTopic,
+          consumerProperties,
+          PubSubEncryptionUtils.getRequiredKeyUrnLookup(consumerProperties));
+    }
+    return DictionaryUtils.readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, consumerProperties);
+  }
+
+  @VisibleForTesting
   VeniceProperties getSourceDictionaryConsumerProperties(String sourcePubsubBroker) {
-    return buildSourceDictionaryConsumerProperties(
+    VeniceProperties consumerProperties = buildSourceDictionaryConsumerProperties(
         props,
         pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
         sourcePubsubBroker);
+    Properties properties = consumerProperties.toProperties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(pushJobSetting.isStoreEncryptionEnabled));
+    if (pushJobSetting.isStoreEncryptionEnabled && pushJobSetting.pubSubEncryptionKeyUrn != null) {
+      properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      properties.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
+    return new VeniceProperties(properties);
   }
 
   @VisibleForTesting
@@ -1736,8 +1757,7 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          return DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          return readSourceDictionaryFromKafka();
         }
       }
       LOGGER.info(
@@ -2739,7 +2759,8 @@ public class VenicePushJob implements AutoCloseable {
    * @param jobSetting
    * @return
    */
-  private void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
+  @VisibleForTesting
+  void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
     StoreResponse storeResponse = getStoreResponse(jobSetting.storeName);
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
@@ -2841,7 +2862,9 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
-    if (storeResponse.getStore().isEncryptionEnabled()) {
+    jobSetting.isStoreEncryptionEnabled = storeResponse.getStore().isEncryptionEnabled();
+    jobSetting.pubSubEncryptionKeyUrn = null;
+    if (jobSetting.isStoreEncryptionEnabled) {
       if (StringUtils.isBlank(storeResponse.getStore().getPubSubEncryptionKeyUrn())) {
         throw new VeniceException(
             "Store is encryption enabled but the pubSubEncryptionKeyUrn is not set in the store config.");
