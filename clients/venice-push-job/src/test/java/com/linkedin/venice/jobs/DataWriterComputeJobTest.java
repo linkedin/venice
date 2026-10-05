@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -37,8 +38,13 @@ public class DataWriterComputeJobTest {
     }
   }
 
-  @Test
-  public void testBasicPrefixPassThrough() {
+  @DataProvider(name = "xcEncryptionFlags")
+  public static Object[][] xcEncryptionFlags() {
+    return new Object[][] { { "true" }, { "false" }, { null } };
+  }
+
+  @Test(dataProvider = "xcEncryptionFlags")
+  public void testBasicPrefixPassThrough(String xcEncryptionFlag) {
     String prefix = "kafka.";
     String prefixedKey = prefix + "bootstrap.servers";
     String val1 = "localhost:9092";
@@ -47,13 +53,23 @@ public class DataWriterComputeJobTest {
       {
         put(prefixedKey, val1);
         put("unrelated.config", "ignoreMe");
+        put("pubsub.encryption.enabled", "true");
+        put(PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY, "custom.");
+        put("custom.config", "retained");
       }
     };
+    if (xcEncryptionFlag != null) {
+      map.put("xc.encrypt", xcEncryptionFlag);
+    }
     VeniceProperties props = new VeniceProperties(map);
     Map<String, String> result = new HashMap<>();
 
-    DataWriterComputeJob.populateWithPassThroughConfigs(props, result::put, Collections.singletonList(prefix), null);
+    DataWriterComputeJob.populateWithPassThroughConfigs(props, result::put, PASS_THROUGH_CONFIG_PREFIXES, null);
     assertEquals(result.get(prefixedKey), val1);
+    assertEquals(result.get("pubsub.encryption.enabled"), "true");
+    assertEquals(result.get("xc.encrypt"), xcEncryptionFlag);
+    assertEquals(result.containsKey("xc.encrypt"), xcEncryptionFlag != null);
+    assertEquals(result.get("custom.config"), "retained");
     assertFalse(result.containsKey(nonPrefixedKey));
   }
 

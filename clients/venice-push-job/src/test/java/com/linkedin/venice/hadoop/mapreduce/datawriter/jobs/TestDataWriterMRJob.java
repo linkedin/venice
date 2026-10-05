@@ -15,6 +15,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.jobs.DataWriterComputeJobTest;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -207,8 +208,8 @@ public class TestDataWriterMRJob {
     return setting;
   }
 
-  @Test
-  public void testStoreDerivedEncryptionKeyUrnOverridesAndClearsCallerValue() {
+  @Test(dataProvider = "xcEncryptionFlags", dataProviderClass = DataWriterComputeJobTest.class)
+  public void testStoreDerivedEncryptionKeyUrnOverridesAndClearsCallerValue(String xcEncryptionFlag) {
     PushJobSetting setting = fullyConfigurablePushJobSetting();
     setting.isStoreEncryptionEnabled = true;
     setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
@@ -216,17 +217,22 @@ public class TestDataWriterMRJob {
     Properties props = new Properties();
     props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
     props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_ENABLED, "false");
+    if (xcEncryptionFlag != null) {
+      props.setProperty("xc.encrypt", xcEncryptionFlag);
+    }
     VeniceProperties jobProperties = new VeniceProperties(props);
 
     DataWriterMRJob dataWriterMRJob = new DataWriterMRJob();
     dataWriterMRJob.configure(jobProperties, setting);
     Assert.assertEquals(dataWriterMRJob.getJobConf().get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:storeDerived");
     assertTrue(dataWriterMRJob.getJobConf().getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false));
+    Assert.assertEquals(dataWriterMRJob.getJobConf().get("xc.encrypt"), xcEncryptionFlag);
 
     setting.isStoreEncryptionEnabled = false;
     props.setProperty(DataWriterMRJob.HADOOP_PREFIX + PUB_SUB_ENCRYPTION_ENABLED, "true");
     dataWriterMRJob.configure(new VeniceProperties(props), setting);
     assertNull(dataWriterMRJob.getJobConf().get(PUB_SUB_ENCRYPTION_KEY_URN));
     assertFalse(dataWriterMRJob.getJobConf().getBoolean(PUB_SUB_ENCRYPTION_ENABLED, true));
+    Assert.assertEquals(dataWriterMRJob.getJobConf().get("xc.encrypt"), xcEncryptionFlag);
   }
 }

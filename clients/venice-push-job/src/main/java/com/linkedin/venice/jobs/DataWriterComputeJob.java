@@ -31,6 +31,8 @@ public abstract class DataWriterComputeJob implements ComputeJob {
    * <ul>
    *   <li> {@link VeniceWriter#VENICE_WRITER_CONFIG_PREFIX} </li>
    *   <li> {@link ConfigKeys#KAFKA_CONFIG_PREFIX} </li>
+   *   <li> {@link ConfigKeys#PUBSUB_CLIENT_CONFIG_PREFIX} </li>
+   *   <li> {@code xc.} </li>
    *   <li> {@link VenicePushJobConstants#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} </li>
    * </ul>
    **/
@@ -39,6 +41,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
           VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
           ConfigKeys.KAFKA_CONFIG_PREFIX,
           ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX,
+          "xc.",
           VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX));
 
   private Status jobStatus = Status.NOT_STARTED;
