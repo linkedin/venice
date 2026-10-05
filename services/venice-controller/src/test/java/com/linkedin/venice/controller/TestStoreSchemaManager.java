@@ -17,6 +17,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
@@ -215,9 +216,10 @@ public class TestStoreSchemaManager {
         manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 5, DirectionalSchemaCompatibilityType.FULL).getId(),
         5);
 
-    // Duplicate code short-circuits the mismatch guard.
+    // Duplicate already registered at the requested id short-circuits the mismatch guard.
     doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(schemaRepo)
         .preCheckValueSchemaAndGetNextAvailableId(STORE, OTHER_RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
+    doReturn(new SchemaEntry(8, OTHER_RECORD_SCHEMA)).when(schemaRepo).getValueSchema(STORE, 8);
     doReturn(new SchemaEntry(8, OTHER_RECORD_SCHEMA)).when(schemaRepo)
         .addValueSchema(STORE, OTHER_RECORD_SCHEMA, SchemaData.DUPLICATE_VALUE_SCHEMA_CODE);
     assertEquals(
@@ -230,6 +232,24 @@ public class TestStoreSchemaManager {
     assertThrows(
         VeniceException.class,
         () -> manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 5, DirectionalSchemaCompatibilityType.BACKWARD));
+  }
+
+  @Test
+  public void testDuplicateSchemaMissingRequestedIdRetriesBeforeMigrationMetadataIsVisible() {
+    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(schemaRepo)
+        .preCheckValueSchemaAndGetNextAvailableId(STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
+    assertThrows(
+        VeniceRetriableException.class,
+        () -> manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 274, DirectionalSchemaCompatibilityType.FULL));
+    verify(schemaRepo, never()).addValueSchema(anyString(), anyString(), anyInt());
+
+    // Once the migration metadata is visible, the same import registers the source id.
+    configureMigrationDestination();
+    SchemaEntry entry = new SchemaEntry(274, RECORD_SCHEMA);
+    doReturn(entry).when(schemaRepo).addValueSchema(STORE, RECORD_SCHEMA, 274);
+    assertEquals(
+        manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 274, DirectionalSchemaCompatibilityType.FULL),
+        entry);
   }
 
   @DataProvider(name = "migrationSchemaContent")
@@ -337,7 +357,9 @@ public class TestStoreSchemaManager {
   public void testCompletedMigrationUsesNormalSchemaIdAllocation() {
     StoreConfig migration = configureMigrationDestination();
     migration.setCluster(CLUSTER);
+    // isMigrating can stay true after cutover until the source store is cleaned up.
     Store store = mock(Store.class);
+    doReturn(true).when(store).isMigrating();
     doReturn(store).when(admin).getStore(CLUSTER, STORE);
     assertFalse(manager.isStoreMigrationDestination(CLUSTER, STORE));
     doReturn(316).when(schemaRepo)

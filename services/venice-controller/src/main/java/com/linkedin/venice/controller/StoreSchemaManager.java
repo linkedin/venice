@@ -10,6 +10,7 @@ import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
@@ -270,12 +271,8 @@ class StoreSchemaManager {
         || clusterName.equals(config.getMigrationSrcCluster())) {
       return false;
     }
-    if (!clusterName.equals(config.getCluster())) {
-      return true;
-    }
-    // After discovery moves here, stale provenance alone must not enable migration-only imports.
-    Store store = admin.getStore(clusterName, storeName);
-    return store != null && store.isMigrating();
+    // Cutover moves discovery to this cluster; schema imports finish before cutover, so normal allocation resumes.
+    return !clusterName.equals(config.getCluster());
   }
 
   private static String normalizeMigrationSchema(String schemaStr) {
@@ -362,6 +359,16 @@ class StoreSchemaManager {
               + " Expected new schema id of " + schemaId + " but the next available id from the local repository is "
               + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: "
               + valueSchemaStr);
+    }
+    if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE
+        && schemaRepository.getValueSchema(storeName, schemaId) == null) {
+      // A migration import can arrive before this controller sees the migration metadata. Retrying keeps the
+      // admin message at the head of the store queue until the source ID can be registered. Retries are uncapped:
+      // if the metadata never arrives, this store's admin operations stay blocked and the cluster's admin
+      // consumption checkpoint cannot advance past this message.
+      throw new VeniceRetriableException(
+          "Value schema for store " + storeName + " in cluster " + clusterName + " already exists under another id,"
+              + " but the caller expects id " + schemaId + ". Retrying until the id can be registered.");
     }
     return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
   }
