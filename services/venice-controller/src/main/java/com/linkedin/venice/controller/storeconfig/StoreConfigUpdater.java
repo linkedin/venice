@@ -78,6 +78,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UN
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -840,6 +841,12 @@ public final class StoreConfigUpdater {
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> admin.setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
 
+      params.getWriteQuotaEnabled()
+          .ifPresent(enabled -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setWriteQuotaEnabled(enabled);
+            return store;
+          }));
+
       blobTransferEnabled
           .ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setBlobTransferEnabled(aBoolean);
@@ -1429,6 +1436,9 @@ public final class StoreConfigUpdater {
     setStore.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled
         .map(admin.addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
         .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
+    setStore.writeQuotaEnabled = params.getWriteQuotaEnabled()
+        .map(admin.addToUpdatedConfigList(updatedConfigsList, WRITE_QUOTA_ENABLED))
+        .orElseGet(currStore::isWriteQuotaEnabled);
     setStore.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled
         .map(admin.addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
         .orElseGet(currStore::isUnusedSchemaDeletionEnabled);

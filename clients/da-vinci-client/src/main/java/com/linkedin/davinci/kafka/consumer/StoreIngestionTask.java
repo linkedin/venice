@@ -102,6 +102,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -4146,14 +4147,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of strict-mode state) and logs a tagged error string. A deficit is nonfatal
-   * (warn-and-continue) only for a migration-clone replay (see
-   * {@link #isPreExistingMigrationCloneReplay(Store)}). Otherwise, on a non-DaVinci replica, if the
-   * server-level config
-   * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
-   * (default), also increments {@code record_count_mismatch_failure} and throws
-   * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
-   * and the throw.</p>
+   * fires regardless of strict-mode state). On non-DaVinci replicas, the mismatch is nonfatal when
+   * local-topic compaction is enabled and the persisted SOP age meets its minimum compaction lag, or
+   * for a migration-clone replay (warn-and-continue; see {@link #isPreExistingMigrationCloneReplay(Store)}).
+   * Otherwise, the verifier logs a tagged error string and, on a non-DaVinci replica, if the
+   * server-level config {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled}
+   * is {@code true} (default), also increments {@code record_count_mismatch_failure} and throws
+   * {@link VeniceException} (failing ingestion). DaVinci replicas skip the local-compaction check,
+   * the failure sensor, and the throw.</p>
    *
    * <p>Skip cases (no-op, no metric):</p>
    * <ul>
@@ -4218,6 +4219,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (!counterOk || !hllOk) {
       versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
+      if (!isDaVinciClient && isLocalBatchCompacted()) {
+        LOGGER.info(
+            "Skipping batch record count and HLL verification for replica {}: local compaction enabled and SOP age meets minimum compaction lag",
+            pcs.getReplicaId());
+        return;
+      }
       Store store = storeRepository.getStore(storeName);
       boolean isMigrationReplay = isPreExistingMigrationCloneReplay(store);
       boolean migrationDuplicateStore = store != null && store.isMigrationDuplicateStore();
@@ -4271,6 +4278,40 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long storeCreatedTime = store.getCreatedTime();
     long versionCreatedTime = storeVersion.getCreatedTime();
     return storeCreatedTime > 0 && versionCreatedTime > 0 && versionCreatedTime < storeCreatedTime;
+  }
+
+  /**
+   * Uses the local topic's current compaction policy and persisted producer SOP timestamp to determine
+   * whether batch records are old enough for compaction. This is an eligibility heuristic, not proof
+   * that the broker cleaner ran; current configuration cannot reconstruct earlier policy changes.
+   */
+  private boolean isLocalBatchCompacted() {
+    // Refresh at EOP: a cached false may predate regional push completion and compaction enablement.
+    // Do not hide metadata failures.
+    PubSubTopicConfiguration config =
+        topicManagerRepository.getLocalTopicManager().getTopicConfigWithRetry(versionTopic);
+    if (!config.isLogCompacted()) {
+      return false;
+    }
+    StoreVersionState state = storageEngine.getStoreVersionState();
+    long sopTimestamp = state == null ? 0 : state.startOfPushTimestamp;
+    if (sopTimestamp <= 0) {
+      LOGGER.warn(
+          "Cannot determine batch age for {}: invalid SOP timestamp {}. Retaining record count verification.",
+          kafkaVersionTopic,
+          sopTimestamp);
+      return false;
+    }
+    long batchAgeMs = LatencyUtils.getElapsedTimeFromMsToMs(sopTimestamp);
+    if (batchAgeMs < 0) {
+      LOGGER.warn(
+          "Cannot determine batch age for {}: SOP timestamp {} is in the future. Retaining record count verification.",
+          kafkaVersionTopic,
+          sopTimestamp);
+      return false;
+    }
+    Long minLag = config.minLogCompactionLagMs();
+    return minLag != null && batchAgeMs >= minLag;
   }
 
   protected void processStartOfIncrementalPush(

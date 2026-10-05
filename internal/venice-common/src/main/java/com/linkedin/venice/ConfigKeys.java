@@ -364,6 +364,12 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_PUSH_RETRY_COOLDOWN_MS = "controller.push.retry.cooldown.ms";
 
+  /**
+   * Positive duration threshold in milliseconds for the push_job.count duration bucket, defaulting to 24 hours.
+   * This classifies push-job metrics only; it does not change push timeouts or cancellation behavior.
+   */
+  public static final String CONTROLLER_PUSH_JOB_SLA_MS = "controller.push.job.sla.ms";
+
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
   public static final String DEFAULT_NUMBER_OF_PARTITION = "default.partition.count";
@@ -847,6 +853,7 @@ public class ConfigKeys {
   public static final String LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY =
       "leader.follower.state.transition.thread.pool.strategy";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
+  public static final String WRITE_PATH_THREAD_PRIORITY = "write.path.thread.priority";
   public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
 

@@ -55,6 +55,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
@@ -76,6 +77,8 @@ public class KafkaConsumerServiceTest {
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
     doReturn(20).when(mockVeniceServerConfig).getServerIngestionInfoLogLineLimit();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(mockVeniceServerConfig)
+        .getWritePathThreadPriority();
   }
 
   @Test
@@ -216,7 +219,12 @@ public class KafkaConsumerServiceTest {
     ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
         ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(contextCaptor.capture())).thenReturn(mock(PubSubConsumerAdapter.class));
+    AtomicReference<Integer> factoryThreadPriority = new AtomicReference<>();
+    int originalThreadPriority = Thread.currentThread().getPriority();
+    when(factory.create(contextCaptor.capture())).thenAnswer(invocation -> {
+      factoryThreadPriority.set(Thread.currentThread().getPriority());
+      return mock(PubSubConsumerAdapter.class);
+    });
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -237,6 +245,8 @@ public class KafkaConsumerServiceTest {
         capturedContext.getPubSubTopicRepository(),
         pubSubTopicRepository,
         "PubSubConsumerAdapterContext should contain the same PubSubTopicRepository instance from PubSubContext");
+    Assert.assertEquals(factoryThreadPriority.get().intValue(), VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+    Assert.assertEquals(Thread.currentThread().getPriority(), originalThreadPriority);
   }
 
   @Test
@@ -683,6 +693,33 @@ public class KafkaConsumerServiceTest {
     }
 
     Assert.assertTrue(interruptedAfterCall.get(), "Interrupt flag should be preserved after batchUnsubscribe returns");
+  }
+
+  @Test(timeOut = 30000)
+  public void testBatchUnsubscribeUsesConfiguredPriority() {
+    int writePathThreadPriority = Thread.NORM_PRIORITY - 2;
+    doReturn(writePathThreadPriority).when(mockVeniceServerConfig).getWritePathThreadPriority();
+    PubSubTopic versionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString("priority_store"), 1));
+
+    SharedKafkaConsumer consumer = mock(SharedKafkaConsumer.class);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    Set<PubSubTopicPartition> partitions = new HashSet<>();
+    partitions.add(topicPartition);
+
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerToPartitions = new HashMap<>();
+    consumerToPartitions.put(consumer, partitions);
+
+    KafkaConsumerService service = createServiceWithConsumers(consumerToPartitions, versionTopic);
+    AtomicReference<Integer> actualThreadPriority = new AtomicReference<>();
+    doAnswer(invocation -> {
+      actualThreadPriority.set(Thread.currentThread().getPriority());
+      return null;
+    }).when(consumer).batchUnsubscribe(any());
+
+    service.batchUnsubscribe(versionTopic, partitions);
+
+    Assert.assertEquals(actualThreadPriority.get(), Integer.valueOf(writePathThreadPriority));
   }
 
   @Test(timeOut = 30000)

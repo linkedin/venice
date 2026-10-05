@@ -23,6 +23,7 @@ import static org.testng.Assert.fail;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceStorageQuotaExceededException;
@@ -64,6 +65,8 @@ public class VenicePushJobStatusAndQuotaTest extends VenicePushJobTestBase {
       PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
       pushJobDetails.clusterName = TEST_CLUSTER;
       pushJobDetails.failureDetails = "Test failure details";
+      pushJob.getPushJobSetting().topic = "test-topic";
+      doReturn(new ControllerResponse()).when(client).killOfflinePushJob(anyString());
 
       // Send terminal status: ERROR
       pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.ERROR);
@@ -87,6 +90,10 @@ public class VenicePushJobStatusAndQuotaTest extends VenicePushJobTestBase {
       // Call cancel again; last status was non-terminal, so this should send KILLED
       pushJob.cancel();
       verify(client, times(3)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+      assertEquals(
+          pushJobDetails.overallStatus.get(pushJobDetails.overallStatus.size() - 1).status,
+          PushJobDetailsStatus.KILLED.getValue());
+      assertTrue(pushJobDetails.jobDurationInMs >= 0, "A cancelled push should report the elapsed job duration");
     }
   }
 

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,9 +21,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.utils.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mockito.InOrder;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -84,7 +85,9 @@ public class TestUserSystemStoreLifeCycleHelper {
     verify(mockMetaStoreWriter).removeMetaStoreWriter(META_STORE_NAME);
     verify(mockAdmin).deleteAllVersionsInStore(CLUSTER_NAME, META_STORE_NAME);
     verify(mockPushMonitor).cleanupStoreStatus(META_STORE_NAME);
-    verify(mockAdmin).truncateKafkaTopic(Utils.composeRealTimeTopic(META_STORE_NAME));
+    InOrder cleanupOrder = inOrder(mockMetaStoreWriter, mockAdmin);
+    cleanupOrder.verify(mockMetaStoreWriter).removeMetaStoreWriter(META_STORE_NAME);
+    cleanupOrder.verify(mockAdmin).cleanupRealTimeTopicsForStoreDeletion(CLUSTER_NAME, META_STORE_NAME, false);
     verify(mockAdmin).truncateOldTopics(CLUSTER_NAME, mockStore, true);
   }
 
@@ -107,7 +110,9 @@ public class TestUserSystemStoreLifeCycleHelper {
     verify(mockPushStatusStoreWriter).removePushStatusStoreVeniceWriter(STORE_NAME);
     verify(mockAdmin).deleteAllVersionsInStore(CLUSTER_NAME, DAVINCI_STORE_NAME);
     verify(mockPushMonitor).cleanupStoreStatus(DAVINCI_STORE_NAME);
-    verify(mockAdmin).truncateKafkaTopic(Utils.composeRealTimeTopic(DAVINCI_STORE_NAME));
+    InOrder cleanupOrder = inOrder(mockPushStatusStoreWriter, mockAdmin);
+    cleanupOrder.verify(mockPushStatusStoreWriter).removePushStatusStoreVeniceWriter(STORE_NAME);
+    cleanupOrder.verify(mockAdmin).cleanupRealTimeTopicsForStoreDeletion(CLUSTER_NAME, DAVINCI_STORE_NAME, false);
     verify(mockAdmin).truncateOldTopics(CLUSTER_NAME, mockStore, true);
   }
 
@@ -130,7 +135,7 @@ public class TestUserSystemStoreLifeCycleHelper {
     // Verify basic cleanup is still performed
     verify(mockAdmin).deleteAllVersionsInStore(CLUSTER_NAME, HEARTBEAT_STORE_NAME);
     verify(mockPushMonitor).cleanupStoreStatus(HEARTBEAT_STORE_NAME);
-    verify(mockAdmin).truncateKafkaTopic(Utils.composeRealTimeTopic(HEARTBEAT_STORE_NAME));
+    verify(mockAdmin).cleanupRealTimeTopicsForStoreDeletion(CLUSTER_NAME, HEARTBEAT_STORE_NAME, false);
     verify(mockAdmin).truncateOldTopics(CLUSTER_NAME, mockStore, true);
   }
 
@@ -171,7 +176,7 @@ public class TestUserSystemStoreLifeCycleHelper {
     verify(mockPushMonitor).cleanupStoreStatus(META_STORE_NAME);
 
     verify(mockMetaStoreWriter, never()).removeMetaStoreWriter(META_STORE_NAME);
-    verify(mockAdmin, never()).truncateKafkaTopic(Utils.composeRealTimeTopic(META_STORE_NAME));
+    verify(mockAdmin, never()).cleanupRealTimeTopicsForStoreDeletion(anyString(), anyString(), anyBoolean());
   }
 
   @Test
@@ -193,6 +198,7 @@ public class TestUserSystemStoreLifeCycleHelper {
     verify(mockMetaStoreWriter).removeMetaStoreWriter(META_STORE_NAME);
     verify(mockAdmin).deleteAllVersionsInStore(CLUSTER_NAME, META_STORE_NAME);
     verify(mockPushMonitor).cleanupStoreStatus(META_STORE_NAME);
+    verify(mockAdmin).cleanupRealTimeTopicsForStoreDeletion(CLUSTER_NAME, META_STORE_NAME, false);
 
     // Verify truncateOldTopics is not called when store is not in repository
     verify(mockAdmin, never()).truncateOldTopics(anyString(), any(Store.class), anyBoolean());
@@ -219,6 +225,6 @@ public class TestUserSystemStoreLifeCycleHelper {
     verify(mockPushMonitor).cleanupStoreStatus(META_STORE_NAME);
 
     // Verify RT topic is not truncated in parent fabric
-    verify(mockAdmin, never()).truncateKafkaTopic(anyString());
+    verify(mockAdmin, never()).cleanupRealTimeTopicsForStoreDeletion(anyString(), anyString(), anyBoolean());
   }
 }

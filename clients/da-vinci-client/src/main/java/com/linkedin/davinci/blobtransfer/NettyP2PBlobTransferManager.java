@@ -12,6 +12,7 @@ import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
@@ -96,6 +97,26 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
       int maxConcurrentBlobReceiveReplicas,
       LogContext logContext) {
+    this(
+        blobTransferService,
+        nettyClient,
+        peerFinder,
+        baseDir,
+        aggVersionedBlobTransferStats,
+        maxConcurrentBlobReceiveReplicas,
+        logContext,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  public NettyP2PBlobTransferManager(
+      P2PBlobTransferService blobTransferService,
+      NettyFileTransferClient nettyClient,
+      BlobFinder peerFinder,
+      String baseDir,
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
+      int maxConcurrentBlobReceiveReplicas,
+      LogContext logContext,
+      int writePathThreadPriority) {
     this.blobTransferService = blobTransferService;
     this.nettyClient = nettyClient;
     this.peerFinder = peerFinder;
@@ -107,7 +128,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         60L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor", logContext));
+        new DaemonThreadFactory(
+            "Venice-BlobTransfer-Replica-Blob-Fetch-Executor",
+            writePathThreadPriority,
+            logContext));
     this.statusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
   }
 

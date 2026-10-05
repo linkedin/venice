@@ -155,7 +155,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
           0L,
           TimeUnit.MILLISECONDS,
           new LinkedBlockingQueue<>(),
-          new DaemonThreadFactory("cross-tp-parallel-processing", serverConfig.getLogContext()));
+          new DaemonThreadFactory(
+              "cross-tp-parallel-processing",
+              serverConfig.getWritePathThreadPriority(),
+              serverConfig.getLogContext()));
       this.crossTpProcessingStats = new ThreadPoolStats(metricsRepository, crossTpProcessingPool, "CrossTpProcessing");
       LOGGER.info("Cross-TP parallel processing enabled with shared thread pool size: {}", poolSize);
     } else {

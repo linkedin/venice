@@ -230,6 +230,8 @@ public class PushJobSetting implements Serializable {
 
   public String materializedViewConfigFlatMap;
 
+  public String pubSubEncryptionKeyUrn;
+
   public boolean isBatchWriteOptimizationForHybridStoreEnabled;
   public boolean isSortedIngestionEnabled;
   public boolean allowRegularPushWithTTLRepush;

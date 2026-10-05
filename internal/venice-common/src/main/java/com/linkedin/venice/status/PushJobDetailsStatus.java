@@ -1,5 +1,7 @@
 package com.linkedin.venice.status;
 
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
 import java.util.Arrays;
@@ -8,7 +10,7 @@ import java.util.List;
 import java.util.Set;
 
 
-public enum PushJobDetailsStatus implements VeniceEnumValue {
+public enum PushJobDetailsStatus implements VeniceEnumValue, VeniceDimensionInterface {
   STARTED(0), COMPLETED(1), ERROR(2), NOT_CREATED(3), UNKNOWN(4), TOPIC_CREATED(5), DATA_WRITER_COMPLETED(6), KILLED(7),
   END_OF_PUSH_RECEIVED(8), START_OF_INCREMENTAL_PUSH_RECEIVED(9), END_OF_INCREMENTAL_PUSH_RECEIVED(10);
 
@@ -27,6 +29,11 @@ public enum PushJobDetailsStatus implements VeniceEnumValue {
   @Override
   public int getValue() {
     return value;
+  }
+
+  @Override
+  public VeniceMetricsDimensions getDimensionName() {
+    return VeniceMetricsDimensions.VENICE_PUSH_JOB_EXECUTION_STATE;
   }
 
   public static boolean isTerminal(int status) {

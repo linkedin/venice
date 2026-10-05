@@ -200,4 +200,24 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
     D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
     assertEquals(resolved, mockD2Client);
   }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*encryption enabled but the pubSubEncryptionKeyUrn is not set.*")
+  public void testEncryptionEnabledStoreWithUnprovisionedKeyUrnThrows() {
+    // StoreInfo defaults pubSubEncryptionKeyUrn to "", not null, so a null-only check would not fire here.
+    ControllerClient client = getClient(storeInfo -> storeInfo.setEncryptionEnabled(true));
+    try (VenicePushJob pushJob = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      pushJob.run();
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*encryption enabled but the pubSubEncryptionKeyUrn is not set.*")
+  public void testEncryptionEnabledStoreWithWhitespaceKeyUrnThrows() {
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setEncryptionEnabled(true);
+      storeInfo.setPubSubEncryptionKeyUrn("   ");
+    });
+    try (VenicePushJob pushJob = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      pushJob.run();
+    }
+  }
 }

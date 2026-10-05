@@ -121,7 +121,7 @@ ext.libraries = [
     mapreduceClientCore: "org.apache.hadoop:hadoop-mapreduce-client-core:${hadoopVersion}",
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
-    netty: 'io.netty:netty-all:4.1.79.Final',
+    netty: 'io.netty:netty-all:4.1.74.Final',
     opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
     opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
     opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
@@ -328,7 +328,9 @@ subprojects {
       // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
-      def versionOverrides = []
+      def versionOverrides = [
+        project(':internal:venice-common').file('src/main/resources/avro/MetadataResponseRecord/v4', PathValidation.DIRECTORY)
+      ]
 
       def schemaDirs = [sourceDir]
       sourceDir.eachDir { typeDir ->

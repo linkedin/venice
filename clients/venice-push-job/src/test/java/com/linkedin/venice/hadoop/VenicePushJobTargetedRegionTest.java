@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -51,9 +52,11 @@ import com.linkedin.venice.views.ViewUtils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -221,23 +224,56 @@ public class VenicePushJobTargetedRegionTest extends VenicePushJobTestBase {
       badDataRecoveryResponse.setError("error");
       doReturn(badDataRecoveryResponse).when(client)
           .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
+      SentPushJobDetailsTrackerImpl tracker = new SentPushJobDetailsTrackerImpl();
+      pushJob.setSentPushJobDetailsTracker(tracker);
       // verify failure of data recovery will fail the push job
-      try {
-        pushJob.run();
-      } catch (VeniceException e) {
-        assertTrue(e.getMessage().contains("Can't push data for region"));
-      }
+      VeniceException exception = Assert.expectThrows(VeniceException.class, pushJob::run);
+      assertTrue(exception.getMessage().contains("Can't push data for region"));
+
+      List<PushJobDetails> reports = tracker.getRecordedPushJobDetails();
+      PushJobDetails failed = reports.get(reports.size() - 1);
+      assertEquals(
+          failed.overallStatus.get(failed.overallStatus.size() - 1).status,
+          PushJobDetailsStatus.ERROR.getValue());
+      assertEquals(failed.failureDetails, exception.toString());
+      assertTrue(failed.jobDurationInMs >= 0, "A terminal failure should report the elapsed job duration");
     }
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
 
+      long initialDurationMs = TimeUnit.HOURS.toMillis(20);
+      long remainingWorkDurationMs = TimeUnit.HOURS.toMillis(6);
+      long slaMs = TimeUnit.HOURS.toMillis(24);
+      pushJob.getPushJobSetting().jobStartTimeMs = System.currentTimeMillis() - initialDurationMs;
+      doAnswer(invocation -> {
+        invocation.callRealMethod();
+        pushJob.getPushJobSetting().jobStartTimeMs -= remainingWorkDurationMs;
+        return null;
+      }).when(pushJob).postPushValidation();
+
       ControllerResponse goodDataRecoveryResponse = new ControllerResponse();
       doReturn(goodDataRecoveryResponse).when(client)
           .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
+      SentPushJobDetailsTrackerImpl tracker = new SentPushJobDetailsTrackerImpl();
+      pushJob.setSentPushJobDetailsTracker(tracker);
 
       // the job should succeed
       pushJob.run();
+
+      List<PushJobDetails> reports = tracker.getRecordedPushJobDetails();
+      PushJobDetails beforeRemainingRegions = reports.get(reports.size() - 2);
+      PushJobDetails completed = reports.get(reports.size() - 1);
+      assertEquals(
+          beforeRemainingRegions.overallStatus.get(beforeRemainingRegions.overallStatus.size() - 1).status,
+          PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue());
+      assertEquals(
+          completed.overallStatus.get(completed.overallStatus.size() - 1).status,
+          PushJobDetailsStatus.COMPLETED.getValue());
+      assertTrue(
+          beforeRemainingRegions.jobDurationInMs < slaMs,
+          "The initial targeted-region stage should be under the SLA");
+      assertTrue(completed.jobDurationInMs >= slaMs, "The completed duration should include remaining-region work");
     }
   }
 
