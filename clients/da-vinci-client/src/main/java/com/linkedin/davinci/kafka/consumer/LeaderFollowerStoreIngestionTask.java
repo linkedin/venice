@@ -1933,7 +1933,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
       }
 
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
         // also update the leader topic position using the upstream position in LeaderMetadata
@@ -1941,10 +1940,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)
             && extractUpstreamClusterId(consumerRecord) != -1) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
-          PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-          if (upstreamTopic == null) {
-            upstreamTopic = versionTopic;
-          }
+          PubSubTopic upstreamTopic = getUpstreamTopicForPositionTracking(partitionConsumptionState);
           if (dryRun) {
             final PubSubPosition previousUpstreamPosition =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
@@ -1996,10 +1992,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (isDaVinciClient) {
       return;
     }
-    PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-    if (upstreamTopic == null) {
-      upstreamTopic = versionTopic;
-    }
+    PubSubTopic upstreamTopic = getUpstreamTopicForPositionTracking(partitionConsumptionState);
     if (upstreamTopic.isRealTime()) {
       offsetRecord.checkpointRtPositions(partitionConsumptionState.getLatestProcessedRtPositions());
     } else {
@@ -2007,6 +2000,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
     offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
+  }
+
+  /**
+   * Returns the topic whose upstream position slot (RT vs. remote VT) the replica's upstream positions are tracked and
+   * checkpointed under. This is the leader topic, or the version topic if the leader topic is not set.
+   *
+   * A non-leader replica that has not received EOP is still replaying batch data, whose upstream positions belong to
+   * the remote VT, so the version topic is returned even if the leader topic is already an RT topic. Leaders are
+   * unaffected: they only switch to an RT topic after processing a TS, which follows EOP.
+   */
+  PubSubTopic getUpstreamTopicForPositionTracking(PartitionConsumptionState partitionConsumptionState) {
+    PubSubTopic upstreamTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    if (upstreamTopic == null) {
+      return versionTopic;
+    }
+    if (upstreamTopic.isRealTime() && !partitionConsumptionState.isEndOfPushReceived()
+        && !isLeader(partitionConsumptionState)) {
+      return versionTopic;
+    }
+    return upstreamTopic;
   }
 
   private void updateOffsetsAsRemoteConsumeLeader(
@@ -4105,12 +4118,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * consume. Otherwise, for hybrid stores: 1. If the node remains as follower, it might never become online because
      * hybrid lag measurement will return a large value for VT. 2. If the node promotes to leader, it will subscribe to
      * VT at RT offset.
+     *
+     * The TS in PCS may come from {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}, which is shared
+     * by all partitions of the version and is populated as soon as any partition processes a TS. The controller sends
+     * TS once one replica per partition has received EOP, so this replica may still be replaying batch data. A
+     * follower's leader topic must never run ahead of its own VT position: the leader topic decides whether upstream
+     * positions are tracked and checkpointed as RT or remote VT positions, so switching it to RT before EOP would file
+     * batch-era (remote VT) upstream positions under RT. TS always follows EOP in every VT partition, and the follower
+     * sets its leader topic when it consumes the TS from its own VT, so the TS is only applied here after EOP.
      */
     TopicSwitchWrapper topicSwitch = partitionConsumptionState.getTopicSwitch();
-    if (topicSwitch != null) {
-      if (!topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
-        offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
-      }
+    if (topicSwitch != null && partitionConsumptionState.isEndOfPushReceived()
+        && !topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
+      offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
     }
   }
 
