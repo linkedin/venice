@@ -63,6 +63,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
@@ -242,7 +243,7 @@ public class VTConsistencyCheckerJob {
                   partitionsProcessed,
                   partitionsWithErrors,
                   inconsistenciesFound),
-              RowEncoder.apply(OUTPUT_SCHEMA));
+              ExpressionEncoder.apply(RowEncoder.encoderFor(OUTPUT_SCHEMA)));
 
       inconsistencies.write().mode(SaveMode.ErrorIfExists).parquet(outputPath);
 
