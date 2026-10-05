@@ -10,11 +10,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -26,6 +29,8 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import java.util.function.Function;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -621,5 +626,39 @@ public class PubSubUtilTest {
     ByteBuffer zeroBuffer = ApacheKafkaOffsetPosition.of(0L).toWireFormatBuffer();
     actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(zeroBuffer, 0L, deserializer);
     assertEquals(actualPosition.getNumericOffset(), 0L, "Should handle zero offset correctly");
+  }
+
+  @Test
+  public void testGetPubSubEncryptionKeyUrnLookupReturnsNullWhenEncryptionDisabled() {
+    StoreInfo storeInfo = storeInfo(false, "urn:li:key");
+    assertNull(PubSubUtil.getPubSubEncryptionKeyUrnLookup(storeInfo));
+  }
+
+  @Test
+  public void testGetPubSubEncryptionKeyUrnLookupReturnsTrimmedKeyUrn() {
+    StoreInfo storeInfo = storeInfo(true, " urn:li:key ");
+    Function<String, String> lookup = PubSubUtil.getPubSubEncryptionKeyUrnLookup(storeInfo);
+    assertEquals(lookup.apply("test_store"), "urn:li:key");
+  }
+
+  @DataProvider(name = "blankKeyUrns")
+  public static Object[][] blankKeyUrns() {
+    return new Object[][] { { null }, { "" }, { "  " } };
+  }
+
+  @Test(dataProvider = "blankKeyUrns")
+  public void testGetPubSubEncryptionKeyUrnLookupRejectsMissingKeyUrn(String keyUrn) {
+    StoreInfo storeInfo = storeInfo(true, keyUrn);
+    VeniceException e =
+        expectThrows(VeniceException.class, () -> PubSubUtil.getPubSubEncryptionKeyUrnLookup(storeInfo));
+    assertTrue(e.getMessage().contains("test_store"), e.getMessage());
+  }
+
+  private static StoreInfo storeInfo(boolean encryptionEnabled, String keyUrn) {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setName("test_store");
+    storeInfo.setEncryptionEnabled(encryptionEnabled);
+    storeInfo.setPubSubEncryptionKeyUrn(keyUrn);
+    return storeInfo;
   }
 }

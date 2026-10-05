@@ -8,6 +8,8 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
 import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -21,6 +23,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.Properties;
+import java.util.function.Function;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -394,5 +398,28 @@ public final class PubSubUtil {
           e);
     }
     return fromKafkaOffset(offset);
+  }
+
+  /**
+   * Builds the PubSub encryption-key URN lookup for a consumer that reads a single store's topics. The lookup is
+   * keyed by store name and returns the store's key URN for every topic the consumer reads. The URN is trimmed, the
+   * same way VenicePushJob trims it when writing the store's version topics.
+   *
+   * @param storeInfo the store whose topics will be consumed
+   * @return the lookup, or null when encryption is disabled for the store
+   * @throws VeniceException if encryption is enabled but the store has no key URN
+   */
+  public static Function<String, String> getPubSubEncryptionKeyUrnLookup(StoreInfo storeInfo) {
+    if (!storeInfo.isEncryptionEnabled()) {
+      return null;
+    }
+    String keyUrn = storeInfo.getPubSubEncryptionKeyUrn();
+    if (StringUtils.isBlank(keyUrn)) {
+      throw new VeniceException(
+          "Store " + storeInfo.getName()
+              + " is encryption enabled but the pubSubEncryptionKeyUrn is not set in the store config.");
+    }
+    String trimmedKeyUrn = keyUrn.trim();
+    return storeName -> trimmedKeyUrn;
   }
 }
