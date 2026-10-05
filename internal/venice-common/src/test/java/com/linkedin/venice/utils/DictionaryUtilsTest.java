@@ -54,7 +54,7 @@ public class DictionaryUtilsTest {
   @DataProvider
   public Object[][] dictionaryReaders() {
     return new Object[][] { { "prebuilt", 0 }, { "legacy", 1 }, { "custom", 1 }, { "encrypted", 1 },
-        { "missing-lookup", 0 } };
+        { "encrypted-custom", 1 }, { "missing-lookup", 0 }, { "missing-lookup-custom", 0 } };
   }
 
   @Test(dataProvider = "dictionaryReaders")
@@ -93,10 +93,17 @@ public class DictionaryUtilsTest {
     VeniceProperties consumerProperties = new VeniceProperties(props);
     PubSubMessageDeserializer deserializer = mock(PubSubMessageDeserializer.class);
     Function<String, String> lookup = store -> "urn:li:test-key";
-    if (reader.equals("missing-lookup")) {
-      Assert.expectThrows(
-          VeniceException.class,
-          () -> DictionaryUtils.readDictionaryFromEncryptedKafka(topic.getName(), consumerProperties, null));
+    if (reader.startsWith("missing-lookup")) {
+      if (reader.equals("missing-lookup")) {
+        Assert.expectThrows(
+            VeniceException.class,
+            () -> DictionaryUtils.readDictionaryFromEncryptedKafka(topic.getName(), consumerProperties, null));
+      } else {
+        Assert.expectThrows(
+            VeniceException.class,
+            () -> DictionaryUtils
+                .readDictionaryFromEncryptedKafka(topic.getName(), consumerProperties, deserializer, null));
+      }
       Assert.assertNull(RecordingPubSubConsumerAdapterFactory.OBSERVED_CONTEXT.get());
       verifyNoInteractions(pubSubConsumer);
       return;
@@ -118,6 +125,10 @@ public class DictionaryUtilsTest {
         dictionaryFromKafka =
             DictionaryUtils.readDictionaryFromEncryptedKafka(topic.getName(), consumerProperties, lookup);
         break;
+      case "encrypted-custom":
+        dictionaryFromKafka =
+            DictionaryUtils.readDictionaryFromEncryptedKafka(topic.getName(), consumerProperties, deserializer, lookup);
+        break;
       default:
         throw new AssertionError("Unknown reader: " + reader);
     }
@@ -128,9 +139,11 @@ public class DictionaryUtilsTest {
     verify(pubSubConsumer, times(expectedCloses)).close();
     if (expectedCloses > 0) {
       PubSubConsumerAdapterContext context = RecordingPubSubConsumerAdapterFactory.OBSERVED_CONTEXT.get();
-      Assert.assertSame(context.getPubSubEncryptionKeyUrnLookup(), reader.equals("encrypted") ? lookup : null);
-      if (reader.equals("custom")) {
+      Assert.assertSame(context.getPubSubEncryptionKeyUrnLookup(), reader.startsWith("encrypted") ? lookup : null);
+      if (reader.endsWith("custom")) {
         Assert.assertSame(context.getPubSubMessageDeserializer(), deserializer);
+      } else {
+        Assert.assertNotNull(context.getPubSubMessageDeserializer());
       }
     }
   }

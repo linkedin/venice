@@ -9,6 +9,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -82,6 +83,17 @@ public class ChangelogClientConfigTest {
     clone.setBackgroundReporterThreadSleepIntervalInSeconds(10L);
     Assert.assertEquals(global.getBackgroundReporterThreadSleepIntervalInSeconds(), 5L);
     Assert.assertEquals(clone.getBackgroundReporterThreadSleepIntervalInSeconds(), 10L);
+  }
+
+  @Test
+  public void testPubSubEncryptionKeyUrnLookupCloned() {
+    ChangelogClientConfig global = new ChangelogClientConfig(GLOBAL_STORE);
+    Assert.assertNull(global.getPubSubEncryptionKeyUrnLookup());
+    Assert.assertNull(ChangelogClientConfig.cloneConfig(global).getPubSubEncryptionKeyUrnLookup());
+
+    Function<String, String> lookup = storeName -> "urn:li:test-key";
+    global.setPubSubEncryptionKeyUrnLookup(lookup);
+    Assert.assertSame(ChangelogClientConfig.cloneConfig(global).getPubSubEncryptionKeyUrnLookup(), lookup);
   }
 
   /**

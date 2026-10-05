@@ -95,6 +95,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -410,10 +411,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         compressor = compressorFactory.getVersionSpecificCompressor(topicName);
         if (compressor == null) {
           // we need to retrieve the dictionary from the kafka topic
-          ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
-              topicName,
-              new VeniceProperties(changelogClientConfig.getConsumerProperties()),
-              pubSubMessageDeserializer);
+          VeniceProperties dictionaryConsumerProps =
+              new VeniceProperties(changelogClientConfig.getConsumerProperties());
+          Function<String, String> keyUrnLookup = changelogClientConfig.getPubSubEncryptionKeyUrnLookup();
+          ByteBuffer dictionary = keyUrnLookup != null
+              ? DictionaryUtils.readDictionaryFromEncryptedKafka(
+                  topicName,
+                  dictionaryConsumerProps,
+                  pubSubMessageDeserializer,
+                  keyUrnLookup)
+              : DictionaryUtils.readDictionaryFromKafka(topicName, dictionaryConsumerProps, pubSubMessageDeserializer);
           compressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
               version.getCompressionStrategy(),
               topicName,

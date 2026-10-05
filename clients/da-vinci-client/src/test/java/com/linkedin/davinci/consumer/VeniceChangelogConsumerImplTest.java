@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -40,6 +42,7 @@ import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -84,8 +87,11 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -113,12 +119,14 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -1409,6 +1417,103 @@ public class VeniceChangelogConsumerImplTest {
     // switchToNewTopic with a different topic on the same partition should return true
     PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
     assertTrue(veniceChangelogConsumer.switchToNewTopic(new PubSubTopicPartitionImpl(newVersionTopic, 0)));
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetVersionCompressorReadsVtDictionaryWithKeyUrnLookup(boolean hasKeyUrnLookup) {
+    Function<String, String> keyUrnLookup = name -> "urn:li:pubSubEncryptionKey:" + name;
+    changelogClientConfig.setPubSubEncryptionKeyUrnLookup(hasKeyUrnLookup ? keyUrnLookup : null);
+    PubSubMessageDeserializer deserializer = PubSubMessageDeserializer.createDefaultDeserializer();
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        getConsumerReadingDictionaryFromVt(deserializer);
+    ByteBuffer dictionary = ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
+
+    try (MockedStatic<DictionaryUtils> dictionaryUtils = mockStatic(DictionaryUtils.class)) {
+      dictionaryUtils.when(
+          () -> DictionaryUtils.readDictionaryFromEncryptedKafka(
+              anyString(),
+              any(VeniceProperties.class),
+              any(PubSubMessageDeserializer.class),
+              any()))
+          .thenReturn(dictionary);
+      dictionaryUtils.when(
+          () -> DictionaryUtils
+              .readDictionaryFromKafka(anyString(), any(VeniceProperties.class), any(PubSubMessageDeserializer.class)))
+          .thenReturn(dictionary);
+
+      VeniceCompressor compressor = veniceChangelogConsumer.getVersionCompressor(oldVersionTopic);
+
+      assertEquals(compressor.getCompressionStrategy(), CompressionStrategy.ZSTD_WITH_DICT);
+      if (hasKeyUrnLookup) {
+        dictionaryUtils.verify(
+            () -> DictionaryUtils.readDictionaryFromEncryptedKafka(
+                eq(oldVersionTopic.getName()),
+                any(VeniceProperties.class),
+                same(deserializer),
+                same(keyUrnLookup)));
+        dictionaryUtils.verify(
+            () -> DictionaryUtils.readDictionaryFromKafka(
+                anyString(),
+                any(VeniceProperties.class),
+                any(PubSubMessageDeserializer.class)),
+            never());
+      } else {
+        dictionaryUtils.verify(
+            () -> DictionaryUtils.readDictionaryFromKafka(
+                eq(oldVersionTopic.getName()),
+                any(VeniceProperties.class),
+                same(deserializer)));
+        dictionaryUtils.verify(
+            () -> DictionaryUtils.readDictionaryFromEncryptedKafka(
+                anyString(),
+                any(VeniceProperties.class),
+                any(PubSubMessageDeserializer.class),
+                any()),
+            never());
+      }
+    } finally {
+      veniceChangelogConsumer.close();
+    }
+  }
+
+  @Test
+  public void testGetVersionCompressorPropagatesVtDictionaryReadFailure() {
+    changelogClientConfig.setPubSubEncryptionKeyUrnLookup(name -> "urn:li:pubSubEncryptionKey:" + name);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        getConsumerReadingDictionaryFromVt(PubSubMessageDeserializer.createDefaultDeserializer());
+
+    try (MockedStatic<DictionaryUtils> dictionaryUtils = mockStatic(DictionaryUtils.class)) {
+      dictionaryUtils.when(
+          () -> DictionaryUtils.readDictionaryFromEncryptedKafka(
+              anyString(),
+              any(VeniceProperties.class),
+              any(PubSubMessageDeserializer.class),
+              any()))
+          .thenThrow(new VeniceException("Failed to decrypt the VT dictionary"));
+
+      VeniceException e = Assert
+          .expectThrows(VeniceException.class, () -> veniceChangelogConsumer.getVersionCompressor(oldVersionTopic));
+      assertEquals(e.getMessage(), "Failed to decrypt the VT dictionary");
+      dictionaryUtils.verify(
+          () -> DictionaryUtils
+              .readDictionaryFromKafka(anyString(), any(VeniceProperties.class), any(PubSubMessageDeserializer.class)),
+          never());
+    } finally {
+      veniceChangelogConsumer.close();
+    }
+  }
+
+  /** Builds a consumer whose version 1 is ZSTD_WITH_DICT, so its compressor needs the dictionary from the VT. */
+  private VeniceChangelogConsumerImpl<String, Utf8> getConsumerReadingDictionaryFromVt(
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
+    mockRepository.getStore(storeName).getVersionOrThrow(1).setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        pubSubMessageDeserializer,
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    return veniceChangelogConsumer;
   }
 
   /**

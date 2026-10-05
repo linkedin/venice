@@ -48,14 +48,26 @@ public class DictionaryUtils {
       String topicName,
       VeniceProperties props,
       Function<String, String> pubSubEncryptionKeyUrnLookup) {
+    return readDictionaryFromEncryptedKafka(
+        topicName,
+        props,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        pubSubEncryptionKeyUrnLookup);
+  }
+
+  /** Reads an encrypted dictionary using the caller's deserializer and required store-to-key lookup. */
+  public static ByteBuffer readDictionaryFromEncryptedKafka(
+      String topicName,
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
     if (pubSubEncryptionKeyUrnLookup == null) {
       throw new VeniceException("Encryption key URN lookup is required for encrypted dictionary reads");
     }
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
-    PubSubConsumerAdapterContext context =
-        dictionaryConsumerContext(props, PubSubMessageDeserializer.createDefaultDeserializer(), topicRepository)
-            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
-            .build();
+    PubSubConsumerAdapterContext context = dictionaryConsumerContext(props, pubSubMessageDeserializer, topicRepository)
+        .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
+        .build();
     try (PubSubConsumerAdapter consumer = PubSubClientsFactory.createConsumerFactory(props).create(context)) {
       return readDictionaryFromKafka(topicName, consumer, topicRepository);
     }

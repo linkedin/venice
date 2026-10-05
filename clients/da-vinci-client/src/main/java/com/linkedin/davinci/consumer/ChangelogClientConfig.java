@@ -17,6 +17,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.function.Function;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
@@ -104,6 +105,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * The config is only applicable to the version specific stateless changelog consumer.
    */
   private boolean includeControlMessages = false;
+
+  /**
+   * Maps a store name to the PubSub encryption-key URN used to read its topics. Null when the store's topics are not
+   * encrypted.
+   */
+  private Function<String, String> pubSubEncryptionKeyUrnLookup;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -427,6 +434,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setPubSubEncryptionKeyUrnLookup(config.getPubSubEncryptionKeyUrnLookup())
         .setBackgroundReporterThreadSleepIntervalInSeconds(config.getBackgroundReporterThreadSleepIntervalInSeconds());
     return newConfig;
   }
@@ -505,6 +513,16 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   protected PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  protected Function<String, String> getPubSubEncryptionKeyUrnLookup() {
+    return pubSubEncryptionKeyUrnLookup;
+  }
+
+  protected ChangelogClientConfig<T> setPubSubEncryptionKeyUrnLookup(
+      Function<String, String> pubSubEncryptionKeyUrnLookup) {
+    this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
+    return this;
   }
 
   private ChangelogClientConfig setInnerClientConfig(ClientConfig<T> innerClientConfig) {

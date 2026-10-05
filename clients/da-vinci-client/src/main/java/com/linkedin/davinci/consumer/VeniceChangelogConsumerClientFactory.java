@@ -12,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
@@ -24,6 +25,7 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
@@ -117,6 +119,8 @@ public class VeniceChangelogConsumerClientFactory {
       if (globalChangelogClientConfig.isNewStatelessClientEnabled()) {
         return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
       } else {
+        newStoreChangelogClientConfig.setPubSubEncryptionKeyUrnLookup(
+            fetchPubSubEncryptionKeyUrnLookup(newStoreChangelogClientConfig, storeName));
         return new VeniceAfterImageConsumerImpl(
             newStoreChangelogClientConfig,
             consumer != null
@@ -234,6 +238,24 @@ public class VeniceChangelogConsumerClientFactory {
     return viewClass;
   }
 
+  /**
+   * The after-image consumer reads the store's topics with its own PubSub consumers rather than through a DaVinci
+   * ingestion stack, so it needs the store's encryption-key lookup to decrypt them.
+   */
+  private Function<String, String> fetchPubSubEncryptionKeyUrnLookup(
+      ChangelogClientConfig newStoreChangelogClientConfig,
+      String storeName) {
+    StoreResponse response = newStoreChangelogClientConfig.getD2ControllerClient()
+        .retryableRequest(
+            globalChangelogClientConfig.getControllerRequestRetryCount(),
+            controllerClient -> controllerClient.getStore(storeName));
+    if (response.isError()) {
+      throw new VeniceException(
+          "Couldn't retrieve store information when building change capture client for store " + storeName);
+    }
+    return PubSubUtil.getPubSubEncryptionKeyUrnLookup(response.getStore());
+  }
+
   protected static PubSubConsumerAdapter getPubSubConsumer(
       ChangelogClientConfig changelogClientConfig,
       PubSubMessageDeserializer pubSubMessageDeserializer,
@@ -243,6 +265,7 @@ public class VeniceChangelogConsumerClientFactory {
         .setPubSubMessageDeserializer(pubSubMessageDeserializer)
         .setPubSubTopicRepository(changelogClientConfig.getPubSubContext().getPubSubTopicRepository())
         .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
+        .setPubSubEncryptionKeyUrnLookup(changelogClientConfig.getPubSubEncryptionKeyUrnLookup())
         .build();
     return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
   }

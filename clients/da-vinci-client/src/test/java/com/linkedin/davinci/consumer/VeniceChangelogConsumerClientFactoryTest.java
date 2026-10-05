@@ -6,10 +6,14 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.expectThrows;
 
@@ -21,15 +25,21 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.schemas.TestKeyRecord;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.views.MaterializedView;
 import io.tehuti.metrics.MetricsRepository;
@@ -39,6 +49,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.function.Function;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -53,6 +65,9 @@ public class VeniceChangelogConsumerClientFactoryTest {
   private static final String TEST_CLUSTER_NAME = "test_cluster";
   private static final String TEST_ZOOKEEPER_ADDRESS = "test_zookeeper";
   private static final String TEST_BOOTSTRAP_FILE_SYSTEM_PATH = "/export/content/data/change-capture";
+  private static final String LOCAL_KAFKA_URL = "http://www.fooAddress.linkedin.com:16337";
+  private static final String PUBSUB_ENCRYPTION_KEY_URN = "urn:li:pubSubEncryptionKey:test";
+  private static final int CONTROLLER_REQUEST_RETRY_COUNT = 3;
 
   @Test
   public void testGetChangelogConsumer() throws ExecutionException, InterruptedException, JsonProcessingException {
@@ -149,6 +164,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     setUpMockStoreResponse(mockControllerClient, STORE_NAME);
     setUpMockStoreResponse(mockControllerClient, STORE_NAME + "-" + "consumer1");
     setUpMockStoreResponse(mockControllerClient, STORE_NAME + "-" + "consumer2");
+    stubRetryableRequest(mockControllerClient);
 
     VeniceChangelogConsumer consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
     Assert.assertTrue(consumer instanceof VeniceAfterImageConsumerImpl);
@@ -196,6 +212,48 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Mockito.when(mockControllerClient.getStore(storeConsumer)).thenReturn(mockStoreResponse);
   }
 
+  private static VeniceChangelogConsumerClientFactory getLegacyChangelogConsumerClientFactory(
+      D2ControllerClient mockControllerClient) {
+    Properties consumerProperties = new Properties();
+    consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, LOCAL_KAFKA_URL);
+    SchemaReader mockSchemaReader = mock(SchemaReader.class);
+    Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setSchemaReader(mockSchemaReader)
+            .setControllerRequestRetryCount(CONTROLLER_REQUEST_RETRY_COUNT);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
+    veniceChangelogConsumerClientFactory.setConsumer(mock(PubSubConsumerAdapter.class));
+    return veniceChangelogConsumerClientFactory;
+  }
+
+  private static StoreResponse getStoreResponse(boolean encryptionEnabled, String pubSubEncryptionKeyUrn) {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setName(STORE_NAME);
+    storeInfo.setPartitionCount(1);
+    storeInfo.setCurrentVersion(1);
+    storeInfo.setEncryptionEnabled(encryptionEnabled);
+    storeInfo.setPubSubEncryptionKeyUrn(pubSubEncryptionKeyUrn);
+    StoreResponse storeResponse = new StoreResponse();
+    storeResponse.setStore(storeInfo);
+    return storeResponse;
+  }
+
+  private static void stubStoreResponse(D2ControllerClient mockControllerClient, StoreResponse storeResponse) {
+    Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
+    stubRetryableRequest(mockControllerClient);
+  }
+
+  /** Makes {@code retryableRequest} run its request once against the mock, so the request reaches the stubs. */
+  private static void stubRetryableRequest(D2ControllerClient mockControllerClient) {
+    Mockito.when(mockControllerClient.retryableRequest(anyInt(), any())).thenAnswer(invocation -> {
+      Function<ControllerClient, ControllerResponse> request = invocation.getArgument(1);
+      return request.apply(mockControllerClient);
+    });
+  }
+
   @Test
   public void testGetChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
@@ -225,6 +283,115 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
     globalChangelogClientConfig.setViewName(VIEW_NAME);
     Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME));
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetPubSubConsumerAttachesEncryptionKeyUrnLookup(boolean hasKeyUrnLookup) {
+    Properties consumerProperties = new Properties();
+    consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, LOCAL_KAFKA_URL);
+    ChangelogClientConfig changelogClientConfig =
+        spy(new ChangelogClientConfig().setConsumerProperties(consumerProperties));
+    Function<String, String> keyUrnLookup = hasKeyUrnLookup ? storeName -> PUBSUB_ENCRYPTION_KEY_URN : null;
+    changelogClientConfig.setPubSubEncryptionKeyUrnLookup(keyUrnLookup);
+    PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
+    PubSubConsumerAdapterFactory adapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(adapter).when(adapterFactory).create(any(PubSubConsumerAdapterContext.class));
+    doReturn(adapterFactory).when(changelogClientConfig).getPubSubConsumerAdapterFactory();
+    PubSubMessageDeserializer deserializer = mock(PubSubMessageDeserializer.class);
+
+    Assert.assertSame(
+        VeniceChangelogConsumerClientFactory.getPubSubConsumer(changelogClientConfig, deserializer, STORE_NAME),
+        adapter);
+
+    ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
+        ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    verify(adapterFactory).create(contextCaptor.capture());
+    Assert.assertSame(contextCaptor.getValue().getPubSubEncryptionKeyUrnLookup(), keyUrnLookup);
+    Assert.assertSame(contextCaptor.getValue().getPubSubMessageDeserializer(), deserializer);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetChangelogConsumerFetchesEncryptionKeyUrnLookupOnce(boolean encryptionEnabled) {
+    D2ControllerClient mockControllerClient = mock(D2ControllerClient.class);
+    stubStoreResponse(
+        mockControllerClient,
+        getStoreResponse(encryptionEnabled, encryptionEnabled ? PUBSUB_ENCRYPTION_KEY_URN : ""));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        getLegacyChangelogConsumerClientFactory(mockControllerClient);
+
+    VeniceChangelogConsumer consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
+    Assert.assertSame(veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME), consumer);
+
+    Function<String, String> keyUrnLookup =
+        ((VeniceAfterImageConsumerImpl) consumer).changelogClientConfig.getPubSubEncryptionKeyUrnLookup();
+    if (encryptionEnabled) {
+      Assert.assertEquals(keyUrnLookup.apply(STORE_NAME), PUBSUB_ENCRYPTION_KEY_URN);
+    } else {
+      Assert.assertNull(keyUrnLookup);
+    }
+    verify(mockControllerClient, times(1)).retryableRequest(eq(CONTROLLER_REQUEST_RETRY_COUNT), any());
+    verify(mockControllerClient, times(1)).getStore(STORE_NAME);
+  }
+
+  @Test
+  public void testGetChangelogConsumerRejectsEncryptedStoreWithoutKeyUrn() {
+    D2ControllerClient mockControllerClient = mock(D2ControllerClient.class);
+    stubStoreResponse(mockControllerClient, getStoreResponse(true, " "));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        getLegacyChangelogConsumerClientFactory(mockControllerClient);
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME));
+    Assert.assertTrue(e.getMessage().contains("Store " + STORE_NAME + " is encryption enabled"), e.getMessage());
+  }
+
+  @Test
+  public void testGetChangelogConsumerFailsWhenStoreLookupFails() {
+    D2ControllerClient mockControllerClient = mock(D2ControllerClient.class);
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("Store " + STORE_NAME + " does not exist");
+    stubStoreResponse(mockControllerClient, errorResponse);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        getLegacyChangelogConsumerClientFactory(mockControllerClient);
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME));
+    Assert.assertEquals(
+        e.getMessage(),
+        "Couldn't retrieve store information when building change capture client for store " + STORE_NAME);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDaVinciBasedChangelogConsumersSkipEncryptionKeyUrnLookup(boolean stateful) {
+    Properties consumerProperties = new Properties();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, LOCAL_KAFKA_URL);
+    consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, TEST_ZOOKEEPER_ADDRESS);
+    consumerProperties.put(DATA_BASE_PATH, TEST_BOOTSTRAP_FILE_SYSTEM_PATH);
+    SchemaReader mockSchemaReader = mock(SchemaReader.class);
+    Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setSchemaReader(mockSchemaReader)
+            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
+            .setIsNewStatelessClientEnabled(!stateful);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    D2ControllerClient mockControllerClient = mock(D2ControllerClient.class);
+    veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
+
+    Object consumer;
+    if (stateful) {
+      consumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
+    } else {
+      consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
+    }
+
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
+    verify(mockControllerClient, never()).retryableRequest(anyInt(), any());
+    verify(mockControllerClient, never()).getStore(anyString());
   }
 
   @Test
