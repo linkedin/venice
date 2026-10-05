@@ -254,13 +254,13 @@ class StoreSchemaManager {
    * @return possibly-coerced schema string that is guaranteed to pass strict parsing.
    */
   String normalizeSchemaForMigration(String clusterName, String storeName, String schemaStr) {
-    if (!isMigrationDestination(clusterName, storeName)) {
+    if (!isStoreMigrationDestination(clusterName, storeName)) {
       return schemaStr;
     }
     return normalizeMigrationSchema(schemaStr);
   }
 
-  boolean isMigrationDestination(String clusterName, String storeName) {
+  boolean isStoreMigrationDestination(String clusterName, String storeName) {
     ZkStoreConfigAccessor accessor = admin.getStoreConfigAccessor(clusterName);
     if (!accessor.containsConfig(storeName)) {
       return false;
@@ -278,17 +278,7 @@ class StoreSchemaManager {
     return store != null && store.isMigrating();
   }
 
-  void validateMigrationProvenance(String clusterName, String storeName) {
-    if (!isMigrationDestination(clusterName, storeName)) {
-      throw new VeniceException("Missing migration destination metadata for " + storeName + " in " + clusterName);
-    }
-    StoreConfig config = admin.getStoreConfigAccessor(clusterName).getStoreConfig(storeName);
-    if (config.getMigrationSrcCluster() == null || config.getMigrationSrcCluster().isEmpty()) {
-      throw new VeniceException("Missing migration source metadata for " + storeName + " in " + clusterName);
-    }
-  }
-
-  static String normalizeMigrationSchema(String schemaStr) {
+  private static String normalizeMigrationSchema(String schemaStr) {
     // Migration context. If strict already passes, leave the string unchanged so we don't
     // introduce gratuitous diffs against the source schema.
     try {
@@ -355,7 +345,7 @@ class StoreSchemaManager {
     valueSchemaStr = normalizeSchemaForMigration(clusterName, storeName, valueSchemaStr);
     ReadWriteSchemaRepository schemaRepository =
         admin.getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    if (isMigrationDestination(clusterName, storeName)) {
+    if (isStoreMigrationDestination(clusterName, storeName)) {
       SchemaEntry existing =
           validateMigrationValueSchema(clusterName, storeName, valueSchemaStr, schemaId, compatibilityType);
       if (existing != null) {
@@ -383,7 +373,13 @@ class StoreSchemaManager {
       String schemaStr,
       int schemaId,
       DirectionalSchemaCompatibilityType compatibilityType) {
-    validateMigrationProvenance(clusterName, storeName);
+    if (!isStoreMigrationDestination(clusterName, storeName)) {
+      throw new VeniceException("Missing migration destination metadata for " + storeName + " in " + clusterName);
+    }
+    StoreConfig config = admin.getStoreConfigAccessor(clusterName).getStoreConfig(storeName);
+    if (config.getMigrationSrcCluster() == null || config.getMigrationSrcCluster().isEmpty()) {
+      throw new VeniceException("Missing migration source metadata for " + storeName + " in " + clusterName);
+    }
     if (schemaId <= 0) {
       throw new IllegalArgumentException("Value schema ID must be positive");
     }

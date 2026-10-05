@@ -136,6 +136,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -1641,11 +1642,10 @@ public final class StoreConfigUpdater {
     if (needToValidateSupersetSchema) {
       // dry run to make sure superset schema generation can work
       SupersetSchemaGenerator generator = admin.getSupersetSchemaGenerator(clusterName);
-      SchemaEntry requiredSuperset =
-          generator.generateSupersetSchemaFromSchemas(admin.getValueSchemas(clusterName, storeName));
+      Collection<SchemaEntry> valueSchemas = admin.getValueSchemas(clusterName, storeName);
+      SchemaEntry requiredSuperset = generator.generateSupersetSchemaFromSchemas(valueSchemas);
       // Compute must reuse an imported superset during migration, rather than allocate a destination-only ID.
-      boolean missingImportedSuperset = migrationDestination && admin.getValueSchemas(clusterName, storeName)
-          .stream()
+      boolean missingImportedSuperset = migrationDestination && valueSchemas.stream()
           .noneMatch(entry -> generator.compareSchema(entry.getSchema(), requiredSuperset.getSchema()));
       if (missingImportedSuperset) {
         throw new VeniceException(

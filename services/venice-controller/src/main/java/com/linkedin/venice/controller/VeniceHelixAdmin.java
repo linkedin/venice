@@ -2095,7 +2095,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public boolean isStoreMigrationDestination(String clusterName, String storeName) {
-    return storeSchemaManager.isMigrationDestination(clusterName, storeName);
+    return storeSchemaManager.isStoreMigrationDestination(clusterName, storeName);
   }
 
   /**

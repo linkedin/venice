@@ -313,9 +313,24 @@ public class TestStoreSchemaManager {
   @Test
   public void testMigrationRequiresDestinationProvenance() {
     StoreConfig migration = configureMigrationDestination();
-    manager.validateMigrationProvenance(CLUSTER, STORE);
+    manager.validateMigrationValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 274, DirectionalSchemaCompatibilityType.FULL);
     migration.setMigrationDestCluster("elsewhere");
-    assertThrows(VeniceException.class, () -> manager.validateMigrationProvenance(CLUSTER, STORE));
+    assertThrows(
+        VeniceException.class,
+        () -> manager
+            .validateMigrationValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 274, DirectionalSchemaCompatibilityType.FULL));
+  }
+
+  @Test
+  public void testMigrationRejectsMissingSourceMetadataBeforeSchemaWrite() {
+    StoreConfig migration = configureMigrationDestination();
+    for (String sourceCluster: new String[] { null, "" }) {
+      migration.setMigrationSrcCluster(sourceCluster);
+      assertThrows(
+          VeniceException.class,
+          () -> manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 274, DirectionalSchemaCompatibilityType.FULL));
+    }
+    verify(schemaRepo, never()).addValueSchema(anyString(), anyString(), anyInt());
   }
 
   @Test
@@ -324,7 +339,7 @@ public class TestStoreSchemaManager {
     migration.setCluster(CLUSTER);
     Store store = mock(Store.class);
     doReturn(store).when(admin).getStore(CLUSTER, STORE);
-    assertFalse(manager.isMigrationDestination(CLUSTER, STORE));
+    assertFalse(manager.isStoreMigrationDestination(CLUSTER, STORE));
     doReturn(316).when(schemaRepo)
         .preCheckValueSchemaAndGetNextAvailableId(STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
     assertThrows(

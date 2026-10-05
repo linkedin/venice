@@ -79,7 +79,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     store.setReadComputationEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(1).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
-    doReturn(true).when(storeSchemaManager).isMigrationDestination(clusterName, storeName);
+    doReturn(true).when(storeSchemaManager).isStoreMigrationDestination(clusterName, storeName);
     doReturn(new SchemaEntry(valueSchemaId, readbackSchema)).when(internalAdmin)
         .getValueSchema(clusterName, storeName, valueSchemaId);
     doReturn(new Schema.Parser().parse(valueSchemaStr)).when(storeSchemaManager)

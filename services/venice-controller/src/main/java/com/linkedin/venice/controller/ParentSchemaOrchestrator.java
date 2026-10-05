@@ -232,7 +232,7 @@ class ParentSchemaOrchestrator {
 
     // defensive code checking
     int actualValueSchemaId;
-    if (storeSchemaManager.isMigrationDestination(clusterName, storeName)) {
+    if (storeSchemaManager.isStoreMigrationDestination(clusterName, storeName)) {
       // A content-based lookup could return bootstrap ID 1 instead of the imported source ID.
       SchemaEntry actual = parent.getVeniceHelixAdmin().getValueSchema(clusterName, storeName, newValueSchemaId);
       if (actual == null
@@ -269,7 +269,7 @@ class ParentSchemaOrchestrator {
     try {
       newValueSchemaStr = storeSchemaManager.normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-      if (storeSchemaManager.isMigrationDestination(clusterName, storeName)) {
+      if (storeSchemaManager.isStoreMigrationDestination(clusterName, storeName)) {
         storeSchemaManager.validateMigrationValueSchema(
             clusterName,
             storeName,
@@ -291,7 +291,7 @@ class ParentSchemaOrchestrator {
       boolean supersetSchemaAlreadyExists =
           store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID;
       // Migration imports the source superset; generating another value schema could consume a source ID.
-      if (!storeSchemaManager.isMigrationDestination(clusterName, storeName) && existingValueSchema != null
+      if (!storeSchemaManager.isStoreMigrationDestination(clusterName, storeName) && existingValueSchema != null
           && (store.isReadComputationEnabled() || store.isWriteComputationEnabled() || supersetSchemaAlreadyExists)) {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
         Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);

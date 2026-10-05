@@ -166,6 +166,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         storeName,
         new UpdateStoreQueryParams().setReadComputationEnabled(true).setLatestSupersetSchemaId(315));
     assertEquals(captureLastUpdateStore().latestSuperSetValueSchemaId, 315);
+    verify(internalAdmin).getValueSchemas(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
@@ -190,6 +191,7 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         () -> parentAdmin
             .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)));
     assertTrue(exception.getMessage().contains("Required superset schema is missing from imported source schemas"));
+    verify(internalAdmin).getValueSchemas(clusterName, storeName);
     verify(veniceWriter, never())
         .put(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
