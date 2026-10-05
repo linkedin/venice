@@ -8,6 +8,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -75,6 +76,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final List<StoreBufferDrainer> drainerList = new CopyOnWriteArrayList<>();
   private final long bufferCapacityPerDrainer;
   private final long blockedDrainerThresholdMs;
+  private final int writePathThreadPriority;
   private final boolean stallMonitoringEnabled;
   /**
    * Deliberately not the metrics thread: with {@code metricsRepository == null} no gauge is ever polled, and a
@@ -106,12 +108,37 @@ public class StoreBufferService extends AbstractStoreBufferService {
         bufferCapacityPerDrainer,
         bufferNotifyDelta,
         queueLeaderWrites,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs,
+      int writePathThreadPriority) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
         null,
         logContext,
         metricsRepository,
         sorted,
         clusterName,
-        blockedDrainerThresholdMs);
+        blockedDrainerThresholdMs,
+        writePathThreadPriority);
   }
 
   /**
@@ -134,7 +161,33 @@ public class StoreBufferService extends AbstractStoreBufferService {
         null,
         true,
         null,
-        TimeUnit.MINUTES.toMillis(5));
+        TimeUnit.MINUTES.toMillis(5),
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        stats,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
   }
 
   /**
@@ -154,10 +207,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
       MetricsRepository metricsRepository,
       boolean sorted,
       String clusterName,
-      long blockedDrainerThresholdMs) {
+      long blockedDrainerThresholdMs,
+      int writePathThreadPriority) {
     this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockedDrainerThresholdMs = blockedDrainerThresholdMs;
+    this.writePathThreadPriority = writePathThreadPriority;
     this.stallMonitoringEnabled = blockedDrainerThresholdMs > 0;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
@@ -404,7 +459,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(
         drainerNum,
-        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", logContext));
+        new DaemonThreadFactory(
+            isSorted ? "Store-writer-sorted" : "Store-writer-hybrid",
+            writePathThreadPriority,
+            logContext));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {

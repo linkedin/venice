@@ -152,8 +152,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
   // Extra logger dedicated for ingestion info for slow partition.
   private static final Logger INGESTION_DEBUGGER_LOGGER = LogManager.getLogger(TopicPartitionIngestionInfo.class);
-  // Ingestion is important but should yield to the read path, so run it slightly below normal priority.
-  private static final int INGESTION_TASK_THREAD_PRIORITY = Thread.NORM_PRIORITY - 1;
 
   private final StorageService storageService;
 
@@ -474,7 +472,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           metricsRepository,
           true,
           serverConfig.getClusterName(),
-          serverConfig.getBlockedDrainerThresholdMs());
+          serverConfig.getBlockedDrainerThresholdMs(),
+          serverConfig.getWritePathThreadPriority());
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 
@@ -526,7 +525,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
           serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
-          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getLogContext()));
+          new DaemonThreadFactory(
+              "AA_WC_PARALLEL_PROCESSING",
+              serverConfig.getWritePathThreadPriority(),
+              serverConfig.getLogContext()));
       new ThreadPoolStats(
           metricsRepository,
           (ThreadPoolExecutor) aaWCWorkLoadProcessingThreadPool,
@@ -543,7 +545,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
-        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getLogContext()));
+        new DaemonThreadFactory(
+            "AA_WC_INGESTION_STORAGE_LOOKUP",
+            serverConfig.getWritePathThreadPriority(),
+            serverConfig.getLogContext()));
     new ThreadPoolStats(
         metricsRepository,
         (ThreadPoolExecutor) aaWCIngestionStorageLookupThreadPool,
@@ -631,8 +636,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (heartbeatMonitoringService != null) {
       heartbeatMonitoringService.setKafkaStoreIngestionService(this);
     }
-    ingestionExecutorService =
-        Executors.newCachedThreadPool(new NamedThreadFactory("StoreIngestionService", INGESTION_TASK_THREAD_PRIORITY));
+    ingestionExecutorService = Executors.newCachedThreadPool(
+        new NamedThreadFactory("StoreIngestionService", serverConfig.getWritePathThreadPriority()));
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
 
     storeBufferService.start();
