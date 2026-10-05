@@ -6,7 +6,6 @@ import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.STOP
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
@@ -22,8 +21,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.helix.HelixException;
-import org.apache.helix.zookeeper.zkclient.exception.ZkException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -136,31 +133,41 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
         return;
       }
       String storeName = entry.getKey();
-      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-      boolean sharedMetadata = systemStoreType != null && systemStoreType.isNewMedataRepositoryAdopted();
-      String userStoreName = sharedMetadata ? systemStoreType.extractRegularStoreName(storeName) : storeName;
-      // When owner == cluster, the lock manager does not map the system-store lock to its owner.
-      // The cluster write lock fences both names without nesting store locks.
-      boolean requiresClusterWriteLock = sharedMetadata && userStoreName.equals(clusterName);
-      try (AutoCloseableLock ignored = requiresClusterWriteLock
-          ? clusterLockManager.createClusterWriteLock()
-          : clusterLockManager.createStoreWriteLock(storeName)) {
-        // Shutdown may clear metadata while this worker waits for an uninterruptible lock.
-        if (shouldStop()) {
-          return;
-        }
-        Store store = metadataRepository.getStore(storeName);
-        // The adapter also returns null when shared metadata is missing but the owner is alive.
-        if (store == null && sharedMetadata && metadataRepository.getStore(userStoreName) != null) {
-          LOGGER.warn(
-              "Skipping push status cleanup for {} in cluster {}: metadata is missing but owning store {} exists",
-              storeName,
-              clusterName,
-              userStoreName);
+      try {
+        // This snapshot only skips protected versions; candidates are rechecked under the lock.
+        Store snapshot = metadataRepository.getStore(storeName);
+        if (snapshot != null && entry.getValue()
+            .stream()
+            .noneMatch(version -> version < snapshot.getCurrentVersion() && !snapshot.containsVersion(version))) {
           continue;
         }
-        cleanUpStore(storeName, store, entry.getValue());
-      } catch (VeniceException | HelixException | ZkException e) {
+        VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+        boolean sharedMetadata = systemStoreType != null && systemStoreType.isNewMedataRepositoryAdopted();
+        String userStoreName = sharedMetadata ? systemStoreType.extractRegularStoreName(storeName) : storeName;
+        // When owner == cluster, the lock manager does not map the system-store lock to its owner.
+        // The cluster write lock fences both names without nesting store locks.
+        boolean requiresClusterWriteLock = sharedMetadata && userStoreName.equals(clusterName);
+        try (AutoCloseableLock ignored = requiresClusterWriteLock
+            ? clusterLockManager.createClusterWriteLock()
+            : clusterLockManager.createStoreReadLock(storeName)) {
+          // Shutdown may clear metadata while this worker waits for an uninterruptible lock.
+          if (shouldStop()) {
+            return;
+          }
+          Store store = metadataRepository.getStore(storeName);
+          // The adapter also returns null when shared metadata is missing but the owner is alive.
+          if (store == null && sharedMetadata && metadataRepository.getStore(userStoreName) != null) {
+            LOGGER.warn(
+                "Skipping push status cleanup for {} in cluster {}: metadata is missing but owning store {} exists",
+                storeName,
+                clusterName,
+                userStoreName);
+            continue;
+          }
+          // Explicit version allocation can reuse identifiers, so keep deletion fenced against metadata writes.
+          cleanUpStore(storeName, store, entry.getValue());
+        }
+      } catch (RuntimeException e) {
         if (shouldStop()) {
           return;
         }
@@ -202,7 +209,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
             offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
           }
           successfulCount++;
-        } catch (VeniceException | HelixException | ZkException e) {
+        } catch (RuntimeException e) {
           if (shouldStop()) {
             return;
           }
@@ -239,7 +246,14 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
       try {
         aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(RUNNING);
         while (!shouldStop()) {
-          cleanUpLeakedPushStatuses();
+          try {
+            cleanUpLeakedPushStatuses();
+          } catch (RuntimeException e) {
+            if (shouldStop()) {
+              break;
+            }
+            LOGGER.error("Unable to sweep leaked push statuses in cluster {}; will retry", clusterName, e);
+          }
           if (!shouldStop()) {
             Thread.sleep(sleepIntervalInMs);
           }
@@ -247,7 +261,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         LOGGER.info("Push status clean-up task interrupted");
-      } catch (RuntimeException | Error e) {
+      } catch (Error e) {
         finalState = FAILED;
         LOGGER.error("Unexpected error in push status clean-up task", e);
       } finally {

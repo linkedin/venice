@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -21,7 +22,6 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -42,7 +42,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.helix.HelixException;
 import org.apache.helix.zookeeper.zkclient.exception.ZkException;
 import org.mockito.MockedStatic;
 import org.mockito.stubbing.Stubber;
@@ -148,7 +147,7 @@ public class LeakedPushStatusCleanUpServiceTest {
         mock(HelixReadOnlyZKSharedSystemStoreRepository.class);
     final HelixReadOnlyStoreRepositoryAdapter repository =
         new HelixReadOnlyStoreRepositoryAdapter(sharedRepository, regularRepository, CLUSTER);
-    final ClusterLockManager locks = new ClusterLockManager(CLUSTER);
+    final ClusterLockManager locks = spy(new ClusterLockManager(CLUSTER));
     final AtomicReference<Thread> cleanupThread = new AtomicReference<>();
     final LeakedPushStatusCleanUpService service =
         new LeakedPushStatusCleanUpService(CLUSTER, accessor, repository, cleaner, locks, stats, 10, 0);
@@ -235,11 +234,10 @@ public class LeakedPushStatusCleanUpServiceTest {
         .when(f.accessor)
         .loadOfflinePushStatusPaths();
     doReturn(inHelix).when(f.cleaner).containsHelixResource(CLUSTER, topic);
-    Stubber failureThenRetry =
-        doThrow(inHelix ? new HelixException("drop failed") : new ZkException("remove failed")).doAnswer(invocation -> {
-          f.service.stopInner();
-          return null;
-        });
+    Stubber failureThenRetry = doThrow(new IllegalStateException("delete failed")).doAnswer(invocation -> {
+      f.service.stopInner();
+      return null;
+    });
     if (inHelix) {
       failureThenRetry.when(f.cleaner).deleteHelixResource(CLUSTER, topic);
     } else {
@@ -268,7 +266,7 @@ public class LeakedPushStatusCleanUpServiceTest {
     String topic = Version.composeKafkaTopic(OWNER, 1);
     String other = Version.composeKafkaTopic("other_store", 1);
     f.paths(topic, other);
-    doThrow(new VeniceException("metadata unavailable")).doReturn(null).when(f.regularRepository).getStore(OWNER);
+    doThrow(new IllegalStateException("metadata unavailable")).doReturn(null).when(f.regularRepository).getStore(OWNER);
 
     f.service.cleanUpLeakedPushStatuses();
 
@@ -279,19 +277,88 @@ public class LeakedPushStatusCleanUpServiceTest {
   }
 
   @Test
-  public void testOwnerRecreatedBeforeLockAcquisitionIsNotCleaned() throws Exception {
+  public void testSweepFailureRetriesOnNextSweep() throws Exception {
     Fixture f = new Fixture();
-    String storeName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(CLUSTER);
+    String topic = Version.composeKafkaTopic(OWNER, 1);
+    doThrow(new ZkException("list failed")).doReturn(Collections.singletonList(topic))
+        .when(f.accessor)
+        .loadOfflinePushStatusPaths();
+    doAnswer(invocation -> {
+      f.service.stopInner();
+      return null;
+    }).when(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+    CountDownLatch stopped = onStopped(f);
+    try {
+      f.service.start();
+      await(stopped);
+      verify(f.accessor, times(2)).loadOfflinePushStatusPaths();
+      verify(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+      verify(f.stats, never()).recordLeakedPushStatusCleanUpServiceState(FAILED);
+    } finally {
+      f.service.stop();
+    }
+  }
+
+  @Test
+  public void testFatalErrorStopsWorker() throws Exception {
+    Fixture f = new Fixture();
+    String topic = Version.composeKafkaTopic(OWNER, 1);
+    f.paths(topic);
+    doThrow(new AssertionError("fatal deletion error")).when(f.cleaner).containsHelixResource(CLUSTER, topic);
+    CountDownLatch failed = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      failed.countDown();
+      return null;
+    }).when(f.stats).recordLeakedPushStatusCleanUpServiceState(FAILED);
+    try {
+      f.service.start();
+      await(failed);
+      verify(f.accessor).loadOfflinePushStatusPaths();
+      verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+      verify(f.stats, never()).recordLeakedPushStatusCleanUpServiceState(STOPPED);
+    } finally {
+      f.service.stop();
+    }
+  }
+
+  @Test
+  public void testProtectedVersionsDoNotAcquireStoreLock() {
+    Fixture f = new Fixture();
+    Store store = mock(Store.class);
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(true).when(store).containsVersion(1);
+    doReturn(store).when(f.regularRepository).getStore(OWNER);
+    f.paths(
+        Version.composeKafkaTopic(OWNER, 1),
+        Version.composeKafkaTopic(OWNER, 2),
+        Version.composeKafkaTopic(OWNER, 3));
+
+    f.service.cleanUpLeakedPushStatuses();
+
+    verifyNoInteractions(f.locks, f.cleaner);
+    verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
+  }
+
+  @DataProvider
+  public Object[][] recreatedStores() {
+    return new Object[][] { { OWNER, OWNER },
+        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(OWNER), OWNER },
+        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(CLUSTER), CLUSTER } };
+  }
+
+  @Test(dataProvider = "recreatedStores")
+  public void testOwnerRecreatedBeforeLockAcquisitionIsNotCleaned(String storeName, String owner) throws Exception {
+    Fixture f = new Fixture();
     String topic = Version.composeKafkaTopic(storeName, 1);
     f.paths(topic);
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try {
       Future<?> cleanup;
-      try (AutoCloseableLock ignored = f.locks.createStoreWriteLock(CLUSTER)) {
+      try (AutoCloseableLock ignored = f.locks.createStoreWriteLock(owner)) {
         cleanup = executor.submit(f.service::cleanUpLeakedPushStatuses);
         awaitLockWait(f.cleanupThread);
-        verify(f.regularRepository, never()).getStore(anyString());
-        doReturn(mock(Store.class)).when(f.regularRepository).getStore(CLUSTER);
+        verify(f.regularRepository).getStore(owner);
+        doReturn(mock(Store.class)).when(f.regularRepository).getStore(owner);
       }
       cleanup.get(TEST_TIMEOUT, TimeUnit.MILLISECONDS);
       verifyNoInteractions(f.cleaner);
@@ -320,6 +387,12 @@ public class LeakedPushStatusCleanUpServiceTest {
     try {
       Future<?> cleanup = executor.submit(f.service::cleanUpLeakedPushStatuses);
       await(deleting);
+      // Other readers can proceed while cleanup still fences a recreating writer.
+      executor.submit(() -> {
+        try (AutoCloseableLock ignored = f.locks.createStoreReadLock(OWNER)) {
+          return null;
+        }
+      }).get(TEST_TIMEOUT, TimeUnit.MILLISECONDS);
       Future<?> recreate = executor.submit(() -> {
         creator.set(Thread.currentThread());
         try (AutoCloseableLock ignored = f.locks.createStoreWriteLock(OWNER)) {
@@ -350,7 +423,8 @@ public class LeakedPushStatusCleanUpServiceTest {
         doReturn(null).when(f.regularRepository).getStore(OWNER);
       }
       await(stopped);
-      verify(f.regularRepository, never()).getStore(anyString());
+      // Only the unlocked pre-filter read ran, not a read of metadata cleared during shutdown.
+      verify(f.regularRepository).getStore(OWNER);
       verifyNoInteractions(f.cleaner);
       verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
     } finally {
