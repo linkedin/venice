@@ -335,7 +335,11 @@ public class LeakedPushStatusCleanUpServiceTest {
 
     f.service.cleanUpLeakedPushStatuses();
 
-    verifyNoInteractions(f.locks, f.cleaner);
+    verify(f.locks).createClusterReadLock();
+    verify(f.locks, never()).createStoreReadLock(anyString());
+    verify(f.locks, never()).createStoreWriteLock(anyString());
+    verify(f.locks, never()).createClusterWriteLock();
+    verifyNoInteractions(f.cleaner);
     verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
   }
 
@@ -410,11 +414,14 @@ public class LeakedPushStatusCleanUpServiceTest {
     }
   }
 
-  @Test
-  public void testShutdownUnderClusterLockDoesNotUseClearedMetadata() throws Exception {
+  @Test(dataProvider = "storeNames")
+  public void testShutdownUnderClusterLockDoesNotUseClearedMetadata(String storeName) throws Exception {
     Fixture f = new Fixture();
     CountDownLatch stopped = onStopped(f);
-    f.paths(Version.composeKafkaTopic(OWNER, 1));
+    Store store = mock(Store.class);
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(store).when(f.regularRepository).getStore(OWNER);
+    f.paths(Version.composeKafkaTopic(storeName, 1));
     try {
       try (AutoCloseableLock ignored = f.locks.createClusterWriteLock()) {
         f.service.start();
@@ -423,8 +430,8 @@ public class LeakedPushStatusCleanUpServiceTest {
         doReturn(null).when(f.regularRepository).getStore(OWNER);
       }
       await(stopped);
-      // Only the unlocked pre-filter read ran, not a read of metadata cleared during shutdown.
-      verify(f.regularRepository).getStore(OWNER);
+      verify(f.regularRepository, never()).getStore(anyString());
+      verify(f.sharedRepository, never()).getStore(anyString());
       verifyNoInteractions(f.cleaner);
       verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
     } finally {

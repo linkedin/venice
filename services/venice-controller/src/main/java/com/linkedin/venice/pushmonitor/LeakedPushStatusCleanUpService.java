@@ -134,12 +134,17 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
       }
       String storeName = entry.getKey();
       try {
-        // This snapshot only skips protected versions; candidates are rechecked under the lock.
-        Store snapshot = metadataRepository.getStore(storeName);
-        if (snapshot != null && entry.getValue()
-            .stream()
-            .noneMatch(version -> version < snapshot.getCurrentVersion() && !snapshot.containsVersion(version))) {
-          continue;
+        // Shared-system-store cache misses can refresh metadata, so fence this read against teardown.
+        try (AutoCloseableLock ignored = clusterLockManager.createClusterReadLock()) {
+          if (shouldStop()) {
+            return;
+          }
+          Store snapshot = metadataRepository.getStore(storeName);
+          if (snapshot != null && entry.getValue()
+              .stream()
+              .noneMatch(version -> version < snapshot.getCurrentVersion() && !snapshot.containsVersion(version))) {
+            continue;
+          }
         }
         VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
         boolean sharedMetadata = systemStoreType != null && systemStoreType.isNewMedataRepositoryAdopted();
