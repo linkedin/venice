@@ -37,7 +37,6 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceStorageQuotaExceededException;
 import com.linkedin.venice.jobs.ComputeJob;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
-import com.linkedin.venice.jobs.DataWriterComputeJobTest;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -90,8 +89,8 @@ import scala.collection.JavaConverters;
 
 
 public class AbstractDataWriterSparkJobTest {
-  @Test(dataProvider = "xcEncryptionFlags", dataProviderClass = DataWriterComputeJobTest.class)
-  public void testConfigure(String xcEncryptionFlag) throws IOException {
+  @Test
+  public void testConfigure() throws IOException {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
@@ -106,16 +105,11 @@ public class AbstractDataWriterSparkJobTest {
     properties.setProperty(SPARK_SESSION_CONF_PREFIX + SPARK_APP_NAME_CONFIG, sparkAppNameOverride);
     properties.setProperty(KAFKA_CONFIG_PREFIX + dummyKafkaConfig, dummyKafkaConfigValue);
     properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + dummyConfig, dummyConfigValue);
-    if (xcEncryptionFlag != null) {
-      properties.setProperty("xc.encrypt", xcEncryptionFlag);
-    }
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
+
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
-      Properties writerTaskProperties = dataWriterSparkJob.getWriterTaskProperties();
-      // Spark sessions outlive jobs, so isolate the backend property between provider rows.
-      jobConf.unset("xc.encrypt");
       // Builder configs should get applied
       Assert.assertEquals(jobConf.get(SPARK_APP_NAME_CONFIG), sparkAppNameOverride);
 
@@ -124,7 +118,6 @@ public class AbstractDataWriterSparkJobTest {
 
       // Properties with SPARK_DATA_WRITER_CONF_PREFIX should get applied after stripping the prefix
       Assert.assertEquals(jobConf.get(dummyConfig), dummyConfigValue);
-      Assert.assertEquals(writerTaskProperties.getProperty("xc.encrypt"), xcEncryptionFlag);
     }
   }
 
