@@ -49,10 +49,9 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
-import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 
 
@@ -175,7 +174,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       final byte[] inputRmdBytes = recordReader.getRmdBytes(recordAvroWrapper, null);
 
       return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, inputRmdBytes }, DEFAULT_SCHEMA);
-    }, ExpressionEncoder.apply(RowEncoder.encoderFor(DEFAULT_SCHEMA)));
+    }, Encoders.row(DEFAULT_SCHEMA));
 
     return df;
   }
