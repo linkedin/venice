@@ -71,6 +71,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -143,6 +144,58 @@ import org.testng.annotations.Test;
  * </ul>
  */
 public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
+  @Test
+  public void testMigrationComputeReusesImportedSuperset() {
+    String storeName = "migration-compute";
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(true).when(internalAdmin).isStoreMigrationDestination(clusterName, storeName);
+    SchemaEntry initial = new SchemaEntry(
+        274,
+        "{\"type\":\"record\",\"name\":\"Value\",\"fields\":[{\"name\":\"a\",\"type\":\"int\",\"default\":0}]}");
+    SchemaEntry superset = new SchemaEntry(
+        315,
+        "{\"type\":\"record\",\"name\":\"Value\",\"fields\":[{\"name\":\"a\",\"type\":\"int\",\"default\":0},"
+            + "{\"name\":\"b\",\"type\":\"int\",\"default\":0}]}");
+    doReturn(Arrays.asList(new SchemaEntry(1, initial.getSchemaStr()), initial, superset)).when(internalAdmin)
+        .getValueSchemas(clusterName, storeName);
+    doReturn(superset).when(internalAdmin).getValueSchema(clusterName, storeName, 315);
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setReadComputationEnabled(true).setLatestSupersetSchemaId(315));
+    assertEquals(captureLastUpdateStore().latestSuperSetValueSchemaId, 315);
+    verify(internalAdmin).getValueSchemas(clusterName, storeName);
+    verify(veniceWriter)
+        .put(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  @Test
+  public void testMigrationComputeRejectsMissingSupersetBeforeConfigUpdate() {
+    String storeName = "migration-compute-missing";
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(true).when(internalAdmin).isStoreMigrationDestination(clusterName, storeName);
+    String first =
+        "{\"type\":\"record\",\"name\":\"Value\",\"fields\":[{\"name\":\"a\",\"type\":\"int\",\"default\":0}]}";
+    doReturn(
+        Arrays.asList(
+            new SchemaEntry(1, first),
+            new SchemaEntry(274, first),
+            new SchemaEntry(315, first.replace("\"a\"", "\"b\"")))).when(internalAdmin)
+                .getValueSchemas(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> parentAdmin
+            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)));
+    assertTrue(exception.getMessage().contains("Required superset schema is missing from imported source schemas"));
+    verify(internalAdmin).getValueSchemas(clusterName, storeName);
+    verify(veniceWriter, never())
+        .put(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
   @DataProvider(name = "writeQuotaEnabledValues")
   public Object[][] writeQuotaEnabledValues() {
     return new Object[][] { { true }, { false } };

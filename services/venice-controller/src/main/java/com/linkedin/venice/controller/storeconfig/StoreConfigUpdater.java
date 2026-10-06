@@ -94,6 +94,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreLifecycleHooksRe
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -126,6 +127,7 @@ import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -134,6 +136,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -1632,12 +1635,22 @@ public final class StoreConfigUpdater {
 
     final boolean readComputeJustEnabled =
         readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
-    boolean needToGenerateSupersetSchema =
+    final boolean migrationDestination =
+        admin.getVeniceHelixAdmin().isStoreMigrationDestination(clusterName, storeName);
+    final boolean needToValidateSupersetSchema =
         !currStore.isSystemStore() && (readComputeJustEnabled || partialUpdateJustEnabled);
-    if (needToGenerateSupersetSchema) {
+    if (needToValidateSupersetSchema) {
       // dry run to make sure superset schema generation can work
-      admin.getSupersetSchemaGenerator(clusterName)
-          .generateSupersetSchemaFromSchemas(admin.getValueSchemas(clusterName, storeName));
+      SupersetSchemaGenerator generator = admin.getSupersetSchemaGenerator(clusterName);
+      Collection<SchemaEntry> valueSchemas = admin.getValueSchemas(clusterName, storeName);
+      SchemaEntry requiredSuperset = generator.generateSupersetSchemaFromSchemas(valueSchemas);
+      // Compute must reuse an imported superset during migration, rather than allocate a destination-only ID.
+      boolean missingImportedSuperset = migrationDestination && valueSchemas.stream()
+          .noneMatch(entry -> generator.compareSchema(entry.getSchema(), requiredSuperset.getSchema()));
+      if (missingImportedSuperset) {
+        throw new VeniceException(
+            "Required superset schema is missing from imported source schemas for store " + storeName);
+      }
     }
 
     AdminOperation message = new AdminOperation();
@@ -1645,7 +1658,7 @@ public final class StoreConfigUpdater {
     message.payloadUnion = setStore;
     admin.sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
-    if (needToGenerateSupersetSchema) {
+    if (needToValidateSupersetSchema && !migrationDestination) {
       admin.addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
     }
     if (partialUpdateJustEnabled) {
