@@ -2004,22 +2004,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Returns the topic whose upstream position slot (RT vs. remote VT) the replica's upstream positions are tracked and
-   * checkpointed under. This is the leader topic, or the version topic if the leader topic is not set.
-   *
-   * A non-leader replica that has not received EOP is still replaying batch data, whose upstream positions belong to
-   * the remote VT, so the version topic is returned even if the leader topic is already an RT topic. Leaders are
-   * unaffected: they only switch to an RT topic after processing a TS, which follows EOP.
+   * checkpointed under. This is the leader topic, or the version topic if the leader topic is not set or if the replica
+   * is a follower still replaying batch data.
    */
   PubSubTopic getUpstreamTopicForPositionTracking(PartitionConsumptionState partitionConsumptionState) {
     PubSubTopic upstreamTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     if (upstreamTopic == null) {
       return versionTopic;
     }
-    if (upstreamTopic.isRealTime() && !partitionConsumptionState.isEndOfPushReceived()
-        && !isLeader(partitionConsumptionState)) {
+    if (upstreamTopic.isRealTime() && isFollowerReplayingBatch(partitionConsumptionState)) {
       return versionTopic;
     }
     return upstreamTopic;
+  }
+
+  /**
+   * A follower that has not received EOP is still replaying batch data, whose upstream positions belong to the remote
+   * VT, so it must not treat an RT topic as its upstream yet. The version-wide TS in
+   * {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState} can exist before this replica reaches EOP. TS
+   * follows EOP in every VT partition, and leaders only switch to RT after processing a TS, so leaders are unaffected.
+   */
+  private static boolean isFollowerReplayingBatch(PartitionConsumptionState partitionConsumptionState) {
+    return !isLeader(partitionConsumptionState) && !partitionConsumptionState.isEndOfPushReceived();
   }
 
   private void updateOffsetsAsRemoteConsumeLeader(
@@ -4118,14 +4124,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * consume. Otherwise, for hybrid stores: 1. If the node remains as follower, it might never become online because
      * hybrid lag measurement will return a large value for VT. 2. If the node promotes to leader, it will subscribe to
      * VT at RT offset.
-     *
-     * The TS in PCS may be the version-wide one from
-     * {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}, which can exist while this replica is still
-     * replaying batch data. A follower's leader topic must not run ahead of its own VT position, or batch-era upstream
-     * positions would be tracked as RT positions. TS follows EOP in every VT partition, so it is only applied after EOP.
      */
     TopicSwitchWrapper topicSwitch = partitionConsumptionState.getTopicSwitch();
-    if (topicSwitch != null && partitionConsumptionState.isEndOfPushReceived()
+    if (topicSwitch != null && !isFollowerReplayingBatch(partitionConsumptionState)
         && !topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
       offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
     }
