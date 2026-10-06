@@ -4119,13 +4119,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * hybrid lag measurement will return a large value for VT. 2. If the node promotes to leader, it will subscribe to
      * VT at RT offset.
      *
-     * The TS in PCS may come from {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}, which is shared
-     * by all partitions of the version and is populated as soon as any partition processes a TS. The controller sends
-     * TS once one replica per partition has received EOP, so this replica may still be replaying batch data. A
-     * follower's leader topic must never run ahead of its own VT position: the leader topic decides whether upstream
-     * positions are tracked and checkpointed as RT or remote VT positions, so switching it to RT before EOP would file
-     * batch-era (remote VT) upstream positions under RT. TS always follows EOP in every VT partition, and the follower
-     * sets its leader topic when it consumes the TS from its own VT, so the TS is only applied here after EOP.
+     * The TS in PCS may be the version-wide one from
+     * {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}, which can exist while this replica is still
+     * replaying batch data. A follower's leader topic must not run ahead of its own VT position, or batch-era upstream
+     * positions would be tracked as RT positions. TS follows EOP in every VT partition, so it is only applied after EOP.
      */
     TopicSwitchWrapper topicSwitch = partitionConsumptionState.getTopicSwitch();
     if (topicSwitch != null && partitionConsumptionState.isEndOfPushReceived()
