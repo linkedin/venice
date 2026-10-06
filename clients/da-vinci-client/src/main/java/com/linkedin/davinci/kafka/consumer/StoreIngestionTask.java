@@ -4037,10 +4037,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
       } else if (startOfPush == null) {
         // No SOP available; retrieve the dictionary directly from the VT
-        newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
-            kafkaVersionTopic,
-            new VeniceProperties(kafkaProps),
-            PubSubMessageDeserializer.createDefaultDeserializer());
+        VeniceProperties dictionaryConsumerProps = new VeniceProperties(kafkaProps);
+        Function<String, String> keyUrnLookup = pubSubContext.getPubSubEncryptionKeyUrnLookup();
+        newStoreVersionState.compressionDictionary = keyUrnLookup != null
+            ? DictionaryUtils.readDictionaryFromEncryptedKafka(kafkaVersionTopic, dictionaryConsumerProps, keyUrnLookup)
+            : DictionaryUtils.readDictionaryFromKafka(
+                kafkaVersionTopic,
+                dictionaryConsumerProps,
+                PubSubMessageDeserializer.createDefaultDeserializer());
       }
     }
     newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;
