@@ -24,6 +24,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -46,6 +47,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
@@ -293,6 +295,113 @@ public class DataIntegrityValidatorTest {
     // Clear RT segments and ensure it returns false again
     validator.clearRtSegments(partition);
     assertFalse(validator.hasGlobalRtDivState(partition));
+  }
+
+  @Test
+  public void testClearExpiredStateRemovesOnlyExpiredProducers() {
+    int partition = 1;
+    long maxAgeInMs = TimeUnit.DAYS.toMillis(14);
+    String topicName = Utils.getUniqueString("TestStore") + "_v1";
+    DataIntegrityValidator validator = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED,
+        maxAgeInMs);
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partition);
+    long now = System.currentTimeMillis();
+    GUID expiredGuid = GuidUtils.getGUID(VeniceProperties.empty());
+    GUID liveGuid = GuidUtils.getGUID(VeniceProperties.empty());
+    GUID boundaryGuid = GuidUtils.getGUID(VeniceProperties.empty());
+    validateSoS(validator, topicPartition, expiredGuid, now - maxAgeInMs - 1);
+    validateSoS(validator, topicPartition, liveGuid, now);
+    validateSoS(validator, topicPartition, boundaryGuid, now - maxAgeInMs);
+
+    validator.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, now);
+
+    Map<GUID, Segment> vtSegments = validator.registerPartition(partition).getVtSegmentsForTesting();
+    assertFalse(vtSegments.containsKey(expiredGuid));
+    assertTrue(vtSegments.containsKey(liveGuid));
+    // Exactly at the cutoff is not expired, matching the drainer's strict "<" comparison.
+    assertTrue(vtSegments.containsKey(boundaryGuid));
+  }
+
+  @Test
+  public void testClearExpiredStateIsNoOpWhenDisabledOrAnchorUnknownOrPartitionUntracked() {
+    int partition = 1;
+    String topicName = Utils.getUniqueString("TestStore") + "_v1";
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partition);
+    long now = System.currentTimeMillis();
+    long oldTimestamp = now - TimeUnit.DAYS.toMillis(30);
+    GUID guid = GuidUtils.getGUID(VeniceProperties.empty());
+
+    // Max age disabled: nothing is cleared.
+    DataIntegrityValidator disabled = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED,
+        DataIntegrityValidator.DISABLED);
+    validateSoS(disabled, topicPartition, guid, oldTimestamp);
+    disabled.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, now);
+    assertTrue(disabled.hasVtDivState(partition));
+
+    // Unknown anchor (empty OffsetRecord yields -1): nothing is cleared.
+    DataIntegrityValidator enabled = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED,
+        TimeUnit.DAYS.toMillis(14));
+    validateSoS(enabled, topicPartition, guid, oldTimestamp);
+    enabled.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, -1);
+    assertTrue(enabled.hasVtDivState(partition));
+
+    // Untracked partition: no exception and no tracker is created.
+    int untrackedPartition = 2;
+    enabled.clearExpiredState(PartitionTracker.VERSION_TOPIC, untrackedPartition, now);
+    assertFalse(enabled.hasVtDivState(untrackedPartition));
+  }
+
+  @Test
+  public void testClearedProducerReappearingMidSegmentIsToleratedOnlyAfterEndOfPush() {
+    int partition = 1;
+    long maxAgeInMs = TimeUnit.DAYS.toMillis(14);
+    String topicName = Utils.getUniqueString("TestStore") + "_v1";
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partition);
+    long now = System.currentTimeMillis();
+    GUID guid = GuidUtils.getGUID(VeniceProperties.empty());
+
+    for (boolean endOfPushReceived: new boolean[] { true, false }) {
+      DataIntegrityValidator validator = new DataIntegrityValidator(
+          topicName,
+          PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+          DataIntegrityValidator.DISABLED,
+          maxAgeInMs);
+      validateSoS(validator, topicPartition, guid, now - maxAgeInMs - 1);
+      validator.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, now);
+      assertFalse(validator.hasVtDivState(partition));
+
+      // The same producer resumes mid-segment, as if its state had never been tracked.
+      DefaultPubSubMessage put = buildPutRecord(topicPartition, 100L, guid, 0, 50, now);
+      if (endOfPushReceived) {
+        validator.validateMessage(PartitionTracker.VERSION_TOPIC, put, true, Lazy.FALSE);
+        assertTrue(validator.hasVtDivState(partition));
+      } else {
+        assertThrows(
+            ImproperlyStartedSegmentException.class,
+            () -> validator.validateMessage(PartitionTracker.VERSION_TOPIC, put, false, Lazy.FALSE));
+      }
+    }
+  }
+
+  private static void validateSoS(
+      DataIntegrityValidator validator,
+      PubSubTopicPartition topicPartition,
+      GUID guid,
+      long producerTimestamp) {
+    DefaultPubSubMessage sos = buildSoSRecord(topicPartition, 0L, guid, producerTimestamp, null, CheckSumType.NONE);
+    validator.validateMessage(PartitionTracker.VERSION_TOPIC, sos, false, Lazy.FALSE);
   }
 
   private static DefaultPubSubMessage buildPutRecord(

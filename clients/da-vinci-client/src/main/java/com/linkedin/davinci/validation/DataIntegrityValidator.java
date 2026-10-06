@@ -141,6 +141,21 @@ public class DataIntegrityValidator {
     }
   }
 
+  /**
+   * Removes in-memory producer state for the partition that is expired according to {@link #maxAgeInMs}, relative to
+   * {@code latestMessageTimeInMs}. Unlike {@link #updateOffsetRecordForPartition}, no {@link OffsetRecord} is updated.
+   * No-op if expiry is disabled, the anchor time is unknown (negative), or the partition is not tracked.
+   */
+  public void clearExpiredState(PartitionTracker.TopicType type, int partition, long latestMessageTimeInMs) {
+    if (this.maxAgeInMs == DISABLED || latestMessageTimeInMs < 0) {
+      return;
+    }
+    PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
+    if (partitionTracker != null) {
+      partitionTracker.clearExpiredState(type, latestMessageTimeInMs - this.maxAgeInMs);
+    }
+  }
+
   public void cloneVtProducerStates(int partition, DataIntegrityValidator newValidator, long latestMessageTimeInMs) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
     registerPartition(partition).cloneVtProducerStates(destPartitionTracker, maxAgeInMs, latestMessageTimeInMs, false);

@@ -2911,6 +2911,14 @@ public class ConfigKeys {
   public static final String DIV_PRODUCER_STATE_MAX_AGE_MS = "div.producer.state.max.age.ms";
 
   /**
+   * Whether to also clear expired producer state (per {@link #DIV_PRODUCER_STATE_MAX_AGE_MS}) from the leader's
+   * in-memory consumer DIV when a partition checkpoints. Without this, the consumer DIV keeps every producer it has
+   * seen for as long as the replica remains leader. Only applies when Global RT DIV is disabled.
+   */
+  public static final String SERVER_CONSUMER_DIV_EXPIRED_STATE_CLEANUP_ENABLED =
+      "server.consumer.div.expired.state.cleanup.enabled";
+
+  /**
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
