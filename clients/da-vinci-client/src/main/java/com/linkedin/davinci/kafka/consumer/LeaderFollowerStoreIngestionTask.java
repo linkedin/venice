@@ -1940,7 +1940,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)
             && extractUpstreamClusterId(consumerRecord) != -1) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
-          PubSubTopic upstreamTopic = getUpstreamTopicForPositionTracking(partitionConsumptionState);
+          PubSubTopic upstreamTopic = isEndOfPushRecord(consumerRecord)
+              ? versionTopic
+              : getUpstreamTopicForPositionTracking(partitionConsumptionState);
           if (dryRun) {
             final PubSubPosition previousUpstreamPosition =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
@@ -2023,6 +2025,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private static boolean isFollowerReplayingBatch(PartitionConsumptionState partitionConsumptionState) {
     return !isLeader(partitionConsumptionState) && !partitionConsumptionState.isEndOfPushReceived();
+  }
+
+  /**
+   * The EOP flag is already set when the EOP record's own offsets are recorded, but EOP is never sourced from an RT
+   * topic, so its upstream position always belongs to the remote VT.
+   */
+  private static boolean isEndOfPushRecord(DefaultPubSubMessage consumerRecord) {
+    return consumerRecord.getKey().isControlMessage()
+        && ControlMessageType.valueOf((ControlMessage) consumerRecord.getValue().payloadUnion) == END_OF_PUSH;
   }
 
   private void updateOffsetsAsRemoteConsumeLeader(

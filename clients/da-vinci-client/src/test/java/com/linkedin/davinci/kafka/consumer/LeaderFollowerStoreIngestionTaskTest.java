@@ -4611,6 +4611,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
 
     DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    KafkaKey dataKey = new KafkaKey(MessageType.PUT, new byte[] { 0 });
+    doReturn(dataKey).when(record).getKey();
     doReturn(new PubSubTopicPartitionImpl(versionTopic, 0)).when(record).getTopicPartition();
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.producerMetadata = new ProducerMetadata();
@@ -4620,10 +4622,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(0).when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(record);
     LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset upstreamUpdate =
         mock(LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset.class);
-
-    // A follower still replaying batch data tracks and checkpoints upstream positions as remote VT, not RT.
-    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
-    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+    Runnable processRecord = () -> leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
         mockPartitionConsumptionState,
         record,
         null,
@@ -4632,22 +4631,28 @@ public class LeaderFollowerStoreIngestionTaskTest {
         mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class),
         () -> NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
         false);
+
+    // A follower still replaying batch data tracks and checkpoints upstream positions as remote VT, not RT.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    processRecord.run();
     leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
     verify(upstreamUpdate).apply(any(), eq(versionTopic), eq(upstreamPosition));
     verify(offsetRecord).checkpointRemoteVtPosition(any());
     verify(offsetRecord, never()).checkpointRtPositions(any());
 
-    // After EOP the RT leader topic is used.
+    // processEndOfPush sets the EOP flag before the EOP record's own offsets are recorded; it stays remote VT.
     doReturn(true).when(mockPartitionConsumptionState).isEndOfPushReceived();
-    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
-        mockPartitionConsumptionState,
-        record,
-        null,
-        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class),
-        upstreamUpdate,
-        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class),
-        () -> NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
-        false);
+    ControlMessage endOfPush = new ControlMessage();
+    endOfPush.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    kafkaValue.payloadUnion = endOfPush;
+    doReturn(new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0])).when(record).getKey();
+    processRecord.run();
+    verify(upstreamUpdate, times(2)).apply(any(), eq(versionTopic), eq(upstreamPosition));
+    verify(upstreamUpdate, never()).apply(any(), eq(rtTopic), any());
+
+    // Records after EOP use the RT leader topic.
+    doReturn(dataKey).when(record).getKey();
+    processRecord.run();
     leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
     verify(upstreamUpdate).apply(any(), eq(rtTopic), eq(upstreamPosition));
     verify(offsetRecord).checkpointRtPositions(any());
