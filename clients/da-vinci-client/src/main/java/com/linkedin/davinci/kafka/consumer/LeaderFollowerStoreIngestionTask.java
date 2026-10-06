@@ -2009,10 +2009,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   PubSubTopic getUpstreamTopicForPositionTracking(PartitionConsumptionState partitionConsumptionState) {
     PubSubTopic upstreamTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    if (upstreamTopic == null) {
-      return versionTopic;
-    }
-    if (upstreamTopic.isRealTime() && isFollowerReplayingBatch(partitionConsumptionState)) {
+    if (upstreamTopic == null || (upstreamTopic.isRealTime() && isFollowerReplayingBatch(partitionConsumptionState))) {
       return versionTopic;
     }
     return upstreamTopic;

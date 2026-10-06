@@ -4601,35 +4601,60 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testGetUpstreamTopicForPositionTracking() throws InterruptedException {
+  public void testFollowerUpstreamPositionBeforeEndOfPushIsNotTrackedAsRt() throws InterruptedException {
     setUp(true);
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
     PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(rtTopic).when(offsetRecord).getLeaderTopic(any());
     doReturn(offsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(new PubSubTopicPartitionImpl(versionTopic, 0)).when(record).getTopicPartition();
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.producerMetadata = new ProducerMetadata();
+    doReturn(kafkaValue).when(record).getValue();
+    PubSubPosition upstreamPosition = mock(PubSubPosition.class);
+    doReturn(upstreamPosition).when(leaderFollowerStoreIngestionTask).extractUpstreamPosition(record);
+    doReturn(0).when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(record);
+    LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset upstreamUpdate =
+        mock(LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset.class);
+
+    // A follower still replaying batch data tracks and checkpoints upstream positions as remote VT, not RT.
     doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        record,
+        null,
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class),
+        upstreamUpdate,
+        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class),
+        () -> NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        false);
+    leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
+    verify(upstreamUpdate).apply(any(), eq(versionTopic), eq(upstreamPosition));
+    verify(offsetRecord).checkpointRemoteVtPosition(any());
+    verify(offsetRecord, never()).checkpointRtPositions(any());
 
-    // No leader topic
-    assertEquals(
-        leaderFollowerStoreIngestionTask.getUpstreamTopicForPositionTracking(mockPartitionConsumptionState),
-        versionTopic);
-
-    // Follower with an RT leader topic before EOP is still replaying batch data
-    doReturn(rtTopic).when(offsetRecord).getLeaderTopic(any());
-    assertEquals(
-        leaderFollowerStoreIngestionTask.getUpstreamTopicForPositionTracking(mockPartitionConsumptionState),
-        versionTopic);
-
-    // Leaders are unaffected
-    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
-    assertEquals(
-        leaderFollowerStoreIngestionTask.getUpstreamTopicForPositionTracking(mockPartitionConsumptionState),
-        rtTopic);
-
-    // Follower after EOP
-    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    // After EOP the RT leader topic is used.
     doReturn(true).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        record,
+        null,
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class),
+        upstreamUpdate,
+        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class),
+        () -> NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        false);
+    leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
+    verify(upstreamUpdate).apply(any(), eq(rtTopic), eq(upstreamPosition));
+    verify(offsetRecord).checkpointRtPositions(any());
+
+    // Leaders are unaffected.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
     assertEquals(
         leaderFollowerStoreIngestionTask.getUpstreamTopicForPositionTracking(mockPartitionConsumptionState),
         rtTopic);
