@@ -49,9 +49,7 @@ dependencies {
     // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
     exclude group: 'org.apache.logging.log4j'
 
-    // Spark 3.5 brings netty-all 4.1.96, which wins conflict resolution over Venice's pinned
-    // netty 4.1.74 and breaks the Netty-based server TLS stack. Spark provides its own Netty at
-    // runtime on the cluster, so exclude the transitive one and keep Venice's pinned version.
+    // Spark 3.5's transitive netty 4.1.96 breaks Venice's pinned netty 4.1.74 TLS stack
     exclude group: 'io.netty'
   }
   implementation (libraries.apacheSparkCore) {
@@ -69,9 +67,7 @@ dependencies {
     // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
     exclude group: 'org.apache.logging.log4j'
 
-    // Spark 3.5 brings netty-all 4.1.96, which wins conflict resolution over Venice's pinned
-    // netty 4.1.74 and breaks the Netty-based server TLS stack. Spark provides its own Netty at
-    // runtime on the cluster, so exclude the transitive one and keep Venice's pinned version.
+    // Spark 3.5's transitive netty 4.1.96 breaks Venice's pinned netty 4.1.74 TLS stack
     exclude group: 'io.netty'
   }
   implementation (libraries.apacheSparkSql) {
@@ -89,9 +85,7 @@ dependencies {
     // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
     exclude group: 'org.apache.logging.log4j'
 
-    // Spark 3.5 brings netty-all 4.1.96, which wins conflict resolution over Venice's pinned
-    // netty 4.1.74 and breaks the Netty-based server TLS stack. Spark provides its own Netty at
-    // runtime on the cluster, so exclude the transitive one and keep Venice's pinned version.
+    // Spark 3.5's transitive netty 4.1.96 breaks Venice's pinned netty 4.1.74 TLS stack
     exclude group: 'io.netty'
   }
 
