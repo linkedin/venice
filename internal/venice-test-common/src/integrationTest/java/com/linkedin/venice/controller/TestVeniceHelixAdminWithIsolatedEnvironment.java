@@ -1,14 +1,19 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -16,7 +21,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pushmonitor.AggPushStatusCleanUpStats;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -24,13 +33,17 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.HelixAdmin;
 import org.apache.helix.model.ExternalView;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -321,6 +334,95 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertNotNull(storeConfigAccessor.getStoreConfig(newStoreName));
     veniceAdmin.deleteStore(clusterName, newStoreName, Store.IGNORE_VERSION, true);
     Assert.assertNull(storeConfigAccessor.getStoreConfig(newStoreName));
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testOrphanPushCleanupPreservesSystemResourceWithLiveOwner() throws Exception {
+    String orphanStore = Utils.getUniqueString("orphan-store");
+    String liveStore = Utils.getUniqueString("live-store");
+    String systemStore = VeniceSystemStoreType.META_STORE.getSystemStoreName(liveStore);
+    String orphanTopic = Version.composeKafkaTopic(orphanStore, 1);
+    String liveTopic = Version.composeKafkaTopic(systemStore, 1);
+    HelixVeniceClusterResources resources = veniceAdmin.getHelixVeniceClusterResources(clusterName);
+    HelixAdmin helixAdmin = veniceAdmin.getHelixAdminClient().getHelixAdmin();
+    ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
+    MetricsRepository cleanupMetrics = new MetricsRepository();
+    try {
+      veniceAdmin.createStore(clusterName, liveStore, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+      Assert.assertTrue(veniceAdmin.isLeaderControllerFor(clusterName));
+      Assert.assertNull(resources.getStoreMetadataRepository().getStore(orphanStore));
+      Assert.assertNotNull(resources.getStoreMetadataRepository().getStore(liveStore));
+      Assert.assertNull(resources.getStoreMetadataRepository().getStore(systemStore));
+      Assert.assertNull(
+          veniceAdmin.getReadOnlyZKSharedSystemStoreRepository()
+              .getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()));
+
+      VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
+          clusterName,
+          zkClient,
+          new HelixAdapterSerializer(),
+          controllerConfig.getLogContext(),
+          1);
+      for (String topic: Arrays.asList(orphanTopic, liveTopic)) {
+        accessor.createOfflinePushStatusAndItsPartitionStatuses(
+            new OfflinePushStatus(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS));
+        veniceAdmin.getHelixAdminClient().createVeniceStorageClusterResources(clusterName, topic, 1, 1);
+        Assert.assertNotNull(helixAdmin.getResourceIdealState(clusterName, topic));
+        Assert.assertEquals(
+            zkClient.getChildren(accessor.getOfflinePushStatuesParentPath() + "/" + topic),
+            Collections.singletonList("0"));
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          ExternalView externalView = helixAdmin.getResourceExternalView(clusterName, topic);
+          Assert.assertNotNull(externalView);
+          Assert.assertEquals(externalView.getStateMap(topic + "_0"), Collections.singletonMap(NODE_ID, "LEADER"));
+        });
+      }
+
+      AggPushStatusCleanUpStats stats =
+          new AggPushStatusCleanUpStats(clusterName, cleanupMetrics, resources.getStoreMetadataRepository(), false);
+      LeakedPushStatusCleanUpService cleanup = new LeakedPushStatusCleanUpService(
+          clusterName,
+          accessor,
+          resources.getStoreMetadataRepository(),
+          veniceAdmin,
+          resources.getClusterLockManager(),
+          stats,
+          100,
+          0);
+      cleanup.start();
+      try {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Assert.assertNull(helixAdmin.getResourceIdealState(clusterName, orphanTopic));
+          Assert.assertNull(helixAdmin.getResourceExternalView(clusterName, orphanTopic));
+          Assert.assertFalse(zkClient.exists(accessor.getOfflinePushStatuesParentPath() + "/" + orphanTopic));
+          Assert.assertFalse(zkClient.exists(accessor.getOfflinePushStatuesParentPath() + "/" + orphanTopic + "/0"));
+        });
+        Assert.assertTrue(veniceAdmin.isLeaderControllerFor(clusterName));
+        Assert.assertNotNull(resources.getStoreMetadataRepository().getStore(liveStore));
+        Assert.assertNotNull(helixAdmin.getResourceIdealState(clusterName, liveTopic));
+        Assert.assertEquals(
+            helixAdmin.getResourceExternalView(clusterName, liveTopic).getStateMap(liveTopic + "_0"),
+            Collections.singletonMap(NODE_ID, "LEADER"));
+        Assert.assertEquals(
+            zkClient.getChildren(accessor.getOfflinePushStatuesParentPath() + "/" + liveTopic),
+            Collections.singletonList("0"));
+      } finally {
+        cleanup.stop();
+        TestUtils
+            .waitForNonDeterministicAssertion(
+                10,
+                TimeUnit.SECONDS,
+                () -> Assert.assertEquals(
+                    cleanupMetrics
+                        .getMetric(
+                            stats.getTotalStats().getName() + "--leaked_push_status_clean_up_service_state.Gauge")
+                        .value(),
+                    (double) PushStatusCleanUpServiceState.STOPPED.getValue()));
+      }
+    } finally {
+      zkClient.close();
+      cleanupMetrics.close();
+    }
   }
 
   @Test
