@@ -115,6 +115,11 @@ dependencies {
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
     exclude group: 'org.apache.avro'
     exclude group: 'org.apache.logging.log4j'
+
+    // Spark 3.5 brings netty-all 4.1.96, which wins conflict resolution over Venice's pinned
+    // netty 4.1.74 and breaks the Netty-based server TLS stack in integration tests. Spark provides
+    // its own Netty at runtime on the cluster, so exclude the transitive one here as well.
+    exclude group: 'io.netty'
   }
   implementation libraries.antlr4
   implementation libraries.antlr4Runtime
