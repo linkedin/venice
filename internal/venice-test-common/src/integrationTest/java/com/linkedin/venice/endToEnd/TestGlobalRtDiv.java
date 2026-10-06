@@ -1175,12 +1175,11 @@ public class TestGlobalRtDiv {
       int partition,
       GUID producerGuid) {
     StoreIngestionTask sit = server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
-    if (sit == null || sit.getDataIntegrityValidator() == null
-        || !sit.getDataIntegrityValidator().hasVtDivState(partition)) {
+    DataIntegrityValidator validator = sit == null ? null : sit.getDataIntegrityValidator();
+    if (validator == null || !validator.hasVtDivState(partition)) {
       return null;
     }
-    return sit.getDataIntegrityValidator()
-        .cloneVtProducerStates(partition, false, DataIntegrityValidator.DISABLED)
+    return validator.cloneVtProducerStates(partition, false, DataIntegrityValidator.DISABLED)
         .getPartitionStates(PartitionTracker.VERSION_TOPIC)
         .get(GuidUtils.guidToUtf8(producerGuid));
   }
