@@ -98,6 +98,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_DIV_EXPIRED_STATE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER;
@@ -647,6 +648,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final List<String> forkedProcessJvmArgList;
 
   private final long divProducerStateMaxAgeMs;
+  private final boolean consumerDivExpiredStateCleanupEnabled;
   private final PubSubClientsFactory pubSubClientsFactory;
   private final String routerPrincipalName;
 
@@ -1166,6 +1168,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             .filter(s -> s.length() > 0)
             .collect(Collectors.toList());
     divProducerStateMaxAgeMs = serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, DataIntegrityValidator.DISABLED);
+    consumerDivExpiredStateCleanupEnabled =
+        serverProperties.getBoolean(SERVER_CONSUMER_DIV_EXPIRED_STATE_CLEANUP_ENABLED, false);
     pubSubClientsFactory = new PubSubClientsFactory(serverProperties);
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "venice-router");
     ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
@@ -2051,6 +2055,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getDivProducerStateMaxAgeMs() {
     return this.divProducerStateMaxAgeMs;
+  }
+
+  public boolean isConsumerDivExpiredStateCleanupEnabled() {
+    return this.consumerDivExpiredStateCleanupEnabled;
   }
 
   public PubSubClientsFactory getPubSubClientsFactory() {
