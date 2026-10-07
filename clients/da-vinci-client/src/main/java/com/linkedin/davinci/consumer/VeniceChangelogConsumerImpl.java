@@ -109,13 +109,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
   private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
-  private static final Duration SEEK_POSITION_RESOLUTION_INITIAL_RETRY_DELAY = Duration.ofMillis(100);
-  private static final Duration SEEK_POSITION_RESOLUTION_MAX_RETRY_DELAY = Duration.ofSeconds(5);
+  // Position lookups that still fail after this many attempts point to a broker problem, not a transient blip.
+  static final int SEEK_POSITION_RESOLUTION_MAX_ATTEMPTS = 10;
   private static final Duration SEEK_POSITION_RESOLUTION_MAX_RETRY_DURATION = Duration.ofMinutes(1);
   // Position resolution has no side effects, so any failure is safe to retry within the bounded attempt budget.
   private static final List<Class<? extends Throwable>> SEEK_POSITION_RESOLUTION_RETRIABLE_FAILURES =
       Collections.singletonList(Exception.class);
   protected long subscribeTime = Long.MAX_VALUE;
+  private Duration seekPositionResolutionInitialRetryDelay = Duration.ofMillis(100);
+  private Duration seekPositionResolutionMaxRetryDelay = Duration.ofSeconds(5);
 
   protected final ReadWriteLock subscriptionLock = new ReentrantReadWriteLock();
 
@@ -720,7 +722,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               e);
           if (seekFailure == null) {
             seekFailure = e;
-          } else {
+          } else if (seekFailure != e) {
+            // The adapter may rethrow a shared exception instance; self-suppression throws IllegalArgumentException.
             seekFailure.addSuppressed(e);
           }
         }
@@ -746,11 +749,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       VeniceCheckedSupplier<PubSubPosition> positionSupplier) {
     return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
         positionSupplier,
-        changelogClientConfig.getSeekPositionResolutionMaxAttempts(),
-        SEEK_POSITION_RESOLUTION_INITIAL_RETRY_DELAY,
-        SEEK_POSITION_RESOLUTION_MAX_RETRY_DELAY,
+        SEEK_POSITION_RESOLUTION_MAX_ATTEMPTS,
+        seekPositionResolutionInitialRetryDelay,
+        seekPositionResolutionMaxRetryDelay,
         SEEK_POSITION_RESOLUTION_MAX_RETRY_DURATION,
         SEEK_POSITION_RESOLUTION_RETRIABLE_FAILURES);
+  }
+
+  @VisibleForTesting
+  void setSeekPositionResolutionRetryDelays(Duration initialRetryDelay, Duration maxRetryDelay) {
+    this.seekPositionResolutionInitialRetryDelay = initialRetryDelay;
+    this.seekPositionResolutionMaxRetryDelay = maxRetryDelay;
   }
 
   private void recordSubscriptionForHeartbeatReporting(PubSubTopicPartition topicPartition) {

@@ -93,12 +93,14 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -922,7 +924,6 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testSeekToTimestampWithErrorLogging() throws ExecutionException, InterruptedException, TimeoutException {
-    changelogClientConfig.setSeekPositionResolutionMaxAttempts(2);
     Map<Integer, Long> partitionTimestampMap = new HashMap<>();
     partitionTimestampMap.put(0, 1000L);
     // Verify null response for offsetForTime
@@ -950,6 +951,7 @@ public class VeniceChangelogConsumerImplTest {
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.setSeekPositionResolutionRetryDelays(Duration.ofMillis(1), Duration.ofMillis(2));
     CompletableFuture<Void> seekFuture =
         veniceChangelogConsumer.internalSeekToTimestamps(partitionTimestampMap, mockLogger);
     try {
@@ -969,14 +971,14 @@ public class VeniceChangelogConsumerImplTest {
     Long timestamp = (Long) params.get(1);
     Assert.assertEquals(timestamp.longValue(), 1000L);
     // The failure is retried, logged once after the retries are exhausted, and never touches the subscription.
-    verify(mockErrorPubSubConsumer, times(2)).getPositionByTimestamp(any(), anyLong());
+    verify(mockErrorPubSubConsumer, times(VeniceChangelogConsumerImpl.SEEK_POSITION_RESOLUTION_MAX_ATTEMPTS))
+        .getPositionByTimestamp(any(), anyLong());
     verify(mockErrorPubSubConsumer, never()).unSubscribe(any());
     verify(mockErrorPubSubConsumer, never()).subscribe(any(), any(PubSubPosition.class), anyBoolean());
   }
 
   @Test
   public void testFailedSeekToTimestampKeepsExistingSubscription() {
-    changelogClientConfig.setSeekPositionResolutionMaxAttempts(3);
     PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
     Set<PubSubTopicPartition> assignments = Collections.synchronizedSet(new HashSet<>());
     assignments.add(partition0);
@@ -991,12 +993,14 @@ public class VeniceChangelogConsumerImplTest {
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.setSeekPositionResolutionRetryDelays(Duration.ofMillis(1), Duration.ofMillis(2));
 
     ExecutionException e = expectThrows(
         ExecutionException.class,
         () -> veniceChangelogConsumer.seekToTimestamps(Collections.singletonMap(0, 1000L)).get(30, TimeUnit.SECONDS));
     assertTrue(e.getCause() instanceof PubSubOpTimeoutException);
-    verify(mockPubSubConsumer, times(3)).getPositionByTimestamp(partition0, 1000L);
+    verify(mockPubSubConsumer, times(VeniceChangelogConsumerImpl.SEEK_POSITION_RESOLUTION_MAX_ATTEMPTS))
+        .getPositionByTimestamp(partition0, 1000L);
     // Before the fix the partition was unsubscribed before the lookup and never re-subscribed.
     verify(mockPubSubConsumer, never()).unSubscribe(any());
     assertTrue(
@@ -1006,7 +1010,6 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testSeekToTimestampRecoversFromTransientLookupFailure() throws Exception {
-    changelogClientConfig.setSeekPositionResolutionMaxAttempts(3);
     PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
     PubSubPosition targetPosition = ApacheKafkaOffsetPosition.of(42L);
     Set<PubSubTopicPartition> assignments = Collections.synchronizedSet(new HashSet<>());
@@ -1059,6 +1062,36 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer).subscribe(eq(partition1), eq(tailPosition), eq(true));
     assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(1));
     assertFalse(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(0));
+  }
+
+  @Test
+  public void testSeekSharedSubscribeExceptionDoesNotAbortRemainingPartitions() {
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    PubSubTopicPartition partition1 = new PubSubTopicPartitionImpl(oldVersionTopic, 1);
+    PubSubTopicPartition partition2 = new PubSubTopicPartitionImpl(oldVersionTopic, 2);
+    PubSubPosition tailPosition = ApacheKafkaOffsetPosition.of(100L);
+    when(mockPubSubConsumer.getAssignment()).thenReturn(Collections.synchronizedSet(new HashSet<>()));
+    when(mockPubSubConsumer.endPosition(any())).thenReturn(tailPosition);
+    // Two partitions fail with the same exception instance, which must not trigger self-suppression.
+    VeniceException sharedFailure = new VeniceException("simulated shared subscribe failure");
+    doThrow(sharedFailure).when(mockPubSubConsumer).subscribe(eq(partition0), any(PubSubPosition.class), eq(true));
+    doThrow(sharedFailure).when(mockPubSubConsumer).subscribe(eq(partition1), any(PubSubPosition.class), eq(true));
+
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    Set<Integer> partitions = new LinkedHashSet<>(Arrays.asList(0, 1, 2));
+    ExecutionException e = expectThrows(
+        ExecutionException.class,
+        () -> veniceChangelogConsumer.seekToTail(partitions).get(30, TimeUnit.SECONDS));
+    assertEquals(e.getCause(), sharedFailure);
+    assertEquals(sharedFailure.getSuppressed().length, 0);
+    verify(mockPubSubConsumer).subscribe(eq(partition2), eq(tailPosition), eq(true));
+    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(2));
   }
 
   @Test

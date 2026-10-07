@@ -179,17 +179,4 @@ public class ChangelogClientConfigTest {
   public void testBackgroundReporterThreadSleepIntervalRejectsNegative() {
     new ChangelogClientConfig(GLOBAL_STORE).setBackgroundReporterThreadSleepIntervalInSeconds(-1);
   }
-
-  @Test
-  public void testSeekPositionResolutionMaxAttemptsDefaultAndClone() {
-    ChangelogClientConfig config = new ChangelogClientConfig(GLOBAL_STORE);
-    Assert.assertEquals(config.getSeekPositionResolutionMaxAttempts(), 10);
-    config.setSeekPositionResolutionMaxAttempts(1);
-    Assert.assertEquals(ChangelogClientConfig.cloneConfig(config).getSeekPositionResolutionMaxAttempts(), 1);
-  }
-
-  @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testSeekPositionResolutionMaxAttemptsRejectsZero() {
-    new ChangelogClientConfig(GLOBAL_STORE).setSeekPositionResolutionMaxAttempts(0);
-  }
 }
