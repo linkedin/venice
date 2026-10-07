@@ -144,9 +144,12 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
@@ -190,7 +193,12 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final VeniceControllerRequestHandler requestHandler;
   private final LogContext logContext;
+  private final BooleanSupplier apiReadiness;
+  private final AtomicBoolean draining = new AtomicBoolean();
 
+  /**
+   * Without an owner-provided readiness signal, {@code /health} remains unavailable.
+   */
   public AdminSparkServer(
       int port,
       Admin admin,
@@ -205,6 +213,39 @@ public class AdminSparkServer extends AbstractVeniceService {
       boolean disableParentRequestTopicForStreamPushes,
       PubSubTopicRepository pubSubTopicRepository,
       VeniceControllerRequestHandler requestHandler) {
+    this(
+        port,
+        admin,
+        metricsRepository,
+        clusters,
+        enforceSSL,
+        sslConfig,
+        checkReadMethodForKafka,
+        accessController,
+        disabledRoutes,
+        jettyConfigOverrides,
+        disableParentRequestTopicForStreamPushes,
+        pubSubTopicRepository,
+        requestHandler,
+        () -> false);
+  }
+
+  public AdminSparkServer(
+      int port,
+      Admin admin,
+      MetricsRepository metricsRepository,
+      Set<String> clusters,
+      boolean enforceSSL,
+      Optional<SSLConfig> sslConfig,
+      boolean checkReadMethodForKafka,
+      Optional<DynamicAccessController> accessController,
+      List<ControllerRoute> disabledRoutes,
+      VeniceProperties jettyConfigOverrides,
+      boolean disableParentRequestTopicForStreamPushes,
+      PubSubTopicRepository pubSubTopicRepository,
+      VeniceControllerRequestHandler requestHandler,
+      BooleanSupplier apiReadiness) {
+    this.apiReadiness = Objects.requireNonNull(apiReadiness, "apiReadiness");
     this.logContext = admin.getLogContext();
     this.port = port;
     this.enforceSSL = enforceSSL;
@@ -235,6 +276,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
+    draining.set(false);
     AtomicReference<Exception> initFailure = new AtomicReference<>();
     httpService.initExceptionHandler(initFailure::set);
 
@@ -263,7 +305,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       /**
        * If SSL is enforced, there is nothing to do in the secure admin server which has SSL enabled already;
        * but in the insecure admin server, we need to fail most of the routes except cluster/leader-controller
-       * discovery and health. The health endpoint exposes only a constant response, allowing HTTP liveness probes.
+       * discovery and health. The health endpoint exposes only fixed status bodies, allowing HTTP readiness probes.
        *
        * TODO: Currently we allow insecure access to cluster/leader-controller discovery because D2Client inside
        *       VeniceSystemProducer is not secure yet; once the new D2Client is used everywhere, we are safe to
@@ -330,9 +372,13 @@ public class AdminSparkServer extends AbstractVeniceService {
     AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
     StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController);
 
-    // Liveness is independent of leadership and parent-region readiness.
     httpService.get(HEALTH.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_PLAIN);
+      if (!isApiServing() || !apiReadiness.getAsBoolean()) {
+        response.status(HttpStatus.SC_SERVICE_UNAVAILABLE);
+        request.attribute(REQUEST_SUCCEED, false);
+        return "NOT_READY";
+      }
       return "OK";
     });
 
@@ -767,7 +813,15 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   @Override
   public void stopInner() {
+    draining.set(true);
     httpService.stop();
+  }
+
+  /**
+   * Unlike {@link #isRunning()}, this becomes false before listener shutdown completes.
+   */
+  public boolean isApiServing() {
+    return isRunning() && !draining.get();
   }
 
   int getPort() {

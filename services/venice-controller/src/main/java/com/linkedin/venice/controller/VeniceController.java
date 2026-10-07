@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.SSLConfig;
@@ -73,6 +74,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -114,6 +116,15 @@ public class VeniceController {
 
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
       ModuleMetricEntityInterface.getUniqueMetricEntities(getMetricEntityEnumClasses());
+
+  private enum ApiInitializationState {
+    NOT_STARTED, INITIALIZING, INITIALIZED, FAILED, DRAINING
+  }
+
+  // Restart creates a new owner; draining must defeat any late initialization completion.
+  private final AtomicReference<ApiInitializationState> apiInitializationState =
+      new AtomicReference<>(ApiInitializationState.NOT_STARTED);
+  private final boolean apiRegionEligible;
 
   // services
   private final VeniceControllerService controllerService;
@@ -205,6 +216,8 @@ public class VeniceController {
 
   public VeniceController(VeniceControllerContext ctx) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(ctx.getPropertiesList());
+    VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
+    this.apiRegionEligible = !commonConfig.isParent() || commonConfig.getParentControllerRegionState() == ACTIVE;
     this.logContext = multiClusterConfigs.getLogContext();
     this.metricsRepository = ctx.getMetricsRepository();
     this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
@@ -291,7 +304,15 @@ public class VeniceController {
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
         pubSubTopicRepository,
-        secure ? secureRequestHandler : unsecureRequestHandler);
+        secure ? secureRequestHandler : unsecureRequestHandler,
+        this::isApiReady);
+  }
+
+  private boolean isApiReady() {
+    ApiInitializationState snapshot = apiInitializationState.get();
+    return snapshot == ApiInitializationState.INITIALIZED && apiRegionEligible && controllerService.isRunning()
+        && adminServer.isApiServing() && (!sslEnabled || secureAdminServer.isApiServing())
+        && apiInitializationState.get() == snapshot;
   }
 
   private TopicCleanupService createTopicCleanupService() {
@@ -444,33 +465,45 @@ public class VeniceController {
    * Causes venice controller and its associated services to begin execution.
    */
   public void start() {
-    LOGGER.info(
-        "Starting controller: {} for clusters: {} with ZKAddress: {}",
-        multiClusterConfigs.getControllerName(),
-        multiClusterConfigs.getClusters(),
-        multiClusterConfigs.getZkAddress());
-    controllerService.start();
-    adminServer.start();
-    if (sslEnabled) {
-      secureAdminServer.start();
-    }
+    boolean initializesReadiness =
+        apiInitializationState.compareAndSet(ApiInitializationState.NOT_STARTED, ApiInitializationState.INITIALIZING);
+    boolean initializationSucceeded = false;
+    try {
+      LOGGER.info(
+          "Starting controller: {} for clusters: {} with ZKAddress: {}",
+          multiClusterConfigs.getControllerName(),
+          multiClusterConfigs.getClusters(),
+          multiClusterConfigs.getZkAddress());
+      controllerService.start();
+      adminServer.start();
+      if (sslEnabled) {
+        secureAdminServer.start();
+      }
 
-    topicCleanupService.start();
-    storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
-    storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
-    unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
-    systemStoreRepairService.ifPresent(AbstractVeniceService::start);
-    disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
-    deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
-    // register with service discovery at the end
-    asyncRetryingServiceDiscoveryAnnouncer.register();
-    if (adminGrpcServer != null) {
-      adminGrpcServer.start();
+      topicCleanupService.start();
+      storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
+      storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
+      unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
+      systemStoreRepairService.ifPresent(AbstractVeniceService::start);
+      disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
+      deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
+      // register with service discovery at the end
+      asyncRetryingServiceDiscoveryAnnouncer.register();
+      if (adminGrpcServer != null) {
+        adminGrpcServer.start();
+      }
+      if (adminSecureGrpcServer != null) {
+        adminSecureGrpcServer.start();
+      }
+      LOGGER.info("Controller is started.");
+      initializationSucceeded = true;
+    } finally {
+      if (initializesReadiness) {
+        apiInitializationState.compareAndSet(
+            ApiInitializationState.INITIALIZING,
+            initializationSucceeded ? ApiInitializationState.INITIALIZED : ApiInitializationState.FAILED);
+      }
     }
-    if (adminSecureGrpcServer != null) {
-      adminSecureGrpcServer.start();
-    }
-    LOGGER.info("Controller is started.");
   }
 
   private void initializeSystemSchema(Admin admin) {
@@ -573,6 +606,7 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
+    apiInitializationState.set(ApiInitializationState.DRAINING);
     // unregister from service discovery first
     asyncRetryingServiceDiscoveryAnnouncer.unregister();
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
