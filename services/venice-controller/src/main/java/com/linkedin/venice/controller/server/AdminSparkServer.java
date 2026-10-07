@@ -65,6 +65,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORE_LARGES
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerRoute.HEALTH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.IS_STORE_VERSION_READY_FOR_DATA_RECOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.KILL_OFFLINE_PUSH_JOB;
@@ -262,7 +263,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       /**
        * If SSL is enforced, there is nothing to do in the secure admin server which has SSL enabled already;
        * but in the insecure admin server, we need to fail most of the routes except cluster/leader-controller
-       * discovery.
+       * discovery and health. The health endpoint exposes only a constant response, allowing HTTP liveness probes.
        *
        * TODO: Currently we allow insecure access to cluster/leader-controller discovery because D2Client inside
        *       VeniceSystemProducer is not secure yet; once the new D2Client is used everywhere, we are safe to
@@ -271,7 +272,7 @@ public class AdminSparkServer extends AbstractVeniceService {
        */
       if (enforceSSL && !sslEnabled) {
         if (!CLUSTER_DISCOVERY.pathEquals(request.uri()) && !LEADER_CONTROLLER.pathEquals(request.uri())
-            && !MASTER_CONTROLLER.pathEquals(request.uri())) {
+            && !MASTER_CONTROLLER.pathEquals(request.uri()) && !HEALTH.pathEquals(request.uri())) {
           httpService.halt(403, "Access denied, Venice Controller has enforced SSL.");
         }
       }
@@ -328,6 +329,12 @@ public class AdminSparkServer extends AbstractVeniceService {
     DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
     AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
     StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController);
+
+    // Liveness is independent of leadership and parent-region readiness.
+    httpService.get(HEALTH.getPath(), (request, response) -> {
+      response.type(HttpConstants.TEXT_PLAIN);
+      return "OK";
+    });
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);

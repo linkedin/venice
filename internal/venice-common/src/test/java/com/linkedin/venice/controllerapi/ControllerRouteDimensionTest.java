@@ -1,7 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.HttpMethod;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionTestFixture;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -11,6 +13,16 @@ import org.testng.annotations.Test;
 
 public class ControllerRouteDimensionTest {
   @Test
+  public void testHealthRouteRequiresNoParameters() {
+    assertEquals(ControllerRoute.HEALTH.getPath(), "/health");
+    assertEquals(ControllerRoute.HEALTH.getHttpMethod(), HttpMethod.GET);
+    assertTrue(ControllerRoute.HEALTH.getParams().isEmpty());
+    assertTrue(ControllerRoute.HEALTH.getOptionalParams().isEmpty());
+    assertEquals(ControllerRoute.valueOfPath("/health"), ControllerRoute.HEALTH);
+    assertEquals(ControllerRoute.valueOfPath("/healthcheck"), ControllerRoute.UNKNOWN_ROUTE);
+  }
+
+  @Test
   public void testUpdateStoreVersionStorageModeRequiresCluster() {
     assertTrue(ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE.getParams().contains(ControllerApiConstants.CLUSTER));
   }
@@ -19,6 +31,7 @@ public class ControllerRouteDimensionTest {
   public void testDimensionInterface() {
     Map<ControllerRoute, String> expectedValues = CollectionUtils.<ControllerRoute, String>mapBuilder()
         .put(ControllerRoute.UNKNOWN_ROUTE, "unknown_route")
+        .put(ControllerRoute.HEALTH, "health")
         .put(ControllerRoute.REQUEST_TOPIC, "request_topic")
         .put(ControllerRoute.EMPTY_PUSH, "empty_push")
         .put(ControllerRoute.END_OF_PUSH, "end_of_push")
