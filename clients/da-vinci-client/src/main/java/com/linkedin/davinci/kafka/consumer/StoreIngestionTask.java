@@ -4757,9 +4757,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
         || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
       return; // Skip validation for ingestion heartbeat and DoL stamp records.
-    } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
-      // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
+    } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)
+        && !validator.hasProducerState(type, consumerRecord)) {
+      // Skip validation for self-produced records that this validator has no state for, since it never tracks its own
+      // producer. If there were any issues, the followers would've reported it already.
       // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
+      // Self-produced is based on hostname, so it also matches a previous process on the same host. If state exists for
+      // that producer (e.g. inherited via blob transfer), the record must be validated to advance it. Otherwise, the
+      // stale state is checkpointed and later reported as MISSING by replicas that bootstrap from this one.
       return;
     }
     // Global RT DIV messages are not skipped. See validateAndFilterOutDuplicateMessagesFromLeaderTopic()

@@ -295,6 +295,40 @@ public class DataIntegrityValidatorTest {
     assertFalse(validator.hasGlobalRtDivState(partition));
   }
 
+  @Test
+  public void testHasProducerState() {
+    int partition = 1;
+    String topicName = Utils.getUniqueString("TestStore") + "_v1";
+    DataIntegrityValidator validator = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED);
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partition);
+    TopicType rtType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, "brokerUrl-1");
+    GUID trackedGuid = GuidUtils.getGUID(VeniceProperties.empty());
+    GUID untrackedGuid = GuidUtils.getGUID(VeniceProperties.empty());
+    long now = System.currentTimeMillis();
+    DefaultPubSubMessage trackedRecord = buildPutRecord(topicPartition, 1L, trackedGuid, 0, 1, now);
+    DefaultPubSubMessage untrackedRecord = buildPutRecord(topicPartition, 2L, untrackedGuid, 0, 1, now);
+
+    // No tracker for the partition yet
+    assertFalse(validator.hasProducerState(PartitionTracker.VERSION_TOPIC, trackedRecord));
+
+    validator.validateMessage(
+        PartitionTracker.VERSION_TOPIC,
+        buildSoSRecord(topicPartition, 0L, trackedGuid, now, null, CheckSumType.NONE),
+        false,
+        Lazy.FALSE);
+    assertTrue(validator.hasProducerState(PartitionTracker.VERSION_TOPIC, trackedRecord));
+    assertFalse(validator.hasProducerState(PartitionTracker.VERSION_TOPIC, untrackedRecord));
+    // VT state is not visible as RT state
+    assertFalse(validator.hasProducerState(rtType, trackedRecord));
+
+    validator.clearPartition(partition);
+    assertFalse(validator.hasProducerState(PartitionTracker.VERSION_TOPIC, trackedRecord));
+  }
+
   private static DefaultPubSubMessage buildPutRecord(
       PubSubTopicPartition topicPartition,
       long offset,

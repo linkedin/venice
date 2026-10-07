@@ -688,6 +688,47 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
   }
 
+  /**
+   * Self-produced records (by hostname) are only skipped when the validator has no state for their producer. If state
+   * exists, e.g. inherited via blob transfer after a restart on the same host, the record must be validated so the
+   * state advances instead of being checkpointed stale.
+   */
+  @Test(timeOut = 60_000)
+  public void testValidateMessageSkipsSelfProducedRecordsOnlyWithoutProducerState() throws InterruptedException {
+    setUp();
+    PartitionConsumptionState pcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    DataIntegrityValidator validator = mock(DataIntegrityValidator.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(record).getKey();
+    PartitionTracker.TopicType type = PartitionTracker.VERSION_TOPIC;
+
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+
+    // Self-produced without producer state: skipped
+    doReturn(false).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, never()).validateMessage(any(), any(), anyBoolean(), any());
+
+    // Self-produced with producer state: validated
+    doReturn(true).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(1)).validateMessage(eq(type), eq(record), eq(true), any());
+
+    // Not self-produced: validated regardless of producer state
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+    doReturn(false).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(2)).validateMessage(eq(type), eq(record), eq(true), any());
+
+    // Global RT DIV disabled: validated even if self-produced
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(3)).validateMessage(eq(type), eq(record), eq(true), any());
+  }
+
   @Test
   public void testGetIngestionProgressPercentage() throws InterruptedException {
     setUp();
