@@ -1933,7 +1933,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
       }
 
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
         // also update the leader topic position using the upstream position in LeaderMetadata
@@ -1941,10 +1940,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)
             && extractUpstreamClusterId(consumerRecord) != -1) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
-          PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-          if (upstreamTopic == null) {
-            upstreamTopic = versionTopic;
-          }
+          PubSubTopic upstreamTopic = isEndOfPushRecord(consumerRecord)
+              ? versionTopic
+              : getUpstreamTopicForPositionTracking(partitionConsumptionState);
           if (dryRun) {
             final PubSubPosition previousUpstreamPosition =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
@@ -1996,10 +1994,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (isDaVinciClient) {
       return;
     }
-    PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-    if (upstreamTopic == null) {
-      upstreamTopic = versionTopic;
-    }
+    PubSubTopic upstreamTopic = getUpstreamTopicForPositionTracking(partitionConsumptionState);
     if (upstreamTopic.isRealTime()) {
       offsetRecord.checkpointRtPositions(partitionConsumptionState.getLatestProcessedRtPositions());
     } else {
@@ -2007,6 +2002,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
     offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
+  }
+
+  /**
+   * Returns the topic whose upstream position slot (RT vs. remote VT) the replica's upstream positions are tracked and
+   * checkpointed under. This is the leader topic, or the version topic if the leader topic is not set or if the replica
+   * is a follower still replaying batch data.
+   */
+  PubSubTopic getUpstreamTopicForPositionTracking(PartitionConsumptionState partitionConsumptionState) {
+    PubSubTopic upstreamTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    if (upstreamTopic == null || (upstreamTopic.isRealTime() && isFollowerReplayingBatch(partitionConsumptionState))) {
+      return versionTopic;
+    }
+    return upstreamTopic;
+  }
+
+  /**
+   * A follower that has not received EOP is still replaying batch data, whose upstream positions belong to the remote
+   * VT, so it must not treat an RT topic as its upstream yet. The version-wide TS in
+   * {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState} can exist before this replica reaches EOP. TS
+   * follows EOP in every VT partition, and leaders only switch to RT after processing a TS, so leaders are unaffected.
+   */
+  private static boolean isFollowerReplayingBatch(PartitionConsumptionState partitionConsumptionState) {
+    return !isLeader(partitionConsumptionState) && !partitionConsumptionState.isEndOfPushReceived();
+  }
+
+  /**
+   * The EOP flag is already set when the EOP record's own offsets are recorded, but EOP is never sourced from an RT
+   * topic, so its upstream position always belongs to the remote VT.
+   */
+  private static boolean isEndOfPushRecord(DefaultPubSubMessage consumerRecord) {
+    return consumerRecord.getKey().isControlMessage()
+        && ControlMessageType.valueOf((ControlMessage) consumerRecord.getValue().payloadUnion) == END_OF_PUSH;
   }
 
   private void updateOffsetsAsRemoteConsumeLeader(
@@ -4107,10 +4134,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * VT at RT offset.
      */
     TopicSwitchWrapper topicSwitch = partitionConsumptionState.getTopicSwitch();
-    if (topicSwitch != null) {
-      if (!topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
-        offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
-      }
+    if (topicSwitch != null && !isFollowerReplayingBatch(partitionConsumptionState)
+        && !topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
+      offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
     }
   }
 
