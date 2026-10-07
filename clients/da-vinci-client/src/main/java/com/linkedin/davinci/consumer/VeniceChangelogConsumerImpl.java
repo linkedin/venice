@@ -62,14 +62,17 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceCheckedSupplier;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.VeniceView;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -106,6 +109,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
   private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
+  private static final Duration SEEK_POSITION_RESOLUTION_INITIAL_RETRY_DELAY = Duration.ofMillis(100);
+  private static final Duration SEEK_POSITION_RESOLUTION_MAX_RETRY_DELAY = Duration.ofSeconds(5);
+  private static final Duration SEEK_POSITION_RESOLUTION_MAX_RETRY_DURATION = Duration.ofMinutes(1);
+  // Position resolution has no side effects, so any failure is safe to retry within the bounded attempt budget.
+  private static final List<Class<? extends Throwable>> SEEK_POSITION_RESOLUTION_RETRIABLE_FAILURES =
+      Collections.singletonList(Exception.class);
   protected long subscribeTime = Long.MAX_VALUE;
 
   protected final ReadWriteLock subscriptionLock = new ReentrantReadWriteLock();
@@ -430,7 +439,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
     // Get latest version topic
     PubSubTopic topic = getCurrentServingVersionTopic();
-    return internalSeek(partitions, topic, p -> pubSubConsumer.subscribe(p, PubSubSymbolicPosition.EARLIEST));
+    return internalSeek(partitions, topic, p -> PubSubSymbolicPosition.EARLIEST, false);
   }
 
   @Override
@@ -445,7 +454,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
     PubSubTopic topic = getCurrentServingVersionTopic();
-    return internalSeek(partitions, topic, p -> pubSubConsumer.subscribe(p, PubSubSymbolicPosition.EARLIEST));
+    return internalSeek(partitions, topic, p -> PubSubSymbolicPosition.EARLIEST, false);
   }
 
   @Override
@@ -511,7 +520,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
     PubSubTopic topic = getCurrentServingVersionTopic();
-    return internalSeek(partitions, topic, p -> pubSubConsumerSeek(p, pubSubConsumer.endPosition(p)));
+    return internalSeek(
+        partitions,
+        topic,
+        p -> resolveSeekPositionWithRetry(p, () -> pubSubConsumer.endPosition(p)),
+        true);
   }
 
   protected PubSubTopic getCurrentServingVersionTopic() {
@@ -545,11 +558,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     for (VeniceChangeCoordinate coordinate: checkpoints) {
       checkLiveVersion(coordinate.getTopic());
       PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
-      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
-      synchronousSeek(
-          Collections.singleton(coordinate.getPartition()),
-          topic,
-          foo -> pubSubConsumerSeek(pubSubTopicPartition, coordinate.getPosition()));
+      synchronousSeek(Collections.singleton(coordinate.getPartition()), topic, p -> coordinate.getPosition(), true);
       pubSubTopicNameToCompressorMap.remove(topic.getName());
     }
   }
@@ -604,13 +613,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
     return internalSeek(timestamps.keySet(), topic, partition -> {
       try {
-        PubSubPosition offset = pubSubConsumer.getPositionByTimestamp(partition, topicPartitionLongMap.get(partition));
-        // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
-        if (offset == null) {
-          offset = pubSubConsumer.endPosition(partition);
-        }
-        pubSubConsumerSeek(partition, offset);
-      } catch (Exception e) {
+        return resolveSeekPositionWithRetry(partition, () -> {
+          PubSubPosition position =
+              pubSubConsumer.getPositionByTimestamp(partition, topicPartitionLongMap.get(partition));
+          // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
+          return position != null ? position : pubSubConsumer.endPosition(partition);
+        });
+      } catch (RuntimeException e) {
         logger.error(
             "Encounter unexpected error trying to seek to timestamp for topic partition: {}, timestamp: {}",
             Utils.getReplicaId(partition),
@@ -618,7 +627,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             e);
         throw e;
       }
-    });
+    }, true);
   }
 
   @Override
@@ -646,38 +655,102 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
-      SeekFunction seekAction) {
+      SeekPositionResolver positionResolver,
+      boolean isInclusive) {
     return CompletableFuture.supplyAsync(() -> {
-      synchronousSeek(partitions, targetTopic, seekAction);
+      synchronousSeek(partitions, targetTopic, positionResolver, isInclusive);
       return null;
     }, seekExecutorService);
   }
 
-  protected void synchronousSeek(Set<Integer> partitions, PubSubTopic targetTopic, SeekFunction seekAction) {
-    List<PubSubTopicPartition> topicPartitionListToSeek;
+  /**
+   * Moves the given partitions to positions on {@code targetTopic} in two phases, so that a failed seek never leaves a
+   * partition silently unsubscribed:
+   * <ol>
+   *   <li>Resolve the target position of every partition. Nothing has been unsubscribed yet, so if any resolution
+   *   fails the current subscriptions are left untouched and the partitions keep consuming where they were.</li>
+   *   <li>Swap each partition onto its already-resolved position, one partition at a time. A failure for one partition
+   *   does not prevent the others from being moved, and every failure is rethrown to the caller.</li>
+   * </ol>
+   */
+  protected void synchronousSeek(
+      Set<Integer> partitions,
+      PubSubTopic targetTopic,
+      SeekPositionResolver positionResolver,
+      boolean isInclusive) {
+    boolean anySubscribed = false;
+    RuntimeException seekFailure = null;
     subscriptionLock.writeLock().lock();
     try {
-      // Prune out current subscriptions
-      Set<PubSubTopicPartition> assignments = getTopicAssignment();
-      for (PubSubTopicPartition topicPartition: assignments) {
+      List<PubSubTopicPartition> topicPartitionListToSeek =
+          getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
+
+      Map<PubSubTopicPartition, PubSubPosition> targetPositions = new LinkedHashMap<>();
+      for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
+        targetPositions.put(topicPartition, positionResolver.resolve(topicPartition));
+      }
+
+      Map<Integer, List<PubSubTopicPartition>> currentAssignmentsByPartition = new HashMap<>();
+      for (PubSubTopicPartition topicPartition: getTopicAssignment()) {
         if (partitions.contains(topicPartition.getPartitionNumber())) {
-          pubSubConsumer.unSubscribe(topicPartition);
+          currentAssignmentsByPartition.computeIfAbsent(topicPartition.getPartitionNumber(), k -> new ArrayList<>())
+              .add(topicPartition);
         }
       }
 
-      topicPartitionListToSeek = getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
-
-      for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
-        seekAction.apply(topicPartition);
-        recordSubscriptionForHeartbeatReporting(topicPartition);
+      for (Map.Entry<PubSubTopicPartition, PubSubPosition> target: targetPositions.entrySet()) {
+        PubSubTopicPartition topicPartition = target.getKey();
+        try {
+          for (PubSubTopicPartition currentAssignment: currentAssignmentsByPartition
+              .getOrDefault(topicPartition.getPartitionNumber(), Collections.emptyList())) {
+            pubSubConsumer.unSubscribe(currentAssignment);
+          }
+          if (isInclusive) {
+            pubSubConsumerSeek(topicPartition, target.getValue());
+          } else {
+            pubSubConsumer.subscribe(topicPartition, target.getValue());
+          }
+          recordSubscriptionForHeartbeatReporting(topicPartition);
+          anySubscribed = true;
+        } catch (RuntimeException e) {
+          LOGGER.error(
+              "Failed to subscribe topic partition: {} at position: {} while seeking. The partition is not consuming.",
+              Utils.getReplicaId(topicPartition),
+              target.getValue(),
+              e);
+          if (seekFailure == null) {
+            seekFailure = e;
+          } else {
+            seekFailure.addSuppressed(e);
+          }
+        }
       }
     } finally {
       subscriptionLock.writeLock().unlock();
     }
-    if (!topicPartitionListToSeek.isEmpty()) {
+    if (anySubscribed) {
       startHeartbeatReporterIfNeeded();
       isSubscribed.set(true);
     }
+    if (seekFailure != null) {
+      throw seekFailure;
+    }
+  }
+
+  /**
+   * Resolves a seek target position with bounded exponential backoff. Resolution must be free of side effects so that
+   * retrying it is always safe.
+   */
+  protected PubSubPosition resolveSeekPositionWithRetry(
+      PubSubTopicPartition topicPartition,
+      VeniceCheckedSupplier<PubSubPosition> positionSupplier) {
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        positionSupplier,
+        changelogClientConfig.getSeekPositionResolutionMaxAttempts(),
+        SEEK_POSITION_RESOLUTION_INITIAL_RETRY_DELAY,
+        SEEK_POSITION_RESOLUTION_MAX_RETRY_DELAY,
+        SEEK_POSITION_RESOLUTION_MAX_RETRY_DURATION,
+        SEEK_POSITION_RESOLUTION_RETRIABLE_FAILURES);
   }
 
   private void recordSubscriptionForHeartbeatReporting(PubSubTopicPartition topicPartition) {
@@ -690,9 +763,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
   }
 
+  /**
+   * Resolves the position a partition should be moved to. Implementations must not change any subscription state.
+   */
   @FunctionalInterface
-  interface SeekFunction {
-    void apply(PubSubTopicPartition partitionToSeek) throws VeniceCoordinateOutOfRangeException;
+  interface SeekPositionResolver {
+    PubSubPosition resolve(PubSubTopicPartition partitionToSeek);
   }
 
   protected List<PubSubTopicPartition> getPartitionListToSubscribe(

@@ -100,6 +100,13 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private long versionSwapTimeoutInMs = MINUTES.toMillis(30);
 
   /**
+   * Maximum number of attempts the changelog consumer makes to resolve a seek target position (e.g. the position for a
+   * timestamp, or the end position of a partition) before failing the seek. Positions are resolved before any
+   * partition is unsubscribed, so a failed resolution leaves the existing subscription untouched. Default is 10.
+   */
+  private int seekPositionResolutionMaxAttempts = 10;
+
+  /**
    * Whether to include control messages in buffer for users to poll. Default is false.
    * The config is only applicable to the version specific stateless changelog consumer.
    */
@@ -396,6 +403,19 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public int getSeekPositionResolutionMaxAttempts() {
+    return this.seekPositionResolutionMaxAttempts;
+  }
+
+  public ChangelogClientConfig setSeekPositionResolutionMaxAttempts(int seekPositionResolutionMaxAttempts) {
+    if (seekPositionResolutionMaxAttempts < 1) {
+      throw new IllegalArgumentException(
+          "seekPositionResolutionMaxAttempts must be at least 1, got: " + seekPositionResolutionMaxAttempts);
+    }
+    this.seekPositionResolutionMaxAttempts = seekPositionResolutionMaxAttempts;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -427,6 +447,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setSeekPositionResolutionMaxAttempts(config.getSeekPositionResolutionMaxAttempts())
         .setBackgroundReporterThreadSleepIntervalInSeconds(config.getBackgroundReporterThreadSleepIntervalInSeconds());
     return newConfig;
   }
