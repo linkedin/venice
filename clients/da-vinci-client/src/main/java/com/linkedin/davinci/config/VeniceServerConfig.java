@@ -228,6 +228,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SKIP_CHECK_AFTER_UNSUB_ENABL
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS;
@@ -358,6 +359,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int drainerPoolSizeUnsortedInput;
 
   private final long blockedDrainerThresholdMs;
+  private final boolean stalledDrainerQueueFailureEnabled;
 
   /**
    * Whether to queue writes into the {@link com.linkedin.davinci.kafka.consumer.StoreBufferService} after the
@@ -911,6 +913,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     // Nonpositive thresholds disable stall tracking, logging, and blocked-time metrics.
     blockedDrainerThresholdMs =
         serverProperties.getLong(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, TimeUnit.MINUTES.toMillis(5));
+    stalledDrainerQueueFailureEnabled =
+        serverProperties.getBoolean(SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED, false);
 
     storeWriterBufferAfterLeaderLogicEnabled =
         serverProperties.getBoolean(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, true);
@@ -1881,6 +1885,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getBlockedDrainerThresholdMs() {
     return blockedDrainerThresholdMs;
+  }
+
+  public boolean isStalledDrainerQueueFailureEnabled() {
+    return stalledDrainerQueueFailureEnabled;
   }
 
   public int getDrainerPoolSizeUnsortedInput() {

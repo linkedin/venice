@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -16,6 +17,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,6 +44,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -53,6 +56,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -129,8 +133,13 @@ public class StoreBufferServiceTest {
         () -> bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 50000));
   }
 
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testRunWhenThrowException(boolean queueLeaderWrites) throws Exception {
+  @DataProvider
+  public Object[][] ingestionExceptionRegistrationFailures() {
+    return new Object[][] { { false, false }, { true, false }, { false, true }, { true, true } };
+  }
+
+  @Test(dataProvider = "ingestionExceptionRegistrationFailures")
+  public void testRunWhenThrowException(boolean queueLeaderWrites, boolean registrationFails) throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
@@ -144,10 +153,14 @@ public class StoreBufferServiceTest {
     DefaultPubSubMessage cr1 = new ImmutablePubSubMessage(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     DefaultPubSubMessage cr2 = new ImmutablePubSubMessage(key, value, pubSubTopicPartition2, mockPosition, 0, 0);
     Exception e = new VeniceException("test_exception");
+    VeniceException registrationException = new VeniceException("exception registration failed");
 
     doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
+    if (registrationFails) {
+      doThrow(registrationException).when(mockTask).setIngestionException(partition1, e);
+    }
 
-    bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
+    CompletableFuture<Void> persistedFuture = putRecordAndGetPersistedFuture(bufferService, mockTask, cr1);
     bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
 
     bufferService.start();
@@ -155,6 +168,14 @@ public class StoreBufferServiceTest {
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
     verify(mockTask).setIngestionException(partition1, e);
     bufferService.stop();
+    if (registrationFails) {
+      verify(mockTask).setLastStoreIngestionException(registrationException);
+    } else {
+      verify(mockTask, never()).setLastStoreIngestionException(any());
+    }
+    Assert.assertSame(
+        Assert.expectThrows(ExecutionException.class, () -> persistedFuture.get(10, SECONDS)).getCause(),
+        e);
     verify(mockedStats).recordInternalProcessingError(any());
   }
 
@@ -480,6 +501,13 @@ public class StoreBufferServiceTest {
   }
 
   private StoreBufferService newBufferServiceWithStallMonitor(long thresholdMs, MetricsRepository metricsRepository) {
+    return newBufferServiceWithStallMonitor(thresholdMs, metricsRepository, false);
+  }
+
+  private StoreBufferService newBufferServiceWithStallMonitor(
+      long thresholdMs,
+      MetricsRepository metricsRepository,
+      boolean queueFailureEnabled) {
     return new StoreBufferService(
         1,
         10000,
@@ -490,7 +518,8 @@ public class StoreBufferServiceTest {
         metricsRepository,
         true,
         "test-cluster",
-        thresholdMs);
+        thresholdMs,
+        queueFailureEnabled);
   }
 
   private CompletableFuture<Void> putRecordAndGetPersistedFuture(
@@ -508,14 +537,16 @@ public class StoreBufferServiceTest {
 
   @DataProvider
   public Object[][] idleStallThresholds() {
-    return new Object[][] { { 1L }, { 0L }, { -1L } };
+    return new Object[][] { { 1L, false }, { 0L, false }, { -1L, false }, { 1L, true }, { 0L, true }, { -1L, true } };
   }
 
   @Test(dataProvider = "idleStallThresholds")
-  public void testIdleDrainersAreNotReportedAsBlocked(long thresholdMs) throws Exception {
+  public void testIdleDrainersAreNotReportedAsBlocked(long thresholdMs, boolean queueFailureEnabled) throws Exception {
     try (AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build()) {
       MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
-      try (StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, metricsRepository);
+      try (
+          StoreBufferService bufferService =
+              newBufferServiceWithStallMonitor(thresholdMs, metricsRepository, queueFailureEnabled);
           StallLogCapture logs = new StallLogCapture()) {
         bufferService.start();
         Assert.assertEquals(bufferService.getMaxDrainerBlockedTimeMs(), 0);
@@ -531,6 +562,426 @@ public class StoreBufferServiceTest {
       } finally {
         metricsRepository.close();
       }
+    }
+  }
+
+  @DataProvider
+  public Object[][] queueFailureThresholds() {
+    return new Object[][] { { true, 50L }, { false, 50L }, { true, 0L }, { true, -1L } };
+  }
+
+  @Test(dataProvider = "queueFailureThresholds")
+  public void testQueueFailureThresholdAndKillSwitch(boolean enabled, long thresholdMs) throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, null, enabled);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(
+        key,
+        value,
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("threshold_test_v1"), 0),
+        mockPosition,
+        0,
+        0);
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      entered.countDown();
+      Assert.assertTrue(release.await(10, SECONDS));
+      return null;
+    }).when(task).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+    bufferService.start();
+    try {
+      CompletableFuture<Void> heldFuture = putRecordAndGetPersistedFuture(bufferService, task, record);
+      Assert.assertTrue(entered.await(10, SECONDS));
+      CompletableFuture<Void> queuedFuture = putRecordAndGetPersistedFuture(bufferService, task, record);
+      long startedAt = bufferService.getDrainer(0).getProcessingStartedAtMs();
+      if (thresholdMs > 0) {
+        bufferService.reportStalledDrainers(startedAt + thresholdMs - 1);
+        verify(task, never()).setIngestionException(anyInt(), any());
+        Assert.assertFalse(queuedFuture.isDone(), "Sub-threshold work must remain queued");
+      }
+      bufferService.reportStalledDrainers(startedAt + Math.max(thresholdMs, 1));
+      boolean failed = enabled && thresholdMs > 0;
+      Assert.assertEquals(queuedFuture.isCompletedExceptionally(), failed);
+      Assert.assertFalse(heldFuture.isDone(), "Monitor must not complete an executing write's future");
+      if (failed) {
+        verify(task, times(2)).setIngestionException(eq(0), any(VeniceException.class));
+      } else {
+        verify(task, never()).setIngestionException(anyInt(), any());
+      }
+      release.countDown();
+      heldFuture.get(10, SECONDS);
+      if (!failed) {
+        queuedFuture.get(10, SECONDS);
+        verify(task, times(2)).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+      } else {
+        verify(task).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+      }
+      TestUtils.waitForNonDeterministicAssertion(5, SECONDS, () -> {
+        Assert.assertEquals(bufferService.getDrainer(0).getProcessingStartedAtMs(), 0L);
+        Assert.assertNull(bufferService.getDrainer(0).getCurrentTopicPartition());
+      });
+      bufferService.reportStalledDrainers(Long.MAX_VALUE);
+      DefaultPubSubMessage healthyRecord = new ImmutablePubSubMessage(
+          key,
+          value,
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("threshold_test_v1"), 1),
+          mockPosition,
+          0,
+          0);
+      putRecordAndGetPersistedFuture(bufferService, mock(StoreIngestionTask.class), healthyRecord).get(10, SECONDS);
+    } finally {
+      release.countDown();
+      bufferService.stop();
+    }
+  }
+
+  @Test(dataProvider = "ingestionExceptionRegistrationFailures")
+  public void testStalledQueueFailsUnstartedWorkAndUnblocksEnqueues(boolean heldLeader, boolean registrationFails)
+      throws Exception {
+    StoreBufferService bufferService =
+        spy(new StoreBufferService(2, 10000, 1000, true, mockedStats, null, null, true, "test-cluster", 50, true));
+    PubSubTopic topic = pubSubTopicRepository.getTopic("queue_failure_test_v1");
+    StoreIngestionTask heldTask = mock(StoreIngestionTask.class);
+    StoreIngestionTask queuedTask = mock(StoreIngestionTask.class);
+    StoreIngestionTask rejectedTask = mock(StoreIngestionTask.class);
+    StoreIngestionTask healthyTask = mock(StoreIngestionTask.class);
+    VeniceException registrationException = new VeniceException("exception registration failed");
+    if (registrationFails) {
+      for (StoreIngestionTask task: Arrays.asList(heldTask, queuedTask, rejectedTask)) {
+        doThrow(registrationException).when(task).setIngestionException(anyInt(), any());
+      }
+    }
+    List<DefaultPubSubMessage> records = new ArrayList<>();
+    for (int i = 0; i <= 16; i++) {
+      records.add(new ImmutablePubSubMessage(key, value, new PubSubTopicPartitionImpl(topic, i), mockPosition, 0, 0));
+    }
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    AtomicReference<Thread> heldThread = new AtomicReference<>();
+    CountDownLatch secondEntered = new CountDownLatch(1);
+    CountDownLatch secondRelease = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      heldThread.set(Thread.currentThread());
+      entered.countDown();
+      Assert.assertTrue(release.await(10, SECONDS), "Held write must be released by the test, not interrupted");
+      return null;
+    }).when(heldTask).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+    LeaderProducedRecordContext heldContext =
+        LeaderProducedRecordContext.newPutRecord(0, mockPosition, key.getKey(), put);
+    LeaderProducedRecordContext queuedContext =
+        LeaderProducedRecordContext.newPutRecord(4, mockPosition, key.getKey(), put);
+    LeaderProducedRecordContext blockedContext =
+        LeaderProducedRecordContext.newPutRecord(12, mockPosition, key.getKey(), put);
+    ExecutorService enqueuers = Executors.newFixedThreadPool(5);
+    bufferService.start();
+    try {
+      CompletableFuture<Void> heldFuture;
+      if (heldLeader) {
+        bufferService.putConsumerRecord(records.get(0), heldTask, heldContext, 0, "blah", 0);
+        heldFuture = heldContext.getPersistedToDBFuture();
+      } else {
+        heldFuture = putRecordAndGetPersistedFuture(bufferService, heldTask, records.get(0));
+      }
+      Assert.assertTrue(entered.await(10, SECONDS));
+      List<CompletableFuture<Void>> queuedFutures = new ArrayList<>();
+      queuedFutures.add(putRecordAndGetPersistedFuture(bufferService, queuedTask, records.get(2)));
+      bufferService.putConsumerRecord(records.get(4), queuedTask, queuedContext, 4, "blah", 0);
+      queuedFutures.add(queuedContext.getPersistedToDBFuture());
+      queuedFutures.add(bufferService.execSyncOffsetCommandAsync(records.get(6).getTopicPartition(), queuedTask));
+      queuedFutures.add(
+          bufferService.execSyncOffsetFromSnapshotAsync(
+              records.get(8).getTopicPartition(),
+              mock(PartitionTracker.class),
+              CompletableFuture.completedFuture(null),
+              queuedTask));
+      queuedFutures.add(bufferService.execSyncGlobalRtDivAsync(records.get(10).getTopicPartition(), queuedTask));
+      MemoryBoundBlockingQueue<StoreBufferService.QueueNode> queue =
+          bufferService.getDrainerForConsumerRecord(records.get(0), 0);
+      long before = queue.remainingMemoryCapacityInByte();
+      queuedFutures.add(putRecordAndGetPersistedFuture(bufferService, queuedTask, records.get(2)));
+      long followerSize = before - queue.remainingMemoryCapacityInByte();
+      while (queue.remainingMemoryCapacityInByte() >= followerSize) {
+        queuedFutures.add(putRecordAndGetPersistedFuture(bufferService, queuedTask, records.get(2)));
+      }
+      int followerCount = queuedFutures.size() - 4;
+      long commandSize;
+      try (StoreBufferService sizeProbe = newBufferServiceWithStallMonitor(0, null)) {
+        sizeProbe.execSyncGlobalRtDivAsync(records.get(10).getTopicPartition(), queuedTask);
+        commandSize = sizeProbe.getTotalMemoryUsage();
+      }
+      // Commands can fit in the space left after filling with larger follower nodes.
+      while (queue.remainingMemoryCapacityInByte() >= commandSize) {
+        queuedFutures.add(bufferService.execSyncGlobalRtDivAsync(records.get(10).getTopicPartition(), queuedTask));
+      }
+      int globalCommandCount = queuedFutures.size() - followerCount - 3;
+
+      // Delegate to the real queue while capturing the otherwise unreturned future of a blocked follower put.
+      MemoryBoundBlockingQueue<StoreBufferService.QueueNode> recordingQueue = spy(queue);
+      AtomicReference<CompletableFuture<Void>> blockedFollowerFuture = new AtomicReference<>();
+      doAnswer(invocation -> {
+        StoreBufferService.QueueNode node = invocation.getArgument(0);
+        blockedFollowerFuture.set(node.getQueuedRecordPersistedFuture());
+        queue.put(node);
+        return null;
+      }).when(recordingQueue).put(any());
+      doReturn(recordingQueue).when(bufferService).getDrainerForConsumerRecord(records.get(14), 14);
+      List<AtomicReference<Thread>> blockedThreads = new ArrayList<>();
+      List<Future<?>> blockedPuts = new ArrayList<>();
+      for (int type = 0; type < 5; type++) {
+        int nodeType = type;
+        AtomicReference<Thread> thread = new AtomicReference<>();
+        blockedThreads.add(thread);
+        blockedPuts.add(enqueuers.submit(() -> {
+          thread.set(Thread.currentThread());
+          switch (nodeType) {
+            case 0:
+              bufferService.putConsumerRecord(records.get(12), rejectedTask, blockedContext, 12, "blah", 0);
+              break;
+            case 1:
+              bufferService.putConsumerRecord(records.get(14), rejectedTask, null, 14, "blah", 0);
+              break;
+            case 2:
+              bufferService.execSyncOffsetCommandAsync(records.get(16).getTopicPartition(), rejectedTask);
+              break;
+            case 3:
+              bufferService.execSyncGlobalRtDivAsync(records.get(16).getTopicPartition(), rejectedTask);
+              break;
+            default:
+              bufferService.execSyncOffsetFromSnapshotAsync(
+                  records.get(16).getTopicPartition(),
+                  mock(PartitionTracker.class),
+                  CompletableFuture.completedFuture(null),
+                  rejectedTask);
+          }
+          return null;
+        }));
+      }
+      TestUtils.waitForNonDeterministicAssertion(5, SECONDS, () -> {
+        for (Future<?> blockedPut: blockedPuts) {
+          Assert.assertFalse(blockedPut.isDone(), "Each enqueue must actually be blocked inside put");
+        }
+        for (AtomicReference<Thread> thread: blockedThreads) {
+          Assert.assertNotNull(thread.get());
+          Assert.assertEquals(thread.get().getState(), Thread.State.WAITING);
+        }
+      });
+      int drainerIndex = bufferService.getDrainerIndexForConsumerRecord(records.get(0), 0);
+      long startedAt = bufferService.getDrainer(drainerIndex).getProcessingStartedAtMs();
+      bufferService.reportStalledDrainers(startedAt + 50);
+      Throwable failure = queuedContext.getPersistedToDBFuture().handle((result, error) -> error).get(10, SECONDS);
+      Assert.assertTrue(failure instanceof VeniceException);
+      for (CompletableFuture<Void> future: queuedFutures) {
+        Assert.assertSame(
+            Assert.expectThrows(ExecutionException.class, () -> future.get(10, SECONDS)).getCause(),
+            failure);
+      }
+      for (Future<?> blockedPut: blockedPuts) {
+        Assert.assertSame(
+            Assert.expectThrows(ExecutionException.class, () -> blockedPut.get(10, SECONDS)).getCause(),
+            failure);
+      }
+      Assert.assertSame(
+          Assert.expectThrows(ExecutionException.class, () -> blockedFollowerFuture.get().get(10, SECONDS)).getCause(),
+          failure);
+      Assert.assertTrue(blockedContext.getPersistedToDBFuture().isCompletedExceptionally());
+      verify(heldTask).setIngestionException(0, (Exception) failure);
+      for (int partition: new int[] { 4, 6, 8 }) {
+        verify(queuedTask).setIngestionException(partition, (Exception) failure);
+      }
+      verify(queuedTask, times(followerCount)).setIngestionException(2, (Exception) failure);
+      verify(queuedTask, times(globalCommandCount)).setIngestionException(10, (Exception) failure);
+      verify(rejectedTask).setIngestionException(12, (Exception) failure);
+      verify(rejectedTask).setIngestionException(14, (Exception) failure);
+      verify(rejectedTask, times(3)).setIngestionException(16, (Exception) failure);
+      if (registrationFails) {
+        verify(heldTask).setLastStoreIngestionException(registrationException);
+        verify(queuedTask, times(followerCount + globalCommandCount + 3))
+            .setLastStoreIngestionException(registrationException);
+        verify(rejectedTask, times(5)).setLastStoreIngestionException(registrationException);
+      } else {
+        for (StoreIngestionTask task: Arrays.asList(heldTask, queuedTask, rejectedTask)) {
+          verify(task, never()).setLastStoreIngestionException(any());
+        }
+      }
+      Assert.assertEquals(queue.getMemoryUsage(), 0L);
+      Assert.assertTrue(queue.isEmpty());
+      Assert.assertFalse(heldFuture.isDone(), "The real held write still owns its persistence future");
+      Assert.assertFalse(heldThread.get().isInterrupted());
+      bufferService.reportStalledDrainers(startedAt + 100);
+      verify(heldTask).setIngestionException(0, (Exception) failure);
+
+      StoreIngestionTask futureTask = mock(StoreIngestionTask.class);
+      if (registrationFails) {
+        doThrow(registrationException).when(futureTask).setIngestionException(anyInt(), any());
+      }
+      Assert.assertSame(
+          Assert.expectThrows(
+              VeniceException.class,
+              () -> bufferService.putConsumerRecord(records.get(2), futureTask, null, 2, "blah", 0)),
+          failure);
+      verify(futureTask).setIngestionException(2, (Exception) failure);
+      if (registrationFails) {
+        verify(futureTask).setLastStoreIngestionException(registrationException);
+      } else {
+        verify(futureTask, never()).setLastStoreIngestionException(any());
+      }
+      putRecordAndGetPersistedFuture(bufferService, healthyTask, records.get(1)).get(10, SECONDS);
+      verify(healthyTask).processConsumerRecord(records.get(1), null, 1, "blah", 0);
+      verify(healthyTask, never()).setIngestionException(anyInt(), any());
+      verify(queuedTask, never()).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+      verify(queuedTask, never()).updateOffsetMetadataAndSyncOffset(any());
+      verify(queuedTask, never()).updateAndSyncOffsetFromSnapshot(any(), any());
+      verify(queuedTask, never()).syncGlobalRtDivFromSnapshot(any());
+      verify(rejectedTask, never()).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+      release.countDown();
+      heldFuture.get(10, SECONDS);
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          SECONDS,
+          () -> Assert.assertEquals(bufferService.getDrainer(drainerIndex).getProcessingStartedAtMs(), 0L));
+      StoreIngestionTask resetTask = mock(StoreIngestionTask.class);
+      doAnswer(invocation -> {
+        Assert.assertSame(Thread.currentThread(), heldThread.get(), "Recovery must reuse the original worker");
+        return null;
+      }).when(resetTask).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+      putRecordAndGetPersistedFuture(bufferService, resetTask, records.get(2)).get(10, SECONDS);
+      verify(resetTask).processConsumerRecord(records.get(2), null, 2, "blah", 0);
+      verify(resetTask, never()).setIngestionException(anyInt(), any());
+      doAnswer(invocation -> {
+        Assert.assertSame(Thread.currentThread(), heldThread.get());
+        secondEntered.countDown();
+        Assert.assertTrue(secondRelease.await(10, SECONDS));
+        throw new VeniceException("actual held write failure");
+      }).when(resetTask).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+      CompletableFuture<Void> secondHeld = putRecordAndGetPersistedFuture(bufferService, resetTask, records.get(4));
+      Assert.assertTrue(secondEntered.await(10, SECONDS));
+      CompletableFuture<Void> secondCommand =
+          bufferService.execSyncOffsetCommandAsync(records.get(6).getTopicPartition(), resetTask);
+      bufferService.reportStalledDrainers(bufferService.getDrainer(drainerIndex).getProcessingStartedAtMs() + 50);
+      Assert.assertTrue(secondCommand.isCompletedExceptionally(), "A recovered worker must detect another episode");
+      Assert.assertFalse(secondHeld.isDone());
+      secondRelease.countDown();
+      ExecutionException actualWriteFailure =
+          Assert.expectThrows(ExecutionException.class, () -> secondHeld.get(10, SECONDS));
+      Assert.assertEquals(actualWriteFailure.getCause().getMessage(), "actual held write failure");
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          SECONDS,
+          () -> Assert.assertEquals(bufferService.getDrainer(drainerIndex).getProcessingStartedAtMs(), 0L));
+      putRecordAndGetPersistedFuture(bufferService, mock(StoreIngestionTask.class), records.get(2)).get(10, SECONDS);
+    } finally {
+      release.countDown();
+      secondRelease.countDown();
+      enqueuers.shutdownNow();
+      Assert.assertTrue(enqueuers.awaitTermination(10, SECONDS));
+      bufferService.stop();
+    }
+  }
+
+  @DataProvider
+  public Object[][] drainerExitFailures() {
+    return new Object[][] { { new InterruptedException("held operation interrupted") },
+        { new AssertionError("fatal held operation failure") } };
+  }
+
+  @Test(dataProvider = "drainerExitFailures")
+  public void testExitingDrainerDoesNotRecoverFailedQueue(Throwable exitFailure) throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(50, null, true);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("exit_test_v1"), 0);
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(key, value, partition, mockPosition, 0, 0);
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      entered.countDown();
+      Assert.assertTrue(release.await(10, SECONDS));
+      throw exitFailure;
+    }).when(task).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+    CompletableFuture<Void> heldFuture = putRecordAndGetPersistedFuture(bufferService, task, record);
+    MemoryBoundBlockingQueue<StoreBufferService.QueueNode> queue = bufferService.getDrainerForConsumerRecord(record, 0);
+    StoreBufferService.StoreBufferDrainer drainer =
+        new StoreBufferService.StoreBufferDrainer(queue, 0, mockedStats, true, true);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    Future<?> worker = executor.submit(drainer);
+    try {
+      Assert.assertTrue(entered.await(10, SECONDS));
+      CompletableFuture<Void> queuedFuture = putRecordAndGetPersistedFuture(bufferService, task, record);
+      drainer.failStalledQueue(drainer.getProcessingStartedAtMs(), queue);
+      Throwable stallFailure =
+          Assert.expectThrows(ExecutionException.class, () -> queuedFuture.get(10, SECONDS)).getCause();
+      Assert.assertFalse(heldFuture.isDone());
+      release.countDown();
+      worker.get(10, SECONDS);
+      Assert.assertEquals(drainer.getProcessingStartedAtMs(), 0L);
+      Assert.assertNull(drainer.getCurrentTopicPartition());
+      Assert.assertSame(
+          Assert.expectThrows(
+              VeniceException.class,
+              () -> bufferService.putConsumerRecord(record, task, null, 0, "blah", 0L)),
+          stallFailure);
+      verify(task, times(1)).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+      verify(task, times(3)).setIngestionException(0, (Exception) stallFailure);
+    } finally {
+      release.countDown();
+      drainer.stop();
+      executor.shutdownNow();
+      Assert.assertTrue(executor.awaitTermination(10, SECONDS));
+      bufferService.close();
+    }
+  }
+
+  @Test
+  public void testQueueRecoveryWaitsForDiscardedWorkFailureReporting() throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(50, null, true);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("report_test_v1"), 0);
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(key, value, partition, mockPosition, 0, 0);
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch releaseWrite = new CountDownLatch(1);
+    CountDownLatch reporting = new CountDownLatch(1);
+    CountDownLatch releaseReporting = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      entered.countDown();
+      Assert.assertTrue(releaseWrite.await(10, SECONDS));
+      return null;
+    }).when(task).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+    ExecutorService monitor = Executors.newSingleThreadExecutor();
+    bufferService.start();
+    try {
+      CompletableFuture<Void> held = putRecordAndGetPersistedFuture(bufferService, task, record);
+      Assert.assertTrue(entered.await(10, SECONDS));
+      CompletableFuture<Void> queued = putRecordAndGetPersistedFuture(bufferService, task, record);
+      CompletableFuture<Void> callback = queued.whenComplete((result, failure) -> {
+        reporting.countDown();
+        try {
+          Assert.assertTrue(releaseReporting.await(10, SECONDS));
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new VeniceException(e);
+        }
+      });
+      long startedAt = bufferService.getDrainer(0).getProcessingStartedAtMs();
+      Future<?> report = monitor.submit(() -> bufferService.reportStalledDrainers(startedAt + 50));
+      Assert.assertTrue(reporting.await(10, SECONDS));
+      releaseWrite.countDown();
+      held.get(10, SECONDS);
+      Assert.expectThrows(
+          VeniceException.class,
+          () -> bufferService.putConsumerRecord(record, mock(StoreIngestionTask.class), null, 0, "blah", 0));
+      releaseReporting.countDown();
+      report.get(10, SECONDS);
+      Assert.assertTrue(callback.isCompletedExceptionally());
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          SECONDS,
+          () -> Assert.assertEquals(bufferService.getDrainer(0).getProcessingStartedAtMs(), 0L));
+      putRecordAndGetPersistedFuture(bufferService, mock(StoreIngestionTask.class), record).get(10, SECONDS);
+    } finally {
+      releaseWrite.countDown();
+      releaseReporting.countDown();
+      monitor.shutdownNow();
+      Assert.assertTrue(monitor.awaitTermination(10, SECONDS));
+      bufferService.stop();
     }
   }
 

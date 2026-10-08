@@ -37,6 +37,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -76,6 +77,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final long bufferCapacityPerDrainer;
   private final long blockedDrainerThresholdMs;
   private final boolean stallMonitoringEnabled;
+  private final boolean stalledDrainerQueueFailureEnabled;
   /**
    * Deliberately not the metrics thread: with {@code metricsRepository == null} no gauge is ever polled, and a
    * monitor that only runs when metrics happen to be enabled is not a monitor.
@@ -106,12 +108,37 @@ public class StoreBufferService extends AbstractStoreBufferService {
         bufferCapacityPerDrainer,
         bufferNotifyDelta,
         queueLeaderWrites,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        false);
+  }
+
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs,
+      boolean stalledDrainerQueueFailureEnabled) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
         null,
         logContext,
         metricsRepository,
         sorted,
         clusterName,
-        blockedDrainerThresholdMs);
+        blockedDrainerThresholdMs,
+        stalledDrainerQueueFailureEnabled);
   }
 
   /**
@@ -155,10 +182,37 @@ public class StoreBufferService extends AbstractStoreBufferService {
       boolean sorted,
       String clusterName,
       long blockedDrainerThresholdMs) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        stats,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        false);
+  }
+
+  StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs,
+      boolean stalledDrainerQueueFailureEnabled) {
     this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockedDrainerThresholdMs = blockedDrainerThresholdMs;
     this.stallMonitoringEnabled = blockedDrainerThresholdMs > 0;
+    this.stalledDrainerQueueFailureEnabled = stalledDrainerQueueFailureEnabled && stallMonitoringEnabled;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
     for (int cur = 0; cur < drainerNum; ++cur) {
@@ -223,13 +277,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
        * end-to-end completeness when producing to local Kafka is needed.
        */
       CompletableFuture<Void> recordFuture = new CompletableFuture<>();
-      getDrainerForConsumerRecord(consumerRecord, partition).put(
+      putQueueNode(
           new FollowerQueueNode(
               consumerRecord,
               ingestionTask,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
-              recordFuture));
+              recordFuture),
+          partition);
 
       // Setup the last queued record's future
       PartitionConsumptionState partitionConsumptionState =
@@ -265,13 +320,23 @@ public class StoreBufferService extends AbstractStoreBufferService {
       int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    getDrainerForConsumerRecord(consumerRecord, partition).put(
+    putQueueNode(
         new LeaderQueueNode(
             consumerRecord,
             ingestionTask,
             kafkaUrl,
             beforeProcessingRecordTimestamp,
-            leaderProducedRecordContext));
+            leaderProducedRecordContext),
+        partition);
+  }
+
+  private void putQueueNode(QueueNode node, int partition) throws InterruptedException {
+    try {
+      getDrainerForConsumerRecord(node.getConsumerRecord(), partition).put(node);
+    } catch (VeniceException e) {
+      node.fail(e);
+      throw e;
+    }
   }
 
   private static void processRecord(
@@ -359,7 +424,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     CommandQueueNode syncOffsetCmd =
         new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
-    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
+    putQueueNode(syncOffsetCmd, topicPartition.getPartitionNumber());
     return syncOffsetCmd.getExecutedFuture();
   }
 
@@ -374,7 +439,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       StoreIngestionTask ingestionTask) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     SyncGlobalRtDivNode syncGlobalRtDivNode = new SyncGlobalRtDivNode(fakeRecord, ingestionTask);
-    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncGlobalRtDivNode);
+    putQueueNode(syncGlobalRtDivNode, topicPartition.getPartitionNumber());
     return syncGlobalRtDivNode.getExecutedFuture();
   }
 
@@ -396,7 +461,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       StoreIngestionTask ingestionTask) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
-    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
+    putQueueNode(syncDivNode, topicPartition.getPartitionNumber());
     return syncDivNode.getExecutedFuture();
   }
 
@@ -408,8 +473,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {
-      StoreBufferDrainer drainer =
-          new StoreBufferDrainer(this.blockingQueueArr.get(cur), cur, storeBufferServiceStats, stallMonitoringEnabled);
+      StoreBufferDrainer drainer = new StoreBufferDrainer(
+          this.blockingQueueArr.get(cur),
+          cur,
+          storeBufferServiceStats,
+          stallMonitoringEnabled,
+          stalledDrainerQueueFailureEnabled);
       this.executorService.submit(drainer);
       drainerList.add(drainer);
     }
@@ -492,16 +561,17 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * Logs any drainer that has held one queue node past the threshold. Reporting only; nothing here interrupts
-   * or reroutes a drainer, and a drainer wedged inside a native storage call cannot be recovered in-process
-   * anyway. The point is to name the offending topic-partition while the host is still running, since the
-   * storage engine's own log is destroyed when the store-version is retired.
+   * Reports drainers holding a node past the threshold. With queue failure enabled, unstarted work is failed and
+   * partition exceptions are registered for the ingestion task to handle. The held write is never interrupted.
    */
   void reportStalledDrainers() {
+    reportStalledDrainers(System.currentTimeMillis());
+  }
+
+  void reportStalledDrainers(long now) {
     if (!stallMonitoringEnabled) {
       return;
     }
-    long now = System.currentTimeMillis();
     for (StoreBufferDrainer drainer: drainerList) {
       long startedAtMs = drainer.getProcessingStartedAtMs();
       if (startedAtMs == 0 || now - startedAtMs < blockedDrainerThresholdMs) {
@@ -525,6 +595,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
           now - startedAtMs,
           blockingQueueArr.get(drainer.drainerIndex).getMemoryUsage(),
           bufferCapacityPerDrainer);
+      if (stalledDrainerQueueFailureEnabled) {
+        drainer.failStalledQueue(startedAtMs, blockingQueueArr.get(drainer.drainerIndex));
+      }
     }
   }
 
@@ -615,6 +688,31 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     public CompletableFuture<Void> getQueuedRecordPersistedFuture() {
       return null;
+    }
+
+    void reportIngestionException(Exception exception) {
+      if (ingestionTask != null) {
+        try {
+          ingestionTask.setIngestionException(consumerRecord.getTopicPartition().getPartitionNumber(), exception);
+        } catch (VeniceException ingestionException) {
+          ingestionTask.setLastStoreIngestionException(ingestionException);
+        }
+      }
+    }
+
+    void fail(Exception exception) {
+      reportIngestionException(exception);
+      LeaderProducedRecordContext leaderContext = getLeaderProducedRecordContext();
+      if (leaderContext != null) {
+        leaderContext.completePersistedToDBFuture(exception);
+      }
+      CompletableFuture<Void> recordFuture = getQueuedRecordPersistedFuture();
+      if (recordFuture != null) {
+        recordFuture.completeExceptionally(exception);
+      }
+      if (this instanceof WaitableQueueNode) {
+        ((WaitableQueueNode) this).getExecutedFuture().completeExceptionally(exception);
+      }
     }
 
     public String getKafkaUrl() {
@@ -930,6 +1028,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final ConcurrentMap<PubSubTopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
     private final StoreBufferServiceStats stats;
     private final boolean stallMonitoringEnabled;
+    private final boolean stalledDrainerQueueFailureEnabled;
+    // Published/cleared under this drainer's lock, never held while executing storage work.
+    private QueueNode currentNode;
+    private VeniceException stallFailure;
+    private CountDownLatch stallFailureReported;
+    private MemoryBoundBlockingQueue<QueueNode> failedQueue;
     /**
      * Zero while parked in {@link BlockingQueue#take()} with nothing to do; otherwise when the node currently
      * being held was taken. An idle drainer is indistinguishable from a healthy one, so only time spent holding
@@ -944,10 +1048,20 @@ public class StoreBufferService extends AbstractStoreBufferService {
         int drainerIndex,
         StoreBufferServiceStats stats,
         boolean stallMonitoringEnabled) {
+      this(blockingQueue, drainerIndex, stats, stallMonitoringEnabled, false);
+    }
+
+    StoreBufferDrainer(
+        BlockingQueue<QueueNode> blockingQueue,
+        int drainerIndex,
+        StoreBufferServiceStats stats,
+        boolean stallMonitoringEnabled,
+        boolean stalledDrainerQueueFailureEnabled) {
       this.blockingQueue = blockingQueue;
       this.drainerIndex = drainerIndex;
       this.stats = stats;
       this.stallMonitoringEnabled = stallMonitoringEnabled;
+      this.stalledDrainerQueueFailureEnabled = stalledDrainerQueueFailureEnabled;
     }
 
     public void stop() {
@@ -974,6 +1088,65 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return reportedStallAtMs.compareAndSet(reportedAtMs, startedAtMs);
     }
 
+    void failStalledQueue(long startedAtMs, MemoryBoundBlockingQueue<QueueNode> queue) {
+      QueueNode held;
+      List<QueueNode> discarded;
+      VeniceException exception;
+      CountDownLatch reported;
+      synchronized (this) {
+        if (stallFailure != null || processingStartedAtMs.get() != startedAtMs || currentNode == null) {
+          return;
+        }
+        exception = new VeniceException("Drainer " + drainerIndex + " stalled while holding " + currentTopicPartition);
+        stallFailure = exception;
+        reported = new CountDownLatch(1);
+        stallFailureReported = reported;
+        failedQueue = queue;
+        held = currentNode;
+        discarded = queue.fail(exception);
+      }
+      LOGGER.error("Failing stalled drainer {} and {} queued nodes", drainerIndex, discarded.size(), exception);
+      try {
+        held.reportIngestionException(exception);
+        discarded.forEach(node -> node.fail(exception));
+      } finally {
+        reported.countDown();
+      }
+    }
+
+    private void finishProcessing() {
+      CountDownLatch reported;
+      synchronized (this) {
+        currentTopicPartition = null;
+        currentNode = null;
+        reported = stallFailureReported;
+        if (reported == null) {
+          processingStartedAtMs.set(0);
+          return;
+        }
+      }
+      try {
+        // Recovery cannot admit new work before every discarded node has been failed and its partition marked.
+        reported.await();
+        synchronized (this) {
+          if (isRunning.get()) {
+            failedQueue.recover();
+            stallFailure = null;
+            stallFailureReported = null;
+            failedQueue = null;
+            reportedStallAtMs.set(0);
+            LOGGER.info("Drainer {} reopened its queue after the held work ended", drainerIndex);
+          }
+          processingStartedAtMs.set(0);
+        }
+      } catch (InterruptedException e) {
+        isRunning.set(false);
+        Thread.currentThread().interrupt();
+        processingStartedAtMs.set(0);
+        LOGGER.error("Drainer {} interrupted while waiting for stall failure reporting, will exit", drainerIndex, e);
+      }
+    }
+
     @Override
     public void run() {
       LOGGER.info("Starting StoreBufferDrainer Thread for drainer: {}....", drainerIndex);
@@ -996,7 +1169,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
               OpenTelemetryMetricsSetup.sanitizeStoreName(ingestionTask != null ? ingestionTask.getStoreName() : null);
 
           long startTime = System.currentTimeMillis();
-          if (stallMonitoringEnabled) {
+          if (stalledDrainerQueueFailureEnabled) {
+            VeniceException failure;
+            synchronized (this) {
+              failure = stallFailure;
+              if (failure == null) {
+                currentNode = node;
+                currentTopicPartition = consumerRecord.getTopicPartition();
+                processingStartedAtMs.set(startTime);
+              }
+            }
+            if (failure != null) {
+              node.fail(failure);
+              break;
+            }
+          } else if (stallMonitoringEnabled) {
             currentTopicPartition = consumerRecord.getTopicPartition();
             processingStartedAtMs.set(startTime);
           }
@@ -1034,6 +1221,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
           topicToTimeSpent.compute(consumerRecord.getTopicPartition(), (K, V) -> (V == null ? 0 : V) + latencyInMS);
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
+            if (stalledDrainerQueueFailureEnabled) {
+              isRunning.set(false);
+            }
             LOGGER.error("Drainer {} received InterruptedException, will exit", drainerIndex);
             break;
           }
@@ -1061,13 +1251,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
           if (e instanceof Exception) {
             Exception processConsumerRecordException = (Exception) e;
             if (ingestionTask != null) {
-              try {
-                ingestionTask.setIngestionException(
-                    consumerRecord.getTopicPartition().getPartitionNumber(),
-                    processConsumerRecordException);
-              } catch (VeniceException ingestionException) {
-                ingestionTask.setLastStoreIngestionException(ingestionException);
-              }
+              node.reportIngestionException(processConsumerRecordException);
               if (e instanceof VeniceChecksumException) {
                 ingestionTask.recordChecksumVerificationFailure();
               }
@@ -1079,6 +1263,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
               recordPersistedFuture.completeExceptionally(processConsumerRecordException);
             }
           } else {
+            if (stalledDrainerQueueFailureEnabled) {
+              isRunning.set(false);
+            }
             break;
           }
         } finally {
@@ -1086,7 +1273,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
            * Also covers the three early {@code continue} branches above; without it they would leave the marker
            * set and report a drainer that is in fact looping normally as stalled.
            */
-          if (stallMonitoringEnabled) {
+          if (stalledDrainerQueueFailureEnabled) {
+            finishProcessing();
+          } else if (stallMonitoringEnabled) {
             processingStartedAtMs.set(0);
             currentTopicPartition = null;
           }

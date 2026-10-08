@@ -859,6 +859,15 @@ public class ConfigKeys {
    * stall tracking and blocked-time metrics. This is read at construction time; changes require a restart.
    */
   public static final String SERVER_BLOCKED_DRAINER_THRESHOLD_MS = "server.blocked.drainer.threshold.ms";
+  /**
+   * Default false. When enabled, the stall monitor fails and clears a stalled drainer's queue,
+   * releasing blocked enqueues and registering partition ingestion exceptions for the existing error-replica path.
+   * The held write is not interrupted and its persistence future is left to the writer. Only after it actually ends
+   * can the same drainer reopen its queue. Other drainers are unaffected. A write that never returns keeps its queue failed.
+   * Requires a positive SERVER_BLOCKED_DRAINER_THRESHOLD_MS; read at construction time, so changes require restart.
+   */
+  public static final String SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED =
+      "server.stalled.drainer.queue.failure.enabled";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
 
