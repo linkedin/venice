@@ -325,6 +325,10 @@ public class VeniceController {
         this::isApiReady);
   }
 
+  /**
+   * Requires successful startup, no shutdown, running core/HTTP services, and an active region for parent controllers.
+   * HTTPS is required only when configured; eligible standbys do not need cluster leadership.
+   */
   private boolean isApiReady() {
     return apiReadiness.isReady(
         () -> apiRegionEligible && controllerService.isRunning() && adminServer.isRunning()
