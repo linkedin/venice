@@ -87,45 +87,50 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
     registerSensor(new IngestionStatsGauge(this, () -> getStats().getUniqueKeyCount(), 0, UNIQUE_KEY_COUNT));
 
     registerSensor(
-        new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed(), 0, RECORDS_CONSUMED_METRIC_NAME));
+        new IngestionStatsGauge(
+            this,
+            () -> getRoleScopedStats().getRecordsConsumed(),
+            0,
+            RECORDS_CONSUMED_METRIC_NAME));
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getLeaderRecordsConsumed(),
+            () -> getRoleScopedStats().getLeaderRecordsConsumed(),
             0,
             LEADER_RECORDS_CONSUMED_METRIC_NAME));
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getFollowerRecordsConsumed(),
+            () -> getRoleScopedStats().getFollowerRecordsConsumed(),
             0,
             FOLLOWER_RECORDS_CONSUMED_METRIC_NAME));
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getLeaderRecordsProduced(),
+            () -> getRoleScopedStats().getLeaderRecordsProduced(),
             0,
             LEADER_RECORDS_PRODUCED_METRIC_NAME));
 
     // System store does not care about bytes metrics and subscribe latency.
     if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
-      registerSensor(new IngestionStatsGauge(this, () -> getStats().getBytesConsumed(), 0, BYTES_CONSUMED_METRIC_NAME));
+      registerSensor(
+          new IngestionStatsGauge(this, () -> getRoleScopedStats().getBytesConsumed(), 0, BYTES_CONSUMED_METRIC_NAME));
       registerSensor(
           new IngestionStatsGauge(
               this,
-              () -> getStats().getLeaderBytesConsumed(),
+              () -> getRoleScopedStats().getLeaderBytesConsumed(),
               0,
               LEADER_BYTES_CONSUMED_METRIC_NAME));
       registerSensor(
           new IngestionStatsGauge(
               this,
-              () -> getStats().getFollowerBytesConsumed(),
+              () -> getRoleScopedStats().getFollowerBytesConsumed(),
               0,
               FOLLOWER_BYTES_CONSUMED_METRIC_NAME));
       registerSensor(
           new IngestionStatsGauge(
               this,
-              () -> getStats().getLeaderBytesProduced(),
+              () -> getRoleScopedStats().getLeaderBytesProduced(),
               0,
               LEADER_BYTES_PRODUCED_METRIC_NAME));
       registerSensor(
@@ -315,6 +320,16 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
                 regionNamePrefix + "_rt_records_consumed"));
       }
     }
+  }
+
+  /**
+   * Stats for traffic rate gauges. The current/future reporters read role-scoped stats, which are recorded into based
+   * on the version's role at record time, so a version swap does not move unread values from future to current. The
+   * total reporter (and reporters without role-scoped stats) fall back to {@link #getStats()}.
+   */
+  private IngestionStats getRoleScopedStats() {
+    IngestionStats roleStats = getRoleStats();
+    return roleStats != null ? roleStats : getStats();
   }
 
   protected void registerLatencySensor(
