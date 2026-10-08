@@ -145,7 +145,7 @@ public enum AvroProtocolDefinition {
   /**
    * Response record for metadata fetch request.
    */
-  SERVER_METADATA_RESPONSE(4, MetadataResponseRecord.class),
+  SERVER_METADATA_RESPONSE(5, MetadataResponseRecord.class),
 
   /**
    * Response record for metadata by client fetch request.

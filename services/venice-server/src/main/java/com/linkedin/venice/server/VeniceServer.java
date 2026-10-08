@@ -487,7 +487,8 @@ public class VeniceServer {
         veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture),
-        sslFactory.isPresent());
+        sslFactory.isPresent(),
+        serverConfig.getFastClientMultiKeyLongTailRetryThresholdsMs());
 
     // create and add ListenerServer for handling GET requests
     ListenerService listenerService = createListenerService(

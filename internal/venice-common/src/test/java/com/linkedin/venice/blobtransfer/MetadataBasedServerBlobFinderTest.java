@@ -23,8 +23,11 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,8 +41,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -259,28 +266,44 @@ public class MetadataBasedServerBlobFinderTest {
     verify(schemaReader, never()).getValueSchema(anyInt());
   }
 
-  @Test
-  public void testDiscoverBlobPeersFallsBackToCompiledSchemaWhenWriterSchemaUnresolved() {
-    // The writer schema id is valid but the reader cannot resolve it (e.g. a transient Router issue): fall back to the
-    // compiled schema rather than failing discovery.
+  @DataProvider
+  public Object[][] unresolvedWriterSchemas() {
+    int currentVersion = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
+    return new Object[][] { { 4, false }, { 4, true }, { currentVersion, false }, { currentVersion, true },
+        { currentVersion + 1, false }, { currentVersion + 1, true } };
+  }
+
+  @Test(dataProvider = "unresolvedWriterSchemas")
+  public void testDiscoverBlobPeersWithUnresolvedWriterSchema(int schemaId, boolean lookupThrows) throws IOException {
     RouterBackedSchemaReader schemaReader = mock(RouterBackedSchemaReader.class);
-    when(schemaReader.getValueSchema(9)).thenThrow(new RuntimeException("schema fetch failed"));
+    if (lookupThrows) {
+      when(schemaReader.getValueSchema(schemaId)).thenThrow(new RuntimeException("schema fetch failed"));
+    }
     MetadataBasedServerBlobFinder finder =
         spy(new MetadataBasedServerBlobFinder(mock(ClientConfig.class), mock(D2ServiceDiscovery.class), schemaReader));
 
     Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
     routingInfo.put("0", Arrays.asList("https://server-a:7778"));
 
+    boolean packagedSchema = schemaId <= AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
+    Schema writerSchema = packagedSchema
+        ? Utils.getSchemaFromResource("avro/MetadataResponseRecord/v" + schemaId + "/MetadataResponseRecord.avsc")
+        : MetadataResponseRecord.SCHEMA$;
     D2TransportClient transportClient = mock(D2TransportClient.class);
     when(transportClient.get(anyString())).thenReturn(
-        CompletableFuture.completedFuture(new TransportClientResponse(9, null, serializeMetadata(routingInfo))));
+        CompletableFuture.completedFuture(
+            new TransportClientResponse(schemaId, null, serializeMetadata(routingInfo, VERSION, writerSchema))));
     doReturn(transportClient).when(finder).getServerTransportClient(STORE_NAME);
 
     BlobPeersDiscoveryResponse response = finder.discoverBlobPeers(STORE_NAME, VERSION, 0);
 
-    Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getDiscoveryResult(), Arrays.asList("server-a"));
-    verify(schemaReader).getValueSchema(9);
+    Assert.assertEquals(response.isError(), !packagedSchema);
+    if (packagedSchema) {
+      Assert.assertEquals(response.getDiscoveryResult(), Arrays.asList("server-a"));
+    } else {
+      Assert.assertTrue(response.getDiscoveryResult() == null || response.getDiscoveryResult().isEmpty());
+    }
+    verify(schemaReader).getValueSchema(schemaId);
   }
 
   @Test
@@ -406,6 +429,13 @@ public class MetadataBasedServerBlobFinderTest {
   }
 
   private static byte[] serializeMetadata(Map<CharSequence, List<CharSequence>> routingInfo, int currentVersion) {
+    return serializeMetadata(routingInfo, currentVersion, MetadataResponseRecord.SCHEMA$);
+  }
+
+  private static byte[] serializeMetadata(
+      Map<CharSequence, List<CharSequence>> routingInfo,
+      int currentVersion,
+      Schema writerSchema) {
     MetadataResponseRecord record = new MetadataResponseRecord(
         new VersionProperties(currentVersion, 0, 1, "", Collections.emptyMap(), 1, 0),
         Collections.singletonList(currentVersion),
@@ -415,8 +445,13 @@ public class MetadataBasedServerBlobFinderTest {
         routingInfo,
         Collections.emptyMap(),
         150,
-        0);
-    return SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$).serialize(record);
+        0,
+        "");
+    GenericRecord writerRecord = new GenericData.Record(writerSchema);
+    for (Schema.Field field: writerSchema.getFields()) {
+      writerRecord.put(field.name(), record.get(field.name()));
+    }
+    return SerializerDeserializerFactory.getAvroGenericSerializer(writerSchema).serialize(writerRecord);
   }
 
   private static BlobPeersDiscoveryResponse discoverAfterLatch(

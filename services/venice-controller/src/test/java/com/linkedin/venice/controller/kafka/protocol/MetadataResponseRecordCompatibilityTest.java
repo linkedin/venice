@@ -2,7 +2,9 @@ package com.linkedin.venice.controller.kafka.protocol;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -18,10 +20,11 @@ import org.testng.annotations.Test;
 
 public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibilityTest {
   @Test
-  public void testStagedV5Compatibility() throws IOException, InterruptedException {
-    // Validate the staged resource independently of the active protocol and generated record.
+  public void testV4V5WireCompatibility() throws IOException, InterruptedException {
     Schema v4 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v4/MetadataResponseRecord.avsc");
     Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
+    Assert.assertEquals(MetadataResponseRecord.SCHEMA$, v5);
+    Assert.assertEquals(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(), 5);
     Map<Integer, Schema> schemaMap = new HashMap<>();
     schemaMap.put(4, v4);
     schemaMap.put(5, v5);
@@ -32,6 +35,10 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
     GenericRecord v5Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v4, v5).deserialize(v4Bytes);
     Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "");
+    MetadataResponseRecord specificReader =
+        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(v4, MetadataResponseRecord.class)
+            .deserialize(v4Bytes);
+    Assert.assertEquals(specificReader.getMultiKeyLongTailRetryThresholdsInMs().toString(), "");
 
     GenericRecord v5Record = createMetadataRecord(v5);
     v5Record.put("batchGetLimit", 500);
