@@ -4992,7 +4992,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           "event=globalRtDiv Loaded Global RT DIV State from disk topic-partition: {} brokerUrl: {} producer: {} position: {} pps: {}",
           topicPartition,
           brokerUrl,
-          producer,
+          GuidUtils.getHexFromGuid(GuidUtils.getGuidFromCharSequence(producer)),
           divRtCheckpointPosition,
           pps);
     });
