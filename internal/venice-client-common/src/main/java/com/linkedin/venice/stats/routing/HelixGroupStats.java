@@ -77,7 +77,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
     this.helixGroupCount = MetricEntityStateBase.create(
         HELIX_GROUP_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         HelixGroupTehutiMetricName.GROUP_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
@@ -93,7 +93,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
     return MetricEntityStateBase.create(
         HELIX_GROUP_CALL_COUNT.getMetricEntity(),
         otelSetup.otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         HelixGroupTehutiMetricDynamicName.of(HelixGroupTehutiMetricName.GROUP_REQUEST, groupId),
         Collections.singletonList(new OccurrenceRate()),
         otelSetup.baseDimensionsMap,
@@ -109,7 +109,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
     return MetricEntityStateBase.create(
         HELIX_GROUP_REQUEST_PENDING_REQUESTS.getMetricEntity(),
         otelSetup.otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         HelixGroupTehutiMetricDynamicName.of(HelixGroupTehutiMetricName.GROUP_PENDING_REQUEST, groupId),
         Collections.singletonList(new Avg()),
         otelSetup.baseDimensionsMap,
@@ -127,7 +127,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
     return MetricEntityStateBase.create(
         HELIX_GROUP_CALL_TIME.getMetricEntity(),
         otelSetup.otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         HelixGroupTehutiMetricDynamicName.of(HelixGroupTehutiMetricName.GROUP_RESPONSE_WAITING_TIME, groupId),
         Collections.singletonList(avgStat),
         otelSetup.baseDimensionsMap,

@@ -24,6 +24,18 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
   Store getStoreOrThrow(String storeName) throws VeniceNoStoreException;
 
   /**
+   * Returns the raw PubSub encryption-key URN from local metadata, or {@code null} if the store is absent.
+   * An unassigned key may be {@code null} or empty. Implementations must not refresh metadata for this lookup.
+   */
+  default String getPubSubEncryptionKeyUrn(String storeName) {
+    try {
+      return getStoreOrThrow(storeName).getPubSubEncryptionKeyUrn();
+    } catch (VeniceNoStoreException e) {
+      return null;
+    }
+  }
+
+  /**
    * Wait for a specified store/version to appear in the Store Repository and retrieve them.
    *
    * @param storeName       Store name to wait for.

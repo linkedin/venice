@@ -19,6 +19,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
@@ -118,10 +119,15 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private static final WriteComputeHandlerV1 writeComputeHandlerV1 = new WriteComputeHandlerV1();
 
+  // Attempts for each cluster discovery lookup: the store, the Kafka message envelope system store, and transport
+  // re-initialization.
+  private static final int CLUSTER_DISCOVERY_ATTEMPTS = 10;
+
   // Immutable state
   private final String veniceChildD2ZkHost;
   private final String primaryControllerColoD2ZKHost;
   private final String primaryControllerD2ServiceName;
+  private final String clusterDiscoveryD2ServiceName;
   private final String storeName;
   private final String samzaJobId;
   private final Version.PushType pushType;
@@ -167,12 +173,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private final VeniceWriterHook writerHook;
+  // Non-null only for async STREAM dispatch; null keeps the fully-inline legacy path.
+  private VeniceSystemProducerWriteDispatcher writeDispatcher = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
   private Map<String, String> additionalConfigs = new HashMap<>();
 
   private TransportClient transportClient;
+  // Routers' cluster discovery D2 service in the child colo; set only when the producer is built with D2 clients.
+  private D2TransportClient clusterDiscoveryTransportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
 
   public VeniceSystemProducer(VeniceSystemProducerConfig config) {
@@ -186,6 +196,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.partitioners = config.getPartitioners();
     this.time = config.getTime();
     this.writerHook = config.getWriterHook();
+    this.clusterDiscoveryD2ServiceName = config.getClusterDiscoveryD2ServiceName();
     if (config.getRouterUrl() != null) {
       this.routerUrl = Optional.of(config.getRouterUrl());
     }
@@ -215,6 +226,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier, int retryLimit) {
+    return requestWithRetry(supplier, retryLimit, "Controller");
+  }
+
+  private ControllerResponse requestWithRetry(Supplier<ControllerResponse> supplier, int retryLimit, String target) {
     String errorMsg = "";
     Exception lastException = null;
     for (int currentAttempt = 0; currentAttempt < retryLimit; currentAttempt++) {
@@ -223,24 +238,39 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         ControllerResponse controllerResponse = supplier.get();
         if (!controllerResponse.isError()) {
           return controllerResponse;
-        } else {
-          time.sleep(1000L * (currentAttempt + 1));
-          errorMsg = controllerResponse.getError();
         }
+        errorMsg = controllerResponse.getError();
       } catch (Exception e) {
-        if (e instanceof InterruptedException) {
-          throw new VeniceException(e);
-        }
-        try {
-          time.sleep(1000L * (currentAttempt + 1));
-        } catch (InterruptedException ie) {
-          throw new VeniceException(ie);
-        }
         errorMsg = e.getMessage();
         lastException = e;
       }
+      /**
+       * An interrupt means the caller is cancelling this thread, e.g. a Flink task being cancelled while its writer
+       * starts. Another attempt would absorb that signal, so stop here and leave the interrupt flag set.
+       */
+      if (Thread.currentThread().isInterrupted()) {
+        throw new VeniceException(
+            "Interrupted while sending request to " + target + ", error: " + errorMsg,
+            lastException);
+      }
+      try {
+        time.sleep(1000L * (currentAttempt + 1));
+      } catch (InterruptedException ie) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException(ie);
+      }
     }
-    throw new SamzaException("Failed to send request to Controller, error: " + errorMsg, lastException);
+    throw new SamzaException("Failed to send request to " + target + ", error: " + errorMsg, lastException);
+  }
+
+  /**
+   * Asks the routers which cluster hosts the store, through the cluster discovery D2 service in the child colo. The
+   * lookup is read-only and any router can answer it, so it does not depend on the controllers, which have to handle
+   * leader-bound calls such as /request_topic.
+   */
+  private D2ServiceDiscoveryResponse discoverClusterThroughRouters(String storeName) {
+    // One attempt per call: the retry budget and backoff come from requestWithRetry.
+    return new D2ServiceDiscovery(time).find(clusterDiscoveryTransportClient, storeName, false);
   }
 
   public String getTopicName() {
@@ -380,12 +410,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         }
         return getStartedD2Client(veniceChildD2ZkHost);
       });
+      this.clusterDiscoveryTransportClient = new D2TransportClient(clusterDiscoveryD2ServiceName, childColoD2Client);
 
       // Discover cluster
-      D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-          () -> D2ControllerClient
-              .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
-          10);
+      D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) requestWithRetry(
+          () -> discoverClusterThroughRouters(this.storeName),
+          CLUSTER_DISCOVERY_ATTEMPTS,
+          "Router");
 
       String clusterName = discoveryResponse.getCluster();
       LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
@@ -399,12 +430,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
         // Discover the D2 service name for the system store
         String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
-        D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-            () -> D2ControllerClient.discoverCluster(
-                primaryControllerColoD2Client,
-                primaryControllerD2ServiceName,
-                kafkaMessageEnvelopSchemaSysStore),
-            2);
+        D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) requestWithRetry(
+            () -> discoverClusterThroughRouters(kafkaMessageEnvelopSchemaSysStore),
+            CLUSTER_DISCOVERY_ATTEMPTS,
+            "Router");
         ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
             ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
         clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
@@ -429,10 +458,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       transportClient = new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client);
 
       reinitProvider = () -> {
-        D2ServiceDiscoveryResponse d2DiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-            () -> D2ControllerClient
-                .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
-            10);
+        D2ServiceDiscoveryResponse d2DiscoveryResponse = (D2ServiceDiscoveryResponse) requestWithRetry(
+            () -> discoverClusterThroughRouters(this.storeName),
+            CLUSTER_DISCOVERY_ATTEMPTS,
+            "Router");
         LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
         return new D2TransportClient(d2DiscoveryResponse.getD2Service(), childColoD2Client);
       };
@@ -452,6 +481,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     if (this.isStarted) {
       return;
     }
+    ValidatedWriteDispatcherConfig validatedDispatcherConfig = validateWriteDispatcherConfig();
     this.isStarted = true;
 
     setupClientsAndReInitProvider();
@@ -508,7 +538,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
-
+    this.writeDispatcher = maybeCreateWriteDispatcher(validatedDispatcherConfig);
     if (pushMonitor.isPresent()) {
       /**
        * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
@@ -549,34 +579,47 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   @Override
   public synchronized void stop() {
     this.isStarted = false;
-    Utils.closeQuietlyWithErrorLogged(veniceWriter);
-    if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
-      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      switch (pushMonitor.get().getCurrentStatus().getRootStatus()) {
-        case COMPLETED:
-          LOGGER.info("Push job for {} is COMPLETED.", topicName);
-          break;
-        case END_OF_PUSH_RECEIVED:
-          LOGGER.info("Batch load for {} has finished.", topicName);
-          break;
-        case ERROR:
-          LOGGER.info("Push job for {} encountered error.", topicName);
-          break;
-        default:
-          LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
-          /**
-           * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
-           * the containers send kill requests to controller at the same time to avoid hammering on controller.
-           */
-          Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
-          this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
-          LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
+    // Drain in-flight writes before closing the writer; absorb interrupts during cleanup and restore after.
+    boolean interrupted = Thread.interrupted();
+    try {
+      if (writeDispatcher != null) {
+        interrupted |= writeDispatcher.stop();
       }
-      Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
+      Utils.closeQuietlyWithErrorLogged(veniceWriter);
+      if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
+        String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+        switch (pushMonitor.get().getCurrentStatus().getRootStatus()) {
+          case COMPLETED:
+            LOGGER.info("Push job for {} is COMPLETED.", topicName);
+            break;
+          case END_OF_PUSH_RECEIVED:
+            LOGGER.info("Batch load for {} has finished.", topicName);
+            break;
+          case ERROR:
+            LOGGER.info("Push job for {} encountered error.", topicName);
+            break;
+          default:
+            LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
+            /**
+             * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
+             * the containers send kill requests to controller at the same time to avoid hammering on controller.
+             */
+            Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
+            this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
+            LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
+        }
+        Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
+      }
+      Utils.closeQuietlyWithErrorLogged(this.controllerClient);
+      hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
+      // After the quota monitor, whose transport re-initialization discovers the cluster through this client.
+      Utils.closeQuietlyWithErrorLogged(this.clusterDiscoveryTransportClient);
+      d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
     }
-    Utils.closeQuietlyWithErrorLogged(this.controllerClient);
-    hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
 
   @Override
@@ -632,7 +675,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
     }
 
-    send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
+    CompletableFuture<Void> submitted = send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
+    VeniceSystemProducerWriteCommand.awaitSubmission(submitted);
   }
 
   /**
@@ -675,11 +719,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       valueObject = objectWithTimestamp.getObject();
     }
 
-    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-
     if (valueObject == null) {
-      getInternalWriter().delete(serializedKey, logicalTimestamp, new CompletableFutureCallback(completableFuture));
-      return completableFuture;
+      return dispatchWrite(VeniceSystemProducerWriteCommand.delete(serializedKey, logicalTimestamp));
     }
 
     Schema valueObjectSchema = getSchemaFromObject(valueObject);
@@ -706,35 +747,105 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     int derivedSchemaId = valueSchemaIdPair.getSecond();
 
     if (derivedSchemaId == -1) {
-      getInternalWriter().put(
-          serializedKey,
-          serializedValue,
-          valueSchemaId,
-          logicalTimestamp,
-          new CompletableFutureCallback(completableFuture));
-    } else {
-      if (!isWriteComputeEnabled) {
-        throw new SamzaException(
-            "Cannot write partial update record to Venice store " + storeName + " "
-                + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
-      }
-      getInternalWriter().update(
-          serializedKey,
-          serializedValue,
-          valueSchemaId,
-          derivedSchemaId,
-          logicalTimestamp,
-          new CompletableFutureCallback(completableFuture));
+      return dispatchWrite(
+          VeniceSystemProducerWriteCommand.put(serializedKey, serializedValue, valueSchemaId, logicalTimestamp));
     }
-    return completableFuture;
+    if (!isWriteComputeEnabled) {
+      throw new SamzaException(
+          "Cannot write partial update record to Venice store " + storeName + " "
+              + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
+    }
+    return dispatchWrite(
+        VeniceSystemProducerWriteCommand
+            .update(serializedKey, serializedValue, valueSchemaId, derivedSchemaId, logicalTimestamp));
   }
 
   public CompletableFuture<Void> put(Object keyObject, Object valueObject) {
-    return send(keyObject, valueObject);
+    CompletableFuture<Void> future = send(keyObject, valueObject);
+    VeniceSystemProducerWriteCommand.awaitSubmission(future);
+    return future;
   }
 
   public CompletableFuture<Void> delete(Object keyObject) {
-    return send(keyObject, null);
+    CompletableFuture<Void> future = send(keyObject, null);
+    VeniceSystemProducerWriteCommand.awaitSubmission(future);
+    return future;
+  }
+
+  /** Async STREAM dispatch through the striped executor when a dispatcher exists, else the inline writer-callback path. */
+  private CompletableFuture<Void> dispatchWrite(VeniceSystemProducerWriteCommand command) {
+    VeniceSystemProducerWriteDispatcher dispatcher = this.writeDispatcher;
+    if (dispatcher == null) {
+      CompletableFuture<Void> future = new CompletableFuture<>();
+      command.submit(getInternalWriter(), new CompletableFutureCallback(future));
+      return future;
+    }
+    return dispatcher.dispatch(command);
+  }
+
+  /** Validated STREAM async-dispatch config, returned by value so a restart cannot leave stale validated state. */
+  static final class ValidatedWriteDispatcherConfig {
+    final int workerCount;
+    final int queueCapacity;
+
+    ValidatedWriteDispatcherConfig(int workerCount, int queueCapacity) {
+      this.workerCount = workerCount;
+      this.queueCapacity = queueCapacity;
+    }
+  }
+
+  /**
+   * Validates STREAM async-dispatch config up front so an operator error fails start() instead of silent inline
+   * fallback. Returns {@code null} for the fully-inline path (non-STREAM push or worker count 0 kill switch).
+   */
+  ValidatedWriteDispatcherConfig validateWriteDispatcherConfig() {
+    if (!Version.PushType.STREAM.equals(pushType)) {
+      return null;
+    }
+    int workerCount = getIntConfig(
+        VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG,
+        VeniceSystemProducerWriteDispatcher.DEFAULT_WORKER_COUNT);
+    if (workerCount < 0) {
+      throw new SamzaException(
+          "Invalid " + VeniceSystemProducerWriteDispatcher.WORKER_COUNT_CONFIG + ": " + workerCount
+              + " (must be >= 0; 0 disables async dispatch)");
+    }
+    if (workerCount == 0) {
+      return null;
+    }
+    int queueCapacity = getIntConfig(
+        VeniceSystemProducerWriteDispatcher.WORKER_QUEUE_CAPACITY_CONFIG,
+        VeniceSystemProducerWriteDispatcher.DEFAULT_WORKER_QUEUE_CAPACITY);
+    if (queueCapacity <= 0) {
+      throw new SamzaException(
+          "Invalid " + VeniceSystemProducerWriteDispatcher.WORKER_QUEUE_CAPACITY_CONFIG + ": " + queueCapacity
+              + " (must be > 0)");
+    }
+    return new ValidatedWriteDispatcherConfig(workerCount, queueCapacity);
+  }
+
+  /** Creates the async write dispatcher from the validated config, or returns null (fully inline) when it is null. */
+  private VeniceSystemProducerWriteDispatcher maybeCreateWriteDispatcher(ValidatedWriteDispatcherConfig validated) {
+    if (validated == null) {
+      return null;
+    }
+    return new VeniceSystemProducerWriteDispatcher(
+        veniceWriter,
+        validated.workerCount,
+        validated.queueCapacity,
+        storeName);
+  }
+
+  private int getIntConfig(String key, int defaultValue) {
+    String value = additionalConfigs.get(key);
+    if (value == null) {
+      return defaultValue;
+    }
+    try {
+      return Integer.parseInt(value.trim());
+    } catch (NumberFormatException e) {
+      throw new SamzaException("Invalid integer for config " + key + ": '" + value + "'", e);
+    }
   }
 
   /**
@@ -744,7 +855,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    getInternalWriter().flush();
+    if (writeDispatcher != null) {
+      writeDispatcher.flush();
+    } else {
+      getInternalWriter().flush();
+    }
   }
 
   private static Schema getSchemaFromObject(Object object) {
@@ -923,6 +1038,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   void setControllerClient(ControllerClient controllerClient) {
     this.controllerClient = controllerClient;
+  }
+
+  // used only for testing
+  ControllerClient getControllerClient() {
+    return this.controllerClient;
+  }
+
+  // used only for testing
+  RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider getReinitProvider() {
+    return this.reinitProvider;
   }
 
   // used only for testing

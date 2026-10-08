@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_S
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
@@ -27,6 +28,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURREN
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.WRITE_PATH_THREAD_PRIORITY;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -69,6 +71,19 @@ public class VeniceServerConfigTest {
     assertEquals(jvmArgs.size(), 2);
     assertEquals(jvmArgs.get(0), "-Xms256M");
     assertEquals(jvmArgs.get(1), "-Xmx256G");
+  }
+
+  @Test
+  public void testBlockedDrainerThresholdDefaultAndOverrides() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getBlockedDrainerThresholdMs(), 300000L);
+
+    for (long thresholdMs: new long[] { 50L, 0L, -1L }) {
+      props.setProperty(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, Long.toString(thresholdMs));
+      VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+      assertEquals(config.getBlockedDrainerThresholdMs(), thresholdMs);
+    }
   }
 
   @Test
@@ -170,6 +185,23 @@ public class VeniceServerConfigTest {
       assertEquals(consumerPoolRecordsLimitFactors.size(), 4);
       assertEquals(consumerPoolRecordsLimitFactors.toArray(), factors);
     }
+  }
+
+  @Test
+  public void testWritePathThreadPriority() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getWritePathThreadPriority(), VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+
+    props.put(WRITE_PATH_THREAD_PRIORITY, String.valueOf(Thread.NORM_PRIORITY));
+    VeniceServerConfig overriddenConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(overriddenConfig.getWritePathThreadPriority(), Thread.NORM_PRIORITY);
+
+    props.put(WRITE_PATH_THREAD_PRIORITY, String.valueOf(Thread.MIN_PRIORITY - 1));
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+
+    props.put(WRITE_PATH_THREAD_PRIORITY, String.valueOf(Thread.MAX_PRIORITY + 1));
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
   }
 
   @Test

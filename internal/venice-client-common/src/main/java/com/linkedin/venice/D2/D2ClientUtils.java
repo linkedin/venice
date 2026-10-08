@@ -51,6 +51,9 @@ public class D2ClientUtils {
     try {
       future.get(timeoutInMs, TimeUnit.MILLISECONDS);
     } catch (Throwable e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
       String msg = "D2 client startup failed.";
       LOGGER.error(msg, e);
       throw new VeniceException(msg, e);
@@ -116,6 +119,11 @@ public class D2ClientUtils {
     try {
       response = client.restRequest(createD2GetRequest(requestPath)).get();
     } catch (Exception e) {
+      if (e instanceof InterruptedException) {
+        // Restore the flag cleared by the interrupted wait, so retry loops above can see the caller's cancellation.
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Interrupted while sending D2 request, " + requestPath, e);
+      }
       if (e.getCause() instanceof RestException) {
         response = ((RestException) e.getCause()).getResponse();
       } else {

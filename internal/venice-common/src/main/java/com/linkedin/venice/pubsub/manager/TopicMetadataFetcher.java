@@ -114,6 +114,7 @@ class TopicMetadataFetcher implements Closeable {
             .setPubSubPositionTypeRegistry(topicManagerContext.getPubSubPositionTypeRegistry())
             .setPubSubTopicRepository(topicManagerContext.getPubSubTopicRepository())
             .setMetricsRepository(topicManagerContext.getMetricsRepository())
+            .setPubSubEncryptionKeyUrnLookup(topicManagerContext.getPubSubEncryptionKeyUrnLookup())
             .setStoreChangeNotifier(topicManagerContext.getStoreChangeNotifier());
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
       pubSubConsumerContextBuilder.setConsumerName("TopicManager-" + i);

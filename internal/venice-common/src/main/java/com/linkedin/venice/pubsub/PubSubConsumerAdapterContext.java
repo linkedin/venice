@@ -6,6 +6,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Objects;
+import java.util.function.Function;
 
 
 /**
@@ -29,6 +30,7 @@ public class PubSubConsumerAdapterContext {
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final boolean isOffsetCollectionEnabled;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+  private final Function<String, String> pubSubEncryptionKeyUrnLookup;
 
   private PubSubConsumerAdapterContext(Builder builder) {
     this.consumerName = builder.consumerName;
@@ -41,6 +43,7 @@ public class PubSubConsumerAdapterContext {
     this.pubSubMessageDeserializer = builder.pubSubMessageDeserializer;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
+    this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
   }
 
   public String getConsumerName() {
@@ -83,6 +86,11 @@ public class PubSubConsumerAdapterContext {
     return asyncStoreChangeNotifier;
   }
 
+  /** @see PubSubContext#getPubSubEncryptionKeyUrnLookup() */
+  public Function<String, String> getPubSubEncryptionKeyUrnLookup() {
+    return pubSubEncryptionKeyUrnLookup;
+  }
+
   public static class Builder {
     private String consumerName;
     private String pubSubBrokerAddress;
@@ -94,6 +102,7 @@ public class PubSubConsumerAdapterContext {
     private MetricsRepository metricsRepository;
     private boolean isOffsetCollectionEnabled;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+    private Function<String, String> pubSubEncryptionKeyUrnLookup;
 
     public Builder setConsumerName(String consumerName) {
       this.consumerName = consumerName;
@@ -142,6 +151,11 @@ public class PubSubConsumerAdapterContext {
 
     public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
       this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
+      return this;
+    }
+
+    public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
+      this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
       return this;
     }
 

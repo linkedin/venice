@@ -1,7 +1,15 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
+import static com.linkedin.venice.ConfigKeys.ENABLE_BLOB_TRANSFER;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -34,11 +42,13 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -48,6 +58,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -59,7 +70,9 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PersistenceType;
@@ -74,19 +87,24 @@ import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -772,9 +790,13 @@ public class TestGlobalRtDiv {
   }
 
   private HelixExternalViewRepository getRoutingDataRepository() {
-    return venice.getLeaderVeniceController()
+    return getRoutingDataRepository(venice);
+  }
+
+  private static HelixExternalViewRepository getRoutingDataRepository(VeniceClusterWrapper cluster) {
+    return cluster.getLeaderVeniceController()
         .getVeniceHelixAdmin()
-        .getHelixVeniceClusterResources(venice.getClusterName())
+        .getHelixVeniceClusterResources(cluster.getClusterName())
         .getRoutingDataRepository();
   }
 
@@ -943,6 +965,223 @@ public class TestGlobalRtDiv {
         validateGlobalDivState(globalRtDiv);
       });
     }
+  }
+
+  /**
+   * Verifies that a restarted server validates the VT records produced by its previous process when it bootstraps
+   * from a peer's blob snapshot.
+   *
+   * <p>Self-produced records are identified by host and port, which a restarted server shares with its previous
+   * process. The blob snapshot carries the source's VT DIV state for the previous process's producer as of snapshot
+   * time. If the restarted server skipped the records produced after the snapshot, that inherited state would never
+   * advance, and the stale state would be checkpointed and reported as missing messages by replicas that later
+   * bootstrap from this server.
+   *
+   * <ol>
+   *   <li>Server B is the blob transfer source for every other server, and the leader L of the tested partition is
+   *       not B.
+   *   <li>RT data is written so that B persists VT DIV state for L's producer.
+   *   <li>The remaining server X is restarted so that B creates a blob snapshot capturing that state.
+   *   <li>More RT data is written, so L's producer advances past the state captured in the snapshot.
+   *   <li>L is restarted on the same port and bootstraps from B's snapshot.
+   *   <li>L's VT DIV state for its previous process's producer must converge with B's.
+   * </ol>
+   */
+  @Test(timeOut = 360 * Time.MS_PER_SECOND)
+  public void testRestartedServerValidatesPreviousProcessRecordsAfterBlobTransfer() throws Exception {
+    int serverCount = 3;
+    int partitionCount = 3;
+    int batchSize = 100;
+    Properties extraProperties = createExtraProperties();
+
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(serverCount)
+            .partitionSize(1000000)
+            .sslToStorageNodes(true)
+            .sslToKafka(false)
+            .extraProperties(extraProperties)
+            .build())) {
+      cluster.addVeniceRouter(new Properties());
+
+      // A server fetches blobs from the port in DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT on every peer host. All servers
+      // share the same host, so servers A and C always fetch from B, and B fetches from A.
+      List<Integer> blobPorts = new ArrayList<>();
+      while (blobPorts.size() < serverCount) {
+        int port = TestUtils.getFreePort();
+        if (!blobPorts.contains(port)) {
+          blobPorts.add(port);
+        }
+      }
+      VeniceServerWrapper serverA = addBlobTransferServer(cluster, blobPorts.get(0), blobPorts.get(1));
+      VeniceServerWrapper source = addBlobTransferServer(cluster, blobPorts.get(1), blobPorts.get(0));
+      VeniceServerWrapper serverC = addBlobTransferServer(cluster, blobPorts.get(2), blobPorts.get(1));
+
+      String storeName = Utils.getUniqueString("testRestartedServerBlobTransfer");
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+      try (ControllerClient controllerClient =
+          new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
+        TestUtils.assertCommand(
+            controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+        TestUtils.assertCommand(
+            controllerClient.updateStore(
+                storeName,
+                createUpdateParams(false, partitionCount)
+                    .setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED)
+                    .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
+        TestUtils.assertCommand(
+            controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 120000));
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+        String rtTopicName = Utils.getRealTimeTopicName(storeInfo);
+
+        Map<Integer, Integer> leaderPortByPartition = new HashMap<>();
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (int p = 0; p < partitionCount; p++) {
+            Instance leaderInstance = getRoutingDataRepository(cluster).getLeaderInstance(topicName, p);
+            assertNotNull(leaderInstance, "No leader for partition " + p);
+            leaderPortByPartition.put(p, leaderInstance.getPort());
+          }
+        });
+        int partition = leaderPortByPartition.entrySet()
+            .stream()
+            .filter(entry -> entry.getValue() != source.getPort())
+            .map(Map.Entry::getKey)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Blob transfer source leads every partition"));
+        VeniceServerWrapper leader = cluster.getVeniceServerByPort(leaderPortByPartition.get(partition));
+        VeniceServerWrapper otherServer = leader == serverA ? serverC : serverA;
+        LOGGER.info(
+            "Testing partition {} with leader {}, blob transfer source {}, and other server {}",
+            partition,
+            leader.getAddress(),
+            source.getAddress(),
+            otherServer.getAddress());
+
+        PubSubBrokerWrapper brokerWrapper = cluster.getPubSubBrokerWrapper();
+        Properties writerProperties = new Properties();
+        writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerWrapper.getAddress());
+        writerProperties
+            .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(brokerWrapper)));
+        VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(
+            writerProperties,
+            brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory(),
+            brokerWrapper.getPubSubPositionTypeRegistry());
+
+        writeRTData(rtTopicName, 1, batchSize, VALUE_PREFIX, writerFactory);
+
+        AtomicReference<GUID> leaderProducerGuidRef = new AtomicReference<>();
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          StoreIngestionTask leaderSit =
+              leader.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+          assertNotNull(leaderSit);
+          PartitionConsumptionState pcs = leaderSit.getPartitionConsumptionState(partition);
+          assertNotNull(pcs);
+          Lazy<VeniceWriter<byte[], byte[], byte[]>> leaderWriter = pcs.getVeniceWriterLazyRef();
+          assertTrue(leaderWriter != null && leaderWriter.isPresent(), "Leader has not produced to the VT yet");
+          leaderProducerGuidRef.set(leaderWriter.get().getProducerGUID());
+        });
+        GUID leaderProducerGuid = leaderProducerGuidRef.get();
+
+        // The snapshot's metadata is taken from the persisted OffsetRecord, so it must hold the leader's producer state
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          OffsetRecord offsetRecord = source.getVeniceServer()
+              .getStorageMetadataService()
+              .getLastOffset(
+                  topicName,
+                  partition,
+                  source.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+          assertNotNull(offsetRecord.getProducerPartitionState(leaderProducerGuid));
+        });
+
+        // The other server bootstraps from the source, which creates the snapshot later served to the restarted leader
+        cluster.stopAndRestartVeniceServer(otherServer.getPort());
+        File snapshotDir = new File(
+            RocksDBUtils.composeSnapshotDir(
+                new File(source.getDataDirectory(), "rocksdb").getAbsolutePath(),
+                topicName,
+                partition));
+        TestUtils.waitForNonDeterministicAssertion(
+            2,
+            TimeUnit.MINUTES,
+            () -> assertTrue(snapshotDir.exists(), "Snapshot was not created at " + snapshotDir));
+
+        ProducerPartitionState stateAfterSnapshot =
+            getVtProducerState(source, topicName, partition, leaderProducerGuid);
+        assertNotNull(stateAfterSnapshot);
+        writeRTData(rtTopicName, batchSize + 1, 2 * batchSize, VALUE_PREFIX, writerFactory);
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          ProducerPartitionState state = getVtProducerState(source, topicName, partition, leaderProducerGuid);
+          assertNotNull(state);
+          assertTrue(
+              state.getSegmentNumber() > stateAfterSnapshot.getSegmentNumber()
+                  || state.getMessageSequenceNumber() > stateAfterSnapshot.getMessageSequenceNumber(),
+              "Leader's producer has not advanced past the snapshot");
+        });
+
+        try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+          verifyAllDataCanBeQueried(client, 1, 2 * batchSize, VALUE_PREFIX);
+
+          cluster.stopVeniceServer(leader.getPort());
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+            Instance newLeader = getRoutingDataRepository(cluster).getLeaderInstance(topicName, partition);
+            assertNotNull(newLeader);
+            assertNotEquals(newLeader.getPort(), leader.getPort());
+          });
+          cluster.restartVeniceServer(leader.getPort());
+
+          TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, true, () -> {
+            ProducerPartitionState expected = getVtProducerState(source, topicName, partition, leaderProducerGuid);
+            ProducerPartitionState actual = getVtProducerState(leader, topicName, partition, leaderProducerGuid);
+            assertNotNull(expected);
+            assertNotNull(actual, "Restarted server did not inherit state for its previous process's producer");
+            assertEquals(actual.getSegmentNumber(), expected.getSegmentNumber());
+            assertEquals(actual.getMessageSequenceNumber(), expected.getMessageSequenceNumber());
+          });
+          verifyAllDataCanBeQueried(client, 1, 2 * batchSize, VALUE_PREFIX);
+        }
+      }
+    }
+  }
+
+  private static VeniceServerWrapper addBlobTransferServer(
+      VeniceClusterWrapper cluster,
+      int blobTransferServerPort,
+      int blobTransferClientPort) {
+    Properties featureProperties = new Properties();
+    featureProperties.setProperty(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(KAFKA_OVER_SSL, "false");
+    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    serverProperties.setProperty(ENABLE_BLOB_TRANSFER, "true");
+    serverProperties.setProperty(BLOB_TRANSFER_MANAGER_ENABLED, "true");
+    serverProperties.setProperty(BLOB_TRANSFER_SSL_ENABLED, "true");
+    serverProperties.setProperty(BLOB_TRANSFER_ACL_ENABLED, "true");
+    // Always bootstrap from a peer's blob on restart, regardless of offset lag
+    serverProperties.setProperty(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, "-1000000");
+    serverProperties.setProperty(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, String.valueOf(blobTransferServerPort));
+    serverProperties.setProperty(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, String.valueOf(blobTransferClientPort));
+    return cluster.addVeniceServer(featureProperties, serverProperties);
+  }
+
+  /**
+   * Returns the in-memory VT DIV state of the given producer, or null if the server has no VT DIV state yet.
+   */
+  private static ProducerPartitionState getVtProducerState(
+      VeniceServerWrapper server,
+      String topicName,
+      int partition,
+      GUID producerGuid) {
+    StoreIngestionTask sit = server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+    DataIntegrityValidator validator = sit == null ? null : sit.getDataIntegrityValidator();
+    if (validator == null || !validator.hasVtDivState(partition)) {
+      return null;
+    }
+    return validator.cloneVtProducerStates(partition, false, DataIntegrityValidator.DISABLED)
+        .getPartitionStates(PartitionTracker.VERSION_TOPIC)
+        .get(GuidUtils.guidToUtf8(producerGuid));
   }
 
   /**

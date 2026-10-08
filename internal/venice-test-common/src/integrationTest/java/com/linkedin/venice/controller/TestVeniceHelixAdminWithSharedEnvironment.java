@@ -112,6 +112,19 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final static Logger LOGGER = LogManager.getLogger(TestVeniceHelixAdminWithSharedEnvironment.class);
 
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testWriteQuotaEnabledDefaultsFalseUntilUpdate() {
+    String storeName = Utils.getUniqueString("write-quota-new");
+    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(true));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(false));
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     setupCluster(metricsRepository);

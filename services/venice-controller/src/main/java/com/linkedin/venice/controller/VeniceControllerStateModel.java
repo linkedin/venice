@@ -59,7 +59,12 @@ public class VeniceControllerStateModel extends StateModel {
 
   private VeniceControllerClusterConfig clusterConfig;
   private SafeHelixManager helixManager;
-  private HelixVeniceClusterResources clusterResources;
+  /**
+   * Written only under {@code synchronized} methods ({@link #initClusterResources()}, {@link #clearResources()}),
+   * but read without synchronization by {@link #getResources()} from other threads (e.g. pub-sub encryption-key
+   * lookups). Marked volatile so those readers observe the latest value instead of a stale reference.
+   */
+  private volatile HelixVeniceClusterResources clusterResources;
 
   private final ExecutorService workerService;
   private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;

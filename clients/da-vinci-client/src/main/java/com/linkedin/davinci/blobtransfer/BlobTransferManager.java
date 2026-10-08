@@ -62,4 +62,11 @@ public interface BlobTransferManager<T> extends AutoCloseable {
   AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
 
   BlobTransferStatusTrackingManager getTransferStatusTrackingManager();
+
+  /**
+   * Number of replicas currently holding a receive channel. A channel is counted from the moment it is opened until
+   * the transfer drains, which is the window over which it consumes the receiver's direct memory, so this is the
+   * quantity a receive-side admission check has to look at.
+   */
+  int getInFlightReceiveCount();
 }

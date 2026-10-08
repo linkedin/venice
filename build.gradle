@@ -52,7 +52,7 @@ def pulsarGroup = 'org.apache.pulsar'
 def pulsarVersion = '2.10.4'
 def alpnAgentVersion = '2.0.10'
 def hadoopVersion = '2.10.2'
-def apacheSparkVersion = '3.3.3'
+def apacheSparkVersion = '3.5.2'
 def antlrVersion = '4.8'
 def scala = '2.12'
 def openTelemetryVersion = '1.47.0'
@@ -328,7 +328,9 @@ subprojects {
       // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
-      def versionOverrides = []
+      def versionOverrides = [
+        project(':internal:venice-common').file('src/main/resources/avro/MetadataResponseRecord/v4', PathValidation.DIRECTORY)
+      ]
 
       def schemaDirs = [sourceDir]
       sourceDir.eachDir { typeDir ->

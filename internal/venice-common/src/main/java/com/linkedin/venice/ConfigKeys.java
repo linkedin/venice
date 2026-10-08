@@ -364,6 +364,12 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_PUSH_RETRY_COOLDOWN_MS = "controller.push.retry.cooldown.ms";
 
+  /**
+   * Positive duration threshold in milliseconds for the push_job.count duration bucket, defaulting to 24 hours.
+   * This classifies push-job metrics only; it does not change push timeouts or cancellation behavior.
+   */
+  public static final String CONTROLLER_PUSH_JOB_SLA_MS = "controller.push.job.sla.ms";
+
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
   public static final String DEFAULT_NUMBER_OF_PARTITION = "default.partition.count";
@@ -503,6 +509,21 @@ public class ConfigKeys {
    * Duplicate key threshold to decide when a store should be nominated for compaction
    */
   public static final String LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD = "log.compaction.duplicate.key.threshold";
+
+  /**
+   * When on, the controller moves a store to the {@link #LOG_COMPACTION_BACKUP_STRATEGY} strategy before a scheduled
+   * log-compaction repush, so the store's existing backup is not deleted at repush start and survives a failed repush.
+   */
+  public static final String LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED =
+      "log.compaction.preserve.backup.version.enabled";
+
+  /**
+   * The {@link com.linkedin.venice.meta.BackupStrategy} (as its integer id, see
+   * {@link com.linkedin.venice.meta.BackupStrategy#getValue()}) applied to a store before a scheduled log-compaction
+   * repush when {@link #LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED} is on. Configurable so the preservation policy
+   * can change without a code change. Defaults to {@link com.linkedin.venice.meta.BackupStrategy#KEEP_MIN_VERSIONS}.
+   */
+  public static final String LOG_COMPACTION_BACKUP_STRATEGY = "log.compaction.backup.strategy";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
@@ -832,8 +853,19 @@ public class ConfigKeys {
   public static final String LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY =
       "leader.follower.state.transition.thread.pool.strategy";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
+  public static final String WRITE_PATH_THREAD_PRIORITY = "write.path.thread.priority";
   public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
+
+  /**
+   * How long a drainer may hold a single queue node before it is reported as stalled. Only time spent holding a
+   * node counts; a drainer waiting for work is idle, not stalled. Healthy drainers finish a node in
+   * milliseconds, so this sits several orders of magnitude above normal.
+   *
+   * Defaults to 300000 ms. Set to zero or a negative value to disable the background monitor, per-record
+   * stall tracking and blocked-time metrics. This is read at construction time; changes require a restart.
+   */
+  public static final String SERVER_BLOCKED_DRAINER_THRESHOLD_MS = "server.blocked.drainer.threshold.ms";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
 
@@ -2292,11 +2324,26 @@ public class ConfigKeys {
   // size, so this config only caps the ceiling; it does not change the 16KB floor. Tune this down to keep large
   // chunks poolable by Netty's heap arena (see io.netty.allocator.maxOrder) at the cost of more, smaller writes.
   public static final String BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES = "blob.transfer.max.chunk.size.bytes";
+  // this is a config to decide whether blob transfer channels allocate from a Netty PooledByteBufAllocator of their
+  // own rather than the process-wide default, so their memory usage becomes attributable to blob transfer. The chunk
+  // size is unchanged, so the same allocations stay poolable either way.
+  // The two pools are additive to the default one and never release the first chunk they reserve per arena, which is
+  // negligible at the 128KB chunk -Dio.netty.allocator.maxOrder=4 produces and hundreds of MB at Netty's stock 16MB
+  // chunk, so do not enable this where that property is unset.
+  public static final String BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED = "blob.transfer.dedicated.allocator.enabled";
   // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
   // many
   // replicas can be concurrently receiving blobs for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS =
       "blob.transfer.max.concurrent.blob.receive.replicas";
+  // this is a config to cap how many replicas may hold a blob transfer receive channel at the same time. It bounds a
+  // different quantity than BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS above, which sizes the fetch executor's
+  // thread pool: a fetch worker hands the transfer to a Netty event loop and returns within milliseconds, so the pool
+  // is free again long before the bytes stop arriving, and in-flight channels can outnumber its threads several times
+  // over. The receiver's direct memory scales with the channels that are streaming, so this is the one that bounds it.
+  // A value of 0 or less leaves the count unbounded.
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_IN_FLIGHT_RECEIVE_REPLICAS =
+      "blob.transfer.max.concurrent.in.flight.receive.replicas";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max file receive timeout time in minutes in client side.
@@ -2795,6 +2842,22 @@ public class ConfigKeys {
    * Default: 100000. Ignored if callback thread count is 0.
    */
   public static final String CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY = "client.producer.callback.queue.capacity";
+
+  /**
+   * Number of partition worker threads (stripes) for the VeniceSystemProducer async STREAM dispatch path.
+   * Records route to a worker by their Venice partition, so a partition blocked by leader rebalance does not
+   * stall partitions on other stripes. Default: 4. Set to 0 to DISABLE async dispatch (writes execute inline
+   * on the caller thread, the legacy synchronous behavior).
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_COUNT = "venice.system.producer.worker.count";
+
+  /**
+   * Bounded queue capacity per VeniceSystemProducer worker (stripe) for backpressure. When a worker's queue
+   * is full the submitting thread blocks until space frees up; writes are never dropped. Default: 100000.
+   * Ignored when the worker count is 0.
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY =
+      "venice.system.producer.worker.queue.capacity";
 
   /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.

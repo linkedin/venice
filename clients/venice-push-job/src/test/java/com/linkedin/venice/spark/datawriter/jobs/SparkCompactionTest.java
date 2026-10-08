@@ -360,7 +360,7 @@ public class SparkCompactionTest {
 
               return java.util.Collections.singletonList(latestRecord).iterator();
             },
-            org.apache.spark.sql.catalyst.encoders.RowEncoder.apply(RAW_PUBSUB_INPUT_TABLE_SCHEMA));
+            org.apache.spark.sql.Encoders.row(RAW_PUBSUB_INPUT_TABLE_SCHEMA));
   }
 
   /**

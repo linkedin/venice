@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStoragePartition;
@@ -78,6 +79,24 @@ public class BlobSnapshotManager {
       BlobTransferUtils.BlobTransferTableFormat transferTableFormat,
       int snapshotCleanupIntervalInMins,
       LogContext logContext) {
+    this(
+        storageEngineRepository,
+        storageMetadataService,
+        snapshotRetentionTimeInMin,
+        transferTableFormat,
+        snapshotCleanupIntervalInMins,
+        logContext,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  public BlobSnapshotManager(
+      StorageEngineRepository storageEngineRepository,
+      StorageMetadataService storageMetadataService,
+      int snapshotRetentionTimeInMin,
+      BlobTransferUtils.BlobTransferTableFormat transferTableFormat,
+      int snapshotCleanupIntervalInMins,
+      LogContext logContext,
+      int writePathThreadPriority) {
     this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
     this.snapshotRetentionTimeInMillis = TimeUnit.MINUTES.toMillis(snapshotRetentionTimeInMin);
@@ -91,7 +110,7 @@ public class BlobSnapshotManager {
     this.snapshotAccessLocks = new VeniceConcurrentHashMap<>();
 
     this.snapshotCleanupScheduler = Executors.newSingleThreadScheduledExecutor(
-        new DaemonThreadFactory("Venice-BlobTransfer-Snapshot-Cleanup-Scheduler", logContext));
+        new DaemonThreadFactory("Venice-BlobTransfer-Snapshot-Cleanup-Scheduler", writePathThreadPriority, logContext));
 
     scheduleCleanupOutOfRetentionSnapshotTask();
   }
@@ -110,7 +129,8 @@ public class BlobSnapshotManager {
         DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN,
         BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
         DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS,
-        LogContext.forTests("BlobSnapshotManager"));
+        LogContext.forTests("BlobSnapshotManager"),
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
   }
 
   /**

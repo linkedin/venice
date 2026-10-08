@@ -130,6 +130,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -151,8 +152,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
   // Extra logger dedicated for ingestion info for slow partition.
   private static final Logger INGESTION_DEBUGGER_LOGGER = LogManager.getLogger(TopicPartitionIngestionInfo.class);
-  // Ingestion is important but should yield to the read path, so run it slightly below normal priority.
-  private static final int INGESTION_TASK_THREAD_PRIORITY = Thread.NORM_PRIORITY - 1;
 
   private final StorageService storageService;
 
@@ -243,6 +242,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ScheduledExecutorService idleStoreIngestionTaskKillerExecutor;
 
   private final VeniceWriterFactory veniceWriterFactory;
+  private final VeniceWriterFactory encryptedVeniceWriterFactory;
   private final MetricsRepository metricsRepository;
 
   private final HeartbeatMonitoringService heartbeatMonitoringService;
@@ -293,11 +293,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     veniceWriterProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
     producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
+    Function<String, String> pubSubEncryptionKeyUrnLookup = metadataRepo::getPubSubEncryptionKeyUrn;
     this.veniceWriterFactory = new VeniceWriterFactory(
         veniceWriterProperties,
         producerAdapterFactory,
         metricsRepository,
-        serverConfig.getPubSubPositionTypeRegistry());
+        serverConfig.getPubSubPositionTypeRegistry(),
+        null,
+        false);
+    this.encryptedVeniceWriterFactory = new VeniceWriterFactory(
+        veniceWriterProperties,
+        producerAdapterFactory,
+        metricsRepository,
+        serverConfig.getPubSubPositionTypeRegistry(),
+        pubSubEncryptionKeyUrnLookup,
+        true);
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
@@ -392,6 +402,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .setTopicMetadataFetcherConsumerPoolSize(serverConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
             .setVeniceComponent(component)
             .setStoreChangeNotifier(asyncStoreChangeNotifier)
+            .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());
@@ -400,6 +411,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setPubSubPositionDeserializer(new PubSubPositionDeserializer(serverConfig.getPubSubPositionTypeRegistry()))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setStoreChangeNotifier(asyncStoreChangeNotifier)
+        .setPubSubEncryptionKeyUrnLookup(pubSubEncryptionKeyUrnLookup)
         .setPubSubMessageDeserializer(pubSubDeserializer)
         .setPubSubClientsFactory(pubSubClientsFactory)
         .setUseCheckpointedPubSubPositionWithFallback(serverConfig.isUseCheckpointedPubSubPositionWithFallbackEnabled())
@@ -459,7 +471,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getLogContext(),
           metricsRepository,
           true,
-          serverConfig.getClusterName());
+          serverConfig.getClusterName(),
+          serverConfig.getBlockedDrainerThresholdMs(),
+          serverConfig.getWritePathThreadPriority());
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 
@@ -505,11 +519,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     DiskUsage diskUsage = new DiskUsage(serverConfig.getDataBasePath(), serverConfig.getDiskFullThreshold());
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader, veniceWriterFactory);
+    VeniceViewWriterFactory encryptedViewWriterFactory =
+        new VeniceViewWriterFactory(veniceConfigLoader, encryptedVeniceWriterFactory);
 
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
           serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
-          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getLogContext()));
+          new DaemonThreadFactory(
+              "AA_WC_PARALLEL_PROCESSING",
+              serverConfig.getWritePathThreadPriority(),
+              serverConfig.getLogContext()));
       new ThreadPoolStats(
           metricsRepository,
           (ThreadPoolExecutor) aaWCWorkLoadProcessingThreadPool,
@@ -526,7 +545,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
-        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getLogContext()));
+        new DaemonThreadFactory(
+            "AA_WC_INGESTION_STORAGE_LOOKUP",
+            serverConfig.getWritePathThreadPriority(),
+            serverConfig.getLogContext()));
     new ThreadPoolStats(
         metricsRepository,
         (ThreadPoolExecutor) aaWCIngestionStorageLookupThreadPool,
@@ -541,6 +563,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setPubSubContext(pubSubContext)
         .setVeniceWriterFactory(veniceWriterFactory)
+        .setEncryptedVeniceWriterFactory(encryptedVeniceWriterFactory)
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setSchemaRepository(schemaRepo)
@@ -558,6 +581,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setMetaStoreWriter(metaStoreWriter)
         .setCompressorFactory(compressorFactory)
         .setVeniceViewWriterFactory(viewWriterFactory)
+        .setEncryptedVeniceViewWriterFactory(encryptedViewWriterFactory)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
@@ -612,8 +636,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (heartbeatMonitoringService != null) {
       heartbeatMonitoringService.setKafkaStoreIngestionService(this);
     }
-    ingestionExecutorService =
-        Executors.newCachedThreadPool(new NamedThreadFactory("StoreIngestionService", INGESTION_TASK_THREAD_PRIORITY));
+    ingestionExecutorService = Executors.newCachedThreadPool(
+        new NamedThreadFactory("StoreIngestionService", serverConfig.getWritePathThreadPriority()));
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
 
     storeBufferService.start();

@@ -16,6 +16,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -117,6 +118,7 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
             .setRunningFabric("dc-0")
             .setVerifyLatestProtocolPresent(true)
             .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+            .setClusterDiscoveryD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setPrimaryControllerColoD2ZKHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
             .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
             .build());
@@ -130,6 +132,7 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
             .setRunningFabric("dc-1")
             .setVerifyLatestProtocolPresent(true)
             .setVeniceChildD2ZkHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
+            .setClusterDiscoveryD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setPrimaryControllerColoD2ZKHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
             .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
             .build());
@@ -144,6 +147,7 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
             .setRunningFabric("dc-0")
             .setVerifyLatestProtocolPresent(true)
             .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+            .setClusterDiscoveryD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setPrimaryControllerColoD2ZKHost(multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress())
             .setPrimaryControllerD2ServiceName(PARENT_D2_SERVICE_NAME)
             .build());

@@ -57,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeast;
@@ -70,6 +71,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
@@ -221,6 +223,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -297,6 +300,7 @@ import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InOrder;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
@@ -522,7 +526,8 @@ public abstract class StoreIngestionTaskTest {
         null,
         mockMetricRepo,
         true,
-        "test-cluster");
+        "test-cluster",
+        TimeUnit.MINUTES.toMillis(5));
     storeBufferService.start();
   }
 
@@ -6888,6 +6893,60 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
+  @Test
+  public void testResubscribeAsLeaderPreservesValidDivPositionsWhenFallbackIsNeeded() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .preparePositionCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
+
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
+    PubSubTopic rtTopic = topicRepository.getTopic("test_rt");
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getReplicaId()).thenReturn("test_v1-1");
+    when(pcs.getPartition()).thenReturn(1);
+    when(ingestionTask.isGlobalRtDivEnabled()).thenReturn(true);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(true);
+    when(ingestionTask.getConsumptionSourceKafkaAddress(pcs))
+        .thenReturn(new HashSet<>(Arrays.asList("dc-1", "dc-2", "dc-3")));
+    when(pcs.getLeaderPosition("dc-1", true)).thenReturn(InMemoryPubSubPosition.of(100L));
+    when(pcs.getLeaderPosition("dc-2", true)).thenReturn(InMemoryPubSubPosition.of(200L));
+    when(pcs.getLeaderPosition("dc-3", true)).thenReturn(PubSubSymbolicPosition.EARLIEST);
+
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
+    when(offsetRecord.getLeaderTopic(any())).thenReturn(rtTopic);
+
+    Map<String, PubSubPosition> fallbackRtPositions = new HashMap<>();
+    fallbackRtPositions.put("dc-1", InMemoryPubSubPosition.of(999L));
+    fallbackRtPositions.put("dc-2", InMemoryPubSubPosition.of(888L));
+    fallbackRtPositions.put("dc-3", InMemoryPubSubPosition.of(500L));
+    doAnswer(invocation -> {
+      List<CharSequence> unreachableBrokers = invocation.getArgument(2, List.class);
+      unreachableBrokers.add("dc-3");
+      return fallbackRtPositions;
+    }).when(ingestionTask).calculateRtConsumptionStartPositions(eq(pcs), eq(rtTopic), anyList());
+
+    ingestionTask.preparePositionCheckpointAndStartConsumptionAsLeader(rtTopic, pcs, true);
+
+    ArgumentCaptor<PubSubPosition> offsetCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+    ArgumentCaptor<String> brokerCaptor = ArgumentCaptor.forClass(String.class);
+    verify(ingestionTask, times(2))
+        .consumerSubscribe(eq(rtTopic), eq(pcs), offsetCaptor.capture(), brokerCaptor.capture());
+
+    Map<String, PubSubPosition> startPositionsByBroker = new HashMap<>();
+    List<String> brokerAddresses = brokerCaptor.getAllValues();
+    List<PubSubPosition> positions = offsetCaptor.getAllValues();
+    for (int i = 0; i < brokerAddresses.size(); i++) {
+      startPositionsByBroker.put(brokerAddresses.get(i), positions.get(i));
+    }
+
+    Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-1")).getInternalOffset(), 100L);
+    Assert.assertEquals(((InMemoryPubSubPosition) startPositionsByBroker.get("dc-2")).getInternalOffset(), 200L);
+    Assert.assertFalse(startPositionsByBroker.containsKey("dc-3"));
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testResubscribeAsLeaderFromVersionTopic(boolean aaEnabled) throws InterruptedException {
     LeaderFollowerStoreIngestionTask ingestionTask =
@@ -7898,6 +7957,80 @@ public abstract class StoreIngestionTaskTest {
 
     assertThrows(VeniceException.class, () -> sit.getNewStoreVersionState(12345L, true, sopNullDict));
 
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetNewStoreVersionStateReadsVtDictionaryWithKeyUrnLookup(boolean hasKeyUrnLookup) throws Exception {
+    String versionTopic = "test_store_v1";
+    Function<String, String> keyUrnLookup = storeName -> "urn:li:pubSubEncryptionKey:" + storeName;
+    StoreIngestionTask sit = mockSitReadingDictionaryFromVt(versionTopic, hasKeyUrnLookup ? keyUrnLookup : null);
+    ByteBuffer dictionary = ByteBuffer.wrap("vt-dictionary".getBytes(StandardCharsets.UTF_8));
+
+    try (MockedStatic<DictionaryUtils> dictionaryUtils = mockStatic(DictionaryUtils.class)) {
+      dictionaryUtils
+          .when(() -> DictionaryUtils.readDictionaryFromEncryptedKafka(anyString(), any(VeniceProperties.class), any()))
+          .thenReturn(dictionary);
+      dictionaryUtils.when(
+          () -> DictionaryUtils
+              .readDictionaryFromKafka(anyString(), any(VeniceProperties.class), any(PubSubMessageDeserializer.class)))
+          .thenReturn(dictionary);
+
+      StoreVersionState svs = sit.getNewStoreVersionState(12345L, false, null);
+
+      assertEquals(svs.compressionStrategy, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+      Assert.assertSame(svs.compressionDictionary, dictionary);
+      if (hasKeyUrnLookup) {
+        dictionaryUtils.verify(
+            () -> DictionaryUtils
+                .readDictionaryFromEncryptedKafka(eq(versionTopic), any(VeniceProperties.class), same(keyUrnLookup)));
+        dictionaryUtils.verify(
+            () -> DictionaryUtils.readDictionaryFromKafka(
+                anyString(),
+                any(VeniceProperties.class),
+                any(PubSubMessageDeserializer.class)),
+            never());
+      } else {
+        dictionaryUtils.verify(
+            () -> DictionaryUtils.readDictionaryFromKafka(
+                eq(versionTopic),
+                any(VeniceProperties.class),
+                any(PubSubMessageDeserializer.class)));
+        dictionaryUtils
+            .verify(() -> DictionaryUtils.readDictionaryFromEncryptedKafka(anyString(), any(), any()), never());
+      }
+    }
+  }
+
+  @Test
+  public void testGetNewStoreVersionStatePropagatesVtDictionaryReadFailure() throws Exception {
+    StoreIngestionTask sit =
+        mockSitReadingDictionaryFromVt("test_store_v1", storeName -> "urn:li:pubSubEncryptionKey:" + storeName);
+
+    try (MockedStatic<DictionaryUtils> dictionaryUtils = mockStatic(DictionaryUtils.class)) {
+      dictionaryUtils
+          .when(() -> DictionaryUtils.readDictionaryFromEncryptedKafka(anyString(), any(VeniceProperties.class), any()))
+          .thenThrow(new VeniceException("Failed to decrypt the VT dictionary"));
+
+      VeniceException e =
+          Assert.expectThrows(VeniceException.class, () -> sit.getNewStoreVersionState(12345L, false, null));
+      assertEquals(e.getMessage(), "Failed to decrypt the VT dictionary");
+    }
+  }
+
+  /** Mocks a ZSTD_WITH_DICT task whose getNewStoreVersionState reads the dictionary from the VT when given no SOP. */
+  private static StoreIngestionTask mockSitReadingDictionaryFromVt(
+      String versionTopic,
+      Function<String, String> keyUrnLookup) throws Exception {
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).getNewStoreVersionState(anyLong(), anyBoolean(), any());
+    doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(sit).getCompressionStrategy();
+    for (Object[] entry: new Object[][] { { "kafkaVersionTopic", versionTopic }, { "kafkaProps", new Properties() },
+        { "pubSubContext", new PubSubContext.Builder().setPubSubEncryptionKeyUrnLookup(keyUrnLookup).build() } }) {
+      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
+      f.setAccessible(true);
+      f.set(sit, entry[1]);
+    }
+    return sit;
   }
 
   @Test

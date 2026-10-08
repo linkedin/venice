@@ -31,6 +31,11 @@ public enum StoreBufferServiceOtelMetricEntity implements ModuleMetricEntityInte
       "drainer.writer.memory.min_used", MetricType.ASYNC_GAUGE, MetricUnit.BYTES,
       "Minimum memory used by any single drainer writer", setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)
   ),
+  BLOCKED_TIME_PER_WRITER_MAX(
+      "drainer.writer.blocked.max_time", MetricType.ASYNC_GAUGE, MetricUnit.MILLISECOND,
+      "Longest time any single drainer writer has been holding one queue node without returning",
+      setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)
+  ),
   PROCESSING_TIME(
       "drainer.record.processing.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "Time spent processing each record in the drainer",

@@ -473,6 +473,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     topicSwitch.rewindStartTimestamp = System.currentTimeMillis();
     TopicSwitchWrapper topicSwitchWrapper = new TopicSwitchWrapper(topicSwitch, rtTopic);
     when(mockPartitionConsumptionState.getTopicSwitch()).thenReturn(topicSwitchWrapper);
+    when(mockPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
 
     // Process LEADER_TO_STANDBY transition
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
@@ -685,6 +686,47 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Case 4: HostName and port is the same (listener port is 0)
     when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":0");
     assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+  }
+
+  /**
+   * Self-produced records (by hostname) are only skipped when the validator has no state for their producer. If state
+   * exists, e.g. inherited via blob transfer after a restart on the same host, the record must be validated so the
+   * state advances instead of being checkpointed stale.
+   */
+  @Test(timeOut = 60_000)
+  public void testValidateMessageSkipsSelfProducedRecordsOnlyWithoutProducerState() throws InterruptedException {
+    setUp();
+    PartitionConsumptionState pcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    DataIntegrityValidator validator = mock(DataIntegrityValidator.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(record).getKey();
+    PartitionTracker.TopicType type = PartitionTracker.VERSION_TOPIC;
+
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+
+    // Self-produced without producer state: skipped
+    doReturn(false).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, never()).validateMessage(any(), any(), anyBoolean(), any());
+
+    // Self-produced with producer state: validated
+    doReturn(true).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(1)).validateMessage(eq(type), eq(record), eq(true), any());
+
+    // Not self-produced: validated regardless of producer state
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+    doReturn(false).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(2)).validateMessage(eq(type), eq(record), eq(true), any());
+
+    // Global RT DIV disabled: validated even if self-produced
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(3)).validateMessage(eq(type), eq(record), eq(true), any());
   }
 
   @Test
@@ -3708,6 +3750,41 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testShouldStartBlobTransferIsRefusedOnceInFlightLimitIsReached() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    // A negative lag threshold keeps every other condition satisfied, so the in-flight count is the only thing
+    // deciding the outcome below.
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+    when(mockVeniceServerConfig.getMaxConcurrentInFlightReceiveReplicas()).thenReturn(2);
+
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(1);
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(2);
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferIgnoresInFlightCountWhenLimitIsZero() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+    // Zero is the shipped default and has to leave the count unbounded, otherwise enabling this code would change
+    // behaviour before anyone chose a limit.
+    when(mockVeniceServerConfig.getMaxConcurrentInFlightReceiveReplicas()).thenReturn(0);
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(100);
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
   public void testShouldStartBlobTransferBatchStoreEOPReceived() throws InterruptedException {
     setUpWithBlobTransfer(false);
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
@@ -4541,6 +4618,92 @@ public class LeaderFollowerStoreIngestionTaskTest {
         () -> "remote-broker-url",
         false);
     verify(vtUpdateLocal, times(1)).apply(localVtPosition);
+  }
+
+  @Test
+  public void testUpdateLeaderTopicOnFollowerAppliesTopicSwitchOnlyAfterEndOfPush() throws InterruptedException {
+    setUp(true);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    TopicSwitchWrapper topicSwitch = mock(TopicSwitchWrapper.class);
+    doReturn(rtTopic).when(topicSwitch).getNewSourceTopic();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(topicSwitch).when(mockPartitionConsumptionState).getTopicSwitch();
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    // A follower still replaying batch data must not adopt the version-wide TS.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.updateLeaderTopicOnFollower(mockPartitionConsumptionState);
+    verify(offsetRecord, never()).setLeaderTopic(any());
+
+    doReturn(true).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.updateLeaderTopicOnFollower(mockPartitionConsumptionState);
+    verify(offsetRecord).setLeaderTopic(rtTopic);
+  }
+
+  @Test
+  public void testFollowerUpstreamPositionBeforeEndOfPushIsNotTrackedAsRt() throws InterruptedException {
+    setUp(true);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(rtTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(offsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    KafkaKey dataKey = new KafkaKey(MessageType.PUT, new byte[] { 0 });
+    doReturn(dataKey).when(record).getKey();
+    doReturn(new PubSubTopicPartitionImpl(versionTopic, 0)).when(record).getTopicPartition();
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.producerMetadata = new ProducerMetadata();
+    doReturn(kafkaValue).when(record).getValue();
+    PubSubPosition upstreamPosition = mock(PubSubPosition.class);
+    doReturn(upstreamPosition).when(leaderFollowerStoreIngestionTask).extractUpstreamPosition(record);
+    doReturn(0).when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(record);
+    LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset upstreamUpdate =
+        mock(LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset.class);
+    Runnable processRecord = () -> leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        record,
+        null,
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class),
+        upstreamUpdate,
+        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class),
+        () -> NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        false);
+
+    // A follower still replaying batch data tracks and checkpoints upstream positions as remote VT, not RT.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    processRecord.run();
+    leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
+    verify(upstreamUpdate).apply(any(), eq(versionTopic), eq(upstreamPosition));
+    verify(offsetRecord).checkpointRemoteVtPosition(any());
+    verify(offsetRecord, never()).checkpointRtPositions(any());
+
+    // processEndOfPush sets the EOP flag before the EOP record's own offsets are recorded; it stays remote VT.
+    doReturn(true).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    ControlMessage endOfPush = new ControlMessage();
+    endOfPush.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    kafkaValue.payloadUnion = endOfPush;
+    doReturn(new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0])).when(record).getKey();
+    processRecord.run();
+    verify(upstreamUpdate, times(2)).apply(any(), eq(versionTopic), eq(upstreamPosition));
+    verify(upstreamUpdate, never()).apply(any(), eq(rtTopic), any());
+
+    // Records after EOP use the RT leader topic.
+    doReturn(dataKey).when(record).getKey();
+    processRecord.run();
+    leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
+    verify(upstreamUpdate).apply(any(), eq(rtTopic), eq(upstreamPosition));
+    verify(offsetRecord).checkpointRtPositions(any());
+
+    // Leaders are unaffected.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    assertEquals(
+        leaderFollowerStoreIngestionTask.getUpstreamTopicForPositionTracking(mockPartitionConsumptionState),
+        rtTopic);
   }
 
   private static final int NEARLINE_LIMIT_BYTES = 5 * 1024 * 1024;

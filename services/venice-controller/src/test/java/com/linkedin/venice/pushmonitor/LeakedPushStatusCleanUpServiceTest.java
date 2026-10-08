@@ -1,25 +1,58 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.FAILED;
+import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.STOPPED;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.apache.helix.zookeeper.zkclient.exception.ZkException;
+import org.mockito.MockedStatic;
+import org.mockito.stubbing.Stubber;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class LeakedPushStatusCleanUpServiceTest {
   private static final long TEST_TIMEOUT = TimeUnit.SECONDS.toMillis(30);
+  private static final String CLUSTER = "test-cluster";
+  private static final String OWNER = "test_store";
 
   @Test
   public void testLeakedZKNodeShouldBeDeleted() throws Exception {
@@ -40,7 +73,10 @@ public class LeakedPushStatusCleanUpServiceTest {
     String leakedStoreVersion1 = Version.composeKafkaTopic(storeName, leakedVersion1);
     String leakedStoreVersion2 = Version.composeKafkaTopic(storeName, leakedVersion2);
     String goodStoreVersion = Version.composeKafkaTopic(storeName, currentVersion);
-    List<String> loadedStoreVersionList = Arrays.asList(leakedStoreVersion1, leakedStoreVersion2, goodStoreVersion);
+    String retainedStoreVersion = Version.composeKafkaTopic(storeName, 0);
+    String futureStoreVersion = Version.composeKafkaTopic(storeName, currentVersion + 1);
+    List<String> loadedStoreVersionList = Arrays
+        .asList(leakedStoreVersion1, leakedStoreVersion2, goodStoreVersion, retainedStoreVersion, futureStoreVersion);
     doReturn(loadedStoreVersionList).when(accessor).loadOfflinePushStatusPaths();
     // Return empty creation time for the second leaked push status, so that it will be kept for debugging
     doReturn(Optional.empty()).when(accessor).getOfflinePushStatusCreationTime(leakedStoreVersion2);
@@ -49,10 +85,11 @@ public class LeakedPushStatusCleanUpServiceTest {
      * Define the behavior of store config; the leaked version will not be in the version list of the store
      */
     Store mockStore = mock(Store.class);
-    doReturn(mockStore).when(metadataRepository).getStoreOrThrow(any());
+    doReturn(mockStore).when(metadataRepository).getStore(any());
     doReturn(currentVersion).when(mockStore).getCurrentVersion();
     doReturn(false).when(mockStore).containsVersion(leakedVersion1);
     doReturn(false).when(mockStore).containsVersion(leakedVersion2);
+    doReturn(true).when(mockStore).containsVersion(0);
 
     /**
      * The actual test; the clean up service will try to delete the leaked push status
@@ -62,6 +99,7 @@ public class LeakedPushStatusCleanUpServiceTest {
         accessor,
         metadataRepository,
         mock(StoreCleaner.class),
+        new ClusterLockManager(clusterName),
         aggPushStatusCleanUpStats,
         sleepIntervalInMs,
         allowedLingerTimeInMs)) {
@@ -84,6 +122,7 @@ public class LeakedPushStatusCleanUpServiceTest {
         accessor,
         metadataRepository,
         mock(StoreCleaner.class),
+        new ClusterLockManager(clusterName),
         aggPushStatusCleanUpStats,
         sleepIntervalInMs,
         allowedLingerTimeInMs)) {
@@ -94,5 +133,329 @@ public class LeakedPushStatusCleanUpServiceTest {
       verify(accessor, timeout(TEST_TIMEOUT).atLeastOnce())
           .deleteOfflinePushStatusAndItsPartitionStatuses(leakedStoreVersion2);
     }
+    verify(accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(goodStoreVersion);
+    verify(accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(retainedStoreVersion);
+    verify(accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(futureStoreVersion);
+  }
+
+  private static class Fixture {
+    final OfflinePushAccessor accessor = mock(OfflinePushAccessor.class);
+    final StoreCleaner cleaner = mock(StoreCleaner.class);
+    final AggPushStatusCleanUpStats stats = mock(AggPushStatusCleanUpStats.class);
+    final ReadOnlyStoreRepository regularRepository = mock(ReadOnlyStoreRepository.class);
+    final HelixReadOnlyZKSharedSystemStoreRepository sharedRepository =
+        mock(HelixReadOnlyZKSharedSystemStoreRepository.class);
+    final HelixReadOnlyStoreRepositoryAdapter repository =
+        new HelixReadOnlyStoreRepositoryAdapter(sharedRepository, regularRepository, CLUSTER);
+    final ClusterLockManager locks = spy(new ClusterLockManager(CLUSTER));
+    final AtomicReference<Thread> cleanupThread = new AtomicReference<>();
+    final LeakedPushStatusCleanUpService service =
+        new LeakedPushStatusCleanUpService(CLUSTER, accessor, repository, cleaner, locks, stats, 10, 0);
+
+    Fixture() {
+      doReturn(Optional.of(0L)).when(accessor).getOfflinePushStatusCreationTime(anyString());
+    }
+
+    void paths(String... topics) {
+      doAnswer(invocation -> {
+        cleanupThread.set(Thread.currentThread());
+        return Arrays.asList(topics);
+      }).when(accessor).loadOfflinePushStatusPaths();
+    }
+  }
+
+  @DataProvider
+  public Object[][] storeNames() {
+    return new Object[][] { { OWNER }, { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(OWNER) },
+        { VeniceSystemStoreType.META_STORE.getSystemStoreName(OWNER) } };
+  }
+
+  @Test(dataProvider = "storeNames")
+  public void testAbsentStoreRetentionAndCleanupOrder(String storeName) {
+    Fixture f = new Fixture();
+    String newest = Version.composeKafkaTopic(storeName, 2);
+    String oldest = Version.composeKafkaTopic(storeName, 1);
+    f.paths(oldest, newest, newest);
+    assertNull(f.repository.getStore(storeName));
+    doReturn(Optional.empty()).doReturn(Optional.of(0L)).when(f.accessor).getOfflinePushStatusCreationTime(newest);
+    doReturn(true).doReturn(false).when(f.cleaner).containsHelixResource(CLUSTER, newest);
+
+    try (MockedStatic<LatencyUtils> clock = mockStatic(LatencyUtils.class)) {
+      f.service.cleanUpLeakedPushStatuses();
+      verify(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(oldest);
+      verify(f.cleaner, never()).containsHelixResource(CLUSTER, newest);
+      f.paths(newest, newest);
+      clock.when(() -> LatencyUtils.getElapsedTimeFromMsToMs(0L)).thenReturn(0L);
+      f.service.cleanUpLeakedPushStatuses();
+      verify(f.cleaner, never()).containsHelixResource(CLUSTER, newest);
+      clock.when(() -> LatencyUtils.getElapsedTimeFromMsToMs(0L)).thenReturn(1L);
+      f.service.cleanUpLeakedPushStatuses();
+      verify(f.cleaner).deleteHelixResource(CLUSTER, newest);
+      verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(newest);
+      f.service.cleanUpLeakedPushStatuses();
+      verify(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(newest);
+    }
+  }
+
+  @DataProvider
+  public Object[][] systemStoreTypes() {
+    return new Object[][] { { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE }, { VeniceSystemStoreType.META_STORE } };
+  }
+
+  @Test(dataProvider = "systemStoreTypes")
+  public void testMissingSharedMetadataWithLiveOwnerIsNotCleaned(VeniceSystemStoreType type) {
+    Fixture f = new Fixture();
+    doReturn(mock(Store.class)).when(f.regularRepository).getStore(OWNER);
+    String storeName = type.getSystemStoreName(OWNER);
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    f.paths(topic);
+    assertNull(f.repository.getStore(storeName));
+
+    f.service.cleanUpLeakedPushStatuses();
+
+    verifyNoInteractions(f.cleaner);
+    verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
+  }
+
+  @DataProvider
+  public Object[][] resourceFailures() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "resourceFailures")
+  public void testDeletionFailureOnLastVersionDoesNotStopWorker(boolean inHelix) throws Exception {
+    Fixture f = new Fixture();
+    Store store = mock(Store.class);
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(store).when(f.regularRepository).getStore(OWNER);
+    String topic = Version.composeKafkaTopic(OWNER, 1);
+    String other = Version.composeKafkaTopic("other_store", 1);
+    doReturn(Arrays.asList(topic, other)).doReturn(Collections.singletonList(topic))
+        .when(f.accessor)
+        .loadOfflinePushStatusPaths();
+    doReturn(inHelix).when(f.cleaner).containsHelixResource(CLUSTER, topic);
+    Stubber failureThenRetry = doThrow(new IllegalStateException("delete failed")).doAnswer(invocation -> {
+      f.service.stopInner();
+      return null;
+    });
+    if (inHelix) {
+      failureThenRetry.when(f.cleaner).deleteHelixResource(CLUSTER, topic);
+    } else {
+      failureThenRetry.when(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+    }
+    CountDownLatch stopped = onStopped(f);
+    try {
+      f.service.start();
+      await(stopped);
+    } finally {
+      f.service.stop();
+    }
+    verify(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(other);
+    verify(f.cleaner, times(inHelix ? 2 : 0)).deleteHelixResource(CLUSTER, topic);
+    verify(f.accessor, times(inHelix ? 0 : 2)).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+    verify(f.stats).recordSuccessfulLeakedPushStatusCleanUpCount(0);
+    verify(f.stats, times(2)).recordSuccessfulLeakedPushStatusCleanUpCount(1);
+    verify(f.stats).recordFailedLeakedPushStatusCleanUpCount(1);
+    verify(f.stats, times(2)).recordFailedLeakedPushStatusCleanUpCount(0);
+    verify(f.stats, never()).recordLeakedPushStatusCleanUpServiceState(FAILED);
+  }
+
+  @Test
+  public void testMetadataFailureIsNotAbsenceAndRetriesNextSweep() {
+    Fixture f = new Fixture();
+    String topic = Version.composeKafkaTopic(OWNER, 1);
+    String other = Version.composeKafkaTopic("other_store", 1);
+    f.paths(topic, other);
+    doThrow(new IllegalStateException("metadata unavailable")).doReturn(null).when(f.regularRepository).getStore(OWNER);
+
+    f.service.cleanUpLeakedPushStatuses();
+
+    verify(f.cleaner, never()).containsHelixResource(CLUSTER, topic);
+    verify(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(other);
+    f.service.cleanUpLeakedPushStatuses();
+    verify(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+  }
+
+  @Test
+  public void testSweepFailureRetriesOnNextSweep() throws Exception {
+    Fixture f = new Fixture();
+    String topic = Version.composeKafkaTopic(OWNER, 1);
+    doThrow(new ZkException("list failed")).doReturn(Collections.singletonList(topic))
+        .when(f.accessor)
+        .loadOfflinePushStatusPaths();
+    doAnswer(invocation -> {
+      f.service.stopInner();
+      return null;
+    }).when(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+    CountDownLatch stopped = onStopped(f);
+    try {
+      f.service.start();
+      await(stopped);
+      verify(f.accessor, times(2)).loadOfflinePushStatusPaths();
+      verify(f.accessor).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+      verify(f.stats, never()).recordLeakedPushStatusCleanUpServiceState(FAILED);
+    } finally {
+      f.service.stop();
+    }
+  }
+
+  @Test
+  public void testFatalErrorStopsWorker() throws Exception {
+    Fixture f = new Fixture();
+    String topic = Version.composeKafkaTopic(OWNER, 1);
+    f.paths(topic);
+    doThrow(new AssertionError("fatal deletion error")).when(f.cleaner).containsHelixResource(CLUSTER, topic);
+    CountDownLatch failed = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      failed.countDown();
+      return null;
+    }).when(f.stats).recordLeakedPushStatusCleanUpServiceState(FAILED);
+    try {
+      f.service.start();
+      await(failed);
+      verify(f.accessor).loadOfflinePushStatusPaths();
+      verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(topic);
+      verify(f.stats, never()).recordLeakedPushStatusCleanUpServiceState(STOPPED);
+    } finally {
+      f.service.stop();
+    }
+  }
+
+  @Test
+  public void testProtectedVersionsDoNotAcquireStoreLock() {
+    Fixture f = new Fixture();
+    Store store = mock(Store.class);
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(true).when(store).containsVersion(1);
+    doReturn(store).when(f.regularRepository).getStore(OWNER);
+    f.paths(
+        Version.composeKafkaTopic(OWNER, 1),
+        Version.composeKafkaTopic(OWNER, 2),
+        Version.composeKafkaTopic(OWNER, 3));
+
+    f.service.cleanUpLeakedPushStatuses();
+
+    verify(f.locks).createClusterReadLock();
+    verify(f.locks, never()).createStoreReadLock(anyString());
+    verify(f.locks, never()).createStoreWriteLock(anyString());
+    verify(f.locks, never()).createClusterWriteLock();
+    verifyNoInteractions(f.cleaner);
+    verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
+  }
+
+  @DataProvider
+  public Object[][] recreatedStores() {
+    return new Object[][] { { OWNER, OWNER },
+        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(OWNER), OWNER },
+        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(CLUSTER), CLUSTER } };
+  }
+
+  @Test(dataProvider = "recreatedStores")
+  public void testOwnerRecreatedBeforeLockAcquisitionIsNotCleaned(String storeName, String owner) throws Exception {
+    Fixture f = new Fixture();
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    f.paths(topic);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<?> cleanup;
+      try (AutoCloseableLock ignored = f.locks.createStoreWriteLock(owner)) {
+        cleanup = executor.submit(f.service::cleanUpLeakedPushStatuses);
+        awaitLockWait(f.cleanupThread);
+        verify(f.regularRepository).getStore(owner);
+        doReturn(mock(Store.class)).when(f.regularRepository).getStore(owner);
+      }
+      cleanup.get(TEST_TIMEOUT, TimeUnit.MILLISECONDS);
+      verifyNoInteractions(f.cleaner);
+      verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  public void testRecreationWaitsUntilCleanupFinishes() throws Exception {
+    Fixture f = new Fixture();
+    String storeName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(OWNER);
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    f.paths(topic);
+    CountDownLatch deleting = new CountDownLatch(1);
+    CountDownLatch allowDelete = new CountDownLatch(1);
+    AtomicReference<Thread> creator = new AtomicReference<>();
+    doReturn(true).when(f.cleaner).containsHelixResource(CLUSTER, topic);
+    doAnswer(invocation -> {
+      deleting.countDown();
+      await(allowDelete);
+      return null;
+    }).when(f.cleaner).deleteHelixResource(CLUSTER, topic);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<?> cleanup = executor.submit(f.service::cleanUpLeakedPushStatuses);
+      await(deleting);
+      // Other readers can proceed while cleanup still fences a recreating writer.
+      executor.submit(() -> {
+        try (AutoCloseableLock ignored = f.locks.createStoreReadLock(OWNER)) {
+          return null;
+        }
+      }).get(TEST_TIMEOUT, TimeUnit.MILLISECONDS);
+      Future<?> recreate = executor.submit(() -> {
+        creator.set(Thread.currentThread());
+        try (AutoCloseableLock ignored = f.locks.createStoreWriteLock(OWNER)) {
+          return null;
+        }
+      });
+      awaitLockWait(creator);
+      assertFalse(recreate.isDone());
+      allowDelete.countDown();
+      cleanup.get(TEST_TIMEOUT, TimeUnit.MILLISECONDS);
+      recreate.get(TEST_TIMEOUT, TimeUnit.MILLISECONDS);
+    } finally {
+      allowDelete.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test(dataProvider = "storeNames")
+  public void testShutdownUnderClusterLockDoesNotUseClearedMetadata(String storeName) throws Exception {
+    Fixture f = new Fixture();
+    CountDownLatch stopped = onStopped(f);
+    Store store = mock(Store.class);
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(store).when(f.regularRepository).getStore(OWNER);
+    f.paths(Version.composeKafkaTopic(storeName, 1));
+    try {
+      try (AutoCloseableLock ignored = f.locks.createClusterWriteLock()) {
+        f.service.start();
+        awaitLockWait(f.cleanupThread);
+        f.service.stop();
+        doReturn(null).when(f.regularRepository).getStore(OWNER);
+      }
+      await(stopped);
+      verify(f.regularRepository, never()).getStore(anyString());
+      verify(f.sharedRepository, never()).getStore(anyString());
+      verifyNoInteractions(f.cleaner);
+      verify(f.accessor, never()).deleteOfflinePushStatusAndItsPartitionStatuses(anyString());
+    } finally {
+      f.service.stop();
+    }
+  }
+
+  private static CountDownLatch onStopped(Fixture f) {
+    CountDownLatch latch = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      latch.countDown();
+      return null;
+    }).when(f.stats).recordLeakedPushStatusCleanUpServiceState(STOPPED);
+    return latch;
+  }
+
+  private static void await(CountDownLatch latch) throws InterruptedException {
+    assertTrue(latch.await(TEST_TIMEOUT, TimeUnit.MILLISECONDS), "Timed out waiting for test synchronization");
+  }
+
+  private static void awaitLockWait(AtomicReference<Thread> thread) {
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      assertNotNull(thread.get());
+      assertEquals(thread.get().getState(), Thread.State.WAITING);
+    });
   }
 }
