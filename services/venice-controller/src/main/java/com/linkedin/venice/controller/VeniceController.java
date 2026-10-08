@@ -75,6 +75,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -117,13 +118,28 @@ public class VeniceController {
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
       ModuleMetricEntityInterface.getUniqueMetricEntities(getMetricEntityEnumClasses());
 
-  private enum ApiInitializationState {
-    NOT_STARTED, INITIALIZING, INITIALIZED, FAILED, DRAINING
+  static final class ApiReadiness {
+    private enum Phase {
+      NOT_READY, READY, DRAINING
+    }
+
+    private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.NOT_READY);
+
+    void markReady() {
+      // Restart creates a new owner; draining must defeat any late startup completion.
+      phase.compareAndSet(Phase.NOT_READY, Phase.READY);
+    }
+
+    void drain() {
+      phase.set(Phase.DRAINING);
+    }
+
+    boolean isReady(BooleanSupplier servicesReady) {
+      return phase.get() == Phase.READY && servicesReady.getAsBoolean() && phase.get() == Phase.READY;
+    }
   }
 
-  // Restart creates a new owner; draining must defeat any late initialization completion.
-  private final AtomicReference<ApiInitializationState> apiInitializationState =
-      new AtomicReference<>(ApiInitializationState.NOT_STARTED);
+  private final ApiReadiness apiReadiness = new ApiReadiness();
   private final boolean apiRegionEligible;
 
   // services
@@ -310,10 +326,9 @@ public class VeniceController {
   }
 
   private boolean isApiReady() {
-    ApiInitializationState snapshot = apiInitializationState.get();
-    return snapshot == ApiInitializationState.INITIALIZED && apiRegionEligible && controllerService.isRunning()
-        && adminServer.isApiServing() && (!sslEnabled || secureAdminServer.isApiServing())
-        && apiInitializationState.get() == snapshot;
+    return apiReadiness.isReady(
+        () -> apiRegionEligible && controllerService.isRunning() && adminServer.isRunning()
+            && (!sslEnabled || secureAdminServer.isRunning()));
   }
 
   private TopicCleanupService createTopicCleanupService() {
@@ -466,45 +481,34 @@ public class VeniceController {
    * Causes venice controller and its associated services to begin execution.
    */
   public void start() {
-    boolean initializesReadiness =
-        apiInitializationState.compareAndSet(ApiInitializationState.NOT_STARTED, ApiInitializationState.INITIALIZING);
-    boolean initializationSucceeded = false;
-    try {
-      LOGGER.info(
-          "Starting controller: {} for clusters: {} with ZKAddress: {}",
-          multiClusterConfigs.getControllerName(),
-          multiClusterConfigs.getClusters(),
-          multiClusterConfigs.getZkAddress());
-      controllerService.start();
-      adminServer.start();
-      if (sslEnabled) {
-        secureAdminServer.start();
-      }
-
-      topicCleanupService.start();
-      storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
-      storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
-      unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
-      systemStoreRepairService.ifPresent(AbstractVeniceService::start);
-      disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
-      deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
-      // register with service discovery at the end
-      asyncRetryingServiceDiscoveryAnnouncer.register();
-      if (adminGrpcServer != null) {
-        adminGrpcServer.start();
-      }
-      if (adminSecureGrpcServer != null) {
-        adminSecureGrpcServer.start();
-      }
-      LOGGER.info("Controller is started.");
-      initializationSucceeded = true;
-    } finally {
-      if (initializesReadiness) {
-        apiInitializationState.compareAndSet(
-            ApiInitializationState.INITIALIZING,
-            initializationSucceeded ? ApiInitializationState.INITIALIZED : ApiInitializationState.FAILED);
-      }
+    LOGGER.info(
+        "Starting controller: {} for clusters: {} with ZKAddress: {}",
+        multiClusterConfigs.getControllerName(),
+        multiClusterConfigs.getClusters(),
+        multiClusterConfigs.getZkAddress());
+    controllerService.start();
+    adminServer.start();
+    if (sslEnabled) {
+      secureAdminServer.start();
     }
+
+    topicCleanupService.start();
+    storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
+    storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
+    unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
+    systemStoreRepairService.ifPresent(AbstractVeniceService::start);
+    disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
+    deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
+    // register with service discovery at the end
+    asyncRetryingServiceDiscoveryAnnouncer.register();
+    if (adminGrpcServer != null) {
+      adminGrpcServer.start();
+    }
+    if (adminSecureGrpcServer != null) {
+      adminSecureGrpcServer.start();
+    }
+    LOGGER.info("Controller is started.");
+    apiReadiness.markReady();
   }
 
   private void initializeSystemSchema(Admin admin) {
@@ -607,7 +611,7 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
-    apiInitializationState.set(ApiInitializationState.DRAINING);
+    apiReadiness.drain();
     // unregister from service discovery first
     asyncRetryingServiceDiscoveryAnnouncer.unregister();
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.

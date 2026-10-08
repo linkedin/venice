@@ -150,7 +150,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.apache.commons.lang.StringUtils;
@@ -159,6 +158,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Request;
 import spark.Response;
+import spark.Route;
 import spark.Service;
 import spark.embeddedserver.EmbeddedServers;
 
@@ -198,7 +198,6 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
   private final LogContext logContext;
   private final BooleanSupplier apiReadiness;
-  private final AtomicBoolean draining = new AtomicBoolean();
 
   /**
    * Without an owner-provided readiness signal, {@code /health} remains unavailable.
@@ -315,7 +314,6 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    draining.set(false);
     AtomicReference<Exception> initFailure = new AtomicReference<>();
     httpService.initExceptionHandler(initFailure::set);
 
@@ -411,15 +409,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
     StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController);
 
-    httpService.get(HEALTH.getPath(), (request, response) -> {
-      response.type(HttpConstants.TEXT_PLAIN);
-      if (!isApiServing() || !apiReadiness.getAsBoolean()) {
-        response.status(HttpStatus.SC_SERVICE_UNAVAILABLE);
-        request.attribute(REQUEST_SUCCEED, false);
-        return "NOT_READY";
-      }
-      return "OK";
-    });
+    httpService.get(HEALTH.getPath(), healthRoute(apiReadiness));
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
@@ -852,15 +842,19 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   @Override
   public void stopInner() {
-    draining.set(true);
     httpService.stop();
   }
 
-  /**
-   * Unlike {@link #isRunning()}, this becomes false before listener shutdown completes.
-   */
-  public boolean isApiServing() {
-    return isRunning() && !draining.get();
+  static Route healthRoute(BooleanSupplier apiReadiness) {
+    return (request, response) -> {
+      boolean ready = apiReadiness.getAsBoolean();
+      response.type(HttpConstants.TEXT_PLAIN);
+      response.status(ready ? HttpStatus.SC_OK : HttpStatus.SC_SERVICE_UNAVAILABLE);
+      if (!ready) {
+        request.attribute(REQUEST_SUCCEED, false);
+      }
+      return ready ? "OK" : "NOT_READY";
+    };
   }
 
   int getPort() {
