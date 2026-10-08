@@ -67,8 +67,16 @@ public class SystemStoreRepairTask implements Runnable {
   @Override
   public void run() {
     LogContext.setLogContext(getParentAdmin().getLogContext());
-    for (String clusterName: getParentAdmin().getClustersLeaderOf()) {
-      if (!getClusterToSystemStoreHealthCheckStatsMap().containsKey(clusterName)) {
+    List<String> leaderClusters = getParentAdmin().getClustersLeaderOf();
+    // Only a cluster's leader has current counts, so the others stop reporting them.
+    getClusterToSystemStoreHealthCheckStatsMap().forEach((clusterName, stats) -> {
+      if (!leaderClusters.contains(clusterName)) {
+        stats.setMeasured(false);
+      }
+    });
+    for (String clusterName: leaderClusters) {
+      SystemStoreHealthCheckStats stats = getClusterToSystemStoreHealthCheckStatsMap().get(clusterName);
+      if (stats == null) {
         continue;
       }
       try {
@@ -78,8 +86,12 @@ public class SystemStoreRepairTask implements Runnable {
         checkSystemStoresHealth(clusterName, unhealthySystemStoreSet);
         // Try repair all bad system stores.
         repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+        // A round cut short by losing leadership leaves partial counts.
+        stats.setMeasured(shouldContinue(clusterName));
         LOGGER.info("Completed system store repair task for cluster: {}", clusterName);
       } catch (Exception e) {
+        // A failed round leaves the counts partial or stale.
+        stats.setMeasured(false);
         LOGGER.error("System store repair task failed for cluster: {}", clusterName, e);
       }
     }

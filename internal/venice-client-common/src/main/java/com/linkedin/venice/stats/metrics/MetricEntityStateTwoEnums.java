@@ -61,7 +61,6 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
     this.enumTypeClass1 = enumTypeClass1;
     this.enumTypeClass2 = enumTypeClass2;
     this.metricAttributesDataEnumMap = createMetricAttributesDataEnumMap();
-    registerObservableCounterIfNeeded();
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */

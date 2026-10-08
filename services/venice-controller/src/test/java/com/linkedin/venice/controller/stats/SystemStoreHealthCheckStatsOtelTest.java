@@ -48,6 +48,7 @@ public class SystemStoreHealthCheckStatsOtelTest {
   public void testUnhealthyCountPerSystemStoreType() {
     stats.getBadMetaSystemStoreCounter().set(3);
     stats.getBadPushStatusSystemStoreCounter().set(7);
+    stats.setMeasured(true);
 
     // OTel: Validate META_STORE dimension
     validateGauge(
@@ -75,6 +76,7 @@ public class SystemStoreHealthCheckStatsOtelTest {
   @Test
   public void testUnrepairableCount() {
     stats.getNotRepairableSystemStoreCounter().set(5);
+    stats.setMeasured(true);
 
     // OTel
     validateGauge(
@@ -93,6 +95,7 @@ public class SystemStoreHealthCheckStatsOtelTest {
   @Test
   public void testHealthCheckErrorCount() {
     stats.getSystemStoreHealthCheckErrorCounter().set(4);
+    stats.setMeasured(true);
 
     // OTel
     validateGauge(
@@ -111,13 +114,15 @@ public class SystemStoreHealthCheckStatsOtelTest {
   @Test
   public void testCounterResetToZero() {
     stats.getBadMetaSystemStoreCounter().set(5);
+    stats.setMeasured(true);
     validateGauge(
         SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
         5,
         clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.META_STORE));
 
-    // Reset to 0 and verify the gauge reflects the updated value
+    // A later round resets it to 0, and the gauge reports 0 rather than omitting it
     stats.getBadMetaSystemStoreCounter().set(0);
+    stats.setMeasured(true);
     validateGauge(
         SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
         0,
@@ -130,15 +135,10 @@ public class SystemStoreHealthCheckStatsOtelTest {
 
   @Test
   public void testEveryVeniceSystemStoreTypeEmitsADataPoint() {
-    // Guards against two failure modes of the OTel liveStateResolver switch in
-    // SystemStoreHealthCheckStats:
-    // (a) a new VeniceSystemStoreType value was added but the switch wasn't updated — default
-    // returns null, so no data point is emitted for that value;
-    // (b) an existing case was deleted or broken — same outcome.
-    // Both cause silent loss of coverage at runtime, which this test catches by iterating every
-    // enum value and asserting emission.
+    // Every VeniceSystemStoreType must have a live state resolver and backing counter.
     stats.getBadMetaSystemStoreCounter().set(1);
     stats.getBadPushStatusSystemStoreCounter().set(1);
+    stats.setMeasured(true);
 
     String metricName =
         SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName();
@@ -155,6 +155,76 @@ public class SystemStoreHealthCheckStatsOtelTest {
           "VeniceSystemStoreType." + type + " must emit a data point — add or fix the case in the "
               + "SystemStoreHealthCheckStats liveStateResolver switch (and a backing counter if needed).");
     }
+  }
+
+  @Test
+  public void testGaugesReportOnlyWhileMeasured() {
+    stats.getBadMetaSystemStoreCounter().set(3);
+    stats.getNotRepairableSystemStoreCounter().set(5);
+    stats.getSystemStoreHealthCheckErrorCounter().set(4);
+
+    // A standby controller has never checked the cluster.
+    assertNoGauges();
+    validateTehutiMetric(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum.BAD_META_SYSTEM_STORE_COUNT,
+        "Gauge",
+        3.0);
+
+    stats.setMeasured(true);
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
+        3,
+        clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.META_STORE));
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT
+            .getMetricName(),
+        5,
+        clusterAttributes());
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT
+            .getMetricName(),
+        4,
+        clusterAttributes());
+
+    // Leadership moved to another controller.
+    stats.setMeasured(false);
+    assertNoGauges();
+  }
+
+  @Test
+  public void testRoundInProgressKeepsReportingTheLastCompletedRound() {
+    stats.getBadMetaSystemStoreCounter().set(3);
+    stats.getNotRepairableSystemStoreCounter().set(5);
+    stats.setMeasured(true);
+
+    // The next round updates the bad-store count before its repairs finish.
+    stats.getBadMetaSystemStoreCounter().set(7);
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
+        3,
+        clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.META_STORE));
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT
+            .getMetricName(),
+        5,
+        clusterAttributes());
+    validateTehutiMetric(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum.BAD_META_SYSTEM_STORE_COUNT,
+        "Gauge",
+        7.0);
+
+    // The round completes with its repairs.
+    stats.getNotRepairableSystemStoreCounter().set(2);
+    stats.setMeasured(true);
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
+        7,
+        clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.META_STORE));
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT
+            .getMetricName(),
+        2,
+        clusterAttributes());
   }
 
   @Test
@@ -204,6 +274,30 @@ public class SystemStoreHealthCheckStatsOtelTest {
         expectedAttributes,
         metricName,
         TEST_METRIC_PREFIX);
+  }
+
+  private void assertNoGauges() {
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          metrics,
+          SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT
+              .getMetricName(),
+          TEST_METRIC_PREFIX,
+          clusterAndSystemStoreTypeAttributes(type));
+    }
+    OpenTelemetryDataTestUtils.assertNoDataPoint(
+        metrics,
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT
+            .getMetricName(),
+        TEST_METRIC_PREFIX,
+        clusterAttributes());
+    OpenTelemetryDataTestUtils.assertNoDataPoint(
+        metrics,
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT
+            .getMetricName(),
+        TEST_METRIC_PREFIX,
+        clusterAttributes());
   }
 
   private void validateTehutiMetric(

@@ -157,4 +157,11 @@ public class RetryManager {
   public TokenBucket getRetryTokenBucket() {
     return retryTokenBucket.get();
   }
+
+  /** Stops this retry manager's OTel metrics when the client using it closes; Tehuti sensors stay registered. */
+  public void close() {
+    if (retryManagerStats != null) {
+      retryManagerStats.closeOtelMetrics();
+    }
+  }
 }

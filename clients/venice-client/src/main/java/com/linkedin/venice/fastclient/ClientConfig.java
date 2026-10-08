@@ -25,6 +25,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -44,6 +46,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
+  /** Started, unclosed clients built from this config, which share its stats; their OTel gauges report while > 0. */
+  private final AtomicInteger openClients = new AtomicInteger();
   private final Executor deserializationExecutor;
   private final ScheduledExecutorService metadataRefreshExecutor;
   private final ClientRoutingStrategyType clientRoutingStrategyType;
@@ -141,6 +145,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.metricsRepository = builder.metricsRepository != null
         ? builder.metricsRepository
         : MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
+    BooleanSupplier hasOpenClients = () -> openClients.get() > 0;
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository
     for (RequestType requestType: RequestType.values()) {
@@ -152,9 +157,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
               storeName,
               requestType,
               builder.dualReadEnabled,
-              builder.storeLoadControllerEnabled));
+              builder.storeLoadControllerEnabled,
+              hasOpenClients));
     }
-    this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
+    this.clusterStats = new ClusterStats(this.metricsRepository, storeName, hasOpenClients);
     this.specificValueClass = builder.specificValueClass;
     this.deserializationExecutor = builder.deserializationExecutor;
     this.metadataRefreshExecutor = builder.metadataRefreshExecutor;
@@ -350,6 +356,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public ClusterStats getClusterStats() {
     return this.clusterStats;
+  }
+
+  void onClientOpened() {
+    openClients.incrementAndGet();
+  }
+
+  void onClientClosed() {
+    openClients.decrementAndGet();
   }
 
   public StoreMetadataFetchMode getStoreMetadataFetchMode() {

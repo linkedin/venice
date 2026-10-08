@@ -300,6 +300,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   @Override
   public void close() {
     retryManagerExecutorService.shutdownNow();
+    singleKeyLongTailRetryManager.close();
+    multiKeyLongTailRetryManager.close();
     super.close();
   }
 

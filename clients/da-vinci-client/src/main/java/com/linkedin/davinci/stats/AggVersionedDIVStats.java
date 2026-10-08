@@ -4,6 +4,8 @@ import static com.linkedin.davinci.stats.OtelVersionedStatsUtils.classifyVersion
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -17,6 +19,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDIVSeverity;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -25,10 +28,13 @@ import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -43,32 +49,16 @@ import java.util.function.IntConsumer;
  * <p><b>Version classification:</b> The version number passed to each recording method is classified
  * as CURRENT, FUTURE, or BACKUP for the OTel {@code VERSION_ROLE} dimension. Versions not matching
  * the registered current or future version default to BACKUP.
+ *
+ * <p><b>OTel lifecycle:</b> a store's OTel metrics are closed when its last ingestion task on this host stops or
+ * when the store is deleted.
  */
 public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVStats, DIVStatsReporter> {
+  private static final Logger LOGGER = LogManager.getLogger(AggVersionedDIVStats.class);
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
-
-  /**
-   * Per-store OTel metric state maps. Each map grows lazily via {@code computeIfAbsent} and is bounded
-   * by the number of stores the server is actively ingesting. Entries are removed when a store is
-   * deleted via {@link #handleStoreDeleted(String)}. These maps are OTel-only; Tehuti recording is
-   * handled by the parent class via {@code recordVersionedAndTotalStat}.
-   */
-  private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceDIVResult>> messageCountPerStore =
-      new VeniceConcurrentHashMap<>();
-  private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceDIVSeverity>> offsetRewindCountPerStore =
-      new VeniceConcurrentHashMap<>();
-  private final Map<String, MetricEntityStateOneEnum<VersionRole>> producerFailureCountPerStore =
-      new VeniceConcurrentHashMap<>();
-  private final Map<String, MetricEntityStateOneEnum<VersionRole>> benignProducerFailureCountPerStore =
-      new VeniceConcurrentHashMap<>();
-
-  /**
-   * Per-store version info for classifying versions as CURRENT, FUTURE, or BACKUP.
-   * Updated via {@link #onVersionInfoUpdated(String, int, int)}.
-   */
-  private final Map<String, OtelVersionedStatsUtils.VersionInfo> versionInfoMap = new VeniceConcurrentHashMap<>();
+  private final PerStoreVersionedOtelStats<DIVOtelStats> otelStats;
 
   public AggVersionedDIVStats(
       MetricsRepository metricsRepository,
@@ -87,6 +77,31 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     this.emitOtelMetrics = otelData.emitOpenTelemetryMetrics();
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = Collections.unmodifiableMap(otelData.getBaseDimensionsMap());
+    this.otelStats = createPerStoreOtelStats(DIVOtelStats::new);
+  }
+
+  /** Registers a running ingestion task so the store's OTel metrics stay open until it stops. Never throws. */
+  public void setIngestionTask(String storeName, StoreIngestionTask ingestionTask) {
+    if (!emitOtelMetrics) {
+      return;
+    }
+    try {
+      otelStats.compute(storeName, stats -> stats.ingestionTasks.add(ingestionTask));
+    } catch (Exception e) {
+      LOGGER.warn("Failed to attach ingestion task to DIV OTel stats of store: {}", storeName, e);
+    }
+  }
+
+  /** Unregisters a stopped ingestion task and closes the store's OTel metrics once none is left. Never throws. */
+  public void removeIngestionTask(String storeName, StoreIngestionTask ingestionTask) {
+    try {
+      otelStats.removeIf(storeName, stats -> {
+        stats.ingestionTasks.remove(ingestionTask);
+        return stats.ingestionTasks.isEmpty();
+      });
+    } catch (Exception e) {
+      LOGGER.warn("Failed to detach ingestion task from DIV OTel stats of store: {}", storeName, e);
+    }
   }
 
   public void recordException(String storeName, int version, DataValidationException e) {
@@ -131,43 +146,12 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
 
   public void recordLeaderProducerFailure(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordLeaderProducerFailure);
-    recordOtelOneEnumMetric(
-        storeName,
-        version,
-        producerFailureCountPerStore,
-        DIVOtelMetricEntity.PRODUCER_FAILURE_COUNT);
+    recordOtelFailureCount(storeName, version, stats -> stats.producerFailureCount);
   }
 
   public void recordBenignLeaderProducerFailure(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordBenignLeaderProducerFailure);
-    recordOtelOneEnumMetric(
-        storeName,
-        version,
-        benignProducerFailureCountPerStore,
-        DIVOtelMetricEntity.BENIGN_PRODUCER_FAILURE_COUNT);
-  }
-
-  /** {@link AbstractVeniceAggVersionedStats#addStore(com.linkedin.venice.meta.Store)}
-   *  calls this from the super() constructor before {@code versionInfoMap} is initialized. */
-  @Override
-  protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
-    if (versionInfoMap == null) {
-      return; // Called during super() constructor before versionInfoMap is initialized
-    }
-    versionInfoMap.put(storeName, new OtelVersionedStatsUtils.VersionInfo(currentVersion, futureVersion));
-  }
-
-  @Override
-  public void handleStoreDeleted(String storeName) {
-    try {
-      super.handleStoreDeleted(storeName);
-    } finally {
-      messageCountPerStore.remove(storeName);
-      offsetRewindCountPerStore.remove(storeName);
-      producerFailureCountPerStore.remove(storeName);
-      benignProducerFailureCountPerStore.remove(storeName);
-      versionInfoMap.remove(storeName);
-    }
+    recordOtelFailureCount(storeName, version, stats -> stats.benignProducerFailureCount);
   }
 
   @Override
@@ -232,51 +216,81 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   }
 
   private void recordOtelMessageCount(String storeName, int version, VeniceDIVResult result) {
-    if (!emitOtelMetrics) {
-      return;
+    if (emitOtelMetrics) {
+      DIVOtelStats stats = otelStats.getOrCreate(storeName);
+      stats.messageCount.record(1, stats.classify(version), result);
     }
-    VersionRole role = classifyVersion(version, versionInfoMap.get(storeName));
-    messageCountPerStore.computeIfAbsent(
-        storeName,
-        k -> MetricEntityStateTwoEnums.create(
-            DIVOtelMetricEntity.MESSAGE_COUNT.getMetricEntity(),
-            otelRepository,
-            buildStoreDimensionsMap(k),
-            VersionRole.class,
-            VeniceDIVResult.class))
-        .record(1, role, result);
   }
 
   private void recordOtelOffsetRewindCount(String storeName, int version, VeniceDIVSeverity severity) {
-    if (!emitOtelMetrics) {
-      return;
+    if (emitOtelMetrics) {
+      DIVOtelStats stats = otelStats.getOrCreate(storeName);
+      stats.offsetRewindCount.record(1, stats.classify(version), severity);
     }
-    VersionRole role = classifyVersion(version, versionInfoMap.get(storeName));
-    offsetRewindCountPerStore.computeIfAbsent(
-        storeName,
-        k -> MetricEntityStateTwoEnums.create(
-            DIVOtelMetricEntity.OFFSET_REWIND_COUNT.getMetricEntity(),
-            otelRepository,
-            buildStoreDimensionsMap(k),
-            VersionRole.class,
-            VeniceDIVSeverity.class))
-        .record(1, role, severity);
   }
 
-  private void recordOtelOneEnumMetric(
+  private void recordOtelFailureCount(
       String storeName,
       int version,
-      Map<String, MetricEntityStateOneEnum<VersionRole>> perStoreMap,
-      DIVOtelMetricEntity metricEntity) {
-    if (!emitOtelMetrics) {
-      return;
+      Function<DIVOtelStats, MetricEntityStateOneEnum<VersionRole>> metric) {
+    if (emitOtelMetrics) {
+      DIVOtelStats stats = otelStats.getOrCreate(storeName);
+      metric.apply(stats).record(1, stats.classify(version));
     }
-    VersionRole role = classifyVersion(version, versionInfoMap.get(storeName));
-    perStoreMap
-        .computeIfAbsent(
-            storeName,
-            k -> MetricEntityStateOneEnum
-                .create(metricEntity.getMetricEntity(), otelRepository, buildStoreDimensionsMap(k), VersionRole.class))
-        .record(1, role);
+  }
+
+  /** One store's DIV OTel metrics and the running ingestion tasks that keep them open. */
+  private final class DIVOtelStats implements StoreOtelStats {
+    private final MetricScope metricScope = new MetricScope();
+    private final Set<StoreIngestionTask> ingestionTasks = VeniceConcurrentHashMap.newKeySet();
+    private final MetricEntityStateTwoEnums<VersionRole, VeniceDIVResult> messageCount;
+    private final MetricEntityStateTwoEnums<VersionRole, VeniceDIVSeverity> offsetRewindCount;
+    private final MetricEntityStateOneEnum<VersionRole> producerFailureCount;
+    private final MetricEntityStateOneEnum<VersionRole> benignProducerFailureCount;
+    private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
+
+    private DIVOtelStats(String storeName) {
+      Map<VeniceMetricsDimensions, String> dimensions = buildStoreDimensionsMap(storeName);
+      this.messageCount = metricScope.register(
+          MetricEntityStateTwoEnums.create(
+              DIVOtelMetricEntity.MESSAGE_COUNT.getMetricEntity(),
+              otelRepository,
+              dimensions,
+              VersionRole.class,
+              VeniceDIVResult.class));
+      this.offsetRewindCount = metricScope.register(
+          MetricEntityStateTwoEnums.create(
+              DIVOtelMetricEntity.OFFSET_REWIND_COUNT.getMetricEntity(),
+              otelRepository,
+              dimensions,
+              VersionRole.class,
+              VeniceDIVSeverity.class));
+      this.producerFailureCount = metricScope.register(
+          MetricEntityStateOneEnum.create(
+              DIVOtelMetricEntity.PRODUCER_FAILURE_COUNT.getMetricEntity(),
+              otelRepository,
+              dimensions,
+              VersionRole.class));
+      this.benignProducerFailureCount = metricScope.register(
+          MetricEntityStateOneEnum.create(
+              DIVOtelMetricEntity.BENIGN_PRODUCER_FAILURE_COUNT.getMetricEntity(),
+              otelRepository,
+              dimensions,
+              VersionRole.class));
+    }
+
+    private VersionRole classify(int version) {
+      return classifyVersion(version, versionInfo);
+    }
+
+    @Override
+    public void updateVersionInfo(int currentVersion, int futureVersion) {
+      versionInfo = new VersionInfo(currentVersion, futureVersion);
+    }
+
+    @Override
+    public void close() {
+      metricScope.close();
+    }
   }
 }

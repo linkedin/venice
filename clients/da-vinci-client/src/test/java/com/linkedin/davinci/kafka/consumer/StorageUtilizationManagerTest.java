@@ -25,6 +25,7 @@ import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -233,6 +234,58 @@ public class StorageUtilizationManagerTest {
       // Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
       verify(ingestionNotificationDispatcher).reportCompleted(argThat(new PartitionNumberMatcher(i)));
     }
+  }
+
+  @Test(dataProvider = "diskQuotaUsageScenarios")
+  public void testDiskQuotaUsage(long storeQuota, int[] partitions, int[][] usageByPartition, double expectedUsage) {
+    StorageUtilizationManager manager = createManagerHostingPartitions(storeQuota, partitions);
+    if (storeQuota < storePartitionCount) {
+      Assert.assertEquals(manager.getPartitionQuotaInBytes(), 0L);
+    }
+    if (storeQuota == 0) {
+      manager.initPartition(1);
+      Assert.assertTrue(Double.isNaN(manager.getDiskQuotaUsage()));
+      manager.enforcePartitionQuota(1, 10);
+      Assert.assertEquals(manager.getDiskQuotaUsage(), Double.POSITIVE_INFINITY);
+      return;
+    }
+    for (int[] usage: usageByPartition) {
+      manager.enforcePartitionQuota(usage[0], usage[1]);
+    }
+    if (storeQuota == 5L) {
+      for (int partition: partitions) {
+        verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionStateMap.get(partition));
+      }
+    }
+    Assert.assertEquals(manager.getDiskQuotaUsage(), expectedUsage);
+  }
+
+  @DataProvider(name = "diskQuotaUsageScenarios")
+  public Object[][] diskQuotaUsageScenarios() {
+    return new Object[][] { { storeQuotaInBytes, new int[] { 1, 2 }, new int[][] { { 1, 5 }, { 2, 5 } }, 0.5 },
+        { 5L, new int[] { 1, 2 }, new int[][] { { 1, 10 }, { 2, 10 } }, 20.0 },
+        { 0L, new int[] { 1 }, new int[][] {}, Double.NaN } };
+  }
+
+  /** A manager for a host that holds only {@code partitions} of the store's partitions. */
+  private StorageUtilizationManager createManagerHostingPartitions(long storeQuota, int... partitions) {
+    when(store.getStorageQuotaInByte()).thenReturn(storeQuota);
+    ConcurrentMap<Integer, PartitionConsumptionState> hostedPartitions = new VeniceConcurrentHashMap<>();
+    for (int partition: partitions) {
+      hostedPartitions.put(partition, partitionConsumptionStateMap.get(partition));
+    }
+    return new StorageUtilizationManager(
+        storageEngine,
+        store,
+        VERSION_TOPIC.getName(),
+        storePartitionCount,
+        hostedPartitions,
+        true,
+        true,
+        false,
+        ingestionNotificationDispatcher,
+        (t, p) -> true,
+        (t, p) -> true);
   }
 
   private static class PartitionNumberMatcher implements ArgumentMatcher<PartitionConsumptionState> {

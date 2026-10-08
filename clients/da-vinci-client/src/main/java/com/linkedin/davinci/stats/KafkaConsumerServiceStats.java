@@ -173,26 +173,28 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     // Per-store Tehuti shares total's sensor (matching original registerOnlyTotalRate behavior).
     TehutiSensorRegistrationFunction pollCountTehutiReg =
         totalStats == null ? this::registerSensorIfAbsent : (name, stats) -> totalStats.pollCountOtel.getTehutiSensor();
-    pollCountOtel = MetricEntityStateBase.create(
-        POLL_COUNT.getMetricEntity(),
-        totalOnlyOtelRepo,
-        pollCountTehutiReg,
-        TehutiMetricName.CONSUMER_POLL_REQUEST,
-        Collections.singletonList(new LongAdderRateGauge(time)),
-        nonStoreDimensionsMap,
-        nonStoreAttributes);
+    pollCountOtel = getMetricScope().register(
+        MetricEntityStateBase.create(
+            POLL_COUNT.getMetricEntity(),
+            totalOnlyOtelRepo,
+            pollCountTehutiReg,
+            TehutiMetricName.CONSUMER_POLL_REQUEST,
+            Collections.singletonList(new LongAdderRateGauge(time)),
+            nonStoreDimensionsMap,
+            nonStoreAttributes));
 
     TehutiSensorRegistrationFunction pollNonEmptyTehutiReg = totalStats == null
         ? this::registerSensorIfAbsent
         : (name, stats) -> totalStats.pollNonEmptyCountOtel.getTehutiSensor();
-    pollNonEmptyCountOtel = MetricEntityStateBase.create(
-        POLL_NON_EMPTY_COUNT.getMetricEntity(),
-        totalOnlyOtelRepo,
-        pollNonEmptyTehutiReg,
-        TehutiMetricName.CONSUMER_POLL_NON_ZERO_RESULT_NUM,
-        Collections.singletonList(new LongAdderRateGauge(time)),
-        nonStoreDimensionsMap,
-        nonStoreAttributes);
+    pollNonEmptyCountOtel = getMetricScope().register(
+        MetricEntityStateBase.create(
+            POLL_NON_EMPTY_COUNT.getMetricEntity(),
+            totalOnlyOtelRepo,
+            pollNonEmptyTehutiReg,
+            TehutiMetricName.CONSUMER_POLL_NON_ZERO_RESULT_NUM,
+            Collections.singletonList(new LongAdderRateGauge(time)),
+            nonStoreDimensionsMap,
+            nonStoreAttributes));
 
     pollTimeOtel = MetricEntityStateBase.create(
         POLL_TIME.getMetricEntity(),

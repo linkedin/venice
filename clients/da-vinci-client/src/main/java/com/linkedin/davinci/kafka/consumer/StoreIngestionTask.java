@@ -2068,6 +2068,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Thread.currentThread().setName("venice-SIT-" + kafkaVersionTopic);
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
+      versionedDIVStats.setIngestionTask(storeName, this);
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
@@ -2147,6 +2148,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } catch (Throwable t) {
         LOGGER.error("{}: unexpected error in internalClose during shutdown", ingestionTaskName, t);
       } finally {
+        versionedIngestionStats.removeIngestionTask(kafkaVersionTopic, this);
+        versionedDIVStats.removeIngestionTask(storeName, this);
         shutdownLatch.countDown();
       }
     }
@@ -6382,6 +6385,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PartitionConsumptionState::getActiveKeyCount,
         v -> v != ACTIVE_KEY_COUNT_NOT_TRACKED,
         ACTIVE_KEY_COUNT_NOT_TRACKED);
+  }
+
+  /** Whether any local partition currently has {@code replicaType}. */
+  public boolean hasReplicaType(ReplicaType replicaType) {
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStates()) {
+      if (matchesReplicaType(pcs, replicaType)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

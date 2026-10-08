@@ -33,7 +33,7 @@ import java.util.Map;
  * <p>Note: Tehuti metrics are managed separately in {@link BlobTransferStats} and
  * {@link BlobTransferStatsReporter}. This class handles only OTel metrics.
  */
-public class BlobTransferOtelStats {
+public class BlobTransferOtelStats implements AbstractVeniceAggVersionedStats.StoreOtelStats {
   private final boolean emitOtelMetrics;
 
   private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
@@ -118,6 +118,11 @@ public class BlobTransferOtelStats {
 
   public void updateVersionInfo(int currentVersion, int futureVersion) {
     this.versionInfo = new VersionInfo(currentVersion, futureVersion);
+  }
+
+  @Override
+  public void close() {
+    // No observable callbacks to unregister.
   }
 
   /**

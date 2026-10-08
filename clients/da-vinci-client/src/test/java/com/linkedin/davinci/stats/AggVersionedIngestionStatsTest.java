@@ -1,5 +1,13 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_RECORDS_CONSUMED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -7,7 +15,10 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
@@ -15,18 +26,34 @@ import com.linkedin.davinci.stats.ingestion.IngestionOtelStats;
 import com.linkedin.davinci.stats.ingestion.NoOpIngestionOtelStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -38,6 +65,7 @@ import org.testng.annotations.Test;
 public class AggVersionedIngestionStatsTest {
   private static final String STORE_NAME = "testStore";
   private static final String CLUSTER_NAME = "testCluster";
+  private static final String TEST_PREFIX = "test_prefix";
   private static final int VERSION_1 = 1;
   private static final int VERSION_2 = 2;
   private static final int VERSION_3 = 3;
@@ -56,12 +84,18 @@ public class AggVersionedIngestionStatsTest {
   }
 
   private AggVersionedIngestionStats createAggStats(boolean ingestionOtelStatsEnabled) {
+    return createAggStats(ingestionOtelStatsEnabled, new MetricsRepository());
+  }
+
+  private AggVersionedIngestionStats createAggStats(
+      boolean ingestionOtelStatsEnabled,
+      MetricsRepository metricsRepository) {
     VeniceServerConfig config = mock(VeniceServerConfig.class);
     when(config.getClusterName()).thenReturn(CLUSTER_NAME);
     when(config.isUnregisterMetricForDeletedStoreEnabled()).thenReturn(true);
     when(config.isIngestionOtelStatsEnabled()).thenReturn(ingestionOtelStatsEnabled);
     doReturn(Int2ObjectMaps.emptyMap()).when(config).getKafkaClusterIdToAliasMap();
-    return new AggVersionedIngestionStats(new MetricsRepository(), storeRepository, config);
+    return new AggVersionedIngestionStats(metricsRepository, storeRepository, config);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -122,12 +156,49 @@ public class AggVersionedIngestionStatsTest {
 
       // Verify VERSION_2 data still exists
       assertTrue(tasksByVersion.containsKey(VERSION_2), "Task should still exist for VERSION_2 after cleanup");
+
+      invokeCleanupVersionResources(aggStats, STORE_NAME, VERSION_2);
+      assertTrue(otelStatsMap.containsKey(STORE_NAME), "Metadata cleanup should not retire the store's OTel stats");
+      assertFalse(tasksByVersion.containsKey(VERSION_2), "Task should be removed for VERSION_2 after cleanup");
     } else {
       assertTrue(otelStatsMap.isEmpty(), "OTel stats map should stay empty when disabled");
       // Cleanup should be a no-op when disabled — must not throw
       invokeCleanupVersionResources(aggStats, STORE_NAME, VERSION_1);
       assertTrue(otelStatsMap.isEmpty(), "OTel stats map should remain empty after cleanup when disabled");
     }
+  }
+
+  @Test
+  public void testRemoveIngestionTaskRemovesOtelStatsWhenLastTask() throws Exception {
+    AggVersionedIngestionStats aggStats = createAggStats(true);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    when(task.isHybridMode()).thenReturn(false);
+
+    aggStats.setIngestionTask(STORE_NAME + "_v" + VERSION_1, task);
+    Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
+    assertTrue(otelStatsMap.containsKey(STORE_NAME));
+
+    aggStats.removeIngestionTask(STORE_NAME + "_v" + VERSION_1, task);
+    assertFalse(otelStatsMap.containsKey(STORE_NAME), "Last detached task should remove the store's OTel stats");
+  }
+
+  @Test
+  public void testRemoveIngestionTaskDoesNotRemoveNewerTaskForSameVersion() throws Exception {
+    AggVersionedIngestionStats aggStats = createAggStats(true);
+    StoreIngestionTask staleTask = mock(StoreIngestionTask.class);
+    StoreIngestionTask newerTask = mock(StoreIngestionTask.class);
+    when(staleTask.isHybridMode()).thenReturn(false);
+    when(newerTask.isHybridMode()).thenReturn(false);
+
+    aggStats.setIngestionTask(STORE_NAME + "_v" + VERSION_1, staleTask);
+    aggStats.setIngestionTask(STORE_NAME + "_v" + VERSION_1, newerTask);
+    Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
+    IngestionOtelStats otelStats = otelStatsMap.get(STORE_NAME);
+
+    aggStats.removeIngestionTask(STORE_NAME + "_v" + VERSION_1, staleTask);
+
+    assertTrue(otelStatsMap.containsKey(STORE_NAME), "Stale task detach should not remove the store's OTel stats");
+    assertEquals(getIngestionTasksByVersion(otelStats).get(VERSION_1), newerTask);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -293,6 +364,172 @@ public class AggVersionedIngestionStatsTest {
   }
 
   @Test
+  public void testPushTimeoutSurvivesDetachUntilVersionCleanup() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository repo = createOtelEnabledRepo(reader)) {
+      AggVersionedIngestionStats aggStats = createAggStats(true, repo);
+      setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1, VERSION_2);
+      StoreIngestionTask task = mockTask();
+
+      aggStats.setIngestionTask(versionTopic(VERSION_2), task);
+      aggStats.setIngestionTaskPushTimeoutGauge(STORE_NAME, VERSION_2);
+      aggStats.removeIngestionTask(versionTopic(VERSION_2), task);
+
+      assertGaugeValue(
+          reader,
+          INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity().getMetricName(),
+          STORE_NAME,
+          VersionRole.FUTURE,
+          1L);
+
+      aggStats.cleanupVersionResources(STORE_NAME, VERSION_2);
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          reader.collectAllMetrics(),
+          INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity().getMetricName(),
+          TEST_PREFIX,
+          attributes(STORE_NAME, VersionRole.FUTURE));
+    }
+  }
+
+  @Test
+  public void testCleanupWithRegisteredTaskDefersOtelStatsCloseUntilDetach() throws Exception {
+    AggVersionedIngestionStats aggStats = createAggStats(true);
+    setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1);
+    StoreIngestionTask task = mockTask();
+
+    aggStats.setIngestionTask(versionTopic(VERSION_1), task);
+    Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
+    aggStats.cleanupVersionResources(STORE_NAME, VERSION_1);
+
+    assertTrue(
+        otelStatsMap.containsKey(STORE_NAME),
+        "Metadata cleanup must not close OTel stats that have a running task");
+    aggStats.removeIngestionTask(versionTopic(VERSION_1), task);
+    assertFalse(otelStatsMap.containsKey(STORE_NAME), "Task detach should close the deferred idle OTel stats");
+  }
+
+  @Test
+  public void testDetachingOneVersionKeepsOtherVersionGaugesUntilLastDetach() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository repo = createOtelEnabledRepo(reader)) {
+      AggVersionedIngestionStats aggStats = createAggStats(true, repo);
+      setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1, VERSION_2);
+      StoreIngestionTask currentTask = mockTask();
+      StoreIngestionTask futureTask = mockTask();
+
+      aggStats.setIngestionTask(versionTopic(VERSION_1), currentTask);
+      aggStats.setIngestionTask(versionTopic(VERSION_2), futureTask);
+      aggStats.removeIngestionTask(versionTopic(VERSION_1), currentTask);
+
+      assertGaugeValue(
+          reader,
+          INGESTION_TASK_COUNT.getMetricEntity().getMetricName(),
+          STORE_NAME,
+          VersionRole.FUTURE,
+          1L);
+
+      aggStats.removeIngestionTask(versionTopic(VERSION_2), futureTask);
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          reader.collectAllMetrics(),
+          INGESTION_TASK_COUNT.getMetricEntity().getMetricName(),
+          TEST_PREFIX,
+          attributes(STORE_NAME, VersionRole.FUTURE));
+    }
+  }
+
+  @Test
+  public void testViewTopicDetachRetiresViewsAndIdleBaseAfterLastViewTaskStops() throws Exception {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository repo = createOtelEnabledRepo(reader)) {
+      AggVersionedIngestionStats aggStats = createAggStats(true, repo);
+      String firstViewTopic = viewTopic(VERSION_1, "firstView");
+      String secondViewTopic = viewTopic(VERSION_1, "secondView");
+      String firstViewStoreName = VeniceView.parseStoreAndViewFromViewTopic(firstViewTopic);
+      String secondViewStoreName = VeniceView.parseStoreAndViewFromViewTopic(secondViewTopic);
+      setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1);
+      setStoreVersionInfo(aggStats, firstViewStoreName, VERSION_1, VERSION_1);
+      setStoreVersionInfo(aggStats, secondViewStoreName, VERSION_1, VERSION_1);
+      StoreIngestionTask firstViewTask = mockTask();
+      StoreIngestionTask secondViewTask = mockTask();
+      Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
+      String taskCount = INGESTION_TASK_COUNT.getMetricEntity().getMetricName();
+      String recordsConsumed = INGESTION_RECORDS_CONSUMED.getMetricEntity().getMetricName();
+      Attributes baseLeaderCurrent = attributes(STORE_NAME, VersionRole.CURRENT, ReplicaType.LEADER);
+
+      aggStats.setIngestionTask(firstViewTopic, firstViewTask);
+      aggStats.setIngestionTask(secondViewTopic, secondViewTask);
+      IngestionOtelStats baseStats = otelStatsMap.get(STORE_NAME);
+      assertNotNull(baseStats);
+      aggStats.recordLeaderConsumed(STORE_NAME, VERSION_1, 7);
+      assertGaugeValue(reader, taskCount, firstViewStoreName, VersionRole.CURRENT, 1L);
+
+      aggStats.removeIngestionTask(firstViewTopic, firstViewTask);
+      assertSame(otelStatsMap.get(STORE_NAME), baseStats);
+
+      aggStats.removeIngestionTask(secondViewTopic, secondViewTask);
+      assertNull(otelStatsMap.get(STORE_NAME));
+      Collection<MetricData> firstCollection = reader.collectAllMetrics();
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          firstCollection,
+          taskCount,
+          TEST_PREFIX,
+          attributes(firstViewStoreName, VersionRole.CURRENT));
+      OpenTelemetryDataTestUtils.assertNoDataPoint(
+          firstCollection,
+          taskCount,
+          TEST_PREFIX,
+          attributes(secondViewStoreName, VersionRole.CURRENT));
+      assertEquals(
+          OpenTelemetryDataTestUtils
+              .getLongPointDataFromSum(firstCollection, recordsConsumed, TEST_PREFIX, baseLeaderCurrent)
+              .getValue(),
+          1L);
+      OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
+          reader.collectAllMetrics(),
+          recordsConsumed,
+          TEST_PREFIX,
+          baseLeaderCurrent);
+    }
+  }
+
+  @Test
+  public void testViewTopicDetachKeepsBaseOtelStatsWithRegisteredBaseTask() throws Exception {
+    AggVersionedIngestionStats aggStats = createAggStats(true);
+    String viewTopic = viewTopic(VERSION_1);
+    String viewStoreName = VeniceView.parseStoreAndViewFromViewTopic(viewTopic);
+    setStoreVersionInfo(aggStats, STORE_NAME, VERSION_1, VERSION_1);
+    setStoreVersionInfo(aggStats, viewStoreName, VERSION_1, VERSION_1);
+    StoreIngestionTask baseTask = mockTask();
+    StoreIngestionTask viewTask = mockTask();
+
+    aggStats.setIngestionTask(versionTopic(VERSION_1), baseTask);
+    aggStats.setIngestionTask(viewTopic, viewTask);
+    Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
+    aggStats.removeIngestionTask(viewTopic, viewTask);
+
+    assertFalse(
+        otelStatsMap.containsKey(viewStoreName),
+        "View store's OTel stats should close after its task detaches");
+    assertTrue(
+        otelStatsMap.containsKey(STORE_NAME),
+        "Base store's OTel stats should stay open for its registered base task");
+  }
+
+  @Test
+  public void testRemoveIngestionTaskNeverThrows() {
+    AggVersionedIngestionStats aggStats = createAggStats(true);
+    StoreIngestionTask task = mockTask();
+    try {
+      aggStats.removeIngestionTask("not_a_version_topic", task);
+      aggStats.setIngestionTask(versionTopic(VERSION_1), task);
+      when(task.isHybridMode()).thenThrow(new RuntimeException("unexpected task method call"));
+      aggStats.removeIngestionTask(versionTopic(VERSION_1), task);
+    } catch (Exception e) {
+      fail("removeIngestionTask should catch and log bad topics or task failures", e);
+    }
+  }
+
+  @Test
   public void testGetIngestionOtelStatsReturnsRealStatsWhenEnabled() throws Exception {
     AggVersionedIngestionStats aggStats = createAggStats(true);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
@@ -315,13 +552,87 @@ public class AggVersionedIngestionStatsTest {
     assertTrue(result == NoOpIngestionOtelStats.INSTANCE, "Should return the shared INSTANCE singleton");
   }
 
+  private static VeniceMetricsRepository createOtelEnabledRepo(InMemoryMetricReader reader) {
+    return new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .build());
+  }
+
+  private static StoreIngestionTask mockTask() {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    when(task.isHybridMode()).thenReturn(false);
+    return task;
+  }
+
+  private static String versionTopic(int version) {
+    return Version.composeKafkaTopic(STORE_NAME, version);
+  }
+
+  private static String viewTopic(int version) {
+    return viewTopic(version, "testView");
+  }
+
+  private static String viewTopic(int version, String viewName) {
+    return versionTopic(version) + VeniceView.VIEW_NAME_SEPARATOR + viewName
+        + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
+  }
+
+  private void setStoreVersionInfo(
+      AggVersionedIngestionStats aggStats,
+      String storeName,
+      int currentVersion,
+      int... versions) {
+    Store store = mock(Store.class);
+    List<Version> versionList = Arrays.stream(versions)
+        .mapToObj(version -> new VersionImpl(storeName, version, "push-" + version))
+        .collect(Collectors.toList());
+    when(store.getName()).thenReturn(storeName);
+    when(store.getVersions()).thenReturn(versionList);
+    when(store.getCurrentVersion()).thenReturn(currentVersion);
+    doReturn(store).when(storeRepository).getStoreOrThrow(storeName);
+    aggStats.handleStoreChanged(store);
+  }
+
+  private static Attributes attributes(String storeName, VersionRole role) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
+        .build();
+  }
+
+  private static Attributes attributes(String storeName, VersionRole role, ReplicaType replicaType) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
+        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), replicaType.getDimensionValue())
+        .build();
+  }
+
+  private static void assertGaugeValue(
+      InMemoryMetricReader reader,
+      String metricName,
+      String storeName,
+      VersionRole role,
+      long expected) {
+    OpenTelemetryDataTestUtils
+        .validateLongPointDataFromGauge(reader, expected, attributes(storeName, role), metricName, TEST_PREFIX);
+  }
+
   // Helper methods to access private fields and methods via reflection
 
   @SuppressWarnings("unchecked")
   private Map<String, IngestionOtelStats> getOtelStatsMap(AggVersionedIngestionStats stats) throws Exception {
-    Field field = AggVersionedIngestionStats.class.getDeclaredField("otelStatsMap");
+    Field field = AggVersionedIngestionStats.class.getDeclaredField("otelStats");
     field.setAccessible(true);
-    return (Map<String, IngestionOtelStats>) field.get(stats);
+    Object registry = field.get(stats);
+    Field map = registry.getClass().getDeclaredField("statsByStore");
+    map.setAccessible(true);
+    return (Map<String, IngestionOtelStats>) map.get(registry);
   }
 
   private void invokeCleanupVersionResources(AggVersionedIngestionStats stats, String storeName, int version)
@@ -337,8 +648,8 @@ public class AggVersionedIngestionStatsTest {
       String storeName,
       int currentVersion,
       int futureVersion) throws Exception {
-    java.lang.reflect.Method method =
-        AggVersionedIngestionStats.class.getDeclaredMethod("onVersionInfoUpdated", String.class, int.class, int.class);
+    java.lang.reflect.Method method = AbstractVeniceAggVersionedStats.class
+        .getDeclaredMethod("onVersionInfoUpdated", String.class, int.class, int.class);
     method.setAccessible(true);
     method.invoke(stats, storeName, currentVersion, futureVersion);
   }

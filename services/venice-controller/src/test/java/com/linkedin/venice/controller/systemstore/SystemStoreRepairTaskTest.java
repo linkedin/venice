@@ -59,8 +59,10 @@ public class SystemStoreRepairTaskTest {
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
 
     Map<String, SystemStoreHealthCheckStats> systemStoreHealthCheckStatsMap = new HashMap<>();
-    systemStoreHealthCheckStatsMap.put("venice-2", mock(SystemStoreHealthCheckStats.class));
-    systemStoreHealthCheckStatsMap.put("venice-3", mock(SystemStoreHealthCheckStats.class));
+    SystemStoreHealthCheckStats nonLeaderStats = mock(SystemStoreHealthCheckStats.class);
+    SystemStoreHealthCheckStats leaderStats = mock(SystemStoreHealthCheckStats.class);
+    systemStoreHealthCheckStatsMap.put("venice-2", nonLeaderStats);
+    systemStoreHealthCheckStatsMap.put("venice-3", leaderStats);
     doReturn(systemStoreHealthCheckStatsMap).when(systemStoreRepairTask).getClusterToSystemStoreHealthCheckStatsMap();
 
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
@@ -72,6 +74,7 @@ public class SystemStoreRepairTaskTest {
             .setRegionName("test-region")
             .build()).when(parentHelixAdmin).getLogContext();
     doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
+    doReturn(true).when(systemStoreRepairTask).shouldContinue("venice-3");
 
     doCallRealMethod().when(systemStoreRepairTask).run();
     systemStoreRepairTask.run();
@@ -80,6 +83,15 @@ public class SystemStoreRepairTaskTest {
     verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-1"), anySet());
     verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-2"), anySet());
     verify(systemStoreRepairTask).checkSystemStoresHealth(eq("venice-3"), anySet());
+    // Only the leader's completed round makes its counts reportable.
+    verify(nonLeaderStats).setMeasured(false);
+    verify(leaderStats).setMeasured(true);
+
+    // A later round that fails stops reporting the previous round's counts.
+    doThrow(new VeniceException("simulated failure")).when(systemStoreRepairTask)
+        .checkSystemStoresHealth(eq("venice-3"), anySet());
+    systemStoreRepairTask.run();
+    verify(leaderStats).setMeasured(false);
   }
 
   @Test
@@ -458,7 +470,9 @@ public class SystemStoreRepairTaskTest {
     systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertTrue(unhealthySystemStoreSet.isEmpty());
 
-    // After Push Completed: all counts should be 0
+    // After Push Completed: all counts should be 0. run() publishes the counts once a round completes; this test calls
+    // repairBadSystemStore directly.
+    realStats.setMeasured(true);
     verifySystemStoreMetrics(metricsRepo, metricReader, clusterName, metricPrefix, 0, 0, 0);
 
     // Poll throws exception, should be caught inside.
@@ -469,6 +483,7 @@ public class SystemStoreRepairTaskTest {
     Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
 
     // After Poll throws: systemStore is a meta store, so badMeta=1, badPushStatus=0, notRepairable=1
+    realStats.setMeasured(true);
     verifySystemStoreMetrics(metricsRepo, metricReader, clusterName, metricPrefix, 1, 0, 1);
   }
 

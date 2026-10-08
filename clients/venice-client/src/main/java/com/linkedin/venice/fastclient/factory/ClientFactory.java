@@ -79,8 +79,22 @@ public class ClientFactory {
       StoreMetadata storeMetadata,
       ClientConfig clientConfig) {
     AvroGenericStoreClient<K, V> client = buildGenericStoreClient(storeMetadata, clientConfig);
-    client.start();
+    startOrClose(client);
     return client;
+  }
+
+  /** Starts {@code client}, closing it if start fails, so a client the caller never gets leaves nothing running. */
+  private static void startOrClose(AvroGenericStoreClient<?, ?> client) {
+    try {
+      client.start();
+    } catch (RuntimeException e) {
+      try {
+        client.close();
+      } catch (RuntimeException closeFailure) {
+        e.addSuppressed(closeFailure);
+      }
+      throw e;
+    }
   }
 
   /**
@@ -148,7 +162,7 @@ public class ClientFactory {
     if (clientConfig.isDualReadEnabled()) {
       dualReadClient = new DualReadAvroSpecificStoreClient<>(statsStoreClient, clientConfig);
     }
-    dualReadClient.start();
+    startOrClose(dualReadClient);
 
     return dualReadClient;
   }
