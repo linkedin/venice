@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
@@ -45,6 +46,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.lang.reflect.Field;
@@ -63,10 +65,16 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -759,6 +767,124 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
           .emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION);
       verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
     });
+  }
+
+  @Test
+  public void testMetricReportingThreadSurvivesRecordStatsFailure() {
+    // Keep the interval short so a surviving loop completes several cycles well within the test timeout.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+
+    // Throw from the last statement of recordStats to exercise generic reporting-cycle failure handling.
+    doThrow(new NumberFormatException("Simulated failure while computing stats")).when(changeCaptureStats)
+        .emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
+
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+
+    int partitionId = 0;
+    recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
+    recordTransformer.onHeartbeat(partitionId, 1L);
+
+    Thread reporterThread = null;
+    try {
+      /**
+       * Require a second cycle rather than a single one: the first invocation is recorded before the
+       * exception finishes unwinding, so asserting on it alone could observe a thread that is already
+       * terminating. A second call only happens if the loop resumed.
+       */
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          () -> verify(changeCaptureStats, atLeast(2)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt()));
+
+      reporterThread = veniceChangelogConsumer.getBackgroundReporterThread();
+      assertNotNull(reporterThread, "Background reporter thread should have been started.");
+      assertTrue(
+          reporterThread.isAlive(),
+          "Reporter thread must stay alive after recordStats throws, otherwise this reporter stops emitting metrics.");
+    } finally {
+      if (reporterThread == null) {
+        reporterThread = veniceChangelogConsumer.getBackgroundReporterThread();
+      }
+      if (reporterThread != null) {
+        reporterThread.interrupt();
+      }
+    }
+  }
+
+  @Test
+  public void testMetricReportingFailureLogsAreRateLimited() throws Exception {
+    // Run synchronously to control suppression, reset, and recovery without timing-dependent assertions.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+    try {
+      doAnswer(invocation -> {
+        Thread.currentThread().interrupt();
+        return null;
+      }).when(changeCaptureStats).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
+      CompletableFuture<Void> startFuture = veniceChangelogConsumer.start();
+      onStartVersionIngestionHelper(true, true);
+      recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+      startFuture.get(10, TimeUnit.SECONDS);
+      Thread reporter = veniceChangelogConsumer.getBackgroundReporterThread();
+      assertNotNull(reporter);
+      reporter.join(TimeUnit.SECONDS.toMillis(10));
+      assertFalse(reporter.isAlive(), "The initial reporter run must stop before running it synchronously.");
+
+      Logger logger = (Logger) LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
+      Appender appender = mock(Appender.class);
+      when(appender.getName()).thenReturn("reportingFailureTest");
+      when(appender.isStarted()).thenReturn(true);
+      List<LogEvent> errors = new ArrayList<>();
+      doAnswer(invocation -> {
+        LogEvent event = invocation.getArgument(0);
+        if (event.getLevel() == Level.ERROR) {
+          errors.add(event.toImmutable());
+        }
+        return null;
+      }).when(appender).append(any(LogEvent.class));
+
+      RuntimeException firstFailure = new IllegalStateException("first failure");
+      RuntimeException changedFailure = new IllegalArgumentException("different failure");
+      AssertionError fatalError = new AssertionError("Errors must not be swallowed");
+      AtomicInteger cycles = new AtomicInteger();
+      doAnswer(invocation -> {
+        int cycle = cycles.incrementAndGet();
+        if (cycle == 3) {
+          filter.clearBitSet();
+        }
+        if (cycle == 4) {
+          return null; // A successful reporting cycle after repeated failures.
+        }
+        if (cycle == 5) {
+          changelogClientConfig.setConsumerName("another-consumer");
+        }
+        if (cycle >= 6) {
+          throw fatalError;
+        }
+        throw cycle == 1 ? firstFailure : changedFailure;
+      }).when(changeCaptureStats).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
+
+      logger.addAppender(appender);
+      try {
+        synchronized (filter) {
+          filter.clearBitSet();
+          assertSame(expectThrows(AssertionError.class, reporter::run), fatalError);
+        }
+        assertEquals(cycles.get(), 6);
+        assertEquals(errors.size(), 3, "Log once, again after reset, and independently for another consumer.");
+        assertSame(errors.get(0).getThrown(), firstFailure);
+        assertSame(errors.get(1).getThrown(), changedFailure);
+        assertSame(errors.get(2).getThrown(), changedFailure);
+        assertTrue(errors.get(0).getMessage().getFormattedMessage().contains(TEST_STORE_NAME));
+        assertTrue(errors.get(2).getMessage().getFormattedMessage().contains("another-consumer"));
+      } finally {
+        logger.removeAppender(appender);
+      }
+    } finally {
+      veniceChangelogConsumer.close();
+    }
   }
 
   @Test

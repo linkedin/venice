@@ -62,6 +62,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -115,6 +116,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   // Position resolution has no side effects, so any failure is safe to retry within the bounded attempt budget.
   private static final List<Class<? extends Throwable>> SEEK_POSITION_RESOLUTION_RETRIABLE_FAILURES =
       Collections.singletonList(Exception.class);
+  private final RedundantExceptionFilter redundantExceptionFilter =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   protected long subscribeTime = Long.MAX_VALUE;
   private Duration seekPositionResolutionInitialRetryDelay = Duration.ofMillis(100);
   private Duration seekPositionResolutionMaxRetryDelay = Duration.ofSeconds(5);
@@ -1333,7 +1336,23 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     public void run() {
       while (!Thread.interrupted()) {
         try {
-          recordStats(getLastHeartbeatPerPartition(), changeCaptureStats, getTopicAssignment());
+          try {
+            recordStats(getLastHeartbeatPerPartition(), changeCaptureStats, getTopicAssignment());
+          } catch (Exception e) {
+            // This thread is started at most once per consumer and is never restarted, so letting an
+            // exception escape would silently stop heartbeat lag and consuming version reporting for the
+            // remaining lifetime of the consumer. Skip this cycle and retry on the next one instead.
+            // Use a stable, consumer-scoped key so changing exception messages do not bypass suppression.
+            String logKey = VeniceChangelogConsumerImpl.class.getName() + ":recordStats:" + storeName + ":"
+                + changelogClientConfig.getConsumerName();
+            if (!redundantExceptionFilter.isRedundantException(logKey)) {
+              LOGGER.error(
+                  "Failed to record change capture stats for store: {}, consumer: {}. Skipping this reporting cycle.",
+                  storeName,
+                  changelogClientConfig.getConsumerName(),
+                  e);
+            }
+          }
           TimeUnit.SECONDS.sleep(changelogClientConfig.getBackgroundReporterThreadSleepIntervalInSeconds());
         } catch (InterruptedException e) {
           LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);

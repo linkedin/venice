@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -86,6 +88,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -115,13 +118,18 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -705,6 +713,122 @@ public class VeniceChangelogConsumerImplTest {
 
     reporterThread.start();
     reporterThread.interrupt();
+  }
+
+  @Test
+  public void testMetricReportingThreadSurvivesRecordStatsFailure() {
+    // Keep the interval short so a surviving loop completes several cycles well within the test timeout.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    doThrow(new NumberFormatException("Simulated failure while computing stats")).when(mockPubSubConsumer)
+        .getAssignment();
+
+    VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
+        veniceChangelogConsumer.getHeartbeatReporterThread();
+    try {
+      reporterThread.start();
+      /**
+       * Require a second cycle rather than a single one: the first invocation is recorded before the
+       * exception finishes unwinding, so asserting on it alone could observe a thread that is already
+       * terminating. A second call only happens if the loop resumed.
+       */
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Mockito.verify(mockPubSubConsumer, atLeast(2)).getAssignment());
+      assertTrue(
+          reporterThread.isAlive(),
+          "Reporter thread must stay alive after recordStats throws, otherwise lag reporting stops permanently.");
+    } finally {
+      reporterThread.interrupt();
+    }
+  }
+
+  @Test
+  public void testMetricReportingFailureLogsAreRateLimited() throws Exception {
+    // Run synchronously to control suppression, reset, and recovery without timing-dependent assertions.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    VeniceChangelogConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+    BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
+    VeniceChangelogConsumerImpl<String, Utf8>.HeartbeatReporterThread reporter =
+        consumer.new HeartbeatReporterThread() {
+          @Override
+          protected void recordStats(
+              Map<Integer, Long> lastHeartbeats,
+              BasicConsumerStats stats,
+              Set<PubSubTopicPartition> assignment) {
+            super.recordStats(lastHeartbeats, consumerStats, assignment);
+          }
+        };
+
+    org.apache.logging.log4j.core.Logger logger =
+        (org.apache.logging.log4j.core.Logger) LogManager.getLogger(VeniceChangelogConsumerImpl.class);
+    Appender appender = mock(Appender.class);
+    when(appender.getName()).thenReturn("reportingFailureTest");
+    when(appender.isStarted()).thenReturn(true);
+    List<LogEvent> errors = new ArrayList<>();
+    doAnswer(invocation -> {
+      LogEvent event = invocation.getArgument(0);
+      if (event.getLevel() == Level.ERROR) {
+        errors.add(event.toImmutable());
+      }
+      return null;
+    }).when(appender).append(any(LogEvent.class));
+
+    RuntimeException firstFailure = new IllegalStateException("first failure");
+    RuntimeException changedFailure = new IllegalArgumentException("different failure");
+    AssertionError fatalError = new AssertionError("Errors must not be swallowed");
+    AtomicInteger cycles = new AtomicInteger();
+    doAnswer(invocation -> {
+      int cycle = cycles.incrementAndGet();
+      if (cycle == 3) {
+        filter.clearBitSet();
+      }
+      if (cycle == 4) {
+        return Collections.emptySet(); // A successful reporting cycle after repeated failures.
+      }
+      if (cycle == 5) {
+        consumer.changelogClientConfig.setConsumerName("another-consumer");
+      }
+      if (cycle >= 6) {
+        throw fatalError;
+      }
+      throw cycle == 1 ? firstFailure : changedFailure;
+    }).when(mockPubSubConsumer).getAssignment();
+
+    logger.addAppender(appender);
+    try {
+      synchronized (filter) {
+        filter.clearBitSet();
+        assertSame(expectThrows(AssertionError.class, reporter::run), fatalError);
+      }
+      assertEquals(cycles.get(), 6);
+      assertEquals(errors.size(), 3, "Log once, again after reset, and independently for another consumer.");
+      assertSame(errors.get(0).getThrown(), firstFailure);
+      assertSame(errors.get(1).getThrown(), changedFailure);
+      assertSame(errors.get(2).getThrown(), changedFailure);
+      assertTrue(errors.get(0).getMessage().getFormattedMessage().contains(storeName));
+      assertTrue(errors.get(2).getMessage().getFormattedMessage().contains("another-consumer"));
+      verify(consumerStats).emitCurrentConsumingVersionMetrics(-1, -1);
+      verify(consumerStats, never()).emitHeartBeatDelayMetrics(anyLong());
+    } finally {
+      logger.removeAppender(appender);
+      doReturn(Collections.emptySet()).when(mockPubSubConsumer).getAssignment();
+      consumer.close();
+    }
   }
 
   @Test
