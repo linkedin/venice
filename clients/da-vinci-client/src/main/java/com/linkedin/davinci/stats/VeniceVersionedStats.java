@@ -70,10 +70,12 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
     if (currentRoleStats == null) {
       return null;
     }
-    if (version == reporters.getCurrentVersion()) {
+    // Single read so a concurrent swap can't make the version match neither role.
+    OtelVersionedStatsUtils.VersionInfo versionInfo = reporters.getVersionInfo();
+    if (version == versionInfo.getCurrentVersion()) {
       return currentRoleStats;
     }
-    if (version == reporters.getFutureVersion()) {
+    if (version == versionInfo.getFutureVersion()) {
       return futureRoleStats;
     }
     return null;

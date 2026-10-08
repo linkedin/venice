@@ -1,7 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.StatsSupplier;
@@ -11,9 +10,8 @@ import io.tehuti.metrics.stats.AsyncGauge;
 
 public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
     extends AbstractVeniceStats {
-  // Read on ingestion threads by VeniceVersionedStats#getRoleStats.
-  private volatile int currentVersion = NON_EXISTING_VERSION;
-  private volatile int futureVersion = NON_EXISTING_VERSION;
+  // Published as one snapshot so record-time role classification sees a consistent current/future pair.
+  private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
   private final STATS_REPORTER currentStatsReporter;
   private final STATS_REPORTER futureStatsReporter;
@@ -28,8 +26,12 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
 
     this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
 
-    registerSensor("current_version", new AsyncGauge((ignored1, ignored2) -> currentVersion, "current_version"));
-    registerSensor("future_version", new AsyncGauge((ignored1, ignored2) -> futureVersion, "future_version"));
+    registerSensor(
+        "current_version",
+        new AsyncGauge((ignored1, ignored2) -> versionInfo.getCurrentVersion(), "current_version"));
+    registerSensor(
+        "future_version",
+        new AsyncGauge((ignored1, ignored2) -> versionInfo.getFutureVersion(), "future_version"));
 
     this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current", (String) null);
     if (!isSystemStore) {
@@ -59,20 +61,24 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
   }
 
   public int getCurrentVersion() {
-    return currentVersion;
+    return versionInfo.getCurrentVersion();
   }
 
   public int getFutureVersion() {
-    return futureVersion;
+    return versionInfo.getFutureVersion();
   }
 
-  public void setCurrentStats(int version, STATS stats) {
-    currentVersion = version;
+  public VersionInfo getVersionInfo() {
+    return versionInfo;
+  }
+
+  public synchronized void setCurrentStats(int version, STATS stats) {
+    versionInfo = new VersionInfo(version, versionInfo.getFutureVersion());
     linkStatsWithReporter(currentStatsReporter, stats);
   }
 
-  public void setFutureStats(int version, STATS stats) {
-    futureVersion = version;
+  public synchronized void setFutureStats(int version, STATS stats) {
+    versionInfo = new VersionInfo(versionInfo.getCurrentVersion(), version);
     linkStatsWithReporter(futureStatsReporter, stats);
   }
 
