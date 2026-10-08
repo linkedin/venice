@@ -322,11 +322,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
     }
   }
 
-  /**
-   * Stats for traffic rate gauges. The current/future reporters read role-scoped stats, which are recorded into based
-   * on the version's role at record time, so a version swap does not move unread values from future to current. The
-   * total reporter (and reporters without role-scoped stats) fall back to {@link #getStats()}.
-   */
+  // Traffic rate gauges read role-scoped stats when present (current/future), else the linked stats (total).
   private IngestionStats getRoleScopedStats() {
     IngestionStats roleStats = getRoleStats();
     return roleStats != null ? roleStats : getStats();

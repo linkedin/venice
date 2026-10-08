@@ -21,22 +21,19 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-/**
- * Tests role-scoped versioned stats: values recorded while a version is future must stay attributed to the future
- * reporter after that version is promoted, instead of moving to the current reporter on swap.
- */
+/** Values recorded while a version is future must stay on the future reporter after that version is promoted. */
 public class VeniceVersionedStatsRoleScopedTest {
   private static final String STORE_NAME = "testStore";
 
   private MetricsRepository metricsRepository;
   private ReadOnlyStoreRepository storeRepository;
 
-  /** Cumulative counter, so tests can tell which stats object a reporter is reading. */
+  /** Cumulative counter, so tests can tell which stats object a reporter reads. */
   static class CounterStats {
     long count;
   }
 
-  /** Mirrors IngestionStatsReporter's traffic gauges: prefer role-scoped stats, fall back to per-version stats. */
+  /** Mirrors IngestionStatsReporter's traffic gauges. */
   static class CounterStatsReporter extends AbstractVeniceStatsReporter<CounterStats> {
     CounterStatsReporter(MetricsRepository metricsRepository, String storeName, String clusterName) {
       super(metricsRepository, storeName);
@@ -99,7 +96,7 @@ public class VeniceVersionedStatsRoleScopedTest {
   @Test
   public void testFutureBacklogStaysFutureAfterSwap() {
     CounterAggStats aggStats = new CounterAggStats(metricsRepository, storeRepository, true);
-    // v1 is current, v2 is a future version replaying RT.
+    // v1 current, v2 future.
     aggStats
         .handleStoreCreated(store(STORE_NAME, 1, version(1, VersionStatus.ONLINE), version(2, VersionStatus.STARTED)));
 
@@ -109,13 +106,13 @@ public class VeniceVersionedStatsRoleScopedTest {
     assertEquals(gauge(STORE_NAME + "_future"), 5.0);
     assertEquals(gauge(STORE_NAME + "_total"), 8.0);
 
-    // Promote v2 before its backlog was read. Previously _current was re-pointed to v2's stats and reported 5.
+    // Promote v2 before its backlog is read. Previously _current would report v2's 5.
     aggStats
         .handleStoreChanged(store(STORE_NAME, 2, version(1, VersionStatus.ONLINE), version(2, VersionStatus.ONLINE)));
     assertEquals(gauge(STORE_NAME + "_current"), 3.0, "v2's pre-swap backlog must not move to _current");
     assertEquals(gauge(STORE_NAME + "_future"), 5.0, "v2's pre-swap backlog stays attributed to _future");
 
-    // After the swap, v2 records count as current; v1 is now backup and only counts toward total.
+    // v2 now counts as current; backup v1 only counts toward total.
     record(aggStats, STORE_NAME, 2, 2);
     record(aggStats, STORE_NAME, 1, 4);
     assertEquals(gauge(STORE_NAME + "_current"), 5.0);
@@ -132,7 +129,7 @@ public class VeniceVersionedStatsRoleScopedTest {
 
     aggStats
         .handleStoreChanged(store(STORE_NAME, 2, version(1, VersionStatus.ONLINE), version(2, VersionStatus.ONLINE)));
-    // Without role-scoped stats the current reporter follows v2's per-version stats, including its backlog.
+    // Old behavior: _current follows v2's per-version stats, backlog included.
     assertEquals(gauge(STORE_NAME + "_current"), 5.0);
     assertEquals(gauge(STORE_NAME + "_total"), 5.0);
   }
@@ -142,7 +139,7 @@ public class VeniceVersionedStatsRoleScopedTest {
     CounterAggStats aggStats = new CounterAggStats(metricsRepository, storeRepository, true);
     aggStats.handleStoreCreated(store(STORE_NAME, 0));
 
-    // A version that is neither current nor future (e.g. a backup) only counts toward total.
+    // Neither current nor future: total only.
     record(aggStats, STORE_NAME, 7, 2);
     assertEquals(gauge(STORE_NAME + "_current"), 0.0);
     assertEquals(gauge(STORE_NAME + "_future"), 0.0);
@@ -184,10 +181,10 @@ public class VeniceVersionedStatsRoleScopedTest {
     String prefix = "." + STORE_NAME + "_current--";
     assertEquals(metricsRepository.getMetric(prefix + "leader_records_consumed.IngestionStatsGauge").value(), 80.0);
     assertEquals(metricsRepository.getMetric(prefix + "leader_bytes_produced.IngestionStatsGauge").value(), 10.0);
-    // State gauges describe the version itself, so they keep reading the per-version stats.
+    // State gauges keep reading per-version stats.
     assertEquals(metricsRepository.getMetric(prefix + "ingestion_task_errored_gauge.IngestionStatsGauge").value(), 1.0);
 
-    // Without role stats (e.g. the total reporter), traffic gauges fall back to the linked stats.
+    // No role stats (e.g. total reporter): fall back to linked stats.
     reporter.setRoleStats(null);
     assertEquals(metricsRepository.getMetric(prefix + "leader_records_consumed.IngestionStatsGauge").value(), 90_000.0);
   }

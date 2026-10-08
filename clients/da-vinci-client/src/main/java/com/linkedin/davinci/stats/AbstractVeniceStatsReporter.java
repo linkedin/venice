@@ -6,10 +6,7 @@ import io.tehuti.metrics.MetricsRepository;
 
 public abstract class AbstractVeniceStatsReporter<STATS> extends AbstractVeniceStats {
   private STATS stats;
-  /**
-   * Stats that are recorded into based on the version's role (current/future) at record time, rather than being
-   * re-pointed on version swap like {@link #stats}. Null when role-scoped stats are not enabled for this reporter.
-   */
+  // Stats keyed by version role at record time; never re-pointed on swap. Null if not enabled.
   private volatile STATS roleStats;
   protected String storeName;
 

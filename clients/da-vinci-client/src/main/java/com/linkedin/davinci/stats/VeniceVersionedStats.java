@@ -21,7 +21,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
 
   private final Supplier<STATS> statsInitiator;
   private final STATS totalStats;
-  // Role-scoped stats; null unless role-scoped stats are enabled. See getRoleStats(int).
+  // Null unless role-scoped stats are enabled.
   private final STATS currentRoleStats;
   private final STATS futureRoleStats;
 
@@ -49,7 +49,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
 
     if (roleScopedStatsEnabled) {
       this.currentRoleStats = statsInitiator.get();
-      // System stores have no future reporter, so there is nothing to read future role stats.
+      // System stores have no future reporter.
       this.futureRoleStats = VeniceSystemStoreUtils.isSystemStore(storeName) ? null : statsInitiator.get();
       reporters.setRoleStats(currentRoleStats, futureRoleStats);
     } else {
@@ -63,9 +63,8 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   }
 
   /**
-   * Returns the role-scoped stats for the role {@code version} holds right now, or null if role-scoped stats are
-   * disabled or the version is neither current nor future. Mirrors how OTel classifies the version role at record
-   * time, so a backlog recorded while a version was future stays attributed to future after it is promoted.
+   * Returns the stats for the role {@code version} currently holds, or null if disabled or the version is neither
+   * current nor future.
    */
   protected STATS getRoleStats(int version) {
     if (currentRoleStats == null) {

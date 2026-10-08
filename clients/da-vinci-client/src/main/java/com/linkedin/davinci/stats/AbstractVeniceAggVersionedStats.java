@@ -53,9 +53,8 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   /**
-   * @param roleScopedStatsEnabled if true, each store also keeps current/future role-scoped stats that are recorded
-   *                               into via {@link #recordVersionedRoleAndTotalStat} and linked to the current/future
-   *                               reporters (see {@link AbstractVeniceStatsReporter#getRoleStats()}).
+   * @param roleScopedStatsEnabled keep current/future stats keyed by version role; see
+   *                               {@link #recordVersionedRoleAndTotalStat}.
    */
   public AbstractVeniceAggVersionedStats(
       MetricsRepository metricsRepository,
@@ -90,9 +89,8 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   /**
-   * Same as {@link #recordVersionedAndTotalStat}, and additionally records into the role-scoped stats for the role
-   * {@code version} holds at record time. Use for rate stats whose current/future values must not jump when a
-   * version is promoted while it still has unread values (e.g. the tail of an RT buffer replay).
+   * Like {@link #recordVersionedAndTotalStat}, but also records into the stats for the version's role at record time,
+   * so unread values don't move from future to current on version swap.
    */
   protected void recordVersionedRoleAndTotalStat(String storeName, int version, Consumer<STATS> function) {
     VeniceVersionedStats<STATS, STATS_REPORTER> stats = getVersionedStats(storeName);

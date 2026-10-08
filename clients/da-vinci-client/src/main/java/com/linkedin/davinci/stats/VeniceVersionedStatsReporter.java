@@ -11,7 +11,7 @@ import io.tehuti.metrics.stats.AsyncGauge;
 
 public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
     extends AbstractVeniceStats {
-  // Volatile: read on ingestion threads to route role-scoped stats at record time.
+  // Read on ingestion threads by VeniceVersionedStats#getRoleStats.
   private volatile int currentVersion = NON_EXISTING_VERSION;
   private volatile int futureVersion = NON_EXISTING_VERSION;
 
@@ -80,10 +80,7 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     linkStatsWithReporter(totalStatsReporter, totalStats);
   }
 
-  /**
-   * Links role-scoped stats to the current/future reporters once. Unlike {@link #setCurrentStats}, these are never
-   * re-pointed on version swap, so a value recorded while a version was future is never reported as current.
-   */
+  /** Links role-scoped stats once; unlike {@link #setCurrentStats}, they are not re-pointed on swap. */
   public void setRoleStats(STATS currentRoleStats, STATS futureRoleStats) {
     currentStatsReporter.setRoleStats(currentRoleStats);
     if (futureStatsReporter != null) {
