@@ -230,39 +230,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         disableParentRequestTopicForStreamPushes,
         pubSubTopicRepository,
         requestHandler,
-        AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer());
-  }
-
-  public AdminSparkServer(
-      int port,
-      Admin admin,
-      MetricsRepository metricsRepository,
-      Set<String> clusters,
-      boolean enforceSSL,
-      Optional<SSLConfig> sslConfig,
-      boolean checkReadMethodForKafka,
-      Optional<DynamicAccessController> accessController,
-      List<ControllerRoute> disabledRoutes,
-      VeniceProperties jettyConfigOverrides,
-      boolean disableParentRequestTopicForStreamPushes,
-      PubSubTopicRepository pubSubTopicRepository,
-      VeniceControllerRequestHandler requestHandler,
-      InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer) {
-    this(
-        port,
-        admin,
-        metricsRepository,
-        clusters,
-        enforceSSL,
-        sslConfig,
-        checkReadMethodForKafka,
-        accessController,
-        disabledRoutes,
-        jettyConfigOverrides,
-        disableParentRequestTopicForStreamPushes,
-        pubSubTopicRepository,
-        requestHandler,
-        pushJobDetailsSerializer,
+        AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer(),
         () -> false);
   }
 
@@ -332,8 +300,9 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.before((request, response) -> {
       LogContext.setLogContext(logContext);
-      AuditInfo audit = new AuditInfo(request);
-      LOGGER.info(audit.toString());
+      if (!HEALTH.pathEquals(request.uri())) {
+        LOGGER.info(new AuditInfo(request).toString());
+      }
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       if (stats == null) {
         stats = nonclusterSpecificStats;
@@ -368,17 +337,21 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     httpService.after((request, response) -> {
-      AuditInfo audit = new AuditInfo(request);
+      AuditInfo audit = HEALTH.pathEquals(request.uri()) ? null : new AuditInfo(request);
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       if (stats == null) {
         stats = nonclusterSpecificStats;
       }
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
-        LOGGER.info(audit.successString(latency));
+        if (audit != null) {
+          LOGGER.info(audit.successString(latency));
+        }
         stats.recordSuccessfulRequest(request, response, latency);
       } else {
-        LOGGER.info(audit.failureString(response.status(), response.body(), latency));
+        if (audit != null) {
+          LOGGER.info(audit.failureString(response.status(), response.body(), latency));
+        }
         stats.recordFailedRequest(request, response, latency);
       }
       LogContext.clearLogContext();
