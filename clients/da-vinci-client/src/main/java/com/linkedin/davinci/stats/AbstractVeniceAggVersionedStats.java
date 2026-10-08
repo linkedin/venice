@@ -31,6 +31,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
   private final Map<String, VeniceVersionedStats<STATS, STATS_REPORTER>> aggStats;
   private final boolean unregisterMetricForDeletedStoreEnabled;
+  private final boolean roleScopedStatsEnabled;
 
   protected MetricsRepository getMetricsRepository() {
     return metricsRepository;
@@ -42,6 +43,26 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       Supplier<STATS> statsInitiator,
       StatsSupplier<STATS_REPORTER> reporterSupplier,
       boolean unregisterMetricForDeletedStoreEnabled) {
+    this(
+        metricsRepository,
+        metadataRepository,
+        statsInitiator,
+        reporterSupplier,
+        unregisterMetricForDeletedStoreEnabled,
+        false);
+  }
+
+  /**
+   * @param roleScopedStatsEnabled keep current/future stats keyed by version role; see
+   *                               {@link #recordVersionedRoleAndTotalStat}.
+   */
+  public AbstractVeniceAggVersionedStats(
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      Supplier<STATS> statsInitiator,
+      StatsSupplier<STATS_REPORTER> reporterSupplier,
+      boolean unregisterMetricForDeletedStoreEnabled,
+      boolean roleScopedStatsEnabled) {
     this.metadataRepository = metadataRepository;
     this.metricsRepository = metricsRepository;
     this.statsInitiator = statsInitiator;
@@ -49,6 +70,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
     this.aggStats = new VeniceConcurrentHashMap<>();
     this.unregisterMetricForDeletedStoreEnabled = unregisterMetricForDeletedStoreEnabled;
+    this.roleScopedStatsEnabled = roleScopedStatsEnabled;
     metadataRepository.registerStoreDataChangedListener(this);
     loadAllStats();
   }
@@ -64,6 +86,17 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     VeniceVersionedStats<STATS, STATS_REPORTER> stats = getVersionedStats(storeName);
     Utils.computeIfNotNull(stats.getTotalStats(), function);
     Utils.computeIfNotNull(stats.getStats(version), function);
+  }
+
+  /**
+   * Like {@link #recordVersionedAndTotalStat}, but also records into the stats for the version's role at record time,
+   * so unread values don't move from future to current on version swap.
+   */
+  protected void recordVersionedRoleAndTotalStat(String storeName, int version, Consumer<STATS> function) {
+    VeniceVersionedStats<STATS, STATS_REPORTER> stats = getVersionedStats(storeName);
+    Utils.computeIfNotNull(stats.getTotalStats(), function);
+    Utils.computeIfNotNull(stats.getStats(version), function);
+    Utils.computeIfNotNull(stats.getRoleStats(version), function);
   }
 
   protected STATS getTotalStats(String storeName) {
@@ -141,7 +174,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   protected VeniceVersionedStats<STATS, STATS_REPORTER> addStore(Store store) {
     return aggStats.computeIfAbsent(store.getName(), s -> {
       VeniceVersionedStats<STATS, STATS_REPORTER> newStats =
-          new VeniceVersionedStats<>(metricsRepository, s, statsInitiator, reporterSupplier);
+          new VeniceVersionedStats<>(metricsRepository, s, statsInitiator, reporterSupplier, roleScopedStatsEnabled);
       applyVersionInfo(newStats, store.getName(), store.getVersions(), store.getCurrentVersion());
       return newStats;
     });

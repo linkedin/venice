@@ -54,7 +54,8 @@ public class AggVersionedIngestionStats
         storeRepository,
         () -> new IngestionStats(serverConfig),
         IngestionStatsReporter::new,
-        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+        true);
     this.clusterName = serverConfig.getClusterName();
     this.localRegionName = RegionUtils.normalizeRegionName(serverConfig.getRegionName());
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
@@ -173,7 +174,7 @@ public class AggVersionedIngestionStats
    */
   public void recordRecordsConsumed(String storeName, int version) {
     // Tehuti metrics only - OTel uses leader/follower specific methods with ReplicaType dimension
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordRecordsConsumed);
+    recordVersionedRoleAndTotalStat(storeName, version, IngestionStats::recordRecordsConsumed);
   }
 
   /**
@@ -185,12 +186,12 @@ public class AggVersionedIngestionStats
    */
   public void recordBytesConsumed(String storeName, int version, long bytes) {
     // Tehuti metrics only - OTel uses leader/follower specific methods with ReplicaType dimension
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordBytesConsumed(bytes));
+    recordVersionedRoleAndTotalStat(storeName, version, stat -> stat.recordBytesConsumed(bytes));
   }
 
   public void recordLeaderConsumed(String storeName, int version, long bytes) {
     // Tehuti metrics
-    recordVersionedAndTotalStat(storeName, version, stat -> {
+    recordVersionedRoleAndTotalStat(storeName, version, stat -> {
       stat.recordLeaderBytesConsumed(bytes);
       stat.recordLeaderRecordsConsumed();
     });
@@ -200,7 +201,7 @@ public class AggVersionedIngestionStats
 
   public void recordFollowerConsumed(String storeName, int version, long bytes) {
     // Tehuti metrics
-    recordVersionedAndTotalStat(storeName, version, stat -> {
+    recordVersionedRoleAndTotalStat(storeName, version, stat -> {
       stat.recordFollowerBytesConsumed(bytes);
       stat.recordFollowerRecordsConsumed();
     });
@@ -210,7 +211,7 @@ public class AggVersionedIngestionStats
 
   public void recordLeaderProduced(String storeName, int version, long bytesProduced, int recordCount) {
     // Tehuti metrics
-    recordVersionedAndTotalStat(storeName, version, stat -> {
+    recordVersionedRoleAndTotalStat(storeName, version, stat -> {
       stat.recordLeaderBytesProduced(bytesProduced);
       stat.recordLeaderRecordsProduced(recordCount);
     });
