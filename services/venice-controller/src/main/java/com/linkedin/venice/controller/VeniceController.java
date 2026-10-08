@@ -305,6 +305,7 @@ public class VeniceController {
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
         pubSubTopicRepository,
         secure ? secureRequestHandler : unsecureRequestHandler,
+        controllerService.getPushJobDetailsSerializer(),
         this::isApiReady);
   }
 

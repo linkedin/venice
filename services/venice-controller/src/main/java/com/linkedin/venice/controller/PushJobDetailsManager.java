@@ -206,6 +206,7 @@ class PushJobDetailsManager implements Closeable {
   public void close() {
     jobTrackingVeniceWriterMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
     jobTrackingVeniceWriterMap.clear();
+    Utils.closeQuietlyWithErrorLogged(pushJobDetailsSerializer);
     Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
     Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
   }

@@ -411,6 +411,20 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
+  public void testZeroRefreshPeriodDefersSchemaFetchUntilRequested()
+      throws IOException, ExecutionException, InterruptedException {
+    AbstractAvroStoreClient mockClient = getMockStoreClient(false);
+
+    try (SchemaReader schemaReader =
+        new RouterBackedSchemaReader(() -> mockClient, Optional.empty(), Optional.empty(), Duration.ZERO)) {
+      Mockito.verify(mockClient, Mockito.never()).getRaw(Mockito.anyString());
+
+      Assert.assertEquals(schemaReader.getValueSchema(1), VALUE_SCHEMA_1);
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    }
+  }
+
+  @Test
   public void testGetLatestValueSchemaWhenNoValueSchema()
       throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     AbstractAvroStoreClient mockClient = getMockStoreClient(false);

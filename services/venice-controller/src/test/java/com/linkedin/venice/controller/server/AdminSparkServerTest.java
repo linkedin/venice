@@ -1,16 +1,24 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_NEEDS_CLIENT_CERT;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.HEALTH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -23,13 +31,18 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.stats.SparkServerStats;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
@@ -61,14 +74,17 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.ssl.SSLContextBuilder;
 import org.apache.http.util.EntityUtils;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -116,30 +132,96 @@ public class AdminSparkServerTest {
     }
   }
 
-  @Test(timeOut = 30000)
-  public void testLegacyConstructorDoesNotAssumeReadiness() throws IOException {
-    try (AdminSparkServer server = new AdminSparkServer(
-        TestUtils.getFreePort(),
-        admin,
-        metricsRepository,
-        Collections.emptySet(),
-        true,
-        Optional.empty(),
-        false,
-        Optional.of(accessController),
-        Collections.emptyList(),
-        VeniceProperties.empty(),
-        false,
-        pubSubTopicRepository,
-        requestHandler); CloseableHttpClient client = createClient(Optional.empty())) {
+  @DataProvider(name = "constructorParameterCounts")
+  public Object[][] constructorParameterCounts() {
+    return new Object[][] { { 13 }, { 14 }, { 15 } };
+  }
+
+  @Test(dataProvider = "constructorParameterCounts", timeOut = 30000)
+  public void testConstructorsPreserveSerializerAndReadiness(int parameterCount) throws IOException {
+    InternalAvroSpecificSerializer<PushJobDetails> serializer =
+        spy(AvroProtocolDefinition.PUSH_JOB_DETAILS.<PushJobDetails>getSerializer());
+    PushJobDetails details = new PushJobDetails();
+    details.clusterName = "test_cluster";
+    details.overallStatus = Collections.emptyList();
+    details.pushId = "";
+    details.failureDetails = "";
+    byte[] payload = serializer.serialize(null, details);
+    clearInvocations(serializer);
+    when(admin.isParent()).thenReturn(false);
+    when(admin.getParentControllerRegionState()).thenReturn(ACTIVE);
+    when(admin.isLeaderControllerFor("test_cluster")).thenReturn(true);
+
+    try (AdminSparkServer server = createConstructorServer(parameterCount, serializer);
+        CloseableHttpClient client = createClient(Optional.empty())) {
       startServer(server);
+      String controllerUrl = "http://localhost:" + server.getPort();
       assertHealthEndpoint(
           client,
-          "http://localhost:" + server.getPort(),
-          HttpStatus.SC_SERVICE_UNAVAILABLE,
-          "NOT_READY");
-      verifyNoInteractions(admin, requestHandler, accessController, pubSubTopicRepository);
+          controllerUrl,
+          parameterCount == 15 ? HttpStatus.SC_OK : HttpStatus.SC_SERVICE_UNAVAILABLE,
+          parameterCount == 15 ? "OK" : "NOT_READY");
+      HttpPost request = new HttpPost(
+          controllerUrl + SEND_PUSH_JOB_DETAILS.getPath() + "?" + CLUSTER + "=test_cluster&" + STORE_NAME
+              + "=test_store&" + VERSION + "=1");
+      request.setEntity(new ByteArrayEntity(payload));
+      try (CloseableHttpResponse response = client.execute(request)) {
+        assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
+        ControllerResponse result = AdminSparkServer.OBJECT_MAPPER
+            .readValue(EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8), ControllerResponse.class);
+        assertFalse(result.isError(), result.getError());
+      }
+      ArgumentCaptor<PushJobDetails> captured = ArgumentCaptor.forClass(PushJobDetails.class);
+      verify(admin).sendPushJobDetails(any(PushJobStatusRecordKey.class), captured.capture());
+      assertEquals(captured.getValue().clusterName.toString(), details.clusterName);
+      if (parameterCount == 13) {
+        verifyNoInteractions(serializer);
+      } else {
+        verify(serializer).deserialize(null, payload);
+      }
+    } finally {
+      serializer.close();
     }
+  }
+
+  private AdminSparkServer createConstructorServer(
+      int parameterCount,
+      InternalAvroSpecificSerializer<PushJobDetails> serializer) {
+    if (parameterCount == 13) {
+      return new AdminSparkServer(
+          TestUtils.getFreePort(),
+          admin,
+          metricsRepository,
+          Collections.emptySet(),
+          false,
+          Optional.empty(),
+          false,
+          Optional.of(accessController),
+          Collections.emptyList(),
+          VeniceProperties.empty(),
+          false,
+          pubSubTopicRepository,
+          requestHandler);
+    }
+    if (parameterCount == 14) {
+      return new AdminSparkServer(
+          TestUtils.getFreePort(),
+          admin,
+          metricsRepository,
+          Collections.emptySet(),
+          false,
+          Optional.empty(),
+          false,
+          Optional.of(accessController),
+          Collections.emptyList(),
+          VeniceProperties.empty(),
+          false,
+          pubSubTopicRepository,
+          requestHandler,
+          serializer);
+    }
+    assertEquals(parameterCount, 15);
+    return createServer(false, Optional.empty(), Collections.emptyList(), serializer, () -> true);
   }
 
   @Test
@@ -340,6 +422,20 @@ public class AdminSparkServerTest {
       Optional<SSLConfig> sslConfig,
       List<ControllerRoute> disabledRoutes,
       BooleanSupplier apiReadiness) {
+    return createServer(
+        enforceSSL,
+        sslConfig,
+        disabledRoutes,
+        AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer(),
+        apiReadiness);
+  }
+
+  private AdminSparkServer createServer(
+      boolean enforceSSL,
+      Optional<SSLConfig> sslConfig,
+      List<ControllerRoute> disabledRoutes,
+      InternalAvroSpecificSerializer<PushJobDetails> serializer,
+      BooleanSupplier apiReadiness) {
     return new AdminSparkServer(
         TestUtils.getFreePort(),
         admin,
@@ -354,6 +450,7 @@ public class AdminSparkServerTest {
         false,
         pubSubTopicRepository,
         requestHandler,
+        serializer,
         apiReadiness);
   }
 

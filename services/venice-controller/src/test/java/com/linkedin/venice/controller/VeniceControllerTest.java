@@ -23,6 +23,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.server.JobRoutes;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
@@ -30,7 +31,10 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.security.DefaultSSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SslUtils;
@@ -41,6 +45,7 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +75,24 @@ import org.testng.annotations.Test;
 public class VeniceControllerTest {
   private static final String TEST_CLUSTER = "test_cluster";
   private static final int TIMEOUT_SECONDS = 10;
+
+  @Test(timeOut = 30000)
+  public void testBothListenersUseControllerServiceSerializer() throws Exception {
+    try (OwnerFixture fixture = new OwnerFixture(false, ACTIVE, false)) {
+      OwnedController owned = fixture.createController();
+      List<Object> secureModes = new ArrayList<>();
+      try (MockedConstruction<JobRoutes> routes = mockConstruction(JobRoutes.class, (route, context) -> {
+        assertEquals(context.arguments().size(), 3);
+        secureModes.add(context.arguments().get(0));
+        assertSame(context.arguments().get(2), fixture.pushJobDetailsSerializer);
+      })) {
+        owned.controller.start();
+        assertEquals(routes.constructed().size(), 2);
+        assertEquals(secureModes, Arrays.asList(false, true));
+        fixture.assertBothHealth(owned, HttpStatus.SC_OK);
+      }
+    }
+  }
 
   @Test(timeOut = 30000)
   public void testBothListenersRemainUnreadyUntilOwnerStartupCompletes() throws Exception {
@@ -296,6 +319,8 @@ public class VeniceControllerTest {
     private final boolean grpcEnabled;
     private final boolean sslEnabled;
     private final Admin admin;
+    private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
+        AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
     private final VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
     private final ServiceDiscoveryAnnouncer announcer = mock(ServiceDiscoveryAnnouncer.class);
     private final List<ScopedMock> constructionMocks = new ArrayList<>();
@@ -348,6 +373,7 @@ public class VeniceControllerTest {
       track(mockConstruction(VeniceControllerService.class, (service, context) -> {
         AtomicBoolean running = new AtomicBoolean();
         when(service.getVeniceHelixAdmin()).thenReturn(admin);
+        when(service.getPushJobDetailsSerializer()).thenReturn(pushJobDetailsSerializer);
         when(service.isRunning()).thenAnswer(invocation -> running.get());
         doAnswer(invocation -> {
           running.set(true);
@@ -496,6 +522,7 @@ public class VeniceControllerTest {
           try {
             client.close();
             metricsRepositories.forEach(MetricsRepository::close);
+            pushJobDetailsSerializer.close();
           } finally {
             executor.shutdownNow();
             try {
