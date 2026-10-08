@@ -12,7 +12,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
-import com.linkedin.venice.utils.MultiKeyLongTailRetryPolicy;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Map;
@@ -62,7 +62,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final RetryManager multiKeyLongTailRetryManager;
   private final TreeMap<Integer, Integer> batchGetLongTailRetryThresholdMap;
   private final TreeMap<Integer, Integer> computeLongTailRetryThresholdMap;
-  private final Supplier<MultiKeyLongTailRetryPolicy> serverRetryPolicy;
+  private final Supplier<MultiKeyLongTailRetryThresholds> serverRetryPolicy;
   private final boolean batchGetRetryRangeExplicit;
   private final boolean computeRetryRangeExplicit;
 
@@ -77,7 +77,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       InternalAvroStoreClient<K, V> delegate,
       ClientConfig clientConfig,
       TimeoutProcessor timeoutProcessor,
-      Supplier<MultiKeyLongTailRetryPolicy> serverRetryPolicy) {
+      Supplier<MultiKeyLongTailRetryThresholds> serverRetryPolicy) {
     super(delegate, clientConfig);
     this.serverRetryPolicy = serverRetryPolicy;
     this.batchGetRetryRangeExplicit = clientConfig.isBatchGetRetryRangeExplicit();
@@ -507,7 +507,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     if (longTailRetryThresholdForBatchGetInMicroSeconds > 0) {
       return longTailRetryThresholdForBatchGetInMicroSeconds;
     } else {
-      MultiKeyLongTailRetryPolicy policy = batchGetRetryRangeExplicit ? null : serverRetryPolicy.get();
+      MultiKeyLongTailRetryThresholds policy = batchGetRetryRangeExplicit ? null : serverRetryPolicy.get();
       if (policy != null) {
         return policy.getRetryThresholdInMicroSeconds(numKeys);
       }
@@ -524,7 +524,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   private int getLongTailRetryThresholdForComputeInMicroSeconds(int numKeys) {
-    MultiKeyLongTailRetryPolicy policy = computeRetryRangeExplicit ? null : serverRetryPolicy.get();
+    MultiKeyLongTailRetryThresholds policy = computeRetryRangeExplicit ? null : serverRetryPolicy.get();
     if (policy != null) {
       return policy.getRetryThresholdInMicroSeconds(numKeys);
     }

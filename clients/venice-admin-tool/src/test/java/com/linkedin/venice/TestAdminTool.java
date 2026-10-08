@@ -152,6 +152,16 @@ public class TestAdminTool {
   }
 
   @Test
+  public void testAdminUpdateWriteQuotaEnabled() throws Exception {
+    for (boolean enabled: new boolean[] { true, false }) {
+      String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+          "testStore", "--write-quota-enabled", Boolean.toString(enabled) };
+      UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(args));
+      assertEquals(params.getWriteQuotaEnabled(), Optional.of(enabled));
+    }
+  }
+
+  @Test
   public void testAdminUpdateStoreRejectsEncryptionArgument() {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--enable-encryption", "true" };

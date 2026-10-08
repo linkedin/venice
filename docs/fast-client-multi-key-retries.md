@@ -85,8 +85,10 @@ negotiation. Historical schemas v1-v4 must remain unchanged.
    necessarily supported.
 
 Avro v4 readers ignore the added v5 field; v5 readers default it to empty when reading v4 writers. Both require the
-advertised writer schema to be available. An unavailable schema 5 can prevent metadata refresh, so wire compatibility
-does not remove the registration prerequisite.
+correct writer schema. Blob peer discovery falls back to the packaged schema matching the advertised ID when schema
+lookup fails, including v4 responses read by a v5 client. An unknown writer ID fails discovery rather than guessing the
+compiled schema. Fast Client metadata refresh still requires schema lookup, so wire compatibility does not remove the
+registration prerequisite.
 
 Rollback by deploying an empty policy to every server (or using an explicit local override). Clients fall back on their
 next successful refresh. A successful old-schema response also withdraws the policy; a transport failure deliberately

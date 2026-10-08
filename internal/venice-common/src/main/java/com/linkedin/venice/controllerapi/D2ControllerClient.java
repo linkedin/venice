@@ -121,6 +121,12 @@ public class D2ControllerClient extends ControllerClient {
         break;
       } catch (VeniceException e) {
         LOGGER.warn("Failed to discover leader controller with D2 client: " + d2Client, e);
+        if (Thread.currentThread().isInterrupted()) {
+          // The caller is cancelling this thread; trying the next D2 client would absorb the signal.
+          throw new VeniceException(
+              "Failed to discover leader controller with D2 client" + INTERRUPTED_MESSAGE_SUFFIX,
+              e);
+        }
       }
     }
     if (controllerResponse == null) {
@@ -223,6 +229,9 @@ public class D2ControllerClient extends ControllerClient {
         return discoverCluster(d2Client, d2ServiceName, storeName, 1);
       } catch (Exception e) {
         LOGGER.warn("Failed to discover cluster with D2 client: " + d2Client, e);
+        if (Thread.currentThread().isInterrupted()) {
+          throw new VeniceException("Failed to discover cluster with D2 client" + INTERRUPTED_MESSAGE_SUFFIX, e);
+        }
       }
     }
     throw new VeniceException("Failed to discover cluster with D2 client");

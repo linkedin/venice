@@ -370,6 +370,12 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_PUSH_RETRY_COOLDOWN_MS = "controller.push.retry.cooldown.ms";
 
+  /**
+   * Positive duration threshold in milliseconds for the push_job.count duration bucket, defaulting to 24 hours.
+   * This classifies push-job metrics only; it does not change push timeouts or cancellation behavior.
+   */
+  public static final String CONTROLLER_PUSH_JOB_SLA_MS = "controller.push.job.sla.ms";
+
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
   public static final String DEFAULT_NUMBER_OF_PARTITION = "default.partition.count";
@@ -853,6 +859,7 @@ public class ConfigKeys {
   public static final String LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY =
       "leader.follower.state.transition.thread.pool.strategy";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
+  public static final String WRITE_PATH_THREAD_PRIORITY = "write.path.thread.priority";
   public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
 
@@ -2335,6 +2342,14 @@ public class ConfigKeys {
   // replicas can be concurrently receiving blobs for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS =
       "blob.transfer.max.concurrent.blob.receive.replicas";
+  // this is a config to cap how many replicas may hold a blob transfer receive channel at the same time. It bounds a
+  // different quantity than BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS above, which sizes the fetch executor's
+  // thread pool: a fetch worker hands the transfer to a Netty event loop and returns within milliseconds, so the pool
+  // is free again long before the bytes stop arriving, and in-flight channels can outnumber its threads several times
+  // over. The receiver's direct memory scales with the channels that are streaming, so this is the one that bounds it.
+  // A value of 0 or less leaves the count unbounded.
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_IN_FLIGHT_RECEIVE_REPLICAS =
+      "blob.transfer.max.concurrent.in.flight.receive.replicas";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max file receive timeout time in minutes in client side.

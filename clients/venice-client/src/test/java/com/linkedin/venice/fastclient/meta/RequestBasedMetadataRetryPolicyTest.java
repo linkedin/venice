@@ -25,7 +25,7 @@ import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.MultiKeyLongTailRetryPolicy;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -104,26 +104,26 @@ public class RequestBasedMetadataRetryPolicyTest {
   @Test
   public void testRefreshReplaceInvalidRetainAndWithdrawal() throws Exception {
     try (Fixture f = new Fixture()) {
-      assertNull(f.metadata.getMultiKeyLongTailRetryPolicy());
+      assertNull(f.metadata.getMultiKeyLongTailRetryThresholds());
       f.refresh("1-:0");
-      assertNull(f.metadata.getMultiKeyLongTailRetryPolicy());
+      assertNull(f.metadata.getMultiKeyLongTailRetryThresholds());
       f.refresh("1-:8");
-      MultiKeyLongTailRetryPolicy first = f.metadata.getMultiKeyLongTailRetryPolicy();
+      MultiKeyLongTailRetryThresholds first = f.metadata.getMultiKeyLongTailRetryThresholds();
       assertEquals(first.getRetryThresholdInMicroSeconds(5000), 8000);
       f.refresh("1-:19");
-      MultiKeyLongTailRetryPolicy updated = f.metadata.getMultiKeyLongTailRetryPolicy();
+      MultiKeyLongTailRetryThresholds updated = f.metadata.getMultiKeyLongTailRetryThresholds();
       assertEquals(updated.getRetryThresholdInMicroSeconds(5000), 19000);
       f.refresh("1-:2147484");
-      assertSame(f.metadata.getMultiKeyLongTailRetryPolicy(), updated);
+      assertSame(f.metadata.getMultiKeyLongTailRetryThresholds(), updated);
       assertEquals(f.config.getClusterStats().getMetricValues("invalid_multi_key_retry_policy", "Count").get(0), 2.0);
       f.refresh("");
-      assertNull(f.metadata.getMultiKeyLongTailRetryPolicy());
+      assertNull(f.metadata.getMultiKeyLongTailRetryThresholds());
       f.refresh("1-:8");
       f.response.set(CompletableFuture.completedFuture(wireResponse("1-:19", 4)));
       f.metadata.updateCache(false);
-      assertNull(f.metadata.getMultiKeyLongTailRetryPolicy(), "old-schema success must withdraw the policy");
+      assertNull(f.metadata.getMultiKeyLongTailRetryThresholds(), "old-schema success must withdraw the policy");
       f.refresh("1-:23");
-      assertEquals(f.metadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(1), 23000);
+      assertEquals(f.metadata.getMultiKeyLongTailRetryThresholds().getRetryThresholdInMicroSeconds(1), 23000);
     }
   }
 
@@ -131,17 +131,17 @@ public class RequestBasedMetadataRetryPolicyTest {
   public void testFailedRefreshDoesNotPublishCandidate() throws Exception {
     try (Fixture f = new Fixture()) {
       f.refresh("1-:8");
-      MultiKeyLongTailRetryPolicy original = f.metadata.getMultiKeyLongTailRetryPolicy();
+      MultiKeyLongTailRetryThresholds original = f.metadata.getMultiKeyLongTailRetryThresholds();
       CompletableFuture<TransportClientResponse> failed = new CompletableFuture<>();
       failed.completeExceptionally(new IllegalStateException("transport failed"));
       f.response.set(failed);
       assertThrows(VeniceClientException.class, () -> f.metadata.updateCache(true));
-      assertSame(f.metadata.getMultiKeyLongTailRetryPolicy(), original);
+      assertSame(f.metadata.getMultiKeyLongTailRetryThresholds(), original);
 
       f.response.set(CompletableFuture.completedFuture(wireResponse("1-:19", SCHEMA_ID)));
       doThrow(new VeniceClientException("schema unavailable")).when(f.schemas).getValueSchema(SCHEMA_ID);
       assertThrows(VeniceClientException.class, () -> f.metadata.updateCache(true));
-      assertSame(f.metadata.getMultiKeyLongTailRetryPolicy(), original);
+      assertSame(f.metadata.getMultiKeyLongTailRetryThresholds(), original);
       doReturn(MetadataResponseRecord.SCHEMA$).when(f.schemas).getValueSchema(SCHEMA_ID);
 
       MetadataResponseRecord badMetadata = baseRecord();
@@ -150,9 +150,9 @@ public class RequestBasedMetadataRetryPolicyTest {
       f.response
           .set(CompletableFuture.completedFuture(serialize(badMetadata, MetadataResponseRecord.SCHEMA$, SCHEMA_ID)));
       assertThrows(RuntimeException.class, () -> f.metadata.updateCache(true));
-      assertSame(f.metadata.getMultiKeyLongTailRetryPolicy(), original, "a parsed candidate is not yet published");
+      assertSame(f.metadata.getMultiKeyLongTailRetryThresholds(), original, "a parsed candidate is not yet published");
       f.refresh("1-:19");
-      assertEquals(f.metadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(1), 19000);
+      assertEquals(f.metadata.getMultiKeyLongTailRetryThresholds().getRetryThresholdInMicroSeconds(1), 19000);
     }
   }
 
@@ -174,15 +174,15 @@ public class RequestBasedMetadataRetryPolicyTest {
       f.metadata.updateCache(false);
       assertEquals(f.metadata.getClusterName(), "cluster-B");
       if ("1-:19".equals(ranges)) {
-        assertEquals(f.metadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(1), 19000);
+        assertEquals(f.metadata.getMultiKeyLongTailRetryThresholds().getRetryThresholdInMicroSeconds(1), 19000);
       } else {
-        assertNull(f.metadata.getMultiKeyLongTailRetryPolicy());
+        assertNull(f.metadata.getMultiKeyLongTailRetryThresholds());
       }
       // Once migration is discovered, even a failed first fetch must not expose the old cluster's policy.
       f.discovered.setCluster("cluster-C");
       doReturn(failed).when(f.transport).get(anyString());
       assertThrows(VeniceClientException.class, () -> f.metadata.updateCache(false));
-      assertNull(f.metadata.getMultiKeyLongTailRetryPolicy());
+      assertNull(f.metadata.getMultiKeyLongTailRetryThresholds());
     }
   }
 
@@ -199,7 +199,7 @@ public class RequestBasedMetadataRetryPolicyTest {
       f.response.set(CompletableFuture.completedFuture(serialize(deferred, MetadataResponseRecord.SCHEMA$, SCHEMA_ID)));
       f.metadata.updateCache(false);
       assertEquals(f.metadata.getCurrentStoreVersion(), 1);
-      assertEquals(f.metadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(1), 19000);
+      assertEquals(f.metadata.getMultiKeyLongTailRetryThresholds().getRetryThresholdInMicroSeconds(1), 19000);
     }
   }
 
@@ -207,7 +207,7 @@ public class RequestBasedMetadataRetryPolicyTest {
   public void testConcurrentRefreshPublishesCompleteImmutablePolicy() throws Exception {
     try (Fixture f = new Fixture()) {
       f.refresh("1-500:1,501-:2");
-      MultiKeyLongTailRetryPolicy captured = f.metadata.getMultiKeyLongTailRetryPolicy();
+      MultiKeyLongTailRetryThresholds captured = f.metadata.getMultiKeyLongTailRetryThresholds();
       ExecutorService executor = Executors.newSingleThreadExecutor();
       CountDownLatch start = new CountDownLatch(1);
       AtomicBoolean finished = new AtomicBoolean();
@@ -215,7 +215,7 @@ public class RequestBasedMetadataRetryPolicyTest {
         CompletableFuture<Void> reads = CompletableFuture.runAsync(() -> {
           start.countDown();
           do {
-            MultiKeyLongTailRetryPolicy snapshot = f.metadata.getMultiKeyLongTailRetryPolicy();
+            MultiKeyLongTailRetryThresholds snapshot = f.metadata.getMultiKeyLongTailRetryThresholds();
             int small = snapshot.getRetryThresholdInMicroSeconds(500);
             int large = snapshot.getRetryThresholdInMicroSeconds(501);
             assertTrue((small == 1000 && large == 2000) || (small == 3000 && large == 4000));

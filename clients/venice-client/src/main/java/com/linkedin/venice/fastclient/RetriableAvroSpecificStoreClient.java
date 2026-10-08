@@ -2,7 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
-import com.linkedin.venice.utils.MultiKeyLongTailRetryPolicy;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
 import java.util.function.Supplier;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -20,7 +20,7 @@ public class RetriableAvroSpecificStoreClient<K, V extends SpecificRecord> exten
       InternalAvroStoreClient<K, V> delegate,
       ClientConfig clientConfig,
       TimeoutProcessor timeoutProcessor,
-      Supplier<MultiKeyLongTailRetryPolicy> serverRetryPolicy) {
+      Supplier<MultiKeyLongTailRetryThresholds> serverRetryPolicy) {
     super(delegate, clientConfig, timeoutProcessor, serverRetryPolicy);
   }
 }

@@ -15,6 +15,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THR
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_IN_FLIGHT_RECEIVE_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS;
@@ -264,6 +265,7 @@ import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.ConfigKeys.VENICE_LOG_CONTEXT_COMPONENT;
+import static com.linkedin.venice.ConfigKeys.WRITE_PATH_THREAD_PRIORITY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
@@ -322,6 +324,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * size should be at least 3.
    */
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
+  public static final int DEFAULT_WRITE_PATH_THREAD_PRIORITY = Thread.NORM_PRIORITY - 1;
 
   private final int listenerPort;
   private final int grpcPort;
@@ -348,6 +351,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Thread number of store writers, which will process all the incoming records from all the topics.
    */
   private final int storeWriterNumber;
+
+  private final int writePathThreadPriority;
 
   /**
    * Thread pool size of sorted ingestion drainer when dedicatedDrainerQueue is enabled.
@@ -710,6 +715,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int blobTransferDisabledTimeLagThresholdInMinutes;
   private final int snapshotCleanupIntervalInMins;
   private final int maxConcurrentBlobReceiveReplicas;
+  private final int maxConcurrentInFlightReceiveReplicas;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
@@ -897,6 +903,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 157286400L);
     snapshotCleanupIntervalInMins = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS, 120);
     maxConcurrentBlobReceiveReplicas = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS, 20);
+    maxConcurrentInFlightReceiveReplicas =
+        serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_IN_FLIGHT_RECEIVE_REPLICAS, 0);
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
     blobTransferDisabledTimeLagThresholdInMinutes =
@@ -919,6 +927,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     maxFutureVersionLeaderFollowerStateTransitionThreadNumber =
         serverProperties.getInt(MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 10);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
+    writePathThreadPriority = serverProperties.getInt(WRITE_PATH_THREAD_PRIORITY, DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+    if (writePathThreadPriority < Thread.MIN_PRIORITY || writePathThreadPriority > Thread.MAX_PRIORITY) {
+      throw new VeniceException(
+          WRITE_PATH_THREAD_PRIORITY + " must be between " + Thread.MIN_PRIORITY + " and " + Thread.MAX_PRIORITY
+              + ", but got: " + writePathThreadPriority);
+    }
     drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
     // Nonpositive thresholds disable stall tracking, logging, and blocked-time metrics.
@@ -1546,6 +1560,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return maxConcurrentBlobReceiveReplicas;
   }
 
+  public int getMaxConcurrentInFlightReceiveReplicas() {
+    return maxConcurrentInFlightReceiveReplicas;
+  }
+
   /**
    * Get base path of Venice storage data.
    *
@@ -1581,6 +1599,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getStoreWriterNumber() {
     return this.storeWriterNumber;
+  }
+
+  public int getWritePathThreadPriority() {
+    return writePathThreadPriority;
   }
 
   public boolean isStoreWriterBufferAfterLeaderLogicEnabled() {

@@ -28,6 +28,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -468,6 +469,36 @@ public class VeniceSystemProducerTest {
     assertEquals(capturedConfig.getProvidedPrimaryControllerColoD2Client(), mockPrimaryD2Client);
     assertNull(capturedConfig.getVeniceChildD2ZkHost());
     assertNull(capturedConfig.getPrimaryControllerColoD2ZKHost());
+    assertEquals(
+        capturedConfig.getClusterDiscoveryD2ServiceName(),
+        ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+  }
+
+  @Test
+  public void testGetProducerPassesTheClusterDiscoveryD2Service() {
+    VeniceSystemFactory factory = spy(new VeniceSystemFactory());
+    Config config = mock(Config.class);
+
+    when(config.get(VeniceSystemFactory.DEPLOYMENT_ID)).thenReturn("test-job-id");
+    when(config.get(VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL)).thenReturn(null);
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS)).thenReturn("parent-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS)).thenReturn("child-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE)).thenReturn("ChildController");
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE)).thenReturn("ParentController");
+    when(config.get(VeniceSystemFactory.VENICE_CLUSTER_DISCOVERY_D2_SERVICE)).thenReturn("venice-discovery-custom");
+    when(config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION)).thenReturn("test-fabric");
+    when(config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true)).thenReturn(true);
+    when(config.getBoolean(SSL_ENABLED, true)).thenReturn(false);
+    when(config.get(VENICE_PARTITIONERS)).thenReturn(null);
+
+    ArgumentCaptor<VeniceSystemProducerConfig> configCaptor = ArgumentCaptor.forClass(VeniceSystemProducerConfig.class);
+    doReturn(mock(VeniceSystemProducer.class)).when(factory)
+        .createSystemProducer(any(VeniceSystemProducerConfig.class));
+
+    factory.getProducer("testSystem", "testStore", true, "BATCH", config);
+
+    verify(factory).createSystemProducer(configCaptor.capture());
+    assertEquals(configCaptor.getValue().getClusterDiscoveryD2ServiceName(), "venice-discovery-custom");
   }
 
   @Test

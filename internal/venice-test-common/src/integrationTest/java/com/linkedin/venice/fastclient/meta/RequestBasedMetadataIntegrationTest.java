@@ -154,9 +154,13 @@ public class RequestBasedMetadataIntegrationTest {
   @Test(timeOut = TIME_OUT)
   public void testServerMultiKeyRetryPolicyRoundTrip() {
     // Real server config -> metadata response/header -> router-backed writer schema lookup -> client snapshot.
-    assertNotNull(requestBasedMetadata.getMultiKeyLongTailRetryPolicy());
-    assertEquals(requestBasedMetadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(500), 100000);
-    assertEquals(requestBasedMetadata.getMultiKeyLongTailRetryPolicy().getRetryThresholdInMicroSeconds(5000), 500000);
+    assertNotNull(requestBasedMetadata.getMultiKeyLongTailRetryThresholds());
+    assertEquals(
+        requestBasedMetadata.getMultiKeyLongTailRetryThresholds().getRetryThresholdInMicroSeconds(500),
+        100000);
+    assertEquals(
+        requestBasedMetadata.getMultiKeyLongTailRetryThresholds().getRetryThresholdInMicroSeconds(5000),
+        500000);
     assertEquals(requestBasedMetadata.getBatchGetLimit(), 500, "Retry policy must not raise the request key cap");
   }
 

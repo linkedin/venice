@@ -104,6 +104,12 @@ public enum VeniceMetricsDimensions {
   /** {@link VenicePushJobStatus} */
   VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
 
+  /** {@link VenicePushJobDurationBucket} */
+  VENICE_PUSH_JOB_DURATION_BUCKET("venice.push_job.duration_bucket"),
+
+  /** PushJobDetailsStatus reported by the push job. */
+  VENICE_PUSH_JOB_EXECUTION_STATE("venice.push_job.execution_state"),
+
   /** {@link VenicePushJobDataWriterSink} */
   VENICE_PUSH_JOB_DATA_WRITER_SINK("venice.push_job.data_writer.sink"),
 

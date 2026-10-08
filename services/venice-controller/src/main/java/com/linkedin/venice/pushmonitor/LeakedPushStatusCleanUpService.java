@@ -4,6 +4,7 @@ import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.FAIL
 import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.RUNNING;
 import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.STOPPED;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -11,11 +12,13 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
-import java.util.ArrayList;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
@@ -23,17 +26,11 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * LeakedPushStatusCleanUpService will wake up regularly (interval is determined by controller config
- * {@link com.linkedin.venice.ConfigKeys#LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS}), get all existing push
- * status ZNodes on Zookeeper that belong to the specified cluster, without scanning through the replica statuses, find
- * all leaked push status and delete them on Zookeeper.
+ * Reclaims push statuses that servers may write after asynchronous push cancellation and controller cleanup.
+ * Drops leaked Helix resources before removing residual push-status ZNodes on a later sweep.
  *
- * The life cycle of LeakedPushStatusCleanUpService matches the life cycle of {@link HelixVeniceClusterResources},
- * meaning that there is one clean up service for each cluster, and it's built when the controller is promoted to leader
- * role for the cluster.
- *
- * The clean up service is needed because push job killing in server nodes is asynchronous, it's possible that servers
- * write push status after controllers think they have cleaned up the push status.
+ * Runs with {@link HelixVeniceClusterResources} after metadata initialization and stops before repository teardown.
+ * The shared lock manager fences eligibility and deletion against store recreation and repository clearing.
  */
 public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(LeakedPushStatusCleanUpService.class);
@@ -56,6 +53,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   private final OfflinePushAccessor offlinePushAccessor;
   private final ReadOnlyStoreRepository metadataRepository;
   private final StoreCleaner storeCleaner;
+  private final ClusterLockManager clusterLockManager;
   private final AggPushStatusCleanUpStats aggPushStatusCleanUpStats;
   private final long sleepIntervalInMs;
   private final long leakedResourceAllowedLingerTimeInMs;
@@ -67,6 +65,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
       OfflinePushAccessor offlinePushAccessor,
       ReadOnlyStoreRepository metadataRepository,
       StoreCleaner storeCleaner,
+      ClusterLockManager clusterLockManager,
       AggPushStatusCleanUpStats aggPushStatusCleanUpStats,
       long sleepIntervalInMs,
       long leakedResourceAllowedLingerTimeInMs) {
@@ -74,6 +73,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
     this.offlinePushAccessor = offlinePushAccessor;
     this.metadataRepository = metadataRepository;
     this.storeCleaner = storeCleaner;
+    this.clusterLockManager = clusterLockManager;
     this.aggPushStatusCleanUpStats = aggPushStatusCleanUpStats;
     this.sleepIntervalInMs = sleepIntervalInMs;
     this.leakedResourceAllowedLingerTimeInMs = leakedResourceAllowedLingerTimeInMs;
@@ -88,6 +88,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
+    // Shutdown holds the cluster write lock; joining a worker waiting for it would deadlock.
     stop.set(true);
     cleanupThread.interrupt();
   }
@@ -117,107 +118,161 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
     return storeToVersions;
   }
 
+  private boolean shouldStop() {
+    return stop.get() || Thread.currentThread().isInterrupted();
+  }
+
+  void cleanUpLeakedPushStatuses() {
+    if (shouldStop()) {
+      return;
+    }
+    Map<String, PriorityQueue<Integer>> storeToVersions =
+        groupVersionsByStore(offlinePushAccessor.loadOfflinePushStatusPaths());
+    for (Map.Entry<String, PriorityQueue<Integer>> entry: storeToVersions.entrySet()) {
+      if (shouldStop()) {
+        return;
+      }
+      String storeName = entry.getKey();
+      try {
+        // Shared-system-store cache misses can refresh metadata, so fence this read against teardown.
+        try (AutoCloseableLock ignored = clusterLockManager.createClusterReadLock()) {
+          if (shouldStop()) {
+            return;
+          }
+          Store snapshot = metadataRepository.getStore(storeName);
+          if (snapshot != null && entry.getValue()
+              .stream()
+              .noneMatch(version -> version < snapshot.getCurrentVersion() && !snapshot.containsVersion(version))) {
+            continue;
+          }
+        }
+        VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+        boolean sharedMetadata = systemStoreType != null && systemStoreType.isNewMedataRepositoryAdopted();
+        String userStoreName = sharedMetadata ? systemStoreType.extractRegularStoreName(storeName) : storeName;
+        // When owner == cluster, the lock manager does not map the system-store lock to its owner.
+        // The cluster write lock fences both names without nesting store locks.
+        boolean requiresClusterWriteLock = sharedMetadata && userStoreName.equals(clusterName);
+        try (AutoCloseableLock ignored = requiresClusterWriteLock
+            ? clusterLockManager.createClusterWriteLock()
+            : clusterLockManager.createStoreReadLock(storeName)) {
+          // Shutdown may clear metadata while this worker waits for an uninterruptible lock.
+          if (shouldStop()) {
+            return;
+          }
+          Store store = metadataRepository.getStore(storeName);
+          // The adapter also returns null when shared metadata is missing but the owner is alive.
+          if (store == null && sharedMetadata && metadataRepository.getStore(userStoreName) != null) {
+            LOGGER.warn(
+                "Skipping push status cleanup for {} in cluster {}: metadata is missing but owning store {} exists",
+                storeName,
+                clusterName,
+                userStoreName);
+            continue;
+          }
+          // Explicit version allocation can reuse identifiers, so keep deletion fenced against metadata writes.
+          cleanUpStore(storeName, store, entry.getValue());
+        }
+      } catch (RuntimeException e) {
+        if (shouldStop()) {
+          return;
+        }
+        LOGGER.error("Unable to check leaked push statuses for store {} in cluster {}", storeName, clusterName, e);
+      }
+    }
+  }
+
+  /** A null store means absence was confirmed in the locked repository. */
+  private void cleanUpStore(String storeName, Store store, PriorityQueue<Integer> versions) {
+    int leakedCount = 0;
+    int successfulCount = 0;
+    int failedCount = 0;
+    try {
+      while (!versions.isEmpty() && !shouldStop()) {
+        int version = versions.poll();
+        // Current/future versions may still be ingesting, and versions in metadata may still be serving.
+        if (store != null && (version >= store.getCurrentVersion() || store.containsVersion(version))) {
+          continue;
+        }
+        String kafkaTopic = Version.composeKafkaTopic(storeName, version);
+        leakedCount++;
+        try {
+          if (leakedCount <= MAX_LEAKED_VERSION_TO_KEEP && isRetainedForDebugging(kafkaTopic)) {
+            continue;
+          }
+          if (shouldStop()) {
+            return;
+          }
+          // The StoreCleaner checks leadership even for ZK-only leftovers. Keep discovery until Helix is absent.
+          boolean inHelix = storeCleaner.containsHelixResource(clusterName, kafkaTopic);
+          if (shouldStop()) {
+            return;
+          }
+          LOGGER.info("Deleting leaked push status: {} in cluster {}", kafkaTopic, clusterName);
+          if (inHelix) {
+            storeCleaner.deleteHelixResource(clusterName, kafkaTopic);
+          } else {
+            offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+          }
+          successfulCount++;
+        } catch (RuntimeException e) {
+          if (shouldStop()) {
+            return;
+          }
+          failedCount++;
+          LOGGER
+              .error("Unable to clean up leaked push status {} in cluster {}; will retry", kafkaTopic, clusterName, e);
+        }
+      }
+    } finally {
+      aggPushStatusCleanUpStats.recordLeakedPushStatusCount(leakedCount);
+      aggPushStatusCleanUpStats.recordSuccessfulLeakedPushStatusCleanUpCount(successfulCount);
+      aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(failedCount);
+    }
+  }
+
+  private boolean isRetainedForDebugging(String kafkaTopic) {
+    Optional<Long> creationTime = offlinePushAccessor.getOfflinePushStatusCreationTime(kafkaTopic);
+    if (!creationTime.isPresent()) {
+      LOGGER.warn("Retaining leaked push status {} in cluster {}: creation time is unknown", kafkaTopic, clusterName);
+      return true;
+    }
+    long lingerTime = LatencyUtils.getElapsedTimeFromMsToMs(creationTime.get());
+    if (lingerTime <= leakedResourceAllowedLingerTimeInMs) {
+      LOGGER.info("Retaining leaked push status {} for investigation, linger time: {}ms", kafkaTopic, lingerTime);
+      return true;
+    }
+    return false;
+  }
+
   private class PushStatusCleanUpTask implements Runnable {
     @Override
     public void run() {
-      aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(RUNNING);
-      while (!stop.get()) {
-        try {
-          /**
-           * Load all push status paths in the cluster.
-           */
-          List<String> pushStatusPaths = offlinePushAccessor.loadOfflinePushStatusPaths();
-          Map<String, PriorityQueue<Integer>> storeToVersions = groupVersionsByStore(pushStatusPaths);
-          for (Map.Entry<String, PriorityQueue<Integer>> entry: storeToVersions.entrySet()) {
-            String storeName = entry.getKey();
-            PriorityQueue<Integer> versions = entry.getValue();
-            List<String> leakedPushStatuses = new ArrayList<>();
-            try {
-              final Store store = metadataRepository.getStoreOrThrow(storeName);
-              int leakedPushStatusCounter = 0;
-              while (!versions.isEmpty()) {
-                int version = versions.poll();
-                /**
-                 * Push status version bigger than current version could be an ongoing push job, can't define whether it's
-                 * a leaked push status without deserializing the push status ZNode; so only focus on cleaning up leaked
-                 * push status before the current version.
-                 *
-                 * If a version is not in store config anymore, it indicates the push is not being monitored; keep at most
-                 * {@link MAX_LEAKED_VERSION_TO_KEEP} leaked push status for debugging; the rest will be deleted.
-                 */
-                if (version < store.getCurrentVersion() && !store.containsVersion(version)) {
-                  String kafkaTopic = Version.composeKafkaTopic(storeName, version);
-                  if (leakedPushStatusCounter++ < MAX_LEAKED_VERSION_TO_KEEP) {
-                    // If the leaked resources have been lingering for a while, we should still delete them.
-                    offlinePushAccessor.getOfflinePushStatusCreationTime(kafkaTopic).ifPresent(creationTime -> {
-                      long lingerTime = LatencyUtils.getElapsedTimeFromMsToMs(creationTime);
-                      if (lingerTime > leakedResourceAllowedLingerTimeInMs) {
-                        logger.info(
-                            "The leaked push status has been lingering over {}ms, add to deletion list: {}",
-                            leakedResourceAllowedLingerTimeInMs,
-                            kafkaTopic);
-                        leakedPushStatuses.add(Version.composeKafkaTopic(storeName, version));
-                      } else {
-                        logger.info(
-                            "Keep the leaked push status for investigation, so not deleting: {}, linger time: {}ms",
-                            kafkaTopic,
-                            lingerTime);
-                      }
-                    });
-                    continue;
-                  }
-                  logger.info("Found a leaked push status: {} in cluster {}", kafkaTopic, clusterName);
-                  leakedPushStatuses.add(kafkaTopic);
-                }
-              }
-
-              /**
-               * Delete all leaked push statuses
-               */
-              leakedPushStatuses.stream().forEach(kafkaTopic -> {
-                logger.info("Deleting leaked push status: {} in cluster {}", kafkaTopic, clusterName);
-                if (storeCleaner.containsHelixResource(clusterName, kafkaTopic)) {
-                  logger.info("Store version {} is also leaked in Helix, delete it through Helix", kafkaTopic);
-                  storeCleaner.deleteHelixResource(clusterName, kafkaTopic);
-                } else {
-                  offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
-                }
-              });
-              aggPushStatusCleanUpStats.recordLeakedPushStatusCount(leakedPushStatusCounter);
-              aggPushStatusCleanUpStats.recordSuccessfulLeakedPushStatusCleanUpCount(leakedPushStatuses.size());
-            } catch (Throwable e) {
-              /**
-               * Don't stop the service for one single store
-               */
-              LOGGER.error(
-                  "{} doesn't exist in metadata repo in cluster {} but has leaked push status: {}",
-                  storeName,
-                  clusterName,
-                  Version.composeKafkaTopic(storeName, versions.iterator().next()),
-                  e);
-              aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(leakedPushStatuses.size());
+      PushStatusCleanUpServiceState finalState = STOPPED;
+      try {
+        aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(RUNNING);
+        while (!shouldStop()) {
+          try {
+            cleanUpLeakedPushStatuses();
+          } catch (RuntimeException e) {
+            if (shouldStop()) {
+              break;
             }
+            LOGGER.error("Unable to sweep leaked push statuses in cluster {}; will retry", clusterName, e);
           }
-
-          /**
-           * Avoid busy scanning.
-           */
-          Thread.sleep(sleepIntervalInMs);
-          if (stop.get()) {
-            aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(STOPPED);
-            break;
+          if (!shouldStop()) {
+            Thread.sleep(sleepIntervalInMs);
           }
-        } catch (InterruptedException e) {
-          LOGGER.warn("Received InterruptedException during sleep in LeakedPushStatusCleanUpService thread.");
-          aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(STOPPED);
-          break;
-        } catch (Throwable e) {
-          LOGGER.error("Error in push status clean-up task", e);
-          aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(FAILED);
-          break;
         }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        LOGGER.info("Push status clean-up task interrupted");
+      } catch (Error e) {
+        finalState = FAILED;
+        LOGGER.error("Unexpected error in push status clean-up task", e);
+      } finally {
+        aggPushStatusCleanUpStats.recordLeakedPushStatusCleanUpServiceState(finalState);
+        LOGGER.info("Push status clean-up task stopped");
       }
-      LOGGER.info("Push status clean-up task stopped");
     }
   }
 }

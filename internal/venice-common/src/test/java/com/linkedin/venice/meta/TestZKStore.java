@@ -7,9 +7,13 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -17,7 +21,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -25,6 +33,61 @@ import org.testng.annotations.Test;
  * Test cases for Venice Store.
  */
 public class TestZKStore {
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testWriteQuotaEnabledCopiesAndReadOnlyStore(boolean enabled) {
+    Store store = TestUtils.createTestStore("writeQuotaStore", "owner", 1L);
+    assertFalse(store.isWriteQuotaEnabled());
+    store.setWriteQuotaEnabled(enabled);
+
+    Store copy = store.cloneStore();
+    assertEquals(copy.isWriteQuotaEnabled(), enabled);
+    assertEquals(copy, store);
+    assertEquals(copy.hashCode(), store.hashCode());
+    assertEquals(StoreInfo.fromStore(store).isWriteQuotaEnabled(), enabled);
+
+    ReadOnlyStore readOnly = new ReadOnlyStore(store);
+    assertEquals(readOnly.isWriteQuotaEnabled(), enabled);
+    assertEquals(readOnly.cloneStoreProperties().writeQuotaEnabled, enabled);
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.setWriteQuotaEnabled(!enabled));
+    copy.setWriteQuotaEnabled(!enabled);
+    assertEquals(store.isWriteQuotaEnabled(), enabled);
+    Assert.assertNotEquals(copy, store);
+
+    Store systemStore = new SystemStore(store, VeniceSystemStoreType.META_STORE, copy);
+    assertEquals(systemStore.isWriteQuotaEnabled(), enabled);
+    assertThrows(VeniceException.class, () -> systemStore.setWriteQuotaEnabled(!enabled));
+  }
+
+  @Test
+  public void testWriteQuotaEnabledDefaultsFalseForOlderAvroMetadata() throws Exception {
+    Schema oldSchema = Utils.getSchemaFromResource("avro/StoreMetaValue/v49/StoreMetaValue.avsc")
+        .getField("storeProperties")
+        .schema()
+        .getTypes()
+        .get(1);
+    GenericRecord oldStore = new GenericData.Record(oldSchema);
+    for (Schema.Field field: oldSchema.getFields()) {
+      if (AvroCompatibilityHelper.fieldHasDefault(field)) {
+        oldStore.put(
+            field.name(),
+            GenericData.get().deepCopy(field.schema(), AvroCompatibilityHelper.getGenericDefaultValue(field)));
+      }
+    }
+    oldStore.put("name", "legacyStore");
+    oldStore.put("owner", "owner");
+    oldStore.put("createdTime", 1L);
+    byte[] bytes = SerializerDeserializerFactory.getAvroGenericSerializer(oldSchema).serialize(oldStore);
+    StoreProperties properties =
+        SerializerDeserializerFactory.getAvroSpecificDeserializer(oldSchema, StoreProperties.class).deserialize(bytes);
+    assertFalse(properties.writeQuotaEnabled);
+    assertFalse(new ZKStore(properties).isWriteQuotaEnabled());
+  }
+
   @Test
   public void testVersionsAreAddedInOrdered() {
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());

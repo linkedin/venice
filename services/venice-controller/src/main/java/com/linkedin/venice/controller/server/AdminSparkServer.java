@@ -134,7 +134,10 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
@@ -188,6 +191,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final boolean disableParentRequestTopicForStreamPushes;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final VeniceControllerRequestHandler requestHandler;
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
   private final LogContext logContext;
 
   public AdminSparkServer(
@@ -204,6 +208,38 @@ public class AdminSparkServer extends AbstractVeniceService {
       boolean disableParentRequestTopicForStreamPushes,
       PubSubTopicRepository pubSubTopicRepository,
       VeniceControllerRequestHandler requestHandler) {
+    this(
+        port,
+        admin,
+        metricsRepository,
+        clusters,
+        enforceSSL,
+        sslConfig,
+        checkReadMethodForKafka,
+        accessController,
+        disabledRoutes,
+        jettyConfigOverrides,
+        disableParentRequestTopicForStreamPushes,
+        pubSubTopicRepository,
+        requestHandler,
+        AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer());
+  }
+
+  public AdminSparkServer(
+      int port,
+      Admin admin,
+      MetricsRepository metricsRepository,
+      Set<String> clusters,
+      boolean enforceSSL,
+      Optional<SSLConfig> sslConfig,
+      boolean checkReadMethodForKafka,
+      Optional<DynamicAccessController> accessController,
+      List<ControllerRoute> disabledRoutes,
+      VeniceProperties jettyConfigOverrides,
+      boolean disableParentRequestTopicForStreamPushes,
+      PubSubTopicRepository pubSubTopicRepository,
+      VeniceControllerRequestHandler requestHandler,
+      InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer) {
     this.logContext = admin.getLogContext();
     this.port = port;
     this.enforceSSL = enforceSSL;
@@ -212,6 +248,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.accessController = accessController;
     this.requestHandler = requestHandler;
+    this.pushJobDetailsSerializer = pushJobDetailsSerializer;
     // Note: admin is passed in as a reference. The expectation is the source of the admin will
     // close it so we don't close it in stopInner()
     this.admin = admin;
@@ -309,7 +346,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler);
     StoresRoutes storesRoutes =
         new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler.getStoreRequestHandler());
-    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
+    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController, pushJobDetailsSerializer);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
     CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);

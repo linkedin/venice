@@ -4,39 +4,50 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.Utils;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericDatumReader;
-import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryEncoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.avro.io.EncoderFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibilityTest {
   @Test
-  public void testV4V5WireCompatibility() throws IOException {
+  public void testV4V5WireCompatibility() throws IOException, InterruptedException {
     Schema v4 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v4/MetadataResponseRecord.avsc");
     Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
     Assert.assertEquals(MetadataResponseRecord.SCHEMA$, v5);
     Assert.assertEquals(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(), 5);
-    GenericRecord oldRecord = createMetadataRecord(v4);
-    Assert.assertEquals(roundTrip(oldRecord, v5).get("multiKeyLongTailRetryThresholdsInMs").toString(), "");
-    GenericRecord newRecord = createMetadataRecord(v5);
-    newRecord.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
-    newRecord.put("batchGetLimit", 500);
-    GenericRecord oldReaderRecord = roundTrip(newRecord, v4);
-    Assert.assertEquals(oldReaderRecord.get("batchGetLimit"), 500);
-    Assert.assertNull(oldReaderRecord.getSchema().getField("multiKeyLongTailRetryThresholdsInMs"));
+    Map<Integer, Schema> schemaMap = new HashMap<>();
+    schemaMap.put(4, v4);
+    schemaMap.put(5, v5);
+    testProtocolCompatibility(schemaMap, 5);
+
+    GenericRecord v4Record = createMetadataRecord(v4);
+    byte[] v4Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v4).serialize(v4Record);
+    GenericRecord v5Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v4, v5).deserialize(v4Bytes);
+    Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "");
+    MetadataResponseRecord specificReader =
+        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(v4, MetadataResponseRecord.class)
+            .deserialize(v4Bytes);
+    Assert.assertEquals(specificReader.getMultiKeyLongTailRetryThresholdsInMs().toString(), "");
+
+    GenericRecord v5Record = createMetadataRecord(v5);
+    v5Record.put("batchGetLimit", 500);
+    v5Record.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
+    byte[] v5Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v5).serialize(v5Record);
+    GenericRecord v4Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v5, v4).deserialize(v5Bytes);
+    Assert.assertEquals(v4Reader.get("batchGetLimit"), 500);
+    Assert.assertNull(v4Reader.getSchema().getField("multiKeyLongTailRetryThresholdsInMs"));
   }
 
   private GenericRecord createMetadataRecord(Schema schema) {
@@ -49,15 +60,6 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
               : AvroCompatibilityHelper.getGenericDefaultValue(field));
     }
     return record;
-  }
-
-  private GenericRecord roundTrip(GenericRecord record, Schema readerSchema) throws IOException {
-    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-    BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(bytes, null);
-    new GenericDatumWriter<GenericRecord>(record.getSchema()).write(record, encoder);
-    encoder.flush();
-    return new GenericDatumReader<GenericRecord>(record.getSchema(), readerSchema)
-        .read(null, DecoderFactory.get().binaryDecoder(bytes.toByteArray(), null));
   }
 
   @Test

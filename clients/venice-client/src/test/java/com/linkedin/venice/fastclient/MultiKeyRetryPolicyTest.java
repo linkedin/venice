@@ -27,7 +27,7 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.utils.ExceptionUtils;
-import com.linkedin.venice.utils.MultiKeyLongTailRetryPolicy;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.Collections;
@@ -72,7 +72,7 @@ public class MultiKeyRetryPolicyTest {
           dispatcher,
           config,
           timer,
-          () -> MultiKeyLongTailRetryPolicy.parse("1-:8"))) {
+          () -> MultiKeyLongTailRetryThresholds.parse("1-:8"))) {
         Set<String> keys = IntStream.range(0, count).mapToObj(Integer::toString).collect(Collectors.toSet());
         CompletableFuture<Optional<Exception>> completion = new CompletableFuture<>();
         StreamingCallback callback = new StreamingCallback() {
@@ -148,9 +148,9 @@ public class MultiKeyRetryPolicyTest {
       doReturn("retry-policy-test").when(metadata).getStoreName();
       doReturn(Schema.create(Schema.Type.STRING)).when(metadata).getKeySchema();
       doReturn(500).when(metadata).getBatchGetLimit();
-      AtomicReference<MultiKeyLongTailRetryPolicy> policy =
-          new AtomicReference<>(MultiKeyLongTailRetryPolicy.parse("1-:19"));
-      doAnswer(ignored -> policy.get()).when(metadata).getMultiKeyLongTailRetryPolicy();
+      AtomicReference<MultiKeyLongTailRetryThresholds> policy =
+          new AtomicReference<>(MultiKeyLongTailRetryThresholds.parse("1-:19"));
+      doAnswer(ignored -> policy.get()).when(metadata).getMultiKeyLongTailRetryThresholds();
       TimeoutProcessor timer = mock(TimeoutProcessor.class);
       doReturn(mock(TimeoutProcessor.TimeoutFuture.class)).when(timer)
           .schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MICROSECONDS));
@@ -171,7 +171,7 @@ public class MultiKeyRetryPolicyTest {
           } else {
             client.streamingBatchGet(Collections.singleton("key"), mock(StreamingCallback.class));
           }
-          policy.set(MultiKeyLongTailRetryPolicy.parse("1-:29"));
+          policy.set(MultiKeyLongTailRetryThresholds.parse("1-:29"));
         }
         verify(timer).schedule(any(Runnable.class), eq(19000L), eq(TimeUnit.MICROSECONDS));
         verify(timer).schedule(any(Runnable.class), eq(29000L), eq(TimeUnit.MICROSECONDS));
@@ -186,8 +186,8 @@ public class MultiKeyRetryPolicyTest {
     MetricsRepository metrics = new MetricsRepository();
     try {
       ClientConfig config = builder(metrics).build();
-      AtomicReference<MultiKeyLongTailRetryPolicy> policy =
-          new AtomicReference<>(MultiKeyLongTailRetryPolicy.parse("1-500:9,501-5000:17,5001-:23"));
+      AtomicReference<MultiKeyLongTailRetryThresholds> policy =
+          new AtomicReference<>(MultiKeyLongTailRetryThresholds.parse("1-500:9,501-5000:17,5001-:23"));
       TimeoutProcessor timer = mock(TimeoutProcessor.class);
       doReturn(mock(TimeoutProcessor.TimeoutFuture.class)).when(timer)
           .schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MICROSECONDS));
@@ -202,7 +202,7 @@ public class MultiKeyRetryPolicyTest {
         ArgumentCaptor<Long> delays = ArgumentCaptor.forClass(Long.class);
         verify(timer, times(5)).schedule(any(Runnable.class), delays.capture(), eq(TimeUnit.MICROSECONDS));
         assertEquals(delays.getAllValues(), Arrays.asList(9000L, 17000L, 17000L, 17000L, 23000L));
-        policy.set(MultiKeyLongTailRetryPolicy.parse("1-:31"));
+        policy.set(MultiKeyLongTailRetryThresholds.parse("1-:31"));
         // Publication alone must not retime any pending request.
         verify(timer, times(5)).schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MICROSECONDS));
         request(client, compute, 500);
@@ -248,7 +248,7 @@ public class MultiKeyRetryPolicyTest {
           mock(InternalAvroStoreClient.class),
           config,
           timer,
-          () -> MultiKeyLongTailRetryPolicy.parse("1-:31"))) {
+          () -> MultiKeyLongTailRetryThresholds.parse("1-:31"))) {
         request(client, false, 1);
         request(client, true, 1);
         ArgumentCaptor<Long> delays = ArgumentCaptor.forClass(Long.class);

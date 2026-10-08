@@ -48,6 +48,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -143,12 +145,11 @@ import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoder;
 import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RuntimeConfig;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
-import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.functions;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
@@ -391,6 +392,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         SPARK_DATA_WRITER_CONF_PREFIX);
   }
 
+  Properties getWriterTaskProperties() {
+    Properties jobProps = new Properties();
+    sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    // Input formats may update the session after configure(); writer encryption comes from store metadata.
+    jobProps.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(pushJobSetting.isStoreEncryptionEnabled));
+    if (pushJobSetting.isStoreEncryptionEnabled) {
+      jobProps.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      jobProps.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
+    return jobProps;
+  }
+
   protected SparkSession getSparkSession() {
     return sparkSession;
   }
@@ -516,15 +530,14 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
 
     // Create properties for TTL filter
-    Properties filterProps = new Properties();
-    this.sparkSession.conf().getAll().foreach(entry -> filterProps.setProperty(entry._1, entry._2));
+    Properties filterProps = getWriterTaskProperties();
 
     // Broadcast the filter configuration
     Broadcast<Properties> broadcastFilterProps = sparkContext.broadcast(filterProps);
 
     // Get schema for the encoder
     StructType schema = dataFrame.schema();
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
+    Encoder<Row> encoder = Encoders.row(schema);
 
     final LongAccumulator ttlFilteredAcc = accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter;
     final StageMetrics ttlMetrics = stageMetricsRegistry.register("ttl_filter");
@@ -614,7 +627,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     LOGGER.info("Applying compaction to Kafka input. Input schema: {}", dataFrame.schema());
 
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    Encoder<Row> encoder = Encoders.row(RAW_PUBSUB_INPUT_TABLE_SCHEMA);
 
     // Extract accumulators to local variables to avoid serialization issues
     final LongAccumulator totalDupKeyAcc = accumulatorsForDataWriterJob.totalDuplicateKeyCounter;
@@ -709,13 +722,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // Prepare TTL filter properties if enabled
     VeniceProperties filterProps = null;
     if (isTTLEnabled) {
-      Properties props = new Properties();
-      this.sparkSession.conf().getAll().foreach(entry -> props.setProperty(entry._1, entry._2));
-      filterProps = new VeniceProperties(props);
+      filterProps = new VeniceProperties(getWriterTaskProperties());
     }
     final VeniceProperties broadcastFilterProps = filterProps;
 
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
+    Encoder<Row> encoder = Encoders.row(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
 
     final LongAccumulator emptyRecordAcc = accumulatorsForDataWriterJob.emptyRecordCounter;
     final StageMetrics chunkMetrics = stageMetricsRegistry.register("chunk_assembly");
@@ -898,7 +909,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         sourceStrategy,
         destStrategy,
         metricEnabled);
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(dataFrame.schema());
+    Encoder<Row> encoder = Encoders.row(dataFrame.schema());
     int valueIdx = dataFrame.schema().fieldIndex(VALUE_COLUMN_NAME);
     int keyIdx = dataFrame.schema().fieldIndex(KEY_COLUMN_NAME);
     StructType schema = dataFrame.schema();
@@ -997,12 +1008,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     validateDataFrame(dataFrame);
     validateRmdSchema(pushJobSetting);
 
-    ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
-    ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
+    Encoder<Row> rowEncoder = Encoders.row(DEFAULT_SCHEMA);
+    Encoder<Row> partitionWriterTaskOutputEncoder = Encoders.row(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
 
-    Properties jobProps = new Properties();
-    this.sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    Properties jobProps = getWriterTaskProperties();
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
     Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
 

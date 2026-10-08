@@ -231,7 +231,18 @@ class ParentSchemaOrchestrator {
     parent.sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
     // defensive code checking
-    int actualValueSchemaId = parent.getVeniceHelixAdmin().getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    int actualValueSchemaId;
+    if (storeSchemaManager.isStoreMigrationDestination(clusterName, storeName)) {
+      // A content-based lookup could return bootstrap ID 1 instead of the imported source ID.
+      SchemaEntry actual = parent.getVeniceHelixAdmin().getValueSchema(clusterName, storeName, newValueSchemaId);
+      if (actual == null
+          || !StoreSchemaManager.schemasMatchForMigration(actual.getSchema().toString(), valueSchemaStr)) {
+        throw new VeniceException("Migration schema readback mismatch for " + storeName + " ID " + newValueSchemaId);
+      }
+      actualValueSchemaId = actual.getId();
+    } else {
+      actualValueSchemaId = parent.getVeniceHelixAdmin().getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    }
     if (actualValueSchemaId != newValueSchemaId) {
       throw new VeniceException(
           "Something bad happens, the expected new value schema id is: " + newValueSchemaId + ", but got: "
@@ -258,6 +269,14 @@ class ParentSchemaOrchestrator {
     try {
       newValueSchemaStr = storeSchemaManager.normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
+      if (storeSchemaManager.isStoreMigrationDestination(clusterName, storeName)) {
+        storeSchemaManager.validateMigrationValueSchema(
+            clusterName,
+            storeName,
+            newValueSchemaStr,
+            schemaId,
+            expectedCompatibilityType);
+      }
 
       final Store store = parent.getVeniceHelixAdmin().getStore(clusterName, storeName);
       // Use the existing superset schema, or the latest value schema if no superset exists, as the base for generating
@@ -271,7 +290,8 @@ class ParentSchemaOrchestrator {
       final boolean doUpdateSupersetSchemaID;
       boolean supersetSchemaAlreadyExists =
           store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID;
-      if (existingValueSchema != null
+      // Migration imports the source superset; generating another value schema could consume a source ID.
+      if (!storeSchemaManager.isStoreMigrationDestination(clusterName, storeName) && existingValueSchema != null
           && (store.isReadComputationEnabled() || store.isWriteComputationEnabled() || supersetSchemaAlreadyExists)) {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
         Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);

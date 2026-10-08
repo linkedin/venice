@@ -105,7 +105,7 @@ public class ClientFactory {
            * reduce the thread usage.
            */
           storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor(),
-          storeMetadata::getMultiKeyLongTailRetryPolicy);
+          storeMetadata::getMultiKeyLongTailRetryThresholds);
     }
 
     InternalAvroStoreClient<K, V> loadControlClient = retryClient;
@@ -136,7 +136,7 @@ public class ClientFactory {
           dispatchingStoreClient,
           clientConfig,
           storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor(),
-          storeMetadata::getMultiKeyLongTailRetryPolicy);
+          storeMetadata::getMultiKeyLongTailRetryThresholds);
     }
 
     InternalAvroStoreClient<K, V> loadControlClient = retryClient;

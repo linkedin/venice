@@ -273,6 +273,7 @@ public class ControllerApiConstants {
   public static final String TARGET_REGION_PUSH_WITH_DEFERRED_SWAP = "target_region_push_with_deferred_swap";
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
+  public static final String WRITE_QUOTA_ENABLED = "write_quota_enabled";
 
   public static final String COMPACTION_ENABLED = "compaction_enabled";
   public static final String COMPACTION_THRESHOLD_MILLISECONDS = "compaction_threshold_milliseconds";

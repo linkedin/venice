@@ -1,6 +1,7 @@
 package com.linkedin.venice.samza;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SystemTime;
@@ -19,6 +20,9 @@ import org.apache.samza.config.Config;
  * - ZK-based: set {@code veniceChildD2ZkHost}, {@code primaryControllerColoD2ZKHost}, and {@code primaryControllerD2ServiceName}
  * - D2Client-based: set {@code providedChildColoD2Client}, {@code providedPrimaryControllerColoD2Client}, and {@code primaryControllerD2ServiceName}
  * - Discovery-URL-based: set {@code discoveryUrl}
+ *
+ * In the ZK-based and D2Client-based modes, the producer discovers the store's cluster through the routers' cluster
+ * discovery D2 service ({@code clusterDiscoveryD2ServiceName}) in the child colo.
  */
 public class VeniceSystemProducerConfig {
   // Required (validated non-null in Builder.build())
@@ -41,6 +45,7 @@ public class VeniceSystemProducerConfig {
   private final String veniceChildD2ZkHost;
   private final String primaryControllerColoD2ZKHost;
   private final String primaryControllerD2ServiceName;
+  private final String clusterDiscoveryD2ServiceName;
 
   // D2Client-based connection (mutually exclusive with ZK and discoveryUrl)
   private final D2Client providedChildColoD2Client;
@@ -58,6 +63,7 @@ public class VeniceSystemProducerConfig {
     this.veniceChildD2ZkHost = builder.veniceChildD2ZkHost;
     this.primaryControllerColoD2ZKHost = builder.primaryControllerColoD2ZKHost;
     this.primaryControllerD2ServiceName = builder.primaryControllerD2ServiceName;
+    this.clusterDiscoveryD2ServiceName = builder.clusterDiscoveryD2ServiceName;
     this.providedChildColoD2Client = builder.providedChildColoD2Client;
     this.providedPrimaryControllerColoD2Client = builder.providedPrimaryControllerColoD2Client;
     this.discoveryUrl = builder.discoveryUrl;
@@ -100,6 +106,10 @@ public class VeniceSystemProducerConfig {
 
   public String getPrimaryControllerD2ServiceName() {
     return primaryControllerD2ServiceName;
+  }
+
+  public String getClusterDiscoveryD2ServiceName() {
+    return clusterDiscoveryD2ServiceName;
   }
 
   public D2Client getProvidedChildColoD2Client() {
@@ -156,6 +166,7 @@ public class VeniceSystemProducerConfig {
         .setVeniceChildD2ZkHost(veniceChildD2ZkHost)
         .setPrimaryControllerColoD2ZKHost(primaryControllerColoD2ZKHost)
         .setPrimaryControllerD2ServiceName(primaryControllerD2ServiceName)
+        .setClusterDiscoveryD2ServiceName(clusterDiscoveryD2ServiceName)
         .setProvidedChildColoD2Client(providedChildColoD2Client)
         .setProvidedPrimaryControllerColoD2Client(providedPrimaryControllerColoD2Client)
         .setDiscoveryUrl(discoveryUrl)
@@ -178,6 +189,7 @@ public class VeniceSystemProducerConfig {
     private String veniceChildD2ZkHost;
     private String primaryControllerColoD2ZKHost;
     private String primaryControllerD2ServiceName;
+    private String clusterDiscoveryD2ServiceName = ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
     private D2Client providedChildColoD2Client;
     private D2Client providedPrimaryControllerColoD2Client;
     private String discoveryUrl;
@@ -234,6 +246,16 @@ public class VeniceSystemProducerConfig {
     /** @param primaryControllerD2ServiceName the D2 service name the primary controller uses to announce itself */
     public Builder setPrimaryControllerD2ServiceName(String primaryControllerD2ServiceName) {
       this.primaryControllerD2ServiceName = primaryControllerD2ServiceName;
+      return this;
+    }
+
+    /**
+     * @param clusterDiscoveryD2ServiceName the D2 service routers announce for cluster discovery, defaults to
+     *                                      {@link ClientConfig#DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME}. Must not be null.
+     */
+    public Builder setClusterDiscoveryD2ServiceName(String clusterDiscoveryD2ServiceName) {
+      this.clusterDiscoveryD2ServiceName =
+          Objects.requireNonNull(clusterDiscoveryD2ServiceName, "clusterDiscoveryD2ServiceName cannot be null");
       return this;
     }
 

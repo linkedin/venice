@@ -29,14 +29,17 @@ public class BatchGetConfigUtils {
         if (lower <= 0 || (!upper.isEmpty() && Integer.parseInt(upper) <= 0) || delayMs <= 0) {
           throw new IllegalArgumentException("Key bounds and retry delays must be positive");
         }
-        Math.multiplyExact(delayMs, 1000);
+        if (delayMs > Integer.MAX_VALUE / 1000) {
+          throw new IllegalArgumentException("Retry delay overflows microsecond conversion");
+        }
         hasUnboundedRange |= upper.isEmpty();
       }
       if (!hasUnboundedRange) {
         throw new IllegalArgumentException("An unbounded terminal range is required");
       }
+      // The shared parser requires continuous, non-overlapping coverage from 1 through the unbounded range.
       return parseRetryThresholdForBatchGet(ranges);
-    } catch (IllegalArgumentException | ArithmeticException e) {
+    } catch (IllegalArgumentException e) {
       throw new VeniceException("Invalid server multi-key retry thresholds: " + ranges, e);
     }
   }
