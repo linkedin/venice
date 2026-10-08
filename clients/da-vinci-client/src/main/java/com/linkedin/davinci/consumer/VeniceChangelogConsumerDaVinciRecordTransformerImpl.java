@@ -30,6 +30,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -71,6 +72,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   private final ChangelogClientConfig changelogClientConfig;
   private final String storeName;
+  private final RedundantExceptionFilter redundantExceptionFilter =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   // A buffer of messages that will be returned to the user
   private final BlockingQueue<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages;
@@ -608,10 +611,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           try {
             recordStats();
           } catch (Exception e) {
-            // This thread is started at most once per consumer and is never restarted, so letting an
-            // exception escape would silently stop heartbeat lag and consuming version reporting for the
-            // remaining lifetime of the consumer. Skip this cycle and retry on the next one instead.
-            LOGGER.error("Failed to record change capture stats. Skipping this reporting cycle.", e);
+            // Letting an exception escape would stop heartbeat lag and consuming version reporting
+            // from this reporter thread. Skip this cycle and retry on the next one instead.
+            // Use a stable, consumer-scoped key so changing exception messages do not bypass suppression.
+            String logKey = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getName() + ":recordStats:"
+                + storeName + ":" + changelogClientConfig.getConsumerName();
+            if (!redundantExceptionFilter.isRedundantException(logKey)) {
+              LOGGER.error(
+                  "Failed to record change capture stats for store: {}, consumer: {}. Skipping this reporting cycle.",
+                  storeName,
+                  changelogClientConfig.getConsumerName(),
+                  e);
+            }
           }
           TimeUnit.SECONDS.sleep(changelogClientConfig.getBackgroundReporterThreadSleepIntervalInSeconds());
         } catch (InterruptedException e) {
