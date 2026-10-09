@@ -1050,7 +1050,9 @@ public class VeniceChangelogConsumerImplTest {
   public void testSeekToTimestampWithErrorLogging() throws ExecutionException, InterruptedException, TimeoutException {
     Map<Integer, Long> partitionTimestampMap = new HashMap<>();
     partitionTimestampMap.put(0, 1000L);
-    // Verify null response for offsetForTime
+    // Verify null response for offsetForTime: an unresolved timestamp must NOT park the partition at the tail
+    // (endPosition), because a TOPIC_SWITCH rewind (e.g. store migration) can place re-produced records past the
+    // tail with older timestamps. Instead it falls back to the beginning of the topic so no data is skipped.
     PubSubConsumerAdapter nullResponsePubSubConsumer = mock(PubSubConsumerAdapter.class);
     doReturn(null).when(nullResponsePubSubConsumer).getPositionByTimestamp(any(), anyLong());
     PubSubPosition mockedPubSubPosition = mock(PubSubPosition.class);
@@ -1062,8 +1064,8 @@ public class VeniceChangelogConsumerImplTest {
         veniceChangelogConsumerClientFactory);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.internalSeekToTimestamps(partitionTimestampMap).get(10, TimeUnit.SECONDS);
-    verify(nullResponsePubSubConsumer, times(1)).endPosition(any());
-    verify(nullResponsePubSubConsumer, times(1)).subscribe(any(), any(PubSubPosition.class), eq(true));
+    verify(nullResponsePubSubConsumer, never()).endPosition(any());
+    verify(nullResponsePubSubConsumer, times(1)).subscribe(any(), eq(PubSubSymbolicPosition.EARLIEST), eq(true));
     // Verify failed seek logging
     Logger mockLogger = mock(Logger.class);
     PubSubConsumerAdapter mockErrorPubSubConsumer = mock(PubSubConsumerAdapter.class);
@@ -1099,6 +1101,40 @@ public class VeniceChangelogConsumerImplTest {
         .getPositionByTimestamp(any(), anyLong());
     verify(mockErrorPubSubConsumer, never()).unSubscribe(any());
     verify(mockErrorPubSubConsumer, never()).subscribe(any(), any(PubSubPosition.class), anyBoolean());
+  }
+
+  /**
+   * Regression test for VENG-12994: a store migration (or hybrid cutover) broadcasts a TOPIC_SWITCH with a
+   * rewindStartTimestamp into the live version topic, after which the leader re-produces real-time data whose
+   * producer timestamps are OLDER than a seek-resumed consumer's checkpoint. getPositionByTimestamp then resolves
+   * to null. The consumer must fall back to the beginning of the version topic (EARLIEST) rather than parking at
+   * the tail (endPosition), otherwise it silently skips the re-produced records and stalls.
+   */
+  @Test
+  public void testSeekToTimestampFallsBackToBeginningWhenUnresolvableAfterRewind()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    PubSubConsumerAdapter rewoundPubSubConsumer = mock(PubSubConsumerAdapter.class);
+    // Simulate the post-rewind version topic: no offset resolves for the resume timestamp.
+    doReturn(null).when(rewoundPubSubConsumer).getPositionByTimestamp(any(), anyLong());
+    PubSubPosition tailPosition = mock(PubSubPosition.class);
+    when(rewoundPubSubConsumer.endPosition(any())).thenReturn(tailPosition);
+
+    Logger mockLogger = mock(Logger.class);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        rewoundPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    veniceChangelogConsumer.internalSeekToTimestamps(Collections.singletonMap(0, 1000L), mockLogger)
+        .get(10, TimeUnit.SECONDS);
+
+    // Must not park at the tail, and must resume from the beginning so re-produced records are not skipped.
+    verify(rewoundPubSubConsumer, never()).endPosition(any());
+    verify(rewoundPubSubConsumer, times(1)).subscribe(any(), eq(PubSubSymbolicPosition.EARLIEST), eq(true));
+    // The rewind fallback is surfaced via a warning so operators can correlate it with a migration/cutover.
+    verify(mockLogger).warn(anyString(), any(Long.class), any());
   }
 
   @Test

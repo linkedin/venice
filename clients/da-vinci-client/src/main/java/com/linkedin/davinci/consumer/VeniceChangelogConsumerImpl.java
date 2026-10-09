@@ -621,8 +621,25 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         return resolveSeekPositionWithRetry(partition, () -> {
           PubSubPosition position =
               pubSubConsumer.getPositionByTimestamp(partition, topicPartitionLongMap.get(partition));
-          // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
-          return position != null ? position : pubSubConsumer.endPosition(partition);
+          if (position != null) {
+            return position;
+          }
+          /*
+           * No offset resolves for the requested timestamp. This happens when a store migration (or hybrid
+           * cutover) writes a TOPIC_SWITCH with a rewindStartTimestamp into the live version topic: the leader
+           * rewinds and re-produces real-time data, so records at the tail carry producer timestamps OLDER than
+           * the resume checkpoint. Seeking to endPosition() here would park the partition at the tail and silently
+           * skip those re-produced records, stalling the consumer with no new deliveries. Fall back to the
+           * beginning of the version topic instead so no unconsumed data is skipped; duplicate re-delivery of
+           * rewound records is expected and left to the caller's idempotency/compaction.
+           */
+          logger.warn(
+              "No position resolved for timestamp: {} on topic partition: {}; the version topic may have been "
+                  + "rewound by a TOPIC_SWITCH (e.g. store migration). Falling back to the beginning of the topic "
+                  + "to avoid parking at the tail and skipping re-produced records.",
+              topicPartitionLongMap.get(partition),
+              Utils.getReplicaId(partition));
+          return PubSubSymbolicPosition.EARLIEST;
         });
       } catch (RuntimeException e) {
         logger.error(
