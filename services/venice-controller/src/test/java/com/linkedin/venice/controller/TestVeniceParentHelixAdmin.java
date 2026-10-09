@@ -2751,6 +2751,53 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     errorMap.put("cluster2", clientMap.get(ExecutionStatus.ERROR));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
     assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // Same for a target region push with deferred swap, which checks the parent version status separately.
+    doReturn(errorMap).when(internalAdmin).getControllerClientMap(anyString());
+    offlineJobStatus =
+        parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v1", Optional.empty(), null, "cluster", true);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testTargetRegionDeferredSwapFailureHandledInSamePoll() {
+    // In a target region push with deferred swap, the poll that sees the target region fail also moves the parent
+    // version from STARTED to ERROR. The terminal handling in that same poll has to see ERROR, so the version status
+    // must be read after that update, not before it.
+    String storeName = Utils.getUniqueString("testTargetRegionDeferredSwapFailure");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    Version version = new VersionImpl(storeName, 1, "test_push_job_id");
+    version.setStatus(STARTED);
+    version.setVersionSwapDeferred(true);
+    version.setTargetSwapRegion("cluster-err");
+    version.setPushType(Version.PushType.STREAM_REPROCESSING);
+    store.addVersion(version);
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    controllerClients.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
+    controllerClients.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
+    doReturn(controllerClients).when(internalAdmin).getControllerClientMap(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLinePushStatus(
+        clusterName,
+        Version.composeKafkaTopic(storeName, 1),
+        Optional.empty(),
+        null,
+        "cluster-err",
+        true);
+
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    assertEquals(store.getVersionStatus(1), VersionStatus.ERROR);
+    verify(internalAdmin).truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, 1));
   }
 
   @Test
