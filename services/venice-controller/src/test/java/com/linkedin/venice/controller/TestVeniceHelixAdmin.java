@@ -46,10 +46,12 @@ import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionController
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -77,6 +79,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
@@ -110,6 +113,7 @@ import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.TestException;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1603,9 +1607,7 @@ public class TestVeniceHelixAdmin {
   public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) throws Exception {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
     StoreLifecycleHooksCache mockHookExecutor = mock(StoreLifecycleHooksCache.class);
-    java.lang.reflect.Field hookExecutorField = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHooksCache");
-    hookExecutorField.setAccessible(true);
-    hookExecutorField.set(mockVeniceHelixAdmin, mockHookExecutor);
+    doReturn(mockHookExecutor).when(mockVeniceHelixAdmin).getStoreLifecycleHooksCache();
     doReturn(2).when(mockVeniceHelixAdmin).getFutureVersionWithStatus(clusterName, storeName, VersionStatus.ONLINE);
 
     // build a fake Store whose version 2 has 2 partitions but only 1 ready replica
@@ -1614,10 +1616,13 @@ public class TestVeniceHelixAdmin {
     when(mockStore.getCurrentVersion()).thenReturn(1);
 
     Version v2 = mock(Version.class);
+    when(v2.getNumber()).thenReturn(2);
+    when(v2.getStatus()).thenReturn(VersionStatus.ONLINE);
     when(v2.isVersionSwapDeferred()).thenReturn(true);
     when(v2.getPartitionCount()).thenReturn(2);
     when(v2.getMinActiveReplicas()).thenReturn(isPartitionReadyToServe ? 1 : 2);
     when(mockStore.getVersion(2)).thenReturn(v2);
+    when(mockStore.getVersions()).thenReturn(Collections.singletonList(v2));
 
     // stub the repository to return only 1 ready instance per partition
     HelixCustomizedViewOfflinePushRepository repo = mock(HelixCustomizedViewOfflinePushRepository.class);
@@ -1661,6 +1666,205 @@ public class TestVeniceHelixAdmin {
             e.getMessage().contains("do not have enough ready-to-serve instances"),
             "Actual message: " + e.getMessage());
       }
+    }
+  }
+
+  @DataProvider(name = "staleRollForwardCandidates")
+  public Object[][] staleRollForwardCandidates() {
+    return new Object[][] { { "deleted" }, { "killed" }, { "errored" }, { "started" }, { "superseded" },
+        { "current" } };
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRollForwardRejectsDisabledWritesUnderLock(boolean pushed) {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.addVersion(new VersionImpl(storeName, 1));
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.setCurrentVersion(1);
+    store.addVersion(new VersionImpl(storeName, 2));
+    VersionStatus status = pushed ? VersionStatus.PUSHED : VersionStatus.ONLINE;
+    store.updateVersionStatus(2, status);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(store).when(repository).getStore(storeName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(new ClusterLockManager(clusterName)).when(resources).getClusterLockManager();
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn("test").when(admin).getRegionName();
+    doReturn(2).when(admin).getFutureVersionWithStatus(clusterName, storeName, status);
+    doCallRealMethod().when(admin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    doAnswer(invocation -> {
+      store.setEnableWrites(false);
+      return invocation.callRealMethod();
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    expectThrows(StoreDisabledException.class, () -> admin.rollForwardToFutureVersion(clusterName, storeName, "test"));
+
+    assertEquals(store.getCurrentVersion(), 1);
+    assertEquals(store.getVersionStatus(2), status);
+    verify(repository, never()).updateStore(any());
+    verify(admin, never()).getRealTimeTopicSwitcher();
+    verify(admin, never()).getStoreLifecycleHooksCache();
+  }
+
+  @Test(dataProvider = "staleRollForwardCandidates")
+  public void testRollForwardRejectsStaleCandidateUnderLock(String change) {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.addVersion(new VersionImpl(storeName, 1));
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.setCurrentVersion(1);
+    store.addVersion(new VersionImpl(storeName, 2));
+    store.updateVersionStatus(2, VersionStatus.PUSHED);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(store).when(repository).getStore(storeName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(new ClusterLockManager(clusterName)).when(resources).getClusterLockManager();
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn("test").when(admin).getRegionName();
+    doReturn(2).when(admin).getFutureVersionWithStatus(clusterName, storeName, VersionStatus.PUSHED);
+    doCallRealMethod().when(admin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    doAnswer(invocation -> {
+      switch (change) {
+        case "deleted":
+          store.deleteVersion(2);
+          break;
+        case "killed":
+          store.updateVersionStatus(2, VersionStatus.KILLED);
+          break;
+        case "errored":
+          store.updateVersionStatus(2, VersionStatus.ERROR);
+          break;
+        case "started":
+          store.updateVersionStatus(2, VersionStatus.STARTED);
+          break;
+        case "superseded":
+          store.addVersion(new VersionImpl(storeName, 3));
+          break;
+        case "current":
+          store.setCurrentVersion(2);
+          break;
+        default:
+          throw new AssertionError(change);
+      }
+      return invocation.callRealMethod();
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    VeniceException exception =
+        expectThrows(VeniceException.class, () -> admin.rollForwardToFutureVersion(clusterName, storeName, "test"));
+
+    assertTrue(exception.getMessage().contains("no longer an eligible latest non-current version"));
+    assertEquals(store.getCurrentVersion(), change.equals("current") ? 2 : 1);
+    verify(repository, never()).updateStore(any());
+    verify(resources, never()).getVeniceVersionLifecycleEventManager();
+    verify(admin, never()).getRealTimeTopicSwitcher();
+    verify(admin, never()).getStoreLifecycleHooksCache();
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRollForwardUsesLockedVersionStatus(boolean initiallyPushed) {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.addVersion(new VersionImpl(storeName, 1));
+    store.updateVersionStatus(1, VersionStatus.ONLINE);
+    store.setCurrentVersion(1);
+    store.addVersion(new VersionImpl(storeName, 2));
+    store.updateVersionStatus(2, initiallyPushed ? VersionStatus.ONLINE : VersionStatus.PUSHED);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(new VeniceVersionLifecycleEventManager()).when(resources).getVeniceVersionLifecycleEventManager();
+    RealTimeTopicSwitcher switcher = mock(RealTimeTopicSwitcher.class);
+    StoreLifecycleHooksCache hooks = mock(StoreLifecycleHooksCache.class);
+    doReturn(switcher).when(admin).getRealTimeTopicSwitcher();
+    doReturn(hooks).when(admin).getStoreLifecycleHooksCache();
+    doReturn("test").when(admin).getRegionName();
+    doReturn(2).when(admin)
+        .getFutureVersionWithStatus(
+            clusterName,
+            storeName,
+            initiallyPushed ? VersionStatus.PUSHED : VersionStatus.ONLINE);
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, resources);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    doCallRealMethod().when(admin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+
+    admin.rollForwardToFutureVersion(clusterName, storeName, "test");
+
+    assertEquals(store.getCurrentVersion(), 2);
+    assertEquals(store.getVersionStatus(2), VersionStatus.ONLINE);
+    verify(switcher).transmitVersionSwapMessage(store, 1, 2);
+    verify(hooks).invokePostVersionSwapHooks(clusterName, store, 2, 1, "test", null);
+  }
+
+  @DataProvider(name = "killOfflinePushVersions")
+  public Object[][] killOfflinePushVersions() {
+    List<Object[]> cases = new ArrayList<>();
+    for (VersionStatus status: Arrays.asList(
+        VersionStatus.STARTED,
+        VersionStatus.PUSHED,
+        VersionStatus.ONLINE,
+        VersionStatus.KILLED,
+        VersionStatus.ERROR)) {
+      for (boolean current: new boolean[] { false, true }) {
+        for (boolean forced: new boolean[] { false, true }) {
+          cases.add(new Object[] { status, current, forced });
+        }
+      }
+    }
+    return cases.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "killOfflinePushVersions")
+  public void testKillOfflinePushVersionProtectionAndMessages(VersionStatus status, boolean current, boolean forced) {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.addVersion(new VersionImpl(storeName, 1));
+    store.updateVersionStatus(1, status);
+    store.setCurrentVersion(current ? 1 : Store.NON_EXISTING_VERSION);
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    HelixStatusMessageChannel channel = mock(HelixStatusMessageChannel.class);
+    VeniceControllerMultiClusterConfig configs = mock(VeniceControllerMultiClusterConfig.class);
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+    doReturn(configs).when(admin).getMultiClusterConfigs();
+    doReturn(config).when(configs).getControllerConfig(clusterName);
+    doReturn(true).when(config).isAdminHelixMessagingChannelEnabled();
+    doReturn(true).when(admin).isResourceStillAlive(topic);
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(new ClusterLockManager(clusterName)).when(resources).getClusterLockManager();
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(channel).when(resources).getMessageChannel();
+    doReturn(store).when(admin).getStore(clusterName, storeName);
+    doReturn(store).when(repository).getStore(storeName);
+    doCallRealMethod().when(admin).killOfflinePush(clusterName, topic, forced);
+    boolean eligible = !current && (status == VersionStatus.PUSHED || status == VersionStatus.STARTED);
+
+    admin.killOfflinePush(clusterName, topic, forced);
+
+    assertEquals(store.getVersionStatus(1), !forced && eligible ? VersionStatus.KILLED : status);
+    assertEquals(store.getCurrentVersion(), current ? 1 : Store.NON_EXISTING_VERSION);
+    verify(repository, times(!forced && eligible ? 1 : 0)).updateStore(store);
+    ArgumentCaptor<KillOfflinePushMessage> message = ArgumentCaptor.forClass(KillOfflinePushMessage.class);
+    verify(channel, times(forced || eligible ? 1 : 0))
+        .sendToStorageNodes(eq(clusterName), message.capture(), eq(topic), eq(1));
+    if (forced || eligible) {
+      assertEquals(message.getValue().getKafkaTopic(), topic);
+    }
+    if (!forced && eligible) {
+      InOrder order = inOrder(repository, channel);
+      order.verify(repository).updateStore(store);
+      order.verify(channel).sendToStorageNodes(eq(clusterName), any(KillOfflinePushMessage.class), eq(topic), eq(1));
+      admin.killOfflinePush(clusterName, topic, false);
+      verify(repository, times(1)).updateStore(store);
+      verify(channel, times(1))
+          .sendToStorageNodes(eq(clusterName), any(KillOfflinePushMessage.class), eq(topic), eq(1));
+    }
+    if (forced) {
+      verify(admin, never()).getStore(anyString(), anyString());
     }
   }
 

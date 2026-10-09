@@ -354,7 +354,7 @@ public abstract class AbstractStore implements Store {
      * The versions which can be deleted are:
      *     a) ONLINE versions except the current version given we preserve numVersionsToPreserve versions.
      *     b) ERROR version (ideally should not be there as AbstractPushmonitor#handleErrorPush deletes those)
-     *     c) STARTED versions if its not the last one and the store is not migrating.
+     *     c) STARTED or PUSHED versions if not the last one and the store is not migrating.
      *     d) KILLED versions by {@link org.apache.kafka.clients.admin.Admin#killOfflinePush} api.
      */
     // current version need not be the largest version, preseve it before finding other versions > current version
@@ -385,16 +385,12 @@ public abstract class AbstractStore implements Store {
         } else {
           versionsToDelete.add(version);
         }
-      } else if (VersionStatus.STARTED.equals(version.getStatus()) && (i != lastElementIndex) && !isMigrating) {
-        // For the non-last started version, if it's not the current version(STARTED version should not be the current
-        // version, just prevent some edge cases here.), we should delete it only if the store is not migrating
-        // as during store migration are there are concurrent pushes with STARTED version.
-        // So if the store is not migrating, it's stuck in STARTED, it means somehow the controller did not update the
-        // version status properly.
+      } else if ((VersionStatus.STARTED.equals(version.getStatus()) || VersionStatus.PUSHED.equals(version.getStatus()))
+          && (i != lastElementIndex) && !isMigrating) {
+        // A newer version supersedes a non-current, unswapped push. Migration can have concurrent
+        // pushes, so retain these versions until migration is complete.
         versionsToDelete.add(version);
       }
-      // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in
-      // the future.
     }
     return versionsToDelete;
   }

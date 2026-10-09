@@ -26,6 +26,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -54,6 +55,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -70,6 +72,7 @@ import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -138,6 +141,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -4301,8 +4305,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "");
   }
 
-  @Test
-  public void testRollForwardSuccess() {
+  @DataProvider(name = "rollForwardRegionFilters")
+  public Object[][] rollForwardRegionFilters() {
+    return new Object[][] { { null }, { "" }, { "r1" } };
+  }
+
+  @Test(dataProvider = "rollForwardRegionFilters")
+  public void testRollForwardSuccess(String regionFilter) {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
@@ -4312,25 +4321,34 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    controllerClients.clear();
+    ControllerClient child = mockRollForwardChild("r1");
 
-    Map<String, Integer> after = Collections.singletonMap("r1", 5);
-    doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
     Version version = mock(Version.class);
     doReturn(true).when(version).isVersionSwapDeferred();
     doReturn(version).when(store).getVersion(5);
     doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      ControllerResponse response = new ControllerResponse();
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
-    }
-    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
 
+    ArgumentCaptor<AdminOperation> operation = ArgumentCaptor.forClass(AdminOperation.class);
+    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), operation.capture());
+    assertEquals(operation.getValue().operationType, AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue());
+    RollForwardCurrentVersion payload = (RollForwardCurrentVersion) operation.getValue().payloadUnion;
+    assertEquals(payload.clusterName.toString(), clusterName);
+    assertEquals(payload.storeName.toString(), storeName);
+    assertEquals(payload.regionsFilter.toString(), regionFilter == null ? "" : regionFilter);
+    AdminOperationSerializer serializer = new AdminOperationSerializer();
+    RollForwardCurrentVersion legacyPayload = (RollForwardCurrentVersion) serializer
+        .deserialize(ByteBuffer.wrap(serializer.serialize(operation.getValue(), 76)), 76).payloadUnion;
+    assertEquals(legacyPayload.getRegionsFilter().toString(), regionFilter == null ? "" : regionFilter);
+    verify(child, never()).getAdminTopicMetadata(any());
+    verify(child, never()).rollForwardToFutureVersion(any(), any(), anyInt());
     verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
     verify(store).setCurrentVersion(5);
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in the following regions.*")
+  @Test
   public void testRollForwardPartialFailure() {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
@@ -4340,20 +4358,24 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     future.put("r1", "5");
     future.put("r2", "5");
     doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    mockRollForwardChild("r2");
 
-    doNothing().when(adminSpy)
+    doThrow(new VeniceException("admin message publication failed")).when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
 
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      ControllerResponse response = new ControllerResponse();
-      response.setError("test error");
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
-    }
-    adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
+    VeniceException failure =
+        expectThrows(VeniceException.class, () -> adminSpy.rollForwardToFutureVersion(clusterName, storeName, null));
+    assertEquals(failure.getMessage(), "admin message publication failed");
+    verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
+    verify(store, never()).setCurrentVersion(anyInt());
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
   }
 
-  @Test
-  public void testRollForwardNotAllRegionsServingFutureVersionSkipsParentUpdate() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRollForwardUpdatesParentWhileChildrenArePending(boolean firstRegionSwapped) {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
@@ -4366,9 +4388,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
 
-    // r1 rolled forward to version 5, but r2 is still on version 4
+    // The request must succeed even if a targeted child has not consumed the command yet.
     Map<String, Integer> currentVersions = new HashMap<>();
-    currentVersions.put("r1", 5);
+    currentVersions.put("r1", firstRegionSwapped ? 5 : 4);
     currentVersions.put("r2", 4);
     doReturn(currentVersions).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
 
@@ -4377,15 +4399,172 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(version).when(store).getVersion(5);
     doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      ControllerResponse response = new ControllerResponse();
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
-    }
-    adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
+    controllerClients.clear();
+    ControllerClient r1 = mockRollForwardChild("r1");
+    ControllerClient r2 = mock(ControllerClient.class);
+    controllerClients.put("r1", r1);
+    controllerClients.put("r2", r2);
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
-    // Parent store should NOT be updated to ONLINE since not all regions are serving the future version
+    InOrder order = inOrder(adminSpy, store);
+    order.verify(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    order.verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
+    order.verify(store).setCurrentVersion(5);
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    verify(r1, never()).getAdminTopicMetadata(any());
+    verify(r2, never()).getAdminTopicMetadata(any());
+    verify(r2, never()).getStore(anyString(), anyInt());
+    verify(r1, never()).rollForwardToFutureVersion(any(), any(), anyInt());
+    verify(r2, never()).rollForwardToFutureVersion(any(), any(), anyInt());
+  }
+
+  @DataProvider(name = "rollForwardParentUpdateEligibility")
+  public Object[][] rollForwardParentUpdateEligibility() {
+    return new Object[][] { { false, true, "" }, { true, false, "" }, { true, true, "r1" } };
+  }
+
+  @DataProvider(name = "rollForwardParentVersionStatuses")
+  public Object[][] rollForwardParentVersionStatuses() {
+    return new Object[][] { { VersionStatus.PUSHED }, { VersionStatus.ONLINE }, { VersionStatus.KILLED },
+        { VersionStatus.ERROR }, { VersionStatus.STARTED } };
+  }
+
+  @Test(dataProvider = "rollForwardParentVersionStatuses")
+  public void testRollForwardPreservesIneligibleParentVersionWithAdvertisedChild(VersionStatus status) {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    // A child may still advertise the future version before consuming a preceding kill.
+    doReturn(Collections.singletonMap("r1", "5")).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    Store parentStore = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    parentStore.addVersion(new VersionImpl(storeName, 4, "current-push"));
+    parentStore.setCurrentVersion(4);
+    Version futureVersion = new VersionImpl(storeName, 5, "future-push");
+    futureVersion.setVersionSwapDeferred(true);
+    parentStore.addVersion(futureVersion);
+    parentStore.updateVersionStatus(5, status);
+    ReadWriteStoreRepository repository =
+        internalAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+    doReturn(parentStore).when(repository).getStore(storeName);
+    Store childStore = parentStore.cloneStore();
+
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+    if (status == VersionStatus.STARTED) {
+      VeniceHelixAdmin childAdmin = mock(VeniceHelixAdmin.class);
+      doReturn("r1").when(childAdmin).getRegionName();
+      HelixVeniceClusterResources childResources = mock(HelixVeniceClusterResources.class);
+      ReadWriteStoreRepository childRepository = mock(ReadWriteStoreRepository.class);
+      doReturn(childStore).when(childRepository).getStore(storeName);
+      doReturn(childRepository).when(childResources).getStoreMetadataRepository();
+      doReturn(resources.getClusterLockManager()).when(childResources).getClusterLockManager();
+      doReturn(childResources).when(childAdmin).getHelixVeniceClusterResources(clusterName);
+      doCallRealMethod().when(childAdmin).getFutureVersionWithStatus(eq(clusterName), eq(storeName), any());
+      doCallRealMethod().when(childAdmin).rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+      childAdmin.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+      assertEquals(childStore.getVersion(5).getStatus(), VersionStatus.STARTED);
+      assertEquals(childStore.getCurrentVersion(), 4);
+      verify(childAdmin, never()).storeMetadataUpdate(any(), any(), any());
+    }
+
+    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    if (status == VersionStatus.KILLED || status == VersionStatus.ERROR || status == VersionStatus.STARTED) {
+      assertEquals(parentStore.getVersion(5).getStatus(), status);
+      assertEquals(parentStore.getCurrentVersion(), 4);
+      verify(repository, never()).updateStore(any());
+    } else {
+      assertEquals(parentStore.getVersion(5).getStatus(), VersionStatus.ONLINE);
+      assertEquals(parentStore.getCurrentVersion(), 5);
+      verify(repository).updateStore(parentStore);
+    }
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+  }
+
+  @Test(dataProvider = "rollForwardParentUpdateEligibility")
+  public void testRollForwardPreservesParentUpdateEligibility(
+      boolean versionExists,
+      boolean deferred,
+      String targetSwapRegion) {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    doReturn(Collections.singletonMap("r1", "5")).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    Version version = mock(Version.class);
+    doReturn(deferred).when(version).isVersionSwapDeferred();
+    doReturn(targetSwapRegion).when(version).getTargetSwapRegion();
+    doReturn(versionExists ? version : null).when(store).getVersion(5);
+
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
     verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
     verify(store, never()).setCurrentVersion(anyInt());
+    verify(adminSpy, never()).getCurrentVersionsForMultiColos(anyString(), anyString());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+  }
+
+  private ControllerClient mockRollForwardChild(String region) {
+    ControllerClient child = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(new StoreInfo());
+    doReturn(response).when(child).getStore(eq(storeName), anyInt());
+    controllerClients.put(region, child);
+    return child;
+  }
+
+  @DataProvider(name = "rollForwardChildValidation")
+  public Object[][] rollForwardChildValidation() {
+    return new Object[][] { { "disabled", null }, { "disabled", "" }, { "disabled", "r2" }, { "error", "r2" },
+        { "missing-store", "r2" }, { "null-response", "r2" } };
+  }
+
+  @Test(dataProvider = "rollForwardChildValidation")
+  public void testRollForwardRejectsInvalidChildBeforePublication(String condition, String filter) {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    Map<String, String> future = new HashMap<>();
+    future.put("r1", "5");
+    future.put("r2", "5");
+    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    ControllerClient child = mockRollForwardChild("r2");
+    StoreResponse response = new StoreResponse();
+    if (condition.equals("disabled")) {
+      StoreInfo info = new StoreInfo();
+      info.setEnableStoreWrites(false);
+      response.setStore(info);
+    } else if (condition.equals("error")) {
+      response.setError("store read failed");
+    }
+    doReturn(condition.equals("null-response") ? null : response).when(child).getStore(eq(storeName), anyInt());
+
+    VeniceException failure =
+        expectThrows(VeniceException.class, () -> adminSpy.rollForwardToFutureVersion(clusterName, storeName, filter));
+
+    if (condition.equals("disabled")) {
+      assertTrue(failure instanceof StoreDisabledException);
+    }
+    assertTrue(failure.getMessage().contains("r2"));
+    verify(adminSpy, never()).sendAdminMessageAndWaitForConsumed(anyString(), anyString(), any());
+    verify(store, never()).updateVersionStatus(anyInt(), any());
+    verify(store, never()).setCurrentVersion(anyInt());
+    verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
   }
 
   @Test
