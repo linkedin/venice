@@ -300,8 +300,10 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.before((request, response) -> {
       LogContext.setLogContext(logContext);
-      AuditInfo audit = new AuditInfo(request);
-      LOGGER.info(audit.toString());
+      // Periodic health probes would emit two INFO audit logs each; keep metrics without the repetitive logs.
+      if (!isHealthProbe(request)) {
+        LOGGER.info(new AuditInfo(request).toString());
+      }
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       if (stats == null) {
         stats = nonclusterSpecificStats;
@@ -319,8 +321,7 @@ public class AdminSparkServer extends AbstractVeniceService {
        */
       if (enforceSSL && !sslEnabled) {
         if (!CLUSTER_DISCOVERY.pathEquals(request.uri()) && !LEADER_CONTROLLER.pathEquals(request.uri())
-            && !MASTER_CONTROLLER.pathEquals(request.uri())
-            && !("GET".equals(request.requestMethod()) && HEALTH.getPath().equals(request.uri()))) {
+            && !MASTER_CONTROLLER.pathEquals(request.uri()) && !isHealthProbe(request)) {
           httpService.halt(403, "Access denied, Venice Controller has enforced SSL.");
         }
       }
@@ -337,17 +338,21 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     httpService.after((request, response) -> {
-      AuditInfo audit = new AuditInfo(request);
+      AuditInfo audit = isHealthProbe(request) ? null : new AuditInfo(request);
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       if (stats == null) {
         stats = nonclusterSpecificStats;
       }
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
-        LOGGER.info(audit.successString(latency));
+        if (audit != null) {
+          LOGGER.info(audit.successString(latency));
+        }
         stats.recordSuccessfulRequest(request, response, latency);
       } else {
-        LOGGER.info(audit.failureString(response.status(), response.body(), latency));
+        if (audit != null) {
+          LOGGER.info(audit.failureString(response.status(), response.body(), latency));
+        }
         stats.recordFailedRequest(request, response, latency);
       }
       LogContext.clearLogContext();
@@ -812,6 +817,10 @@ public class AdminSparkServer extends AbstractVeniceService {
   @Override
   public void stopInner() {
     httpService.stop();
+  }
+
+  private static boolean isHealthProbe(Request request) {
+    return "GET".equals(request.requestMethod()) && HEALTH.getPath().equals(request.uri());
   }
 
   static Route healthRoute(BooleanSupplier apiReadiness) {
