@@ -125,7 +125,11 @@ public class AdminSparkServerTest {
           new HttpGet(controllerUrl + HEALTH.getPath()),
           HttpStatus.SC_SERVICE_UNAVAILABLE,
           "NOT_READY");
-      assertTrue(logAppender.getLogs().isEmpty(), "Health probes must not produce INFO audit logs");
+      assertEquals(logAppender.getLogs().size(), 4);
+      assertTrue(logAppender.getLogs().get(0).startsWith("[AUDIT] GET "));
+      assertTrue(logAppender.getLogs().get(1).startsWith("[AUDIT] SUCCESS "));
+      assertTrue(logAppender.getLogs().get(2).startsWith("[AUDIT] GET "));
+      assertTrue(logAppender.getLogs().get(3).contains("HttpStatus: 503"));
       String metricPrefix = "._controller_spark_server--";
       assertEquals(metricsRepository.getMetric(metricPrefix + "request.Count").value(), 2D);
       assertEquals(metricsRepository.getMetric(metricPrefix + "finished_request.Count").value(), 2D);
