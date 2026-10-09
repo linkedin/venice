@@ -520,6 +520,121 @@ public class TestGlobalRtDiv {
     }
   }
 
+  /**
+   * A leader's graceful-shutdown flush must persist its GlobalRtDivState, including the latest consumed RT position, in
+   * the leader's own storage engine, not only on followers. Otherwise, after a restart the replica's GlobalRtDivState
+   * would still be its last byte-threshold checkpoint, and a later F->L promotion would rewind RT consumption to it. The
+   * byte threshold is set very high so the shutdown flush is the only thing that can write the GlobalRtDivState.
+   */
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testLeaderGracefulShutdownPersistsGlobalRtDivOnLeader() throws Exception {
+    int PARTITION = 0;
+    int serverCount = 2;
+    int rtRecordCount = 20;
+    Properties extraProps = createExtraProperties();
+    extraProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "104857600");
+
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(serverCount)
+            .partitionSize(1000000)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .extraProperties(extraProps)
+            .build())) {
+      cluster.addVeniceRouter(new Properties());
+      Properties serverProps = new Properties();
+      serverProps.setProperty(KAFKA_OVER_SSL, "false");
+      for (int i = 0; i < serverCount; i++) {
+        cluster.addVeniceServer(serverProps, extraProps);
+      }
+
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      String storeName = Utils.getUniqueString("grtDivShutdownFlush");
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+      Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
+      PubSubBrokerWrapper brokerWrapper = cluster.getPubSubBrokerWrapper();
+      String globalRtDivKey =
+          LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(PARTITION, brokerWrapper.getAddress());
+      Properties writerProperties = new Properties();
+      writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerWrapper.getAddress());
+      writerProperties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(brokerWrapper)));
+      VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(
+          writerProperties,
+          brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory(),
+          brokerWrapper.getPubSubPositionTypeRegistry());
+
+      try (ControllerClient controllerClient = createStoreForJob(cluster.getClusterName(), recordSchema, vpjProperties);
+          AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        assertFalse(controllerClient.updateStore(storeName, createUpdateParams(false, PARTITION + 1)).isError());
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+        runVPJ(vpjProperties, 1, controllerClient);
+
+        GUID rtProducerGuid;
+        AvroSerializer<String> stringSerializer = new AvroSerializer<>(STRING_SCHEMA);
+        VeniceWriterOptions options = new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build();
+        try (VeniceWriter<byte[], byte[], byte[]> rtWriter = writerFactory.createVeniceWriter(options)) {
+          rtProducerGuid = rtWriter.getProducerGUID();
+          for (int i = 1; i <= rtRecordCount; i++) {
+            rtWriter.put(stringSerializer.serialize(String.valueOf(i)), stringSerializer.serialize(RT_BEFORE + i), 1);
+          }
+        }
+        verifyAllDataCanBeQueried(client, 1, rtRecordCount, RT_BEFORE);
+
+        HelixExternalViewRepository routingDataRepo = getRoutingDataRepository(cluster);
+        Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+        assertNotNull(leaderNode, "Leader should be assigned");
+        VeniceServerWrapper leaderServer = cluster.getVeniceServers()
+            .stream()
+            .filter(s -> s.getPort() == leaderNode.getPort())
+            .findFirst()
+            .orElseThrow(() -> new VeniceException("Leader server not found"));
+        assertEquals(
+            getGlobalRtDivState(leaderServer.getVeniceServer(), topicName, PARTITION, globalRtDivKey),
+            null,
+            "No byte-threshold sync should have persisted a GlobalRtDivState on the leader");
+
+        // Graceful stop runs the shutdown flush while the replica is still the leader.
+        LOGGER.info("Stopping leader server: {}", leaderNode.getNodeId());
+        cluster.stopVeniceServer(leaderNode.getPort());
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          Instance newLeader = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+          assertNotNull(newLeader, "New leader should be elected");
+          assertNotEquals(newLeader.getNodeId(), leaderNode.getNodeId());
+        });
+
+        LOGGER.info("Restarting old leader server: {}", leaderNode.getNodeId());
+        cluster.restartVeniceServer(leaderNode.getPort());
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          VeniceServerWrapper restartedServer = cluster.getVeniceServers()
+              .stream()
+              .filter(s -> s.getPort() == leaderNode.getPort())
+              .findFirst()
+              .orElse(null);
+          assertNotNull(restartedServer, "Old leader should be found");
+          assertTrue(restartedServer.isRunning(), "Old leader should be running");
+          GlobalRtDivState state =
+              getGlobalRtDivState(restartedServer.getVeniceServer(), topicName, PARTITION, globalRtDivKey);
+          assertNotNull(state, "The old leader should have persisted its own shutdown-flushed GlobalRtDivState");
+          validateGlobalDivState(state);
+          assertTrue(
+              state.getProducerStates()
+                  .keySet()
+                  .stream()
+                  .anyMatch(k -> k.toString().equals(GuidUtils.guidToUtf8(rtProducerGuid).toString())),
+              "GlobalRtDivState should contain the RT producer");
+          assertNotNull(state.getLatestPubSubPosition(), "GlobalRtDivState should carry the LCRP");
+          assertTrue(state.getLatestPubSubPosition().remaining() > 0, "GlobalRtDivState should carry the LCRP");
+        });
+      }
+    }
+  }
+
   private static Properties createExtraProperties() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");

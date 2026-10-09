@@ -2482,11 +2482,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // leader-generated chunks or TopicSwitch) or on the RT-source path (whose position is checkpointed as the
         // LCRP).
         // The domain is gated on the leader's upstream topic (leaderTopic), NOT the source consumer record's topic:
-        // the graceful-shutdown flush (sendGlobalRtDivMessage) synthesizes a local-VT source record while
-        // getConsumedPosition() carries the RT-domain LCRP, so gating on the source record would cross-write an RT
-        // position into the remote-VT LCVP field. leaderTopic is the same predicate updateOffsetsAsRemoteConsumeLeader
-        // uses to route getConsumedPosition() to the RT vs remote-VT domain, so it stays correct on the flush path
-        // (leaderTopic == RT there) and preserves the steady-state VT-source behavior (leaderTopic == VT).
+        // the graceful-shutdown flush (sendGlobalRtDivMessage) synthesizes its source record, which is only tagged with
+        // an RT topic-partition when the leader topic is RT, while getConsumedPosition() always carries the RT-domain
+        // LCRP; gating on the source record could cross-write an RT position into the remote-VT LCVP field. leaderTopic
+        // is the same predicate updateOffsetsAsRemoteConsumeLeader uses to route getConsumedPosition() to the RT vs
+        // remote-VT domain, so it stays correct on the flush path and preserves the steady-state VT-source behavior
+        // (leaderTopic == VT).
         // The sync runs only after persistedToDBFuture completes, so the persisted remote LCVP never leads the
         // persisted data; an F->L resume (PartitionConsumptionState#getCheckpointedVtLeaderPosition) then
         // re-subscribes the remote VT at a position that is durable by construction.
@@ -2541,6 +2542,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     List<CompletableFuture<Void>> futures = new ArrayList<>();
 
     if (pcs.getLeaderFollowerState().equals(LEADER)) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+      boolean isLeaderTopicRealTime = leaderTopic != null && leaderTopic.isRealTime();
+      PubSubTopicPartition leaderTopicPartition =
+          isLeaderTopicRealTime ? pcs.getSourceTopicPartition(leaderTopic) : localVtTopicPartition;
       Set<String> realTimeDataSourceKafkaURLs = getRealTimeDataSourceKafkaAddress(pcs);
       for (String brokerUrl: realTimeDataSourceKafkaURLs) {
         // Read the LCRP through the per-mode accessor (same one the steady-state RT consume path uses): A/A keys the
@@ -2556,6 +2561,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // Resolve the cluster id from the canonical url->id reverse map (it also carries alias / _sep-topic url
         // variants that the forward id->url map lacks), matching how the steady-state RT consume path resolves it.
         int kafkaClusterId = getServerConfig().getKafkaClusterUrlToIdMap().getOrDefault(brokerUrl, -1);
+        // Tag the synthetic source record with the RT topic-partition this broker is consumed from, exactly as the
+        // steady-state path does (the consumed RT record's topic-partition). The leader's drainer only persists records
+        // from the leader topic (see shouldPersistRecord), so a local-VT tag would make it drop the flushed
+        // GlobalRtDivState: the leader's own GLOBAL_RT_DIV_KEY would stay at the last byte-threshold checkpoint and the
+        // next F->L start (loadGlobalRtDiv) would rewind to it. It also routes the record and its VT DIV sync node to
+        // the same drainer queue as the leader's other RT-sourced records.
+        PubSubTopicPartition sourceTopicPartition = isLeaderTopicRealTime
+            ? Utils.createPubSubTopicPartitionFromLeaderTopicPartition(brokerUrl, leaderTopicPartition)
+            : localVtTopicPartition;
         try {
           // sendGlobalRtDivMessage's produce-completion callback enqueues the waitable VT DIV sync node (carrying the
           // produced LCVP) into the FIFO drainer. Await that node's future directly: it completes only after the RT DIV
@@ -2564,7 +2578,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           futures.add(
               sendGlobalRtDivMessage(
                   lcrp,
-                  localVtTopicPartition,
+                  sourceTopicPartition,
                   pcs,
                   partition,
                   brokerUrl,

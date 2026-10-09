@@ -771,8 +771,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
-    // The graceful-shutdown flush produces the GlobalRtDivState to the LOCAL VT, so the callback's synthetic source
-    // record sits on a non-RT (VT) topic-partition, while the leader's upstream (leaderTopic) is the RT topic whose
+    // The synthetic source record of a flush can sit on a non-RT (VT) topic-partition (flushGlobalRtDivCheckpoint uses
+    // the
+    // local VT when the leader topic is not RT), while the leader's upstream (leaderTopic) here is the RT topic whose
     // LCRP is carried as the consumed position. The remote-LCVP stamp in sendVtDivSnapshotOnCompletion keys off
     // leaderTopic (RT here) and must skip the stamp, since that RT-domain position is checkpointed separately as the
     // LCRP; keying off the source record's topic would cross-write the RT LCRP into the remote-VT LCVP field.
@@ -858,6 +859,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
     doReturn(partition).when(mockPartitionConsumptionState).getPartition();
     doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
 
     String brokerA = "brokerA:1234";
     String brokerB = "brokerB:1234";
@@ -890,10 +892,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     future.get(30, TimeUnit.SECONDS);
     assertTrue(future.isDone());
 
-    // One produce per broker, each carrying that broker's LCRP and the local VT topic-partition.
+    // One produce per broker, each carrying that broker's LCRP and tagged with the leader's RT topic-partition (not the
+    // local VT), so the leader's own drainer persists it.
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrpA),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(brokerA),
@@ -901,7 +904,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         eq(0));
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrpB),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(brokerB),
@@ -925,6 +928,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
     doReturn(partition).when(mockPartitionConsumptionState).getPartition();
     doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
 
     String earliestBroker = "earliest:1234";
     String progressedBroker = "progressed:1234";
@@ -958,7 +962,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), eq(earliestBroker), anyLong(), anyInt());
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrp),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(progressedBroker),
@@ -985,6 +989,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
     doReturn(partition).when(mockPartitionConsumptionState).getPartition();
     doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
 
     // Non-A/A has a single RT source. The LCRP is stored under the NON_AA key, not the broker URL. Let the real non-A/A
     // accessor (leaderFollowerStoreIngestionTask is a non-A/A spy) run so it reads the NON_AA-keyed value.
@@ -1011,7 +1016,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // it.
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrp),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(broker),
@@ -1046,6 +1051,166 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(leaderFollowerStoreIngestionTask, never())
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
     verify(mockStoreBufferService, times(1)).execSyncGlobalRtDivAsync(localVtTp, leaderFollowerStoreIngestionTask);
+  }
+
+  private static final PubSubTopicRepository FLUSH_TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopic RT_TOPIC_FOR_FLUSH =
+      FLUSH_TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic("flushStore"));
+
+  /**
+   * Stubs the PCS so the leader topic is {@code leaderTopic} and its source topic-partition is a real
+   * {@link PubSubTopicPartitionImpl}; returns that topic-partition.
+   */
+  private PubSubTopicPartition stubLeaderTopicForFlush(PubSubTopic leaderTopic, int partition) {
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(leaderTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    PubSubTopicPartition leaderTp = new PubSubTopicPartitionImpl(leaderTopic, partition);
+    doReturn(leaderTp).when(mockPartitionConsumptionState).getSourceTopicPartition(leaderTopic);
+    return leaderTp;
+  }
+
+  /**
+   * A separate-RT source broker (URL suffixed with {@code _sep}) is consumed from the {@code _sep} RT topic, so the
+   * flush record for that broker must be tagged with the {@code _sep} RT topic-partition, matching the steady-state
+   * GlobalRtDivState produced from a consumed {@code _sep} record.
+   */
+  @Test
+  public void testFlushGlobalRtDivCheckpointTagsSeparateRtBrokerWithSeparateRtTopic() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
+
+    String broker = "broker:1234";
+    String sepBroker = broker + Utils.SEPARATE_TOPIC_SUFFIX;
+    PubSubPosition lcrp = InMemoryPubSubPosition.of(4L);
+    PubSubPosition sepLcrp = InMemoryPubSubPosition.of(8L);
+    doReturn(lcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, broker);
+    doReturn(sepLcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, sepBroker);
+    doReturn(new LinkedHashSet<>(Arrays.asList(broker, sepBroker))).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(broker, 0);
+    urlToIdMap.put(sepBroker, 1);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState)
+        .get(30, TimeUnit.SECONDS);
+
+    PubSubTopicPartition sepRtTp = new PubSubTopicPartitionImpl(
+        FLUSH_TOPIC_REPOSITORY.getTopic(RT_TOPIC_FOR_FLUSH.getName() + Utils.SEPARATE_TOPIC_SUFFIX),
+        partition);
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrp),
+        eq(rtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(broker),
+        anyLong(),
+        eq(0));
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(sepLcrp),
+        eq(sepRtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(sepBroker),
+        anyLong(),
+        eq(1));
+  }
+
+  /**
+   * A leader whose leader topic is not RT (e.g. still consuming a remote VT) keeps tagging the flush record with the
+   * local VT topic-partition.
+   */
+  @Test
+  public void testFlushGlobalRtDivCheckpointNonRtLeaderTopicKeepsLocalVtTp() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    stubLeaderTopicForFlush(FLUSH_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic("flushStore", 1)), partition);
+
+    String broker = "broker:1234";
+    PubSubPosition lcrp = InMemoryPubSubPosition.of(6L);
+    doReturn(lcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, broker);
+    doReturn(Collections.singleton(broker)).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(broker, 0);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState)
+        .get(30, TimeUnit.SECONDS);
+
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrp),
+        eq(localVtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(broker),
+        anyLong(),
+        eq(0));
+    verify(mockPartitionConsumptionState, never()).getSourceTopicPartition(any());
+  }
+
+  /**
+   * The leader's drainer only persists records from its leader topic. A GlobalRtDivState record tagged with the RT
+   * topic-partition (or its {@code _sep} variant), as flushGlobalRtDivCheckpoint now does, is persisted; one tagged with
+   * the local VT topic-partition is dropped, which would leave the leader's GLOBAL_RT_DIV_KEY stale across a restart.
+   */
+  @Test
+  public void testLeaderShouldPersistGlobalRtDivRecordOnlyFromLeaderTopic() throws InterruptedException {
+    setUp();
+    int partition = 0;
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    String storeName = "persistStore";
+    PubSubTopic rtTopic = topicRepository.getTopic(Utils.composeRealTimeTopic(storeName));
+    PubSubTopic sepRtTopic = topicRepository.getTopic(rtTopic.getName() + Utils.SEPARATE_TOPIC_SUFFIX);
+    PubSubTopic vtTopic = topicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(true).when(mockPartitionConsumptionState).isSubscribed();
+    doReturn(false).when(mockPartitionConsumptionState).isErrorReported();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldPersistRecord(
+            globalRtDivRecord(new PubSubTopicPartitionImpl(rtTopic, partition)),
+            mockPartitionConsumptionState));
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldPersistRecord(
+            globalRtDivRecord(new PubSubTopicPartitionImpl(sepRtTopic, partition)),
+            mockPartitionConsumptionState));
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldPersistRecord(
+            globalRtDivRecord(new PubSubTopicPartitionImpl(vtTopic, partition)),
+            mockPartitionConsumptionState));
+  }
+
+  private static DefaultPubSubMessage globalRtDivRecord(PubSubTopicPartition topicPartition) {
+    KafkaKey key = new KafkaKey(
+        MessageType.GLOBAL_RT_DIV,
+        LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(topicPartition.getPartitionNumber(), "broker:1234")
+            .getBytes(StandardCharsets.UTF_8));
+    KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+    envelope.messageType = MessageType.PUT.getValue();
+    return new ImmutablePubSubMessage(key, envelope, topicPartition, InMemoryPubSubPosition.of(1L), 0, 0);
   }
 
   /**
