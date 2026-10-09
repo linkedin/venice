@@ -3436,9 +3436,10 @@ public class VeniceParentHelixAdmin implements Admin {
     Store parentStore = repository.getStore(storeName);
     Version version = parentStore.getVersion(versionNum);
     // The version can be null when it was deleted while a client is still polling job status for it (e.g. a system
-    // push that was killed and had its stranded version removed). Derive the status null-safely so downstream checks
-    // never dereference a null version and the controller returns a valid status instead of HTTP 500.
-    VersionStatus versionStatus = version == null ? VersionStatus.NOT_CREATED : version.getStatus();
+    // push that was killed and had its stranded version removed). Treat a deleted version as KILLED: it can never
+    // complete, so a non-terminal aggregate status is reported as ERROR below and pollers stop, instead of the
+    // controller dereferencing a null version and returning HTTP 500.
+    VersionStatus versionStatus = version == null ? KILLED : version.getStatus();
 
     // Check if push is in a terminal status in target regions for pushes using deferred swap and try
     // updating the parent status. Parent status should only be updated if it is currently in a STARTED state to avoid
@@ -3487,13 +3488,14 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       } else {
-        // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark
-        // the
-        // push job status as terminal (ERROR) as job was killed
+        // If the aggregate status is not terminal, but the parent version status is marked as KILLED (or the version
+        // was deleted), we should mark the push job status as terminal (ERROR) as job was killed
         if (versionStatus == KILLED) {
           LOGGER.info(
-              "Marking execution status as ERROR for store {} because parent version status is KILLED",
-              storeName);
+              "Marking execution status as ERROR for store {} because parent version {} is {}",
+              storeName,
+              versionNum,
+              version == null ? "deleted" : "KILLED");
           return new OfflinePushStatusInfo(
               ExecutionStatus.ERROR,
               null,

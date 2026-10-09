@@ -2718,7 +2718,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // A client can keep polling job status for a version after it was deleted (e.g. a killed system push whose
     // stranded version was removed). In that case Store#getVersion returns null and Store#getVersionStatus returns
     // NOT_CREATED. The job status path must not dereference the null version, otherwise the controller returns HTTP
-    // 500 for every poll instead of a valid execution status.
+    // 500 for every poll instead of a valid execution status. A deleted version is treated as KILLED, so a
+    // non-terminal aggregate status is reported as ERROR and the poller stops instead of waiting for its timeout.
     Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
 
     Map<String, ControllerClient> errorMap = new HashMap<>();
@@ -2741,8 +2742,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(repository).getStore(anyString());
 
     Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
-    // No NullPointerException; a valid aggregated child status is returned instead of an HTTP 500.
-    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+    // No NullPointerException; the children aggregate to NOT_CREATED (non-terminal), and the deleted version turns it
+    // into a terminal ERROR instead of an HTTP 500.
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // A terminal aggregate status is returned as is, and the terminal handling does not dereference the deleted
+    // version either.
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.ERROR));
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
   }
 
   @Test
