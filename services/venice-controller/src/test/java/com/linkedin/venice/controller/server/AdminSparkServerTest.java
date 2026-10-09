@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
@@ -71,8 +72,8 @@ public class AdminSparkServerTest {
     }
   }
 
-  @Test(timeOut = 30000)
-  public void testHealthHttpAuditMetricsAndDisabledRoutePolicy() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 30000)
+  public void testHealthHttpAuditMetricsAndDisabledRoutePolicy(boolean enforceSSL) throws Exception {
     Admin admin = mock(Admin.class);
     when(admin.getLogContext()).thenReturn(LogContext.EMPTY);
     VeniceControllerRequestHandler requestHandler = mock(VeniceControllerRequestHandler.class);
@@ -97,7 +98,7 @@ public class AdminSparkServerTest {
             admin,
             metricsRepository,
             Collections.emptySet(),
-            true,
+            enforceSSL,
             Optional.empty(),
             false,
             Optional.empty(),
@@ -133,17 +134,38 @@ public class AdminSparkServerTest {
       assertEquals(metricsRepository.getMetric(metricPrefix + "failed_request.Count").value(), 1D);
       assertTrue(metricsRepository.getMetric(metricPrefix + "successful_request_latency.50thPercentile").value() >= 0);
       assertTrue(metricsRepository.getMetric(metricPrefix + "failed_request_latency.50thPercentile").value() >= 0);
-      assertHttpResponse(
-          client,
-          new HttpGet(controllerUrl + STORE.getPath() + "?" + CLUSTER + "=test_cluster&" + STORE_NAME + "=test_store"),
-          HttpStatus.SC_FORBIDDEN,
-          "Access denied, Venice Controller has enforced SSL.");
-      assertHttpResponse(
-          client,
-          new HttpGet(controllerUrl + "/health/store"),
-          HttpStatus.SC_FORBIDDEN,
-          "Access denied, Venice Controller has enforced SSL.");
-      assertHttpResponse(client, new HttpPost(controllerUrl + HEALTH.getPath()), HttpStatus.SC_NOT_FOUND, null);
+      if (enforceSSL) {
+        assertHttpResponse(
+            client,
+            new HttpGet(
+                controllerUrl + STORE.getPath() + "?" + CLUSTER + "=test_cluster&" + STORE_NAME + "=test_store"),
+            HttpStatus.SC_FORBIDDEN,
+            "Access denied, Venice Controller has enforced SSL.");
+        assertHttpResponse(
+            client,
+            new HttpGet(controllerUrl + "/health/store"),
+            HttpStatus.SC_FORBIDDEN,
+            "Access denied, Venice Controller has enforced SSL.");
+        assertHttpResponse(
+            client,
+            new HttpGet(controllerUrl + "/health/"),
+            HttpStatus.SC_FORBIDDEN,
+            "Access denied, Venice Controller has enforced SSL.");
+      }
+      HttpUriRequest[] nonProbes =
+          { new HttpPost(controllerUrl + HEALTH.getPath()), new HttpGet(controllerUrl + "/he/alth") };
+      for (HttpUriRequest request: nonProbes) {
+        logAppender.getLogs().clear();
+        assertHttpResponse(
+            client,
+            request,
+            enforceSSL ? HttpStatus.SC_FORBIDDEN : HttpStatus.SC_NOT_FOUND,
+            enforceSSL ? "Access denied, Venice Controller has enforced SSL." : null);
+        assertTrue(logAppender.getLogs().get(0).startsWith("[AUDIT] " + request.getMethod() + " "));
+        if (!enforceSSL) {
+          assertEquals(logAppender.getLogs().size(), 2, "Non-probe requests retain both audit records");
+        }
+      }
 
       disabledRoutes.add(HEALTH);
       assertHttpResponse(
