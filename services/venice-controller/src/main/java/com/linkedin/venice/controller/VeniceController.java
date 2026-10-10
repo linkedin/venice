@@ -75,7 +75,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -120,22 +119,22 @@ public class VeniceController {
 
   static final class ApiReadiness {
     private enum Phase {
-      NOT_READY, READY, DRAINING
+      NOT_READY, READY, STOPPING
     }
 
     private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.NOT_READY);
 
     void markReady() {
-      // Restart creates a new owner; draining must defeat any late startup completion.
+      // Restart creates a new owner; stopping must defeat any late startup completion.
       phase.compareAndSet(Phase.NOT_READY, Phase.READY);
     }
 
-    void drain() {
-      phase.set(Phase.DRAINING);
+    void markStopping() {
+      phase.set(Phase.STOPPING);
     }
 
-    boolean isReady(BooleanSupplier servicesReady) {
-      return phase.get() == Phase.READY && servicesReady.getAsBoolean() && phase.get() == Phase.READY;
+    boolean isReady() {
+      return phase.get() == Phase.READY;
     }
   }
 
@@ -331,9 +330,9 @@ public class VeniceController {
    * HTTPS is required only when configured; eligible standbys do not need cluster leadership.
    */
   private boolean isApiReady() {
-    return apiReadiness.isReady(
-        () -> apiRegionEligible && controllerService.isRunning() && adminServer.isRunning()
-            && (!sslEnabled || secureAdminServer.isRunning()));
+    // Check lifecycle state last so shutdown during service checks makes this probe unready.
+    return apiRegionEligible && controllerService.isRunning() && adminServer.isRunning()
+        && (!sslEnabled || secureAdminServer.isRunning()) && apiReadiness.isReady();
   }
 
   private TopicCleanupService createTopicCleanupService() {
@@ -616,7 +615,7 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
-    apiReadiness.drain();
+    apiReadiness.markStopping();
     // unregister from service discovery first
     asyncRetryingServiceDiscoveryAnnouncer.unregister();
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.

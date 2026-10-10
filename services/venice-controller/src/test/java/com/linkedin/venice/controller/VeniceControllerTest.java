@@ -12,6 +12,7 @@ import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 import static com.linkedin.venice.controller.ParentControllerRegionState.PASSIVE;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
@@ -130,6 +131,13 @@ public class VeniceControllerTest {
           readinessSignals.forEach(signal -> assertEquals(signal.getAsBoolean(), expectedReady));
         }
         verifyNoInteractions(admin);
+        VeniceControllerService coreService = coreServices.constructed().get(0);
+        doAnswer(invocation -> {
+          doReturn(true).when(coreService).isRunning();
+          controller.stop();
+          return true;
+        }).when(coreService).isRunning();
+        readinessSignals.forEach(signal -> assertFalse(signal.getAsBoolean()));
       } finally {
         controller.stop();
       }
@@ -140,34 +148,27 @@ public class VeniceControllerTest {
   }
 
   @Test
-  public void testReadinessRequiresCompletedStartupAndRunningServices() {
+  public void testReadinessRequiresCompletedStartup() {
     VeniceController.ApiReadiness readiness = new VeniceController.ApiReadiness();
-    BooleanSupplier servicesReady = mock(BooleanSupplier.class);
-    when(servicesReady.getAsBoolean()).thenReturn(true);
 
-    assertFalse(readiness.isReady(servicesReady));
-    verifyNoInteractions(servicesReady);
+    assertFalse(readiness.isReady());
     readiness.markReady();
-    assertTrue(readiness.isReady(servicesReady));
-    when(servicesReady.getAsBoolean()).thenReturn(false);
-    assertFalse(readiness.isReady(servicesReady));
+    assertTrue(readiness.isReady());
   }
 
   @Test
-  public void testDrainingCannotBeUndoneByLateStartup() {
+  public void testStoppingCannotBeUndoneByLateStartup() {
     VeniceController.ApiReadiness readiness = new VeniceController.ApiReadiness();
-    readiness.drain();
+    readiness.markStopping();
     readiness.markReady();
-    assertFalse(readiness.isReady(() -> true));
+    assertFalse(readiness.isReady());
 
     VeniceController.ApiReadiness started = new VeniceController.ApiReadiness();
     started.markReady();
-    assertTrue(started.isReady(() -> true));
-    assertFalse(started.isReady(() -> {
-      started.drain();
-      return true;
-    }));
+    assertTrue(started.isReady());
+    started.markStopping();
+    assertFalse(started.isReady());
     started.markReady();
-    assertFalse(started.isReady(() -> true));
+    assertFalse(started.isReady());
   }
 }
