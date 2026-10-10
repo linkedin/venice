@@ -2730,9 +2730,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = mock(Store.class);
     doReturn(false).when(store).isIncrementalPushEnabled();
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
-    // Deleted version: getVersion is null and getVersionStatus falls back to NOT_CREATED (see AbstractStore).
+    // Deleted version: getVersion is null and getVersionStatus falls back to NOT_CREATED (see AbstractStore), while the
+    // largest used version number shows that v1 was created before.
     doReturn(null).when(store).getVersion(anyInt());
     doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+    doReturn(1).when(store).getLargestUsedVersionNumber();
 
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
@@ -2757,6 +2759,44 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     offlineJobStatus =
         parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v1", Optional.empty(), null, "cluster", true);
     assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testNotYetCreatedVersionExecutionStatus() {
+    // A client can also poll job status before the push has created the version in the parent, e.g. right after it
+    // started the push job. Store#getVersion returns null for it as well, but its number is larger than the largest
+    // used version number, so it is not a deleted version: the job status has to stay non-terminal so the client keeps
+    // polling, instead of failing the push with ERROR.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+
+    Map<String, ControllerClient> notCreatedMap = new HashMap<>();
+    notCreatedMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
+    notCreatedMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    // v1 is the largest used version number, and v2 has not been created yet.
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+    doReturn(1).when(store).getLargestUsedVersionNumber();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus =
+        parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v2", notCreatedMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+
+    // Same for a target region push with deferred swap.
+    doReturn(notCreatedMap).when(internalAdmin).getControllerClientMap(anyString());
+    offlineJobStatus =
+        parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v2", Optional.empty(), null, "cluster", true);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
   }
 
   @Test
