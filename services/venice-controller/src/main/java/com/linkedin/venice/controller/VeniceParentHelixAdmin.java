@@ -595,7 +595,8 @@ public class VeniceParentHelixAdmin implements Admin {
       return getVeniceWriterFactory().createVeniceWriter(
           new VeniceWriterOptions.Builder(topicName.getName()).setTime(getTimer())
               .setPartitionCount(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC)
-              .build());
+              .build(),
+          getMultiClusterConfigs().getControllerConfig(clusterName).getProps());
     });
 
     getVeniceHelixAdmin().initStorageCluster(clusterName);
