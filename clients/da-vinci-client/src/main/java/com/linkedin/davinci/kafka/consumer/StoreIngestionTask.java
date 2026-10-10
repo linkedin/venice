@@ -4452,7 +4452,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
-        validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, offset);
+        validateEndOfPushReceivedBeforeTopicSwitch(
+            partitionConsumptionState,
+            offset,
+            daVinciClientCustomLifecycleEnabled);
 
         LOGGER.info(
             "Received {} control message. Replica: {}, Offset: {} SourceTopic: {} SourceKafkaServers: {}",
@@ -6653,12 +6656,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *
    * @param partitionConsumptionState The partition consumption state to validate
    * @param position The position/offset for error reporting
+   * @param daVinciClientCustomLifecycleEnabled When true, skip the check (seek-resumed consumers may subscribe past
+   *          END_OF_PUSH and never consume the EOP control message)
    * @throws VeniceException if END_OF_PUSH has not been received
    */
   protected static void validateEndOfPushReceivedBeforeTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubPosition position) {
+      PubSubPosition position,
+      boolean daVinciClientCustomLifecycleEnabled) {
     Objects.requireNonNull(partitionConsumptionState, "PCS cannot be null");
+    // A seek-resumed custom-lifecycle consumer (e.g. a CDC client) can subscribe past END_OF_PUSH, so it never
+    // consumes the EOP control message. A later TOPIC_SWITCH (e.g. written by store migration) must not fail it,
+    // so skip this ordering check for that lifecycle, mirroring the other relaxed custom-lifecycle checks.
+    if (daVinciClientCustomLifecycleEnabled) {
+      return;
+    }
     if (!partitionConsumptionState.isEndOfPushReceived()) {
       String errorMessage = String.format(
           "%s received TOPIC_SWITCH control message before receiving END_OF_PUSH. Position: %s",
