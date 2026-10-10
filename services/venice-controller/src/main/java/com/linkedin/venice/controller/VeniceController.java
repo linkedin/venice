@@ -233,6 +233,7 @@ public class VeniceController {
   public VeniceController(VeniceControllerContext ctx) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(ctx.getPropertiesList());
     VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
+    // ACTIVE/PASSIVE is a parent-region failover role, not this host's cluster leadership.
     this.apiRegionEligible = !commonConfig.isParent() || commonConfig.getParentControllerRegionState() == ACTIVE;
     this.logContext = multiClusterConfigs.getLogContext();
     this.metricsRepository = ctx.getMetricsRepository();
