@@ -135,7 +135,6 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -198,41 +197,6 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
   private final LogContext logContext;
   private final BooleanSupplier apiReadiness;
-
-  /**
-   * Without an owner-provided readiness signal, {@code /health} remains unavailable.
-   */
-  public AdminSparkServer(
-      int port,
-      Admin admin,
-      MetricsRepository metricsRepository,
-      Set<String> clusters,
-      boolean enforceSSL,
-      Optional<SSLConfig> sslConfig,
-      boolean checkReadMethodForKafka,
-      Optional<DynamicAccessController> accessController,
-      List<ControllerRoute> disabledRoutes,
-      VeniceProperties jettyConfigOverrides,
-      boolean disableParentRequestTopicForStreamPushes,
-      PubSubTopicRepository pubSubTopicRepository,
-      VeniceControllerRequestHandler requestHandler) {
-    this(
-        port,
-        admin,
-        metricsRepository,
-        clusters,
-        enforceSSL,
-        sslConfig,
-        checkReadMethodForKafka,
-        accessController,
-        disabledRoutes,
-        jettyConfigOverrides,
-        disableParentRequestTopicForStreamPushes,
-        pubSubTopicRepository,
-        requestHandler,
-        AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer(),
-        () -> false);
-  }
 
   public AdminSparkServer(
       int port,
