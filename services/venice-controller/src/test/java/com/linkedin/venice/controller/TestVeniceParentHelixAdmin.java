@@ -2714,6 +2714,93 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testDeletedVersionExecutionStatus() {
+    // A client can keep polling job status for a version after it was deleted (e.g. a killed system push whose
+    // stranded version was removed). In that case Store#getVersion returns null and Store#getVersionStatus returns
+    // NOT_CREATED. The job status path must not dereference the null version, otherwise the controller returns HTTP
+    // 500 for every poll instead of a valid execution status. A deleted version is treated as KILLED, so a
+    // non-terminal aggregate status is reported as ERROR and the poller stops instead of waiting for its timeout.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+
+    Map<String, ControllerClient> errorMap = new HashMap<>();
+    errorMap.put("cluster", clientMap.get(ExecutionStatus.ERROR));
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+    errorMap.put("cluster3", clientMap.get(ExecutionStatus.ERROR));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    // Deleted version: getVersion is null and getVersionStatus falls back to NOT_CREATED (see AbstractStore).
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    // No NullPointerException; the children aggregate to NOT_CREATED (non-terminal), and the deleted version turns it
+    // into a terminal ERROR instead of an HTTP 500.
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // A terminal aggregate status is returned as is, and the terminal handling does not dereference the deleted
+    // version either.
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.ERROR));
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // Same for a target region push with deferred swap, which checks the parent version status separately.
+    doReturn(errorMap).when(internalAdmin).getControllerClientMap(anyString());
+    offlineJobStatus =
+        parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v1", Optional.empty(), null, "cluster", true);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testTargetRegionDeferredSwapFailureHandledInSamePoll() {
+    // In a target region push with deferred swap, the poll that sees the target region fail also moves the parent
+    // version from STARTED to ERROR. The terminal handling in that same poll has to see ERROR, so the version status
+    // must be read after that update, not before it.
+    String storeName = Utils.getUniqueString("testTargetRegionDeferredSwapFailure");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    Version version = new VersionImpl(storeName, 1, "test_push_job_id");
+    version.setStatus(STARTED);
+    version.setVersionSwapDeferred(true);
+    version.setTargetSwapRegion("cluster-err");
+    version.setPushType(Version.PushType.STREAM_REPROCESSING);
+    store.addVersion(version);
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    controllerClients.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
+    controllerClients.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
+    doReturn(controllerClients).when(internalAdmin).getControllerClientMap(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLinePushStatus(
+        clusterName,
+        Version.composeKafkaTopic(storeName, 1),
+        Optional.empty(),
+        null,
+        "cluster-err",
+        true);
+
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    assertEquals(store.getVersionStatus(1), VersionStatus.ERROR);
+    verify(internalAdmin).truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, 1));
+  }
+
+  @Test
   public void testUpdateStore() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
