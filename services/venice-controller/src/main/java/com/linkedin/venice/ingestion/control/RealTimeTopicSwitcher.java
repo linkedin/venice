@@ -179,6 +179,14 @@ public class RealTimeTopicSwitcher {
       Version version,
       Optional<HybridStoreConfig> hybridStoreConfig,
       long versionCreationTimeInMs) {
+    // Check for absolute epoch override first — no relative calculation needed.
+    // An absolute epoch is already deterministic and consistent across all colos,
+    // so it takes precedence over both the A/A server-side calculation and the
+    // relative time calculation.
+    if (hybridStoreConfig.isPresent() && hybridStoreConfig.get().getRewindEpochTimeInSecondsOverride() >= 0) {
+      return hybridStoreConfig.get().getRewindEpochTimeInSecondsOverride() * Time.MS_PER_SECOND;
+    }
+
     /**
      * For A/A mode rewindStartTime should be consistent across each colo. Setting a sentinel value here will let the Leader
      * calculate a deterministic and consistent rewindStartTimestamp in all colos.
