@@ -8561,4 +8561,26 @@ public abstract class StoreIngestionTaskTest {
     assertFalse(pcs.isFutureSlotPaused(), "processStartOfPush must NOT pause the partition — the reconciler does");
     verify(aggConsumerService, never()).pauseConsumerFor(any(), any());
   }
+
+  @Test
+  public void testValidateEndOfPushReceivedBeforeTopicSwitch() {
+    PubSubPosition position = PubSubSymbolicPosition.EARLIEST;
+
+    // EOP already received: never throws, regardless of lifecycle.
+    PartitionConsumptionState eopReceived = mock(PartitionConsumptionState.class);
+    doReturn(true).when(eopReceived).isEndOfPushReceived();
+    StoreIngestionTask.validateEndOfPushReceivedBeforeTopicSwitch(eopReceived, position, false);
+    StoreIngestionTask.validateEndOfPushReceivedBeforeTopicSwitch(eopReceived, position, true);
+
+    // EOP not received on the default lifecycle still throws (preserves existing guard).
+    PartitionConsumptionState eopNotReceived = mock(PartitionConsumptionState.class);
+    doReturn(false).when(eopNotReceived).isEndOfPushReceived();
+    doReturn("replica-0").when(eopNotReceived).getReplicaId();
+    assertThrows(
+        VeniceMessageException.class,
+        () -> StoreIngestionTask.validateEndOfPushReceivedBeforeTopicSwitch(eopNotReceived, position, false));
+
+    // A seek-resumed custom-lifecycle consumer subscribed past EOP must NOT fail on a later TOPIC_SWITCH.
+    StoreIngestionTask.validateEndOfPushReceivedBeforeTopicSwitch(eopNotReceived, position, true);
+  }
 }
