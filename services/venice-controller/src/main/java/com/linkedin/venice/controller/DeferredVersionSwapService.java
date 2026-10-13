@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
@@ -15,7 +16,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
-import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -615,7 +615,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Version version =
         getVersionFromStoreInRegion(nextEligibleRegion, parentStore.getName(), targetVersionNum, storeResponse);
     if (version == null) {
-      if (isDegradedRegion(clusterName, nextEligibleRegion)) {
+      if (isRegionExcludedFromPush(parentStore.getVersion(targetVersionNum), nextEligibleRegion)) {
         // A degraded region is excluded from the push, so its version will never arrive.
         VersionStatus finalVersionStatus = rolloutOrder.indexOf(nextEligibleRegion) == 0 ? ERROR : PARTIALLY_ONLINE;
         logMessageIfNotRedundant(
@@ -699,9 +699,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return true;
   }
 
-  private boolean isDegradedRegion(String clusterName, String region) {
-    Map<String, DegradedDcInfo> degradedRegions = veniceParentHelixAdmin.getDegradedDatacenters(clusterName);
-    return degradedRegions != null && degradedRegions.containsKey(region);
+  /**
+   * A region is excluded only if this version was created as a degraded push without it; a region that became degraded
+   * after version creation can still receive the version, so its absence stays transient.
+   */
+  private boolean isRegionExcludedFromPush(Version version, String region) {
+    return version.isDegradedPush()
+        && !RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion()).contains(region);
   }
 
   /**
@@ -735,7 +739,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Version version =
           getVersionFromStoreInRegion(nonTargetRegion, parentStore.getName(), targetVersionNum, storeResponse);
       if (version == null) {
-        if (isDegradedRegion(clusterName, nonTargetRegion)) {
+        if (isRegionExcludedFromPush(parentStore.getVersion(targetVersionNum), nonTargetRegion)) {
           failedNonTargetRegions.add(nonTargetRegion);
         }
         continue;
@@ -1093,7 +1097,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Set<String> regions = veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(cluster).keySet();
     boolean allRegionsServing = !regions.isEmpty()
         && regions.stream().allMatch(region -> Objects.equals(currentVersions.get(region), version.getNumber()));
-    boolean anyRegionServing = currentVersions.containsValue(version.getNumber()) || version.isTargetRegionPromoted();
+    // targetRegionPromoted is sticky across rollbacks, so it only stands in for target regions whose current version
+    // could not be read.
+    boolean anyRegionServing = currentVersions.containsValue(version.getNumber()) || (version.isTargetRegionPromoted()
+        && RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion()).stream().anyMatch(region -> {
+          Integer reported = currentVersions.get(region);
+          return reported == null || reported == IGNORED_CURRENT_VERSION;
+        }));
     VersionStatus status = allRegionsServing ? ONLINE : anyRegionServing ? PARTIALLY_ONLINE : ERROR;
     LOGGER.info(
         "Deferred swap bootstrap deadline exceeded for store {} version {}; finishing with status {}",

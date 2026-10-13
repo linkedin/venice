@@ -1410,13 +1410,49 @@ public class TestDeferredVersionSwapService {
   }
 
   @Test(dataProvider = "rolloutModes")
-  public void testMissingVersionInDegradedRegionIsTerminal(boolean sequential) throws Exception {
-    try (RetryTestContext context = new RetryTestContext(sequential)) {
-      doReturn(Collections.singletonMap(region2, mock(DegradedDcInfo.class))).when(admin)
-          .getDegradedDatacenters(clusterName);
+  public void testMissingVersionExcludedByDegradedPushIsTerminal(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential, true)) {
       context.runPass();
       Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PARTIALLY_ONLINE);
       verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testMissingVersionInRegionDegradedAfterVersionCreationStaysPending(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      doReturn(Collections.singletonMap(region2, mock(DegradedDcInfo.class))).when(admin)
+          .getDegradedDatacenters(clusterName);
+      for (int i = 0; i < 6; i++) {
+        context.runPass();
+      }
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PUSHED);
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      context.runPass();
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+      verify(admin).rollForwardToFutureVersion(clusterName, context.storeName, region2);
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testDeadlineAfterTargetRollbackIsErrorDespitePromotedMarker(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.currentVersions.put(region1, versionOne);
+      context.time.setTime(context.deadline + 1);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ERROR);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionOne);
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testDeadlineWithUnreadableTargetRegionUsesPromotedMarker(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.currentVersions.clear();
+      context.time.setTime(context.deadline + 1);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PARTIALLY_ONLINE);
     }
   }
 
@@ -1524,6 +1560,10 @@ public class TestDeferredVersionSwapService {
     private DeferredVersionSwapService service;
 
     private RetryTestContext(boolean sequential) {
+      this(sequential, false);
+    }
+
+    private RetryTestContext(boolean sequential, boolean degradedPush) {
       clearInvocations(admin);
       parent.setTargetSwapRegion(region1);
       parent.setTargetSwapRegionWaitTime(0);
@@ -1535,6 +1575,7 @@ public class TestDeferredVersionSwapService {
       version.setVersionSwapDeferred(true);
       version.setTargetSwapRegion(region1);
       version.setTargetRegionPromoted(true);
+      version.setDegradedPush(degradedPush);
       parent.addVersion(version);
       parent.updateVersionStatus(versionTwo, VersionStatus.PUSHED);
       scheduledStore = parent.cloneStore();
