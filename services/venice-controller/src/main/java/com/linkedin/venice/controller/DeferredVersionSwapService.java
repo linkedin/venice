@@ -15,6 +15,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -614,6 +615,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Version version =
         getVersionFromStoreInRegion(nextEligibleRegion, parentStore.getName(), targetVersionNum, storeResponse);
     if (version == null) {
+      if (isDegradedRegion(clusterName, nextEligibleRegion)) {
+        // A degraded region is excluded from the push, so its version will never arrive.
+        VersionStatus finalVersionStatus = rolloutOrder.indexOf(nextEligibleRegion) == 0 ? ERROR : PARTIALLY_ONLINE;
+        logMessageIfNotRedundant(
+            "Skipping version swap for store: " + parentStore.getName() + " on version: " + targetVersionNum
+                + " as region " + nextEligibleRegion
+                + " is degraded and does not have the version. Marking parent version as " + finalVersionStatus);
+        updateStore(clusterName, parentStore.getName(), finalVersionStatus, parentStore.getVersion(targetVersionNum));
+        return null;
+      }
       LOGGER.warn(
           "Unable to fetch version {} for store {} in region {}",
           targetVersionNum,
@@ -688,10 +699,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return true;
   }
 
+  private boolean isDegradedRegion(String clusterName, String region) {
+    Map<String, DegradedDcInfo> degradedRegions = veniceParentHelixAdmin.getDegradedDatacenters(clusterName);
+    return degradedRegions != null && degradedRegions.containsKey(region);
+  }
+
   /**
    * Gets a list of eligible regions to roll forward in. A region is eligible to be rolled forward if it's push status is
-   * COMPLETED. Missing versions remain pending until a later pass or the bootstrap deadline. Explicit failures retain
-   * the existing partial-rollout behavior.
+   * COMPLETED. Missing versions remain pending until a later pass or the bootstrap deadline, except in degraded regions,
+   * which never receive the version and are treated as failed. Explicit failures retain the existing partial-rollout
+   * behavior.
    * @param nonTargetRegions list of regions to check eligibility for
    * @param parentStore store to update
    * @param targetVersionNum target version to roll forward in
@@ -718,6 +735,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Version version =
           getVersionFromStoreInRegion(nonTargetRegion, parentStore.getName(), targetVersionNum, storeResponse);
       if (version == null) {
+        if (isDegradedRegion(clusterName, nonTargetRegion)) {
+          failedNonTargetRegions.add(nonTargetRegion);
+        }
         continue;
       }
 
@@ -1080,7 +1100,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         store.getName(),
         version.getNumber(),
         status);
-    updateStore(cluster, store.getName(), status, version, true);
+    updateStore(cluster, store.getName(), status, version);
     return true;
   }
 
@@ -1357,15 +1377,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   void updateStore(String clusterName, String storeName, VersionStatus status, Version expectedVersion) {
-    updateStore(clusterName, storeName, status, expectedVersion, false);
-  }
-
-  private void updateStore(
-      String clusterName,
-      String storeName,
-      VersionStatus status,
-      Version expectedVersion,
-      boolean isDeadlineExpiration) {
     int targetVersionNum = expectedVersion.getNumber();
     HelixVeniceClusterResources resources =
         veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
@@ -1378,8 +1389,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             "Not updating ineligible deferred swap for " + storeName + " version " + targetVersionNum);
         return;
       }
-      // Completion can race with the child-status lookups used to determine the expiry status.
-      if (isDeadlineExpiration && store.getVersionStatus(targetVersionNum) == ONLINE) {
+      // A pass working from a stale PUSHED snapshot can race with completion; never downgrade a live ONLINE version.
+      if (status != ONLINE && store.getVersionStatus(targetVersionNum) == ONLINE) {
         return;
       }
       LOGGER.info(

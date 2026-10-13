@@ -23,6 +23,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -1391,6 +1392,35 @@ public class TestDeferredVersionSwapService {
   }
 
   @Test(dataProvider = "rolloutModes")
+  public void testConcurrentCompletionIsNotDowngradedByStaleFailure(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      context.makeMissingVersionAvailable(VersionStatus.PUSHED);
+      doAnswer(invocation -> {
+        context.targetResponse.getStore().getVersion(versionTwo).get().setStatus(VersionStatus.ROLLED_BACK);
+        context.parent.updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+        context.parent.setCurrentVersion(versionTwo);
+        return context.childResponse;
+      }).when(context.clients.get(region2)).getStore(anyString(), anyInt());
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.ONLINE);
+      Assert.assertEquals(context.parent.getCurrentVersion(), versionTwo);
+      verify(repository, never()).updateStore(any());
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
+  public void testMissingVersionInDegradedRegionIsTerminal(boolean sequential) throws Exception {
+    try (RetryTestContext context = new RetryTestContext(sequential)) {
+      doReturn(Collections.singletonMap(region2, mock(DegradedDcInfo.class))).when(admin)
+          .getDegradedDatacenters(clusterName);
+      context.runPass();
+      Assert.assertEquals(context.parent.getVersionStatus(versionTwo), VersionStatus.PARTIALLY_ONLINE);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    }
+  }
+
+  @Test(dataProvider = "rolloutModes")
   public void testSupersededTargetRegionStopsRetry(boolean sequential) throws Exception {
     try (RetryTestContext context = new RetryTestContext(sequential)) {
       context.runPass();
@@ -1480,7 +1510,7 @@ public class TestDeferredVersionSwapService {
   }
 
   private class RetryTestContext implements AutoCloseable {
-    private final String storeName = "retryStore";
+    private static final String storeName = "retryStore";
     private final TestMockTime time = new TestMockTime();
     private final Store parent = TestUtils.createTestStore(storeName, "owner", time.getMilliseconds());
     private final Store scheduledStore;
