@@ -6658,7 +6658,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param position The position/offset for error reporting
    * @param daVinciClientCustomLifecycleEnabled When true, skip the check (seek-resumed consumers may subscribe past
    *          END_OF_PUSH and never consume the EOP control message)
-   * @throws VeniceException if END_OF_PUSH has not been received
+   * @throws VeniceMessageException if END_OF_PUSH has not been received and daVinciClientCustomLifecycleEnabled is false
    */
   protected static void validateEndOfPushReceivedBeforeTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
