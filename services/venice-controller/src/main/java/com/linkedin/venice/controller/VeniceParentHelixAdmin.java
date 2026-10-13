@@ -1152,6 +1152,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int ignoredRmdVersionID,
       boolean versionSwapDeferred,
       int repushSourceVersion,
@@ -1173,6 +1174,7 @@ public class VeniceParentHelixAdmin implements Admin {
         pushType,
         remoteKafkaBootstrapServers,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         largestUsedRTVersionNumber);
     if (version.isActiveActiveReplicationEnabled()) {
@@ -1593,6 +1595,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> sourceGridFabric,
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -1816,6 +1819,7 @@ public class VeniceParentHelixAdmin implements Admin {
           compressionDictionary,
           sourceGridFabric,
           rewindTimeInSecondsOverride,
+          rewindEpochTimeInSecondsOverride,
           emergencySourceRegion,
           effectiveVersionSwapDeferred,
           effectiveTargetedRegions,
@@ -1955,6 +1959,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String compressionDictionary,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -1982,6 +1987,7 @@ public class VeniceParentHelixAdmin implements Admin {
         null,
         sourceGridFabric,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
@@ -2066,9 +2072,12 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     if (version.getHybridStoreConfig() != null) {
       addVersion.rewindTimeInSecondsOverride = version.getHybridStoreConfig().getRewindTimeInSeconds();
+      addVersion.rewindEpochTimeInSecondsOverride =
+          version.getHybridStoreConfig().getRewindEpochTimeInSecondsOverride();
     } else {
       // Default value, unused for non hybrid store
       addVersion.rewindTimeInSecondsOverride = -1;
+      addVersion.rewindEpochTimeInSecondsOverride = -1;
     }
     if (StringUtils.isNotEmpty(targetedRegions)) {
       addVersion.targetedRegions = new ArrayList<>(parseRegionsFilterList(targetedRegions));

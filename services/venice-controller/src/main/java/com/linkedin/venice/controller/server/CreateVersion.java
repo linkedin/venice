@@ -16,6 +16,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
@@ -107,6 +108,13 @@ public class CreateVersion extends AbstractRoute {
      */
     request.setRewindTimeInSecondsOverride(
         Long.parseLong(httpRequest.queryParamOrDefault(REWIND_TIME_IN_SECONDS_OVERRIDE, "-1")));
+
+    /*
+     * Version-level absolute epoch rewind time override. When set (>=0), this takes precedence
+     * over the relative rewindTimeInSecondsOverride.
+     */
+    request.setRewindEpochTimeInSecondsOverride(
+        Long.parseLong(httpRequest.queryParamOrDefault(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, "-1")));
 
     /*
      * Version level override to defer marking this new version to the serving version post push completion.
@@ -302,6 +310,7 @@ public class CreateVersion extends AbstractRoute {
         Optional.ofNullable(request.getSourceGridFabric()),
         Optional.ofNullable(request.getCertificateInRequest()),
         request.getRewindTimeInSecondsOverride(),
+        request.getRewindEpochTimeInSecondsOverride(),
         Optional.ofNullable(request.getEmergencySourceRegion()),
         request.isDeferVersionSwap(),
         request.getTargetedRegions(),
@@ -685,6 +694,7 @@ public class CreateVersion extends AbstractRoute {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            -1,
             replicationMetadataVersionId,
             false,
             -1,
@@ -838,6 +848,7 @@ public class CreateVersion extends AbstractRoute {
               null,
               Optional.empty(),
               Optional.empty(),
+              -1,
               -1,
               Optional.empty(),
               true,
