@@ -385,8 +385,8 @@ public abstract class AbstractStore implements Store {
         } else {
           versionsToDelete.add(version);
         }
-      } else if ((VersionStatus.STARTED.equals(version.getStatus()) || VersionStatus.PUSHED.equals(version.getStatus()))
-          && (i != lastElementIndex) && !isMigrating) {
+      } else if (VersionStatus.canDeleteWhenSuperseded(version.getStatus()) && (i != lastElementIndex)
+          && !isMigrating) {
         // A newer version supersedes a non-current, unswapped push. Migration can have concurrent
         // pushes, so retain these versions until migration is complete.
         versionsToDelete.add(version);
