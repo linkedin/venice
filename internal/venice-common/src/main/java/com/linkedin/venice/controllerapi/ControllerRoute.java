@@ -113,6 +113,7 @@ import java.util.List;
 public enum ControllerRoute implements VeniceDimensionInterface {
   // Fallback route
   UNKNOWN_ROUTE("", HttpMethod.GET, Collections.emptyList()),
+  HEALTH("/health", HttpMethod.GET, Collections.emptyList()),
   // Request a topic that writer should produce to
   REQUEST_TOPIC("/request_topic", HttpMethod.POST, Arrays.asList(NAME, PUSH_TYPE, PUSH_JOB_ID), PUSH_IN_SORTED_ORDER),
   // Do an empty push into a new version for this store
