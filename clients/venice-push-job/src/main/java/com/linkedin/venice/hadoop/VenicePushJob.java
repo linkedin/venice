@@ -598,11 +598,9 @@ public class VenicePushJob implements AutoCloseable {
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE,
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
         }
-        // Stash the raw epoch and buffer here, but defer the epoch -> relative-duration conversion until right
-        // before the version is created (see convertEpochRewindOverrideToRelativeDuration). Converting at job-build
-        // time anchors "now" to job start, so all the pre-SOP work -- input sampling and ZSTD dictionary build --
-        // gets folded into the rewind and leaves an equal-sized window of real-time writes replayed by neither the
-        // batch snapshot nor the rewind (VENG-13007).
+        // Defer the epoch -> relative-duration conversion until right before version creation (see
+        // convertEpochRewindOverrideToRelativeDuration) so the pre-SOP work (input sampling + dictionary build) is
+        // not folded into the rewind.
         pushJobSettingToReturn.rewindEpochTimeInSecondsOverride = rewindTimestamp;
         pushJobSettingToReturn.rewindEpochTimeBufferInSecondsOverride =
             props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
@@ -883,10 +881,8 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.topicDictionary = ByteUtils.extractByteArray(optionalCompressionDictionary.get());
       }
 
-      // All of the expensive pre-SOP work (input sampling + ZSTD dictionary build) is done by this point, so convert
-      // any rewind-epoch override into a relative rewind duration now, right before the version is created. This keeps
-      // that pre-SOP time out of the replay window (VENG-13007). Done before the Kafka-input re-push default below so
-      // a user-provided epoch takes precedence over the default re-push rewind.
+      // Convert the epoch-rewind override now, after sampling and dictionary build, so pre-SOP time is excluded from
+      // the rewind. Before the Kafka-input re-push default below so a user-provided epoch takes precedence.
       convertEpochRewindOverrideToRelativeDuration(pushJobSetting);
 
       if (pushJobSetting.isSourceKafka) {
@@ -2437,15 +2433,9 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Convert a user-provided {@link com.linkedin.venice.vpj.VenicePushJobConstants#REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE}
-   * into a relative {@link PushJobSetting#rewindTimeInSecondsOverride}, anchored to the moment right before the version
-   * is created rather than to job start.
-   *
-   * The AA/REWIND_FROM_SOP server applies the relative duration backward from each partition's START_OF_PUSH. The job's
-   * pre-SOP work -- input sampling and ZSTD dictionary construction -- can take many minutes; anchoring the conversion
-   * at job start folds all of it into the rewind, leaving an equal-sized window of real-time writes replayed by neither
-   * the batch snapshot nor the rewind (VENG-13007). Converting here shrinks the gap to the controller/server round-trip
-   * plus the serial SOP broadcast. A no-op when no epoch override was provided.
+   * Convert a user-provided rewind-epoch override into a relative {@link PushJobSetting#rewindTimeInSecondsOverride},
+   * anchored just before version creation rather than at job start, so the job's pre-SOP work (input sampling and
+   * ZSTD dictionary build) is not folded into the rewind. No-op when no epoch override was provided.
    */
   void convertEpochRewindOverrideToRelativeDuration(PushJobSetting setting) {
     if (setting.rewindEpochTimeInSecondsOverride == NOT_SET) {

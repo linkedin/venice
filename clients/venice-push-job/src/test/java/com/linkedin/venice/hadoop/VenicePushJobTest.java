@@ -104,10 +104,7 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
     }
   }
 
-  /**
-   * The epoch override must NOT be converted to a relative rewind at job-build time (that is the VENG-13007 bug).
-   * getPushJobSetting should stash the raw epoch and buffer and leave rewindTimeInSecondsOverride unset.
-   */
+  /** The epoch override is stashed, not converted, at job-build time; the relative duration stays unset until later. */
   @Test
   public void testEpochRewindOverrideIsDeferredNotConvertedAtBuildTime() {
     long epoch = (System.currentTimeMillis() / 1000) - 3600;
@@ -123,10 +120,7 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
     }
   }
 
-  /**
-   * The deferred conversion anchors "now" to the moment right before version creation, so the resulting relative
-   * rewind is (now - epoch) + buffer -- and critically excludes the elapsed job-build/sampling/dictionary time.
-   */
+  /** The deferred conversion anchors "now" just before version creation, yielding (now - epoch) + buffer. */
   @Test
   public void testConvertEpochRewindOverrideToRelativeDuration() {
     long bufferSeconds = 120;

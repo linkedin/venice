@@ -73,12 +73,8 @@ public class PushJobSetting implements Serializable {
   public String kafkaInputTopic;
   public int repushSourceVersion;
   public long rewindTimeInSecondsOverride;
-  /**
-   * Raw inputs for {@link com.linkedin.venice.vpj.VenicePushJobConstants#REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE}.
-   * They are stashed here at job-build time and converted into {@link #rewindTimeInSecondsOverride} right before the
-   * version is created, so the job's pre-SOP work (input sampling + ZSTD dictionary build) is excluded from the
-   * replay window (VENG-13007). Both default to {@code NOT_SET} when no epoch override was provided.
-   */
+  // Raw epoch-rewind override inputs, converted into rewindTimeInSecondsOverride right before version creation.
+  // NOT_SET when no epoch override was provided.
   public long rewindEpochTimeInSecondsOverride;
   public long rewindEpochTimeBufferInSecondsOverride;
   public boolean pushToSeparateRealtimeTopicEnabled;
