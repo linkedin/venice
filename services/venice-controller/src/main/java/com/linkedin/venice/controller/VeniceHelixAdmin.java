@@ -3231,6 +3231,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Version version = null;
+    boolean shouldSendStartOfPush = false;
     OfflinePushStrategy offlinePushStrategy;
     int currentVersionBeforePush = -1;
     boolean isRepush = Version.isPushIdRePush(pushJobId);
@@ -3468,54 +3469,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               constructViewResources(veniceViewProperties, store, version, compressionDictionary);
             }
 
-            if (sendStartOfPush) {
-              long sendStartOfPushTimestamp = System.currentTimeMillis();
-              ByteBuffer compressionDictionaryBuffer = null;
-              if (compressionDictionary != null) {
-                compressionDictionaryBuffer =
-                    ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
-              } else if (version.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-                // This compression strategy needs a dictionary even if there is no input data,
-                // so we generate a dictionary based on synthetic data. This is done in vpj driver
-                // as well, but this code will be triggered in cases like Samza batch push job
-                // which is independent of the vpj flow.
-                compressionDictionaryBuffer = emptyPushZSTDDictionary.get();
-              }
-
-              VeniceWriter veniceWriter = null;
-              try {
-                VeniceWriterOptions.Builder vwOptionsBuilder =
-                    new VeniceWriterOptions.Builder(version.kafkaTopicName()).setUseKafkaKeySerializer(true)
-                        .setPartitionCount(numberOfPartitions);
-                if (multiClusterConfigs.isParent()) {
-                  // Produce directly into one of the child fabric
-                  vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
-                } else {
-                  vwOptionsBuilder.setBrokerAddress(getKafkaBootstrapServers(isSslToKafka()));
-                }
-                veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
-                veniceWriter.broadcastStartOfPush(
-                    sorted,
-                    version.isChunkingEnabled(),
-                    version.getCompressionStrategy(),
-                    Optional.ofNullable(compressionDictionaryBuffer),
-                    Collections.emptyMap());
-                if (pushType.isStreamReprocessing()) {
-                  // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
-                  veniceWriter.broadcastTopicSwitch(
-                      Collections.singletonList(getKafkaBootstrapServers(isSslToKafka())),
-                      Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()),
-                      -1L, // -1 indicates rewinding from the beginning of the source topic
-                      new HashMap<>());
-                }
-                addVersionLatencyStats
-                    .recordStartOfPushLatency(LatencyUtils.getElapsedTimeFromMsToMs(sendStartOfPushTimestamp));
-              } finally {
-                if (veniceWriter != null) {
-                  veniceWriter.close();
-                }
-              }
-            }
+            shouldSendStartOfPush = sendStartOfPush;
           }
 
           resources.getVeniceVersionLifecycleEventManager()
@@ -3563,6 +3517,56 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   clusterName,
                   t);
             }
+          }
+        }
+      }
+
+      // Broadcasting SOP to every partition can take minutes for large stores, so it is sent only after the cluster
+      // read lock and store write lock are released to avoid blocking other lock users.
+      if (shouldSendStartOfPush) {
+        long sendStartOfPushTimestamp = System.currentTimeMillis();
+        ByteBuffer compressionDictionaryBuffer = null;
+        if (compressionDictionary != null) {
+          compressionDictionaryBuffer = ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+        } else if (version.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+          // This compression strategy needs a dictionary even if there is no input data,
+          // so we generate a dictionary based on synthetic data. This is done in vpj driver
+          // as well, but this code will be triggered in cases like Samza batch push job
+          // which is independent of the vpj flow.
+          compressionDictionaryBuffer = emptyPushZSTDDictionary.get();
+        }
+
+        VeniceWriter veniceWriter = null;
+        try {
+          VeniceWriterOptions.Builder vwOptionsBuilder =
+              new VeniceWriterOptions.Builder(version.kafkaTopicName()).setUseKafkaKeySerializer(true)
+                  .setPartitionCount(numberOfPartitions);
+          if (multiClusterConfigs.isParent()) {
+            // Produce directly into one of the child fabric
+            vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
+          } else {
+            vwOptionsBuilder.setBrokerAddress(getKafkaBootstrapServers(isSslToKafka()));
+          }
+          veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
+          veniceWriter.broadcastStartOfPush(
+              sorted,
+              version.isChunkingEnabled(),
+              version.getCompressionStrategy(),
+              Optional.ofNullable(compressionDictionaryBuffer),
+              Collections.emptyMap());
+          if (pushType.isStreamReprocessing()) {
+            // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
+            veniceWriter.broadcastTopicSwitch(
+                Collections.singletonList(getKafkaBootstrapServers(isSslToKafka())),
+                Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()),
+                -1L, // -1 indicates rewinding from the beginning of the source topic
+                new HashMap<>());
+          }
+          addVersionLatencyStats
+              .recordStartOfPushLatency(LatencyUtils.getElapsedTimeFromMsToMs(sendStartOfPushTimestamp));
+        } finally {
+          if (veniceWriter != null) {
+            veniceWriter.close();
           }
         }
       }

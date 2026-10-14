@@ -39,6 +39,7 @@ import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
@@ -89,9 +90,13 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -103,7 +108,12 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -180,6 +190,125 @@ public class TestVeniceHelixAdmin {
     testStore.addVersion(new VersionImpl(storeName, 1, "push-id"));
     addVersion.get();
     verify(repository, never()).updateStore(testStore);
+  }
+
+  /**
+   * Start-of-push broadcast can take minutes for stores with thousands of partitions, so it must run after the
+   * cluster read lock and store write lock taken by addVersion are released.
+   */
+  @Test
+  public void testAddVersionOnlySendsStartOfPushAfterReleasingLocks() throws Exception {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    ClusterLockManager lockManager = new ClusterLockManager(clusterName);
+    Store testStore = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(lockManager).when(resources).getClusterLockManager();
+    doReturn(mock(VeniceControllerClusterConfig.class)).when(resources).getConfig();
+    doReturn(mock(VeniceVersionLifecycleEventManager.class)).when(resources).getVeniceVersionLifecycleEventManager();
+    doReturn(testStore).when(repository).getStore(storeName);
+    doReturn(testStore).when(admin).getStore(clusterName, storeName);
+    doReturn(true).when(admin).isParent();
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
+    doReturn(true).when(multiClusterConfigs).isParent();
+    setField(admin, "multiClusterConfigs", multiClusterConfigs);
+    setField(admin, "topicToCreationTime", new HashMap<String, Long>());
+    setField(
+        admin,
+        "addVersionLatencyStatsMap",
+        Collections.singletonMap(clusterName, mock(AddVersionLatencyStats.class)));
+
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    doReturn(writerFactory).when(admin).getVeniceWriterFactory();
+    doReturn(veniceWriter).when(writerFactory).createVeniceWriter(any(VeniceWriterOptions.class));
+
+    ExecutorService probeExecutor = Executors.newSingleThreadExecutor();
+    AtomicBoolean clusterWriteLockAcquirableDuringSop = new AtomicBoolean(false);
+    AtomicBoolean storeWriteLockAcquirableDuringSop = new AtomicBoolean(false);
+    doAnswer(invocation -> {
+      clusterWriteLockAcquirableDuringSop.set(canAcquireWithin(probeExecutor, lockManager::createClusterWriteLock));
+      storeWriteLockAcquirableDuringSop
+          .set(canAcquireWithin(probeExecutor, () -> lockManager.createStoreWriteLockOnly(storeName)));
+      return null;
+    }).when(veniceWriter).broadcastStartOfPush(anyBoolean(), anyBoolean(), any(), any(), any());
+
+    doCallRealMethod().when(admin)
+        .addVersionAndTopicOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            any(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean());
+    try (MockedStatic<HelixUtils> helixUtils = mockStatic(HelixUtils.class)) {
+      helixUtils.when(() -> HelixUtils.getClusterMaintenanceSignal(anyString(), any())).thenReturn(null);
+      admin.addVersionAndTopicOnly(
+          clusterName,
+          storeName,
+          "push-id",
+          VeniceHelixAdmin.VERSION_ID_UNSET,
+          4000,
+          3,
+          true,
+          false,
+          PushType.BATCH,
+          null,
+          null,
+          Optional.empty(),
+          -1,
+          1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          Version.DEFAULT_RT_VERSION_NUMBER,
+          -1,
+          false);
+    } finally {
+      probeExecutor.shutdownNow();
+    }
+
+    verify(veniceWriter).broadcastStartOfPush(anyBoolean(), anyBoolean(), any(), any(), any());
+    assertTrue(clusterWriteLockAcquirableDuringSop.get(), "Cluster read lock must be released before sending SOP");
+    assertTrue(storeWriteLockAcquirableDuringSop.get(), "Store write lock must be released before sending SOP");
+  }
+
+  private static boolean canAcquireWithin(ExecutorService executor, Supplier<AutoCloseableLock> lockSupplier)
+      throws Exception {
+    Future<?> future = executor.submit(() -> lockSupplier.get().close());
+    try {
+      future.get(5, TimeUnit.SECONDS);
+      return true;
+    } catch (TimeoutException e) {
+      return false;
+    }
+  }
+
+  private static void setField(Object target, String fieldName, Object value) throws Exception {
+    java.lang.reflect.Field field = VeniceHelixAdmin.class.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 
   @Test
