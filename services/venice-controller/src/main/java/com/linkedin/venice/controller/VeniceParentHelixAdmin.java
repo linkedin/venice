@@ -3434,6 +3434,10 @@ public class VeniceParentHelixAdmin implements Admin {
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Store parentStore = repository.getStore(storeName);
+    // The version can be null when it was deleted while a client is still polling job status for it (e.g. a system
+    // push that was killed and had its stranded version removed), or when a client polls before the push has created
+    // it. Its status is read where it is used, through getParentVersionStatus, because
+    // updateParentVersionStatusIfTerminal below can change it.
     Version version = parentStore.getVersion(versionNum);
 
     // Check if push is in a terminal status in target regions for pushes using deferred swap and try
@@ -3467,13 +3471,14 @@ public class VeniceParentHelixAdmin implements Admin {
         }
 
         if (isTargetRegionPushWithDeferredSwap) {
-          boolean isVersionTerminal = TERMINAL_VERSION_SWAP_STATUSES.contains(version.getStatus());
+          VersionStatus versionStatus = getParentVersionStatus(parentStore, version, versionNum);
+          boolean isVersionTerminal = TERMINAL_VERSION_SWAP_STATUSES.contains(versionStatus);
           if (isVersionTerminal) {
             LOGGER.info(
                 "Truncating parent VT {} after push status {} and version status {}",
                 kafkaTopic,
                 currentReturnStatus.getRootStatus(),
-                version.getStatus());
+                versionStatus);
             truncateTopicsOptionally(
                 clusterName,
                 kafkaTopic,
@@ -3483,13 +3488,14 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       } else {
-        // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark
-        // the
-        // push job status as terminal (ERROR) as job was killed
-        if (version.getStatus().equals(KILLED)) {
+        // If the aggregate status is not terminal, but the parent version status is marked as KILLED (or the version
+        // was deleted), we should mark the push job status as terminal (ERROR) as job was killed
+        if (getParentVersionStatus(parentStore, version, versionNum) == KILLED) {
           LOGGER.info(
-              "Marking execution status as ERROR for store {} because parent version status is KILLED",
-              storeName);
+              "Marking execution status as ERROR for store {} because parent version {} is {}",
+              storeName,
+              versionNum,
+              version == null ? "deleted" : "KILLED");
           return new OfflinePushStatusInfo(
               ExecutionStatus.ERROR,
               null,
@@ -3508,6 +3514,21 @@ public class VeniceParentHelixAdmin implements Admin {
         currentReturnStatusDetails.toString(),
         extraDetails,
         extraInfoUpdateTimestamp);
+  }
+
+  /**
+   * Returns the status of the parent version. A version missing from the parent store was either deleted or not
+   * created yet. A deleted version, whose number is not larger than the largest used version number, can never
+   * complete, so it is reported as KILLED: a non-terminal aggregate status for it is reported as ERROR and pollers
+   * stop, instead of the controller dereferencing a null version and returning HTTP 500. A version the push has not
+   * created yet, e.g. one polled right after the push job started, is reported as NOT_CREATED, so its job status
+   * stays non-terminal and pollers keep waiting for it.
+   */
+  private static VersionStatus getParentVersionStatus(Store parentStore, Version version, int versionNum) {
+    if (version != null) {
+      return version.getStatus();
+    }
+    return versionNum <= parentStore.getLargestUsedVersionNumber() ? KILLED : VersionStatus.NOT_CREATED;
   }
 
   /**
