@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.only;
@@ -22,6 +23,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
@@ -73,9 +75,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang.StringUtils;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -355,6 +360,200 @@ public abstract class AbstractPushMonitorTest {
             ExecutionStatus.COMPLETED);
       }
     });
+  }
+
+  @Test
+  public void testLoadAllPushesWithLoadThreads() {
+    when(mockControllerConfig.getPushStatusLoadThreadCount()).thenReturn(4);
+    monitor = getPushMonitor();
+    int statusCount = 20;
+    List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
+    Map<String, OfflinePushStatus> refreshedStatusMap = new HashMap<>();
+    for (int i = 0; i < statusCount; i++) {
+      String kafkaTopic = "testLoadAllPushesWithLoadThreads_v" + i;
+      OfflinePushStatus pushStatus = new OfflinePushStatus(
+          kafkaTopic,
+          numberOfPartition,
+          replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      pushStatus.setCurrentStatus(ExecutionStatus.STARTED);
+      statusList.add(pushStatus);
+      // The push completed between the bulk load and the subscription, so only the refreshed status shows it.
+      OfflinePushStatus refreshedStatus = pushStatus.clonePushStatus();
+      refreshedStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
+      refreshedStatusMap.put(kafkaTopic, refreshedStatus);
+    }
+    doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    Set<String> subscribedTopics = ConcurrentHashMap.newKeySet();
+    Set<String> loadThreadNames = ConcurrentHashMap.newKeySet();
+    doAnswer(invocation -> {
+      subscribedTopics.add(((OfflinePushStatus) invocation.getArgument(0)).getKafkaTopic());
+      loadThreadNames.add(Thread.currentThread().getName());
+      return null;
+    }).when(mockAccessor).subscribePartitionStatusChange(any(), eq(monitor));
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(anyString())).thenAnswer(invocation -> {
+      String kafkaTopic = invocation.getArgument(0);
+      // Each push must be read after it is subscribed, as in the sequential load.
+      if (!subscribedTopics.contains(kafkaTopic)) {
+        throw new IllegalStateException("Read before subscribing to " + kafkaTopic);
+      }
+      return refreshedStatusMap.get(kafkaTopic);
+    });
+
+    monitor.loadAllPushes();
+
+    for (int i = 0; i < statusCount; i++) {
+      String kafkaTopic = "testLoadAllPushesWithLoadThreads_v" + i;
+      assertEquals(monitor.getOfflinePushOrThrow(kafkaTopic).getCurrentStatus(), ExecutionStatus.COMPLETED);
+      verify(mockRoutingDataRepo).subscribeRoutingDataChange(kafkaTopic, monitor);
+    }
+    verify(mockAccessor, times(statusCount)).subscribePartitionStatusChange(any(), eq(monitor));
+    verify(mockAccessor, times(statusCount)).getOfflinePushStatusAndItsPartitionStatuses(anyString());
+    assertFalse(loadThreadNames.isEmpty());
+    for (String threadName: loadThreadNames) {
+      assertTrue(threadName.startsWith("PushStatusLoader-" + clusterName), threadName);
+    }
+  }
+
+  @Test
+  public void testLoadAllPushesWithLoadThreadsHandlesFailuresAsSequentialLoad() {
+    Map<String, ExecutionStatus> sequentiallyLoadedStatuses = loadAllPushesWithFailures(1);
+    setUp();
+    Map<String, ExecutionStatus> loadedStatuses = loadAllPushesWithFailures(4);
+
+    assertEquals(loadedStatuses, sequentiallyLoadedStatuses);
+    // A push whose subscription or refresh failed keeps its bulk loaded status; the others get the refreshed one.
+    assertEquals(loadedStatuses.get("testLoadAllPushesWithFailures_v0"), ExecutionStatus.STARTED);
+    assertEquals(loadedStatuses.get("testLoadAllPushesWithFailures_v1"), ExecutionStatus.STARTED);
+    assertEquals(loadedStatuses.get("testLoadAllPushesWithFailures_v2"), ExecutionStatus.STARTED);
+    assertEquals(loadedStatuses.get("testLoadAllPushesWithFailures_v3"), ExecutionStatus.COMPLETED);
+  }
+
+  @Test
+  public void testLoadAllPushesWithLoadThreadsRethrowsError() {
+    for (int loadThreadCount: new int[] { 1, 4 }) {
+      setUp();
+      when(mockControllerConfig.getPushStatusLoadThreadCount()).thenReturn(loadThreadCount);
+      monitor = getPushMonitor();
+      List<OfflinePushStatus> statusList = new ArrayList<>();
+      for (int i = 0; i < 3; i++) {
+        OfflinePushStatus pushStatus = new OfflinePushStatus(
+            "testLoadAllPushesRethrowsError_v" + i,
+            numberOfPartition,
+            replicationFactor,
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
+        statusList.add(pushStatus);
+      }
+      doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+      when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(anyString())).thenAnswer(invocation -> {
+        if ("testLoadAllPushesRethrowsError_v1".equals(invocation.getArgument(0))) {
+          throw new AssertionError("Error failure");
+        }
+        return statusList.get(0);
+      });
+
+      // An Error is not handled per push in either load, so it ends the load.
+      AssertionError error = Assert.expectThrows(AssertionError.class, () -> monitor.loadAllPushes());
+      assertEquals(error.getMessage(), "Error failure", "With " + loadThreadCount + " load threads");
+    }
+  }
+
+  private Map<String, ExecutionStatus> loadAllPushesWithFailures(int loadThreadCount) {
+    when(mockControllerConfig.getPushStatusLoadThreadCount()).thenReturn(loadThreadCount);
+    monitor = getPushMonitor();
+    int statusCount = 4;
+    List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
+    for (int i = 0; i < statusCount; i++) {
+      OfflinePushStatus pushStatus = new OfflinePushStatus(
+          "testLoadAllPushesWithFailures_v" + i,
+          numberOfPartition,
+          replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      pushStatus.setCurrentStatus(ExecutionStatus.STARTED);
+      statusList.add(pushStatus);
+    }
+    doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    doThrow(new VeniceException("Failed to subscribe")).when(mockAccessor)
+        .subscribePartitionStatusChange(statusList.get(0), monitor);
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(anyString())).thenAnswer(invocation -> {
+      String kafkaTopic = invocation.getArgument(0);
+      switch (kafkaTopic) {
+        case "testLoadAllPushesWithFailures_v1":
+          throw new VeniceException("Can not find offline push status in ZK");
+        case "testLoadAllPushesWithFailures_v2":
+          throw new Exception("Checked failure");
+        default:
+          OfflinePushStatus refreshedStatus = statusList.get(3).clonePushStatus();
+          refreshedStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
+          return refreshedStatus;
+      }
+    });
+
+    monitor.loadAllPushes();
+
+    Map<String, ExecutionStatus> loadedStatuses = new HashMap<>();
+    for (OfflinePushStatus pushStatus: statusList) {
+      OfflinePushStatus loadedStatus = monitor.getOfflinePushOrThrow(pushStatus.getKafkaTopic());
+      loadedStatuses.put(pushStatus.getKafkaTopic(), loadedStatus.getCurrentStatus());
+    }
+    return loadedStatuses;
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testLoadAllPushesWithLoadThreadsStopsWhenInterrupted() throws InterruptedException {
+    when(mockControllerConfig.getPushStatusLoadThreadCount()).thenReturn(2);
+    monitor = getPushMonitor();
+    int statusCount = 5;
+    List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
+    for (int i = 0; i < statusCount; i++) {
+      OfflinePushStatus pushStatus = new OfflinePushStatus(
+          "testLoadAllPushesInterrupted_v" + i,
+          numberOfPartition,
+          replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
+      statusList.add(pushStatus);
+    }
+    doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    // The first two pushes take both load threads until they are interrupted, so the other three never start.
+    CountDownLatch subscriptionsStarted = new CountDownLatch(2);
+    CountDownLatch subscriptionsInterrupted = new CountDownLatch(2);
+    CountDownLatch neverReleased = new CountDownLatch(1);
+    Answer<Void> blockingSubscription = invocation -> {
+      subscriptionsStarted.countDown();
+      try {
+        neverReleased.await();
+      } catch (InterruptedException e) {
+        subscriptionsInterrupted.countDown();
+        throw e;
+      }
+      return null;
+    };
+    doAnswer(blockingSubscription).when(mockAccessor).subscribePartitionStatusChange(statusList.get(0), monitor);
+    doAnswer(blockingSubscription).when(mockAccessor).subscribePartitionStatusChange(statusList.get(1), monitor);
+    AtomicBoolean interruptedAfterLoad = new AtomicBoolean();
+    Thread loader = new Thread(() -> {
+      monitor.loadAllPushes();
+      interruptedAfterLoad.set(Thread.currentThread().isInterrupted());
+    });
+    loader.start();
+    assertTrue(subscriptionsStarted.await(30, TimeUnit.SECONDS));
+    loader.interrupt();
+    loader.join(TimeUnit.SECONDS.toMillis(30));
+
+    assertFalse(loader.isAlive());
+    assertTrue(interruptedAfterLoad.get());
+    // The load threads are interrupted when the load ends, so they do not keep subscribing afterwards.
+    assertTrue(subscriptionsInterrupted.await(30, TimeUnit.SECONDS));
+    for (int i = 2; i < statusCount; i++) {
+      verify(mockAccessor, never()).subscribePartitionStatusChange(statusList.get(i), monitor);
+    }
+    verify(mockAccessor, never()).getOfflinePushStatusAndItsPartitionStatuses(anyString());
+    // Every push stays tracked, so stopAllMonitoring still unsubscribes the ones that were subscribed.
+    for (OfflinePushStatus pushStatus: statusList) {
+      assertEquals(monitor.getOfflinePushOrThrow(pushStatus.getKafkaTopic()), pushStatus);
+    }
   }
 
   @Test
