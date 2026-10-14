@@ -16,6 +16,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -25,6 +26,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
+import com.linkedin.venice.controller.placement.TopicPlacementPolicy;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -49,13 +51,15 @@ import org.testng.annotations.Test;
 public class VeniceControllerTest {
   @DataProvider
   public Object[][] ownerReadinessCases() {
-    return new Object[][] { { false, null }, { true, null }, { false, ACTIVE }, { false, PASSIVE } };
+    return new Object[][] { { false, null, false }, { true, null, false }, { false, ACTIVE, false },
+        { false, PASSIVE, false }, { false, null, true }, { false, ACTIVE, true } };
   }
 
   @Test(dataProvider = "ownerReadinessCases")
   public void testOwnerReadinessTracksStartupServicesAndShutdown(
       boolean sslEnabled,
-      ParentControllerRegionState parentRegionState) {
+      ParentControllerRegionState parentRegionState,
+      boolean placementPolicyEnabled) {
     boolean parent = parentRegionState != null;
     boolean expectedReady = !parent || parentRegionState == ACTIVE;
     Properties properties = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
@@ -71,6 +75,11 @@ public class VeniceControllerTest {
       properties.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childRegion, "localhost:9092");
     }
     Admin admin = parent ? mock(VeniceParentHelixAdmin.class) : mock(VeniceHelixAdmin.class);
+    TopicPlacementPolicy placementPolicy = placementPolicyEnabled ? mock(TopicPlacementPolicy.class) : null;
+    VeniceHelixAdmin internalAdmin = parent ? mock(VeniceHelixAdmin.class) : (VeniceHelixAdmin) admin;
+    if (parent) {
+      when(((VeniceParentHelixAdmin) admin).getVeniceHelixAdmin()).thenReturn(internalAdmin);
+    }
     Class<? extends AbstractVeniceService> cleanupServiceType =
         parent ? StoreGraveyardCleanupService.class : StoreBackupVersionCleanupService.class;
     Class<? extends AbstractVeniceService> maintenanceServiceType =
@@ -110,7 +119,11 @@ public class VeniceControllerTest {
               .setPropertiesList(Collections.singletonList(new VeniceProperties(properties)))
               .setMetricsRepository(metricsRepository)
               .setServiceDiscoveryAnnouncers(Collections.singletonList(announcer))
+              .setTopicPlacementPolicy(placementPolicy)
               .build());
+      if (placementPolicyEnabled) {
+        verify(internalAdmin).setTopicPlacementPolicy(placementPolicy);
+      }
       try {
         assertEquals(readinessSignals.size(), sslEnabled ? 2 : 1);
         readinessSignals.forEach(signal -> assertFalse(signal.getAsBoolean()));

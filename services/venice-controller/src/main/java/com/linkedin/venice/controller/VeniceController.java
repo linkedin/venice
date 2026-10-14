@@ -257,6 +257,13 @@ public class VeniceController {
     this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.storeUpdateHandler = ctx.getStoreUpdateHandler();
     this.controllerService = createControllerService();
+    if (ctx.getTopicPlacementPolicy() != null) {
+      Admin placementAdmin = controllerService.getVeniceHelixAdmin();
+      VeniceHelixAdmin internalPlacementAdmin = placementAdmin instanceof VeniceParentHelixAdmin
+          ? ((VeniceParentHelixAdmin) placementAdmin).getVeniceHelixAdmin()
+          : (VeniceHelixAdmin) placementAdmin;
+      internalPlacementAdmin.setTopicPlacementPolicy(ctx.getTopicPlacementPolicy());
+    }
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
     this.topicCleanupService = createTopicCleanupService();
