@@ -2298,6 +2298,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Wait for parent consumption only; child consumers execute and retry the command asynchronously.
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
+      final int futureVersion = futureVersionBeforeRollForward;
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
 
       // Record the accepted roll-forward in parent metadata; child consumers may still be retrying.
@@ -2309,7 +2310,8 @@ public class VeniceParentHelixAdmin implements Admin {
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
         if (parentVersion != null && parentVersion.getStatus() != KILLED && parentVersion.getStatus() != ERROR
             && parentVersion.getStatus() != STARTED && StringUtils.isEmpty(parentVersion.getTargetSwapRegion())
-            && parentVersion.isVersionSwapDeferred()) {
+            && parentVersion.isVersionSwapDeferred() && futureVersion > parentStore.getCurrentVersion()
+            && parentStore.getVersions().stream().noneMatch(v -> v.getNumber() > futureVersion)) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);
           parentStore.setCurrentVersion(version);

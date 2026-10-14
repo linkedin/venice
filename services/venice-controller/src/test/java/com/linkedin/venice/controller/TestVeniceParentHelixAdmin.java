@@ -4327,6 +4327,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version version = mock(Version.class);
     doReturn(true).when(version).isVersionSwapDeferred();
     doReturn(version).when(store).getVersion(5);
+    doReturn(Collections.emptyList()).when(store).getVersions();
     doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
@@ -4397,6 +4398,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version version = mock(Version.class);
     doReturn(true).when(version).isVersionSwapDeferred();
     doReturn(version).when(store).getVersion(5);
+    doReturn(Collections.emptyList()).when(store).getVersions();
     doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
     controllerClients.clear();
@@ -4490,6 +4492,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(adminSpy).releaseAdminMessageLock(clusterName, storeName);
   }
 
+  @Test
+  public void testRollForwardDoesNotPromoteSupersededParentVersion() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    // The child reports stale v5 while the parent already contains v6.
+    doReturn(Collections.singletonMap("r1", "5")).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    controllerClients.clear();
+    mockRollForwardChild("r1");
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    Store parentStore = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    parentStore.addVersion(new VersionImpl(storeName, 4, "current-push"));
+    parentStore.setCurrentVersion(4);
+    for (int number = 5; number <= 6; number++) {
+      Version future = new VersionImpl(storeName, number, "future-push-" + number);
+      future.setVersionSwapDeferred(true);
+      parentStore.addVersion(future);
+      parentStore.updateVersionStatus(number, VersionStatus.PUSHED);
+    }
+    ReadWriteStoreRepository repository =
+        internalAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+    doReturn(parentStore).when(repository).getStore(storeName);
+
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+    assertEquals(parentStore.getVersion(5).getStatus(), VersionStatus.PUSHED);
+    assertEquals(parentStore.getCurrentVersion(), 4);
+    verify(repository, never()).updateStore(any());
+  }
+
   @Test(dataProvider = "rollForwardParentUpdateEligibility")
   public void testRollForwardPreservesParentUpdateEligibility(
       boolean versionExists,
@@ -4507,6 +4541,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(deferred).when(version).isVersionSwapDeferred();
     doReturn(targetSwapRegion).when(version).getTargetSwapRegion();
     doReturn(versionExists ? version : null).when(store).getVersion(5);
+    doReturn(Collections.emptyList()).when(store).getVersions();
 
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
