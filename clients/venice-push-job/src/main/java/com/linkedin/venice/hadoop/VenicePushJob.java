@@ -580,6 +580,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.inputURI = pushJobSettingToReturn.isSourceKafka ? "" : getInputURI(props);
     pushJobSettingToReturn.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSettingToReturn.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
+    pushJobSettingToReturn.rewindEpochTimeInSecondsOverride = NOT_SET;
+    pushJobSettingToReturn.rewindEpochTimeBufferInSecondsOverride = NOT_SET;
 
     // If we didn't specify a rewind time
     if (pushJobSettingToReturn.rewindTimeInSecondsOverride == NOT_SET) {
@@ -596,11 +598,14 @@ public class VenicePushJob implements AutoCloseable {
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE,
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
         }
-        // Set the rewindTimeInSecondsOverride to be the time that is now - the provided timestamp so that we rewind
-        // from start of push to the provided timestamp with some extra buffer time since things aren't perfectly
-        // instantaneous
-        long bufferTime = props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
-        pushJobSettingToReturn.rewindTimeInSecondsOverride = (nowInSeconds - rewindTimestamp) + bufferTime;
+        // Stash the raw epoch and buffer here, but defer the epoch -> relative-duration conversion until right
+        // before the version is created (see convertEpochRewindOverrideToRelativeDuration). Converting at job-build
+        // time anchors "now" to job start, so all the pre-SOP work -- input sampling and ZSTD dictionary build --
+        // gets folded into the rewind and leaves an equal-sized window of real-time writes replayed by neither the
+        // batch snapshot nor the rewind (VENG-13007).
+        pushJobSettingToReturn.rewindEpochTimeInSecondsOverride = rewindTimestamp;
+        pushJobSettingToReturn.rewindEpochTimeBufferInSecondsOverride =
+            props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
         // In order for this config to make sense to the user, the remote rewind policy needs to be validated to be
         // REWIND_FROM_SOP
         pushJobSettingToReturn.validateRemoteReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
@@ -877,6 +882,12 @@ public class VenicePushJob implements AutoCloseable {
       if (optionalCompressionDictionary.isPresent()) {
         pushJobSetting.topicDictionary = ByteUtils.extractByteArray(optionalCompressionDictionary.get());
       }
+
+      // All of the expensive pre-SOP work (input sampling + ZSTD dictionary build) is done by this point, so convert
+      // any rewind-epoch override into a relative rewind duration now, right before the version is created. This keeps
+      // that pre-SOP time out of the replay window (VENG-13007). Done before the Kafka-input re-push default below so
+      // a user-provided epoch takes precedence over the default re-push rewind.
+      convertEpochRewindOverrideToRelativeDuration(pushJobSetting);
 
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
@@ -2423,6 +2434,31 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void validateRemoteHybridSettings() {
     validateRemoteHybridSettings(pushJobSetting);
+  }
+
+  /**
+   * Convert a user-provided {@link com.linkedin.venice.vpj.VenicePushJobConstants#REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE}
+   * into a relative {@link PushJobSetting#rewindTimeInSecondsOverride}, anchored to the moment right before the version
+   * is created rather than to job start.
+   *
+   * The AA/REWIND_FROM_SOP server applies the relative duration backward from each partition's START_OF_PUSH. The job's
+   * pre-SOP work -- input sampling and ZSTD dictionary construction -- can take many minutes; anchoring the conversion
+   * at job start folds all of it into the rewind, leaving an equal-sized window of real-time writes replayed by neither
+   * the batch snapshot nor the rewind (VENG-13007). Converting here shrinks the gap to the controller/server round-trip
+   * plus the serial SOP broadcast. A no-op when no epoch override was provided.
+   */
+  void convertEpochRewindOverrideToRelativeDuration(PushJobSetting setting) {
+    if (setting.rewindEpochTimeInSecondsOverride == NOT_SET) {
+      return;
+    }
+    long nowInSeconds = System.currentTimeMillis() / 1000;
+    setting.rewindTimeInSecondsOverride =
+        (nowInSeconds - setting.rewindEpochTimeInSecondsOverride) + setting.rewindEpochTimeBufferInSecondsOverride;
+    LOGGER.info(
+        "Converted rewind epoch override {} (buffer {}s) to rewindTimeInSecondsOverride {}s at version-creation time",
+        setting.rewindEpochTimeInSecondsOverride,
+        setting.rewindEpochTimeBufferInSecondsOverride,
+        setting.rewindTimeInSecondsOverride);
   }
 
   protected void validateRemoteHybridSettings(PushJobSetting setting) {
