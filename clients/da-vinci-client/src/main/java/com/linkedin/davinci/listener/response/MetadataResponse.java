@@ -22,6 +22,7 @@ public class MetadataResponse {
 
   public MetadataResponse() {
     this.responseRecord = new MetadataResponseRecord();
+    this.responseRecord.setMultiKeyLongTailRetryThresholdsInMs("");
   }
 
   public void setVersionMetadata(VersionProperties versionProperties) {
@@ -54,6 +55,10 @@ public class MetadataResponse {
 
   public void setBatchGetLimit(int batchGetLimit) {
     responseRecord.setBatchGetLimit(batchGetLimit);
+  }
+
+  public void setMultiKeyLongTailRetryThresholdsInMs(String thresholds) {
+    responseRecord.setMultiKeyLongTailRetryThresholdsInMs(thresholds);
   }
 
   public void setExternalStorageReadMode(int externalStorageReadMode) {

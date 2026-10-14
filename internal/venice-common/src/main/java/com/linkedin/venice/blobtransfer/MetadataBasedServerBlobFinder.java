@@ -17,10 +17,12 @@ import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,6 +56,8 @@ public class MetadataBasedServerBlobFinder implements BlobFinder {
   private static final RecordDeserializer<MetadataResponseRecord> COMPILED_METADATA_DESERIALIZER =
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class);
+  private static final Map<Integer, Schema> PACKAGED_METADATA_SCHEMAS =
+      Collections.unmodifiableMap(Utils.getAllSchemasFromResources(AvroProtocolDefinition.SERVER_METADATA_RESPONSE));
   private final ClientConfig clientConfig;
   private final D2ServiceDiscovery d2ServiceDiscovery;
 
@@ -271,27 +275,30 @@ public class MetadataBasedServerBlobFinder implements BlobFinder {
 
   /**
    * Decode the metadata response against the writer schema the server advertises (its schema id), so a server running a
-   * newer {@link MetadataResponseRecord} schema than this client is still readable. Falls back to the client's compiled
-   * schema when the response carries no usable schema id or the writer schema cannot be resolved.
+   * newer {@link MetadataResponseRecord} schema than this client is still readable. If schema lookup fails, use the
+   * packaged writer schema for the advertised id. Only responses without a schema id use the compiled schema.
    */
   private MetadataResponseRecord deserializeMetadata(TransportClientResponse metadataResponse) {
     byte[] body = metadataResponse.getBody();
-    if (metadataResponse.isSchemaIdValid()) {
-      try {
-        Schema writerSchema = getMetadataResponseSchemaReader().getValueSchema(metadataResponse.getSchemaId());
-        if (writerSchema != null) {
-          return FastSerializerDeserializerFactory
-              .getFastAvroSpecificDeserializer(writerSchema, MetadataResponseRecord.class)
-              .deserialize(body);
-        }
-      } catch (Exception e) {
-        LOGGER.warn(
-            "Could not resolve the metadata response writer schema for id {}; decoding with the compiled schema.",
-            metadataResponse.getSchemaId(),
-            e);
-      }
+    if (!metadataResponse.isSchemaIdValid()) {
+      return COMPILED_METADATA_DESERIALIZER.deserialize(body);
     }
-    return COMPILED_METADATA_DESERIALIZER.deserialize(body);
+    int schemaId = metadataResponse.getSchemaId();
+    Schema writerSchema = null;
+    try {
+      writerSchema = getMetadataResponseSchemaReader().getValueSchema(schemaId);
+    } catch (RuntimeException e) {
+      LOGGER.warn("Could not fetch metadata response writer schema for id {}; checking packaged schemas.", schemaId, e);
+    }
+    if (writerSchema == null) {
+      writerSchema = PACKAGED_METADATA_SCHEMAS.get(schemaId);
+      if (writerSchema == null) {
+        throw new VeniceClientException("No metadata response writer schema available for id: " + schemaId);
+      }
+      LOGGER.warn("Using packaged metadata response writer schema for id {} after schema lookup failed.", schemaId);
+    }
+    return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, MetadataResponseRecord.class)
+        .deserialize(body);
   }
 
   private RouterBackedSchemaReader getMetadataResponseSchemaReader() {
@@ -313,7 +320,7 @@ public class MetadataBasedServerBlobFinder implements BlobFinder {
    * resolved to its schema. Mirrors Fast Client's {@code RequestBasedMetadata}, reusing the config's D2 client and
    * cluster-discovery service.
    *
-   * @throws VeniceClientException if the config has no D2 client (the caller then decodes with the compiled schema).
+   * @throws VeniceClientException if the config has no D2 client (the caller then checks packaged writer schemas).
    */
   private RouterBackedSchemaReader buildMetadataResponseSchemaReader() {
     D2Client d2Client = clientConfig.getD2Client();

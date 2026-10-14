@@ -19,8 +19,10 @@ import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Arrays;
@@ -42,6 +44,7 @@ public class ClusterStats extends AbstractVeniceStats {
 
   private final String storeName;
   private final MetricEntityStateBase versionUpdateFailureCount;
+  private final Sensor invalidMultiKeyRetryPolicy;
   private final AsyncMetricEntityStateBase currentVersionNumber;
 
   // OTel metrics for instance error counts
@@ -58,6 +61,7 @@ public class ClusterStats extends AbstractVeniceStats {
   public ClusterStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
     this.storeName = storeName;
+    this.invalidMultiKeyRetryPolicy = registerSensor("invalid_multi_key_retry_policy", new Count());
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
@@ -139,6 +143,10 @@ public class ClusterStats extends AbstractVeniceStats {
 
   public void recordVersionUpdateFailure() {
     versionUpdateFailureCount.record(1);
+  }
+
+  public void recordInvalidMultiKeyRetryPolicy() {
+    invalidMultiKeyRetryPolicy.record();
   }
 
   public List<Double> getMetricValues(String sensorName, String... stats) {
