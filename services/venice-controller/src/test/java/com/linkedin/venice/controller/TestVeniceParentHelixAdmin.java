@@ -2262,6 +2262,62 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
+  private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
+    String storeName = VeniceSystemStoreUtils.getMetaStoreName("synthetic_store");
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        -1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    for (int v: existing) {
+      store.addVersion(new VersionImpl(storeName, v));
+    }
+    HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
+    doReturn(store).when(storeRepo).getStore(storeName);
+    doReturn(storeRepo).when(resources).getStoreMetadataRepository();
+    doReturn(retention).when(config).getSystemStoreVersionRetentionCount();
+    mockControllerClients(storeName, regionCurrents);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, inFlightVersion);
+    return store;
+  }
+
+  @Test
+  public void testCleanupKeepsInFlightVersionWhenRegionalCurrentsDiffer() {
+    // retention=2, distinct regional currents 6 and 7, and a new in-flight version 9
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 6, 7, 9 }, 6, 7);
+    Assert.assertTrue(store.containsVersion(6));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9), "In-flight version must survive cleanup");
+  }
+
+  @Test
+  public void testCleanupWithAlignedRegionalCurrentsKeepsInFlightVersion() {
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 3, 7, 9 }, 7, 7);
+    Assert.assertFalse(store.containsVersion(3));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9));
+  }
+
+  @Test
+  public void testCleanupStillDeletesEligibleHistoricalVersionsAroundInFlightVersion() {
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 1, 2, 6, 7, 9 }, 6, 7);
+    Assert.assertFalse(store.containsVersion(1));
+    Assert.assertFalse(store.containsVersion(2));
+    Assert.assertTrue(store.containsVersion(6));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9));
+  }
+
+  @Test
+  public void testCleanupWithoutInFlightVersionStillDeletesOldest() {
+    Store store = runSystemStoreCleanup(2, Store.NON_EXISTING_VERSION, new int[] { 6, 7, 9 }, 6, 7);
+    Assert.assertFalse(store.containsVersion(9));
+  }
+
   @Test
   public void testStoreVersionCleanUpWithFewerVersions() {
     String storeName = "test_store";
@@ -2280,7 +2336,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
     doReturn(5).when(config).getUserStoreVersionRetentionCount();
-    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, Store.NON_EXISTING_VERSION);
     verify(storeRepo).getStore(storeName);
     verify(storeRepo, never()).updateStore(any());
   }
@@ -2306,7 +2362,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(5).when(config).getUserStoreVersionRetentionCount();
     mockControllerClients(storeName);
 
-    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, Store.NON_EXISTING_VERSION);
     verify(storeRepo).getStore(storeName);
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
     verify(storeRepo).updateStore(storeCaptor.capture());
@@ -2458,15 +2514,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   private void mockControllerClients(String storeName) {
+    mockControllerClients(storeName, 4, 5, 6);
+  }
+
+  private void mockControllerClients(String storeName, int... regionCurrentVersions) {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
     Map<String, String> map = new HashMap<>();
     map.put(storeName, "1");
 
-    for (int i = 0; i < NUM_REGIONS; i++) {
+    for (int i = 0; i < regionCurrentVersions.length; i++) {
       ControllerClient client = mock(ControllerClient.class);
       StoreResponse storeResponse = new StoreResponse();
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
-      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
+      s.setCurrentVersion(regionCurrentVersions[i]);
       storeResponse.setStore(StoreInfo.fromStore(s));
       MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
       doReturn(map).when(storeStatusResponse).getStoreStatusMap();
@@ -2740,6 +2800,133 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Admin.OfflinePushStatusInfo offlineJobStatus =
         parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", notCreatedMap);
     assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testDeletedVersionExecutionStatus() {
+    // A client can keep polling job status for a version after it was deleted (e.g. a killed system push whose
+    // stranded version was removed). In that case Store#getVersion returns null and Store#getVersionStatus returns
+    // NOT_CREATED. The job status path must not dereference the null version, otherwise the controller returns HTTP
+    // 500 for every poll instead of a valid execution status. A deleted version is treated as KILLED, so a
+    // non-terminal aggregate status is reported as ERROR and the poller stops instead of waiting for its timeout.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+
+    Map<String, ControllerClient> errorMap = new HashMap<>();
+    errorMap.put("cluster", clientMap.get(ExecutionStatus.ERROR));
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+    errorMap.put("cluster3", clientMap.get(ExecutionStatus.ERROR));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    // Deleted version: getVersion is null and getVersionStatus falls back to NOT_CREATED (see AbstractStore), while the
+    // largest used version number shows that v1 was created before.
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+    doReturn(1).when(store).getLargestUsedVersionNumber();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    // No NullPointerException; the children aggregate to NOT_CREATED (non-terminal), and the deleted version turns it
+    // into a terminal ERROR instead of an HTTP 500.
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // A terminal aggregate status is returned as is, and the terminal handling does not dereference the deleted
+    // version either.
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.ERROR));
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // Same for a target region push with deferred swap, which checks the parent version status separately.
+    doReturn(errorMap).when(internalAdmin).getControllerClientMap(anyString());
+    offlineJobStatus =
+        parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v1", Optional.empty(), null, "cluster", true);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testNotYetCreatedVersionExecutionStatus() {
+    // A client can also poll job status before the push has created the version in the parent, e.g. right after it
+    // started the push job. Store#getVersion returns null for it as well, but its number is larger than the largest
+    // used version number, so it is not a deleted version: the job status has to stay non-terminal so the client keeps
+    // polling, instead of failing the push with ERROR.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+
+    Map<String, ControllerClient> notCreatedMap = new HashMap<>();
+    notCreatedMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
+    notCreatedMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    // v1 is the largest used version number, and v2 has not been created yet.
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+    doReturn(1).when(store).getLargestUsedVersionNumber();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus =
+        parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v2", notCreatedMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+
+    // Same for a target region push with deferred swap.
+    doReturn(notCreatedMap).when(internalAdmin).getControllerClientMap(anyString());
+    offlineJobStatus =
+        parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v2", Optional.empty(), null, "cluster", true);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+  }
+
+  @Test
+  public void testTargetRegionDeferredSwapFailureHandledInSamePoll() {
+    // In a target region push with deferred swap, the poll that sees the target region fail also moves the parent
+    // version from STARTED to ERROR. The terminal handling in that same poll has to see ERROR, so the version status
+    // must be read after that update, not before it.
+    String storeName = Utils.getUniqueString("testTargetRegionDeferredSwapFailure");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    Version version = new VersionImpl(storeName, 1, "test_push_job_id");
+    version.setStatus(STARTED);
+    version.setVersionSwapDeferred(true);
+    version.setTargetSwapRegion("cluster-err");
+    version.setPushType(Version.PushType.STREAM_REPROCESSING);
+    store.addVersion(version);
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    controllerClients.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
+    controllerClients.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
+    doReturn(controllerClients).when(internalAdmin).getControllerClientMap(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLinePushStatus(
+        clusterName,
+        Version.composeKafkaTopic(storeName, 1),
+        Optional.empty(),
+        null,
+        "cluster-err",
+        true);
+
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    assertEquals(store.getVersionStatus(1), VersionStatus.ERROR);
+    verify(internalAdmin).truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, 1));
   }
 
   @Test

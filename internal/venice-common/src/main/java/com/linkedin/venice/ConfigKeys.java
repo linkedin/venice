@@ -14,6 +14,12 @@ public class ConfigKeys {
   public static final String CLUSTER_NAME = "cluster.name";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
+  /**
+   * Optional cluster-wide Fast Client compute/batch-get retry ranges in milliseconds. Empty advertises no policy.
+   */
+  public static final String SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS =
+      "server.fast.client.multi.key.long.tail.retry.thresholds.ms";
+
   public static final String ADMIN_PORT = "admin.port";
   public static final String ADMIN_HOSTNAME = "admin.hostname";
 

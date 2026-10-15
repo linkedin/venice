@@ -7,8 +7,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NOT_SET;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
@@ -98,6 +101,53 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
       PushJobSetting pushJobSetting = vpj.getPushJobSetting();
       assertNotNull(pushJobSetting);
       assertTrue(pushJobSetting.d2Routing);
+    }
+  }
+
+  /** The epoch override is stashed, not converted, at job-build time; the relative duration stays unset until later. */
+  @Test
+  public void testEpochRewindOverrideIsDeferredNotConvertedAtBuildTime() {
+    long epoch = (System.currentTimeMillis() / 1000) - 3600;
+    Properties props = getVpjRequiredProperties();
+    props.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, Long.toString(epoch));
+    props.put(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, Long.toString(120));
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      PushJobSetting setting = vpj.getPushJobSetting();
+      assertEquals(setting.rewindEpochTimeInSecondsOverride, epoch);
+      assertEquals(setting.rewindEpochTimeBufferInSecondsOverride, 120L);
+      // Not converted yet -- the relative duration is computed later, right before version creation.
+      assertEquals(setting.rewindTimeInSecondsOverride, (long) NOT_SET);
+    }
+  }
+
+  /** The deferred conversion anchors "now" just before version creation, yielding (now - epoch) + buffer. */
+  @Test
+  public void testConvertEpochRewindOverrideToRelativeDuration() {
+    long bufferSeconds = 120;
+    long epochSecondsAgo = 3600;
+    long epoch = (System.currentTimeMillis() / 1000) - epochSecondsAgo;
+    Properties props = getVpjRequiredProperties();
+    props.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, Long.toString(epoch));
+    props.put(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, Long.toString(bufferSeconds));
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      PushJobSetting setting = vpj.getPushJobSetting();
+      vpj.convertEpochRewindOverrideToRelativeDuration(setting);
+      long expected = epochSecondsAgo + bufferSeconds;
+      // Allow a few seconds of slack for wall-clock advance during the test.
+      assertTrue(
+          setting.rewindTimeInSecondsOverride >= expected && setting.rewindTimeInSecondsOverride <= expected + 5,
+          "Expected rewindTimeInSecondsOverride ~" + expected + " but was " + setting.rewindTimeInSecondsOverride);
+    }
+  }
+
+  /** The conversion is a no-op when no epoch override was supplied. */
+  @Test
+  public void testConvertEpochRewindOverrideIsNoOpWithoutEpoch() {
+    Properties props = getVpjRequiredProperties();
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      PushJobSetting setting = vpj.getPushJobSetting();
+      vpj.convertEpochRewindOverrideToRelativeDuration(setting);
+      assertEquals(setting.rewindTimeInSecondsOverride, (long) NOT_SET);
     }
   }
 

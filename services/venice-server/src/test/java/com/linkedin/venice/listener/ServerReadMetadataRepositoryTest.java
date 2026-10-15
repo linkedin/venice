@@ -35,6 +35,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -42,6 +43,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.netty.buffer.ByteBuf;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -146,6 +148,8 @@ public class ServerReadMetadataRepositoryTest {
     assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
     // If batch get limit is not set should use {@link Store.DEFAULT_BATCH_GET_LIMIT}
     assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), Store.DEFAULT_BATCH_GET_LIMIT);
+    assertEquals(metadataResponse.getResponseRecord().getMultiKeyLongTailRetryThresholdsInMs().toString(), "");
+    assertEquals(metadataResponse.getResponseSchemaIdHeader(), 5);
     assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
     // Failure count is non-zero because the UnsupportedOperationException path (quota not enabled) records a failure
     assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
@@ -158,6 +162,30 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.setBatchGetLimit(300);
     metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
     assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
+    String policy = "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
+    ServerReadMetadataRepository configuredRepository = new ServerReadMetadataRepository(
+        SRC_CLUSTER,
+        metricsRepository,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        storeConfigRepository,
+        Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
+        Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)),
+        true,
+        policy);
+    MetadataResponse configured = configuredRepository.getMetadata(storeName);
+    ByteBuf body = configured.getResponseBody();
+    byte[] bytes = new byte[body.readableBytes()];
+    try {
+      body.readBytes(bytes);
+    } finally {
+      body.release();
+    }
+    MetadataResponseRecord decoded = FastSerializerDeserializerFactory
+        .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class)
+        .deserialize(bytes);
+    assertEquals(decoded.getMultiKeyLongTailRetryThresholdsInMs().toString(), policy);
+    assertEquals(decoded.getBatchGetLimit(), 300);
   }
 
   /**
