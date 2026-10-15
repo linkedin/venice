@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
 import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionGrpcWireFormat;
@@ -37,7 +38,6 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
-import com.linkedin.venice.controller.placement.TopicPlacement;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
@@ -582,20 +582,16 @@ public class TestVeniceHelixAdmin {
   public void testCreateBatchTopicsUsesStoreHybridStatusNotVersion() {
     // Regression (NG routing): createBatchTopics must resolve the alternative-backend decision from the store's hybrid
     // status, not from the freshly constructed Version (whose isHybrid() is not yet populated in the version-supplied
-    // addVersion path). With placement requesting treatment, a hybrid store's VT must use the adapter default,
-    // while a batch store's VT requests the alternative backend.
+    // addVersion path). With only batch.user.store.vt enabled, a hybrid store's VT must STAY on the primary backend,
+    // while a batch store's VT moves to the alternative backend.
     int partitionCount = 10;
     Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
     VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(props));
     String configCluster = clusterConfig.getClusterName();
 
     TopicManager topicManager = mock(TopicManager.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    TopicPlacement placement = mock(TopicPlacement.class);
-    when(placement.isEnabled(configCluster)).thenReturn(true);
-    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
-    doCallRealMethod().when(veniceHelixAdmin).setTopicPlacement(any());
-    veniceHelixAdmin.setTopicPlacement(placement);
     when(veniceHelixAdmin.getPubSubTopicRepository()).thenReturn(PUB_SUB_TOPIC_REPOSITORY);
     doCallRealMethod().when(veniceHelixAdmin)
         .createBatchTopics(
@@ -606,7 +602,8 @@ public class TestVeniceHelixAdmin {
             eq(clusterConfig),
             anyBoolean());
 
-    // Case 1: hybrid store, fresh version reports non-hybrid (mock default) -> adapter default.
+    // Case 1: hybrid store, fresh version reports non-hybrid (mock default) -> HYBRID_USER_STORE_VT (disabled) ->
+    // primary.
     Version hybridVersion = mock(Version.class);
     when(hybridVersion.getStoreName()).thenReturn(storeName);
     when(hybridVersion.kafkaTopicName()).thenReturn(storeName + "_v1");
@@ -627,7 +624,8 @@ public class TestVeniceHelixAdmin {
         anyBoolean(),
         eq(false));
 
-    // Case 2 (positive control): a non-hybrid store with the same placement implementation -> alternative.
+    // Case 2 (positive control): a non-hybrid store under the same config -> BATCH_USER_STORE_VT (enabled) ->
+    // alternative.
     reset(topicManager);
     String batchStoreName = "batch-store";
     Version batchVersion = mock(Version.class);

@@ -3071,7 +3071,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throw new VeniceNoStoreException(version.getStoreName(), clusterConfig.getClusterName());
     }
-    boolean useAltBackend = false;
+    boolean useAltBackend =
+        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, store.isHybrid());
     boolean isPushStatusStore = VeniceSystemStoreType
         .getSystemStoreType(version.getStoreName()) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
     boolean placementEnabled = topicPlacement != null && pushType == PushType.BATCH
@@ -3095,7 +3096,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterConfig.getClusterName(),
           owningUserStoreName,
           topic.getName(),
-          topicManager.getPubSubClusterAddress());
+          topicManager.getPubSubClusterAddress(),
+          useAltBackend);
       TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
       if (!shadow) {
         useAltBackend = selection == TopicPlacement.Selection.TREATMENT;
@@ -3731,7 +3733,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
           false,
-          false,
+          clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true, store.isHybrid()),
           clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics());
     }
     LOGGER.info(

@@ -9,12 +9,19 @@ public final class TopicPlacementContext {
   private final String storeName;
   private final String topicName;
   private final String destinationAddress;
+  private final boolean legacyAlternative;
 
-  public TopicPlacementContext(String clusterName, String storeName, String topicName, String destinationAddress) {
+  public TopicPlacementContext(
+      String clusterName,
+      String storeName,
+      String topicName,
+      String destinationAddress,
+      boolean legacyAlternative) {
     this.clusterName = Objects.requireNonNull(clusterName);
     this.storeName = Objects.requireNonNull(storeName);
     this.topicName = Objects.requireNonNull(topicName);
     this.destinationAddress = destinationAddress;
+    this.legacyAlternative = legacyAlternative;
   }
 
   public String getClusterName() {
@@ -33,6 +40,11 @@ public final class TopicPlacementContext {
   /** The target TopicManager's address, which may differ from the controller's region. */
   public String getDestinationAddress() {
     return destinationAddress;
+  }
+
+  /** Static configuration's choice for this topic, for comparison rather than an active-placement veto. */
+  public boolean isLegacyAlternative() {
+    return legacyAlternative;
   }
 
 }

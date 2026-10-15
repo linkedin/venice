@@ -9,12 +9,12 @@ public interface TopicPlacement {
     TREATMENT
   }
 
-  /** When disabled, use the adapter's default backend. */
+  /** When disabled, use static placement configuration. */
   default boolean isEnabled(String clusterName) {
     return true;
   }
 
-  /** Evaluate for comparison only; use the adapter's default backend. */
+  /** Evaluate for comparison only; keep static placement. */
   default boolean isShadowMode(String clusterName) {
     return false;
   }

@@ -1,5 +1,10 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -93,13 +98,15 @@ public class TopicPlacementTest {
     return name;
   }
 
-  private void configureRetiredStaticSettings(String name) {
+  private void configureStaticSettings(String name, boolean alternative) {
     Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    props.put("controller.pubsub.alternative.backend.all", "true");
-    props.put("controller.pubsub.alternative.backend.batch.user.store.vt", "false");
-    props.put("controller.pubsub.alternative.backend.push.status.system.store.vt", "false");
-    props.put("controller.pubsub.alternative.backend.inclusion.list", name);
-    props.put("controller.pubsub.alternative.backend.exclusion.list", name);
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL, "true");
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "false");
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT, "false");
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, name);
+    if (!alternative) {
+      props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, name);
+    }
     config = new VeniceControllerClusterConfig(new VeniceProperties(props));
   }
 
@@ -135,25 +142,34 @@ public class TopicPlacementTest {
     verifyCreate(name, alternative);
   }
 
-  @Test(dataProvider = "selections")
-  public void testRetiredStaticSettingsDoNotOverrideSelection(TopicPlacement.Selection selection, boolean alternative) {
+  @DataProvider
+  public Object[][] selectionsAndStaticSettings() {
+    return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.CONTROL, true },
+        { TopicPlacement.Selection.TREATMENT, false }, { TopicPlacement.Selection.TREATMENT, true } };
+  }
+
+  @Test(dataProvider = "selectionsAndStaticSettings")
+  public void testStaticSettingsDoNotOverrideActiveSelection(
+      TopicPlacement.Selection selection,
+      boolean staticAlternative) {
     String pushStatus = preparePushStatusStore();
-    configureRetiredStaticSettings("batch-store," + pushStatus);
+    configureStaticSettings("batch-store," + pushStatus, staticAlternative);
     when(placement.select(any())).thenReturn(selection);
     create("batch-store", PushType.BATCH);
     create(pushStatus, PushType.BATCH);
-    verifyCreate("batch-store", alternative);
-    verifyCreate(pushStatus, alternative);
+    verifyCreate("batch-store", selection == TopicPlacement.Selection.TREATMENT);
+    verifyCreate(pushStatus, selection == TopicPlacement.Selection.TREATMENT);
   }
 
   @Test
-  public void testHybridOwnerPushStatusUsesDefault() {
+  public void testHybridOwnerPushStatusUsesStaticPlacement() {
     String name = preparePushStatusStore();
+    configureStaticSettings(name, true);
     when(store.isHybrid()).thenReturn(true);
     when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
     create(name, PushType.BATCH);
     verify(placement, never()).select(any());
-    verifyCreate(name, false);
+    verifyCreate(name, true);
   }
 
   @Test
@@ -172,29 +188,48 @@ public class TopicPlacementTest {
     verifyNoInteractions(manager, placement);
   }
 
-  @Test(dataProvider = "selections")
-  public void testShadowUsesDefaultForUserAndPushStatusTopics(TopicPlacement.Selection selection, boolean alternative) {
+  @Test(dataProvider = "selectionsAndStaticSettings")
+  public void testShadowPreservesStaticPlacement(TopicPlacement.Selection selection, boolean staticAlternative) {
     String pushStatus = preparePushStatusStore();
-    configureRetiredStaticSettings("batch-store," + pushStatus);
+    configureStaticSettings("batch-store," + pushStatus, staticAlternative);
     when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
     when(placement.select(any())).thenReturn(selection);
     create("batch-store", PushType.BATCH);
     create(pushStatus, PushType.BATCH);
-    verify(placement, times(2)).select(any());
+    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
+    verify(placement, times(2)).select(captured.capture());
+    for (TopicPlacementContext context: captured.getAllValues()) {
+      assertEquals(context.isLegacyAlternative(), staticAlternative);
+    }
     verify(manager, never()).containsTopic(any());
-    verifyCreate("batch-store", false);
-    verifyCreate(pushStatus, false);
+    verifyCreate("batch-store", staticAlternative);
+    verifyCreate(pushStatus, staticAlternative);
+  }
+
+  @Test
+  public void testPushStatusShadowComparesItsOwnStaticSettingRatherThanOwners() {
+    String name = preparePushStatusStore();
+    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
+    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT, "true");
+    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
+    create(name, PushType.BATCH);
+    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
+    verify(placement).select(captured.capture());
+    assertEquals(captured.getValue().getStoreName(), "batch-store");
+    assertEquals(captured.getValue().isLegacyAlternative(), true);
+    verifyCreate(name, true);
   }
 
   @DataProvider
   public Object[][] disabledPlacements() {
-    return new Object[][] { { true }, { false } };
+    return new Object[][] { { true, false }, { true, true }, { false, false }, { false, true } };
   }
 
   @Test(dataProvider = "disabledPlacements")
-  public void testDisabledOrMissingPlacementUsesDefault(boolean missing) {
+  public void testDisabledOrMissingPlacementUsesStaticSettings(boolean missing, boolean staticAlternative) {
     String pushStatus = preparePushStatusStore();
-    configureRetiredStaticSettings("batch-store," + pushStatus);
+    configureStaticSettings("batch-store," + pushStatus, staticAlternative);
     if (missing) {
       admin.setTopicPlacement(null);
     } else {
@@ -204,8 +239,8 @@ public class TopicPlacementTest {
     verify(admin, never()).getStore(config.getClusterName(), "batch-store");
     create("batch-store", PushType.BATCH);
     verify(placement, never()).select(any());
-    verifyCreate("batch-store", false);
-    verifyCreate(pushStatus, false);
+    verifyCreate("batch-store", staticAlternative);
+    verifyCreate(pushStatus, staticAlternative);
   }
 
   @DataProvider
@@ -219,24 +254,26 @@ public class TopicPlacementTest {
   }
 
   @Test(dataProvider = "excludedScope")
-  public void testUnsupportedScopeUsesDefault(String name, PushType type, boolean hybrid) {
-    configureRetiredStaticSettings(name);
+  public void testUnsupportedScopeUsesStaticPlacement(String name, PushType type, boolean hybrid) {
     when(store.isHybrid()).thenReturn(hybrid);
     when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
-    create(name, type);
-    verify(placement, never()).select(any());
-    verifyCreate(name, false);
-    if (type.isStreamReprocessing()) {
-      verify(manager).createTopic(
-          topics.getTopic(Version.composeStreamReprocessingTopic(name, 1)),
-          2,
-          config.getKafkaReplicationFactor(),
-          true,
-          false,
-          config.getMinInSyncReplicas(),
-          false,
-          false);
+    for (boolean staticAlternative: new boolean[] { false, true }) {
+      configureStaticSettings(name, staticAlternative);
+      create(name, type);
+      verifyCreate(name, staticAlternative);
+      if (type.isStreamReprocessing()) {
+        verify(manager).createTopic(
+            topics.getTopic(Version.composeStreamReprocessingTopic(name, 1)),
+            2,
+            config.getKafkaReplicationFactor(),
+            true,
+            false,
+            config.getMinInSyncReplicas(),
+            false,
+            staticAlternative);
+      }
     }
+    verify(placement, never()).select(any());
   }
 
   @DataProvider
@@ -247,25 +284,27 @@ public class TopicPlacementTest {
   }
 
   @Test(dataProvider = "realTimeStores")
-  public void testRealTimeTopicsUseDefault(String name) {
-    configureRetiredStaticSettings(name);
+  public void testRealTimeTopicsUseStaticPlacement(String name) {
     when(store.getName()).thenReturn(name);
     when(admin.getTopicManager()).thenReturn(manager);
-    when(admin.getControllerConfig(config.getClusterName())).thenReturn(config);
     doCallRealMethod().when(admin).createOrUpdateRealTimeTopic(any(), any(), any(), any());
     Version version = new VersionImpl(name, 1, "push", 2);
-    admin.createOrUpdateRealTimeTopic(config.getClusterName(), store, version, topics.getTopic(name + "_rt"));
+    for (boolean staticAlternative: new boolean[] { false, true }) {
+      configureStaticSettings(name, staticAlternative);
+      when(admin.getControllerConfig(config.getClusterName())).thenReturn(config);
+      admin.createOrUpdateRealTimeTopic(config.getClusterName(), store, version, topics.getTopic(name + "_rt"));
+      verify(manager).createTopic(
+          topics.getTopic(name + "_rt"),
+          2,
+          config.getKafkaReplicationFactorRTTopics(),
+          StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
+          false,
+          config.getMinInSyncReplicasRealTimeTopics(),
+          false,
+          staticAlternative,
+          config.getUncleanLeaderElectionEnableRealTimeTopics());
+    }
     verifyNoInteractions(placement);
-    verify(manager).createTopic(
-        topics.getTopic(name + "_rt"),
-        2,
-        config.getKafkaReplicationFactorRTTopics(),
-        StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
-        false,
-        config.getMinInSyncReplicasRealTimeTopics(),
-        false,
-        false,
-        config.getUncleanLeaderElectionEnableRealTimeTopics());
   }
 
   @DataProvider
