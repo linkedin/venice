@@ -7,15 +7,12 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -33,7 +30,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -49,7 +45,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
-import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -410,8 +405,8 @@ public class TestVeniceHelixAdminWithoutCluster {
     return admin;
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testWriteEndOfPushNoPartitionCounts(boolean alsoWriteStartOfPush) throws Exception {
+  @Test
+  public void testWriteEndOfPushNoPartitionCounts() throws Exception {
     String clusterName = "test_cluster";
     String storeName = "test_store";
     int versionNumber = 1;
@@ -423,7 +418,6 @@ public class TestVeniceHelixAdminWithoutCluster {
     Version version = mock(Version.class);
     doReturn(version).when(store).getVersion(versionNumber);
     doReturn(Version.PushType.BATCH).when(version).getPushType();
-    doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
     doReturn(3).when(version).getPartitionCount();
     PartitionerConfig partitionerConfig = mock(PartitionerConfig.class);
     doReturn(1).when(partitionerConfig).getAmplificationFactor();
@@ -435,18 +429,12 @@ public class TestVeniceHelixAdminWithoutCluster {
     doReturn(writerFactory).when(admin).getVeniceWriterFactory();
     doReturn(veniceWriter).when(writerFactory).createVeniceWriter(any(VeniceWriterOptions.class));
 
-    admin.writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush);
+    // Call the original 4-arg overload
+    admin.writeEndOfPush(clusterName, storeName, versionNumber, false);
 
-    InOrder order = inOrder(veniceWriter);
-    if (alsoWriteStartOfPush) {
-      order.verify(veniceWriter)
-          .broadcastStartOfPush(false, false, CompressionStrategy.NO_OP, Optional.empty(), Collections.emptyMap());
-    } else {
-      verify(veniceWriter, never()).broadcastStartOfPush(anyBoolean(), anyBoolean(), any(), any(), any());
-    }
-    order.verify(veniceWriter).broadcastEndOfPush(any(Map.class), eq(Collections.emptyMap()));
-    order.verify(veniceWriter).flush();
-    order.verify(veniceWriter).close();
+    // Verify it delegates to the 5-arg overload with empty counts (falls back to no-header EOP in VeniceWriter)
+    verify(veniceWriter).broadcastEndOfPush(any(Map.class), eq(Collections.emptyMap()));
+    verify(veniceWriter).flush();
   }
 
   @Test

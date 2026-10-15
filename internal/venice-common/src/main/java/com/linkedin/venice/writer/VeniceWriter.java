@@ -73,9 +73,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -100,6 +102,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   // use for running async close and to fetch number of partitions with timeout from producer
   private final ThreadPoolExecutor threadPoolExecutor;
+  private final ThreadPoolExecutor startOfPushThreadPoolExecutor;
 
   // log4j logger
   protected final Logger logger;
@@ -173,7 +176,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final String PRODUCER_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "producer.thread.count";
   public static final String PRODUCER_QUEUE_SIZE = VENICE_WRITER_CONFIG_PREFIX + "producer.queue.size";
 
+  /**
+   * Maximum concurrent start-of-push partition sends per writer. Must be positive.
+   * Default: {@value DEFAULT_SOP_BROADCAST_THREAD_COUNT}. Set to 1 to send partitions serially.
+   * This does not change the version-swap or writer-close executor.
+   */
+  public static final String SOP_BROADCAST_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "sop.broadcast.thread.count";
+
   // Config value defaults
+
+  public static final int DEFAULT_SOP_BROADCAST_THREAD_COUNT = 8;
 
   /**
    * 950 KB for user payload should be conservative enough.
@@ -360,6 +372,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.time = params.getTime();
     this.partitioner = params.getPartitioner();
     this.closeTimeOutInMs = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
+    int sopBroadcastThreadCount = props.getInt(SOP_BROADCAST_THREAD_COUNT, DEFAULT_SOP_BROADCAST_THREAD_COUNT);
+    if (sopBroadcastThreadCount <= 0) {
+      throw new VeniceException(SOP_BROADCAST_THREAD_COUNT + " must be positive, got: " + sopBroadcastThreadCount);
+    }
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     // override factory chunking settings
     this.isChunkingEnabled = params.isChunkingEnabled();
@@ -436,6 +452,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("VW-" + topicName, params.getLogContext()));
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
+    this.startOfPushThreadPoolExecutor = new ThreadPoolExecutor(
+        sopBroadcastThreadCount,
+        sopBroadcastThreadCount,
+        5,
+        TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory("VW-SOP-" + topicName, params.getLogContext()));
+    this.startOfPushThreadPoolExecutor.allowCoreThreadTimeOut(true);
 
     this.protocolSchemaHeader = overrideProtocolSchema == null
         ? null
@@ -580,6 +604,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
           } finally {
             isClosed = true;
+            startOfPushThreadPoolExecutor.shutdown();
             threadPoolExecutor.shutdown();
             long elapsedTimeInMs = System.currentTimeMillis() - timeAtStartOfClose;
             logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs);
@@ -1522,14 +1547,44 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       CompressionStrategy compressionStrategy,
       Optional<ByteBuffer> optionalCompressionDictionary,
       Map<String, String> debugInfo) {
-    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
-    StartOfPush startOfPush = new StartOfPush();
-    startOfPush.sorted = sorted;
-    startOfPush.chunked = chunked;
-    startOfPush.compressionStrategy = compressionStrategy.getValue();
-    startOfPush.compressionDictionary = optionalCompressionDictionary.orElse(null);
-    controlMessage.controlMessageUnion = startOfPush;
-    broadcastControlMessage(controlMessage, debugInfo);
+    List<CompletableFuture<PubSubProduceResult>> partitionWriteFutures = new ArrayList<>(numberOfPartitions);
+    for (int partition = 0; partition < numberOfPartitions; partition++) {
+      int destinationPartition = partition;
+      try {
+        partitionWriteFutures.add(CompletableFuture.supplyAsync(() -> {
+          ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
+          StartOfPush startOfPush = new StartOfPush();
+          startOfPush.sorted = sorted;
+          startOfPush.chunked = chunked;
+          startOfPush.compressionStrategy = compressionStrategy.getValue();
+          startOfPush.compressionDictionary = optionalCompressionDictionary.map(ByteBuffer::duplicate).orElse(null);
+          controlMessage.controlMessageUnion = startOfPush;
+          return sendControlMessage(
+              controlMessage,
+              destinationPartition,
+              debugInfo,
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER);
+        }, startOfPushThreadPoolExecutor).thenCompose(writeFuture -> writeFuture));
+      } catch (RejectedExecutionException e) {
+        CompletableFuture<PubSubProduceResult> failedFuture = new CompletableFuture<>();
+        failedFuture.completeExceptionally(e);
+        partitionWriteFutures.add(failedFuture);
+      }
+    }
+    try {
+      // All partitions must finish, including after a failure, before callers release their locks or send later
+      // controls.
+      CompletableFuture.allOf(partitionWriteFutures.toArray(new CompletableFuture[0])).join();
+    } catch (CompletionException e) {
+      if (e.getCause() instanceof RuntimeException) {
+        throw (RuntimeException) e.getCause();
+      }
+      throw new VeniceException(
+          "Failed to broadcast START_OF_PUSH Control Message for topic: " + topicName,
+          e.getCause());
+    }
+    logger.info("Successfully broadcast {} Control Message for topic: {}", ControlMessageType.START_OF_PUSH, topicName);
     // Flush start of push message to avoid data message arrives before it.
     producerAdapter.flush();
   }

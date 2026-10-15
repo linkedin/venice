@@ -3,17 +3,22 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static com.linkedin.venice.writer.VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
@@ -41,15 +46,21 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -172,6 +183,84 @@ public class VeniceWriterTest {
     testThreadSafety(
         100,
         veniceWriter -> veniceWriter.put(new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null));
+  }
+
+  @Test(timeOut = 30 * MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testParallelStartOfPushPreservesPartitionOrderAndDictionary(boolean includeDictionary) {
+    String topicName = TestUtils.getUniqueTopicString("parallel-sop");
+    int partitionCount = 4;
+    PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
+    topicManager.createTopic(topic, partitionCount, 1, true);
+    Properties properties = new Properties();
+    properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    properties.setProperty(VeniceWriter.SOP_BROADCAST_THREAD_COUNT, "2");
+    properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
+    CompressionStrategy compressionStrategy =
+        includeDictionary ? CompressionStrategy.ZSTD_WITH_DICT : CompressionStrategy.GZIP;
+    ByteBuffer dictionary = ByteBuffer.wrap(new byte[] { 1, 2, 3 });
+    try (VeniceWriter<Object, Object, Object> writer = TestUtils
+        .getVeniceWriterFactory(
+            properties,
+            pubSubProducerAdapterFactory,
+            pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+        .createVeniceWriter(new VeniceWriterOptions.Builder(topicName).setPartitionCount(partitionCount).build())) {
+      writer.broadcastStartOfPush(
+          true,
+          false,
+          compressionStrategy,
+          includeDictionary ? Optional.of(dictionary) : Optional.empty(),
+          Collections.emptyMap());
+      writer.broadcastTopicSwitch(
+          Collections.singletonList(pubSubBrokerWrapper.getAddress()),
+          "test_rt",
+          -1L,
+          Collections.emptyMap());
+      writer.broadcastEndOfPush(Collections.emptyMap());
+    }
+
+    List<ControlMessageType> expectedTypes = Arrays.asList(
+        ControlMessageType.START_OF_SEGMENT,
+        ControlMessageType.START_OF_PUSH,
+        ControlMessageType.TOPIC_SWITCH,
+        ControlMessageType.END_OF_PUSH,
+        ControlMessageType.END_OF_SEGMENT);
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesByPartition = new HashMap<>();
+    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory.create(
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+            .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+            .setIsOffsetCollectionEnabled(false)
+            .build())) {
+      for (int partition = 0; partition < partitionCount; partition++) {
+        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partition);
+        messagesByPartition.put(topicPartition, new ArrayList<>());
+        consumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST, false);
+      }
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        consumer.poll(100).forEach((partition, messages) -> messagesByPartition.get(partition).addAll(messages));
+        for (List<DefaultPubSubMessage> messages: messagesByPartition.values()) {
+          assertEquals(messages.size(), expectedTypes.size());
+          for (int index = 0; index < expectedTypes.size(); index++) {
+            KafkaMessageEnvelope envelope = messages.get(index).getValue();
+            assertEquals(ControlMessageType.valueOf((ControlMessage) envelope.payloadUnion), expectedTypes.get(index));
+            assertEquals(envelope.producerMetadata.segmentNumber, 0);
+            assertEquals(envelope.producerMetadata.messageSequenceNumber, index);
+          }
+          ControlMessage message = (ControlMessage) messages.get(1).getValue().payloadUnion;
+          StartOfPush startOfPush = (StartOfPush) message.controlMessageUnion;
+          assertTrue(startOfPush.sorted);
+          assertFalse(startOfPush.chunked);
+          assertEquals(startOfPush.compressionStrategy, compressionStrategy.getValue());
+          if (includeDictionary) {
+            assertEquals(startOfPush.compressionDictionary, dictionary);
+          } else {
+            Assert.assertNull(startOfPush.compressionDictionary);
+          }
+        }
+      });
+    }
   }
 
   /**
