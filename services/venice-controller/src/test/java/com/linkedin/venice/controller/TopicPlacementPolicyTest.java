@@ -64,20 +64,13 @@ public class TopicPlacementPolicyTest {
     doReturn(store).when(admin).getStore(eq(config.getClusterName()), any());
     doReturn(topics).when(admin).getPubSubTopicRepository();
     doCallRealMethod().when(admin).setTopicPlacementPolicy(any());
-    doCallRealMethod().when(admin).createBatchTopics(any(), any(), any(), anyInt(), any(), anyBoolean(), any());
+    doCallRealMethod().when(admin).createBatchTopics(any(), any(), any(), anyInt(), any(), anyBoolean());
     admin.setTopicPlacementPolicy(policy);
     when(manager.getPubSubClusterAddress()).thenReturn("destination.example:9092");
   }
 
   private void create(String name, PushType type) {
-    admin.createBatchTopics(
-        new VersionImpl(name, 1, "push", 2),
-        type,
-        manager,
-        2,
-        config,
-        false,
-        TopicPlacementContext.Operation.NEW_VERSION);
+    admin.createBatchTopics(new VersionImpl(name, 1, "push", 2), type, manager, 2, config, false);
   }
 
   private String preparePushStatusStore() {
@@ -101,7 +94,6 @@ public class TopicPlacementPolicyTest {
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().getTopicName(), name + "_v1");
     assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
-    assertEquals(captured.getValue().getOperation(), TopicPlacementContext.Operation.NEW_VERSION);
     assertEquals(captured.getValue().isLegacyAlternative(), true);
     verify(manager).createTopic(
         topics.getTopic(name + "_v1"),
@@ -164,14 +156,24 @@ public class TopicPlacementPolicyTest {
         false);
   }
 
-  @Test
-  public void testPushStatusOfMigratingOwnerIsRecovery() {
+  @Test(dataProvider = "selections")
+  public void testPushStatusOfMigratingOwnerUsesPolicy(TopicPlacementPolicy.Selection selection, boolean alternative) {
     String name = preparePushStatusStore();
     when(store.isMigrating()).thenReturn(true);
+    when(policy.select(any())).thenReturn(selection);
     create(name, PushType.BATCH);
     ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
     verify(policy).select(captured.capture());
-    assertEquals(captured.getValue().getOperation(), TopicPlacementContext.Operation.RECOVERY);
+    assertEquals(captured.getValue().getStoreName(), "batch-store");
+    verify(manager).createTopic(
+        topics.getTopic(name + "_v1"),
+        2,
+        config.getKafkaReplicationFactor(),
+        true,
+        false,
+        config.getMinInSyncReplicas(),
+        false,
+        alternative);
   }
 
   @Test
@@ -251,7 +253,6 @@ public class TopicPlacementPolicyTest {
     verify(policy).select(captured.capture());
     assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
     assertEquals(captured.getValue().getStoreName(), "batch-store");
-    assertEquals(captured.getValue().getOperation(), TopicPlacementContext.Operation.NEW_VERSION);
     verify(manager).createTopic(
         topics.getTopic("batch-store_v1"),
         2,
@@ -319,27 +320,35 @@ public class TopicPlacementPolicyTest {
 
   @DataProvider
   public Object[][] recoveryOperations() {
-    return new Object[][] { { true, false }, { false, true } };
+    return new Object[][] { { true, false, TopicPlacementPolicy.Selection.CONTROL, false },
+        { true, false, TopicPlacementPolicy.Selection.TREATMENT, true },
+        { false, true, TopicPlacementPolicy.Selection.CONTROL, false },
+        { false, true, TopicPlacementPolicy.Selection.TREATMENT, true } };
   }
 
   @Test(dataProvider = "recoveryOperations")
-  public void testMigrationAndDataRecoveryAreNotNewAdmission(boolean migrating, boolean recovering) {
+  public void testMissingTopicDuringMigrationOrDataRecoveryUsesPolicy(
+      boolean migrating,
+      boolean recovering,
+      TopicPlacementPolicy.Selection selection,
+      boolean alternative) {
     when(store.isMigrating()).thenReturn(migrating);
+    when(policy.select(any())).thenReturn(selection);
     Version version = new VersionImpl("batch-store", 1, "push", 2);
     if (recovering) {
       version.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl("source-region", false, 1));
     }
-    admin.createBatchTopics(
-        version,
-        PushType.BATCH,
-        manager,
+    admin.createBatchTopics(version, PushType.BATCH, manager, 2, config, false);
+    verify(policy).select(any());
+    verify(manager).createTopic(
+        topics.getTopic("batch-store_v1"),
         2,
-        config,
+        config.getKafkaReplicationFactor(),
+        true,
         false,
-        TopicPlacementContext.Operation.NEW_VERSION);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(policy).select(captured.capture());
-    assertEquals(captured.getValue().getOperation(), TopicPlacementContext.Operation.RECOVERY);
+        config.getMinInSyncReplicas(),
+        false,
+        alternative);
   }
 
   @DataProvider
@@ -445,14 +454,11 @@ public class TopicPlacementPolicyTest {
     when(manager.containsTopic(topics.getTopic("batch-store_v1"))).thenReturn(true);
     when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic("batch-store_v1"), 2)).thenReturn(true);
     when(manager.getTopicRetention(topics.getTopic("batch-store_v1"))).thenReturn(Long.MAX_VALUE);
-    admin.createBatchTopics(
-        new VersionImpl("batch-store", 1, "push", 2),
-        PushType.BATCH,
-        manager,
-        2,
-        config,
-        false,
-        recovering ? TopicPlacementContext.Operation.RECOVERY : TopicPlacementContext.Operation.NEW_VERSION);
+    Version version = new VersionImpl("batch-store", 1, "push", 2);
+    if (recovering) {
+      version.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl("source-region", false, 1));
+    }
+    admin.createBatchTopics(version, PushType.BATCH, manager, 2, config, false);
     verify(policy, never()).select(any());
     verify(manager, never())
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());

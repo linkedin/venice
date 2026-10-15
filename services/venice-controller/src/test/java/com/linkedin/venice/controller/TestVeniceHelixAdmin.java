@@ -601,15 +601,6 @@ public class TestVeniceHelixAdmin {
             anyInt(),
             eq(clusterConfig),
             anyBoolean());
-    doCallRealMethod().when(veniceHelixAdmin)
-        .createBatchTopics(
-            any(Version.class),
-            any(PushType.class),
-            eq(topicManager),
-            anyInt(),
-            eq(clusterConfig),
-            anyBoolean(),
-            any(com.linkedin.venice.controller.placement.TopicPlacementContext.Operation.class));
 
     // Case 1: hybrid store, fresh version reports non-hybrid (mock default) -> HYBRID_USER_STORE_VT (disabled) ->
     // primary.

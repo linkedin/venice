@@ -3043,23 +3043,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  void createBatchTopics(
-      Version version,
-      PushType pushType,
-      TopicManager topicManager,
-      int partitionCount,
-      VeniceControllerClusterConfig clusterConfig,
-      boolean useFastKafkaOperationTimeout) {
-    createBatchTopics(
-        version,
-        pushType,
-        topicManager,
-        partitionCount,
-        clusterConfig,
-        useFastKafkaOperationTimeout,
-        TopicPlacementContext.Operation.RECOVERY);
-  }
-
   /** Set once, before the controller starts. */
   void setTopicPlacementPolicy(TopicPlacementPolicy topicPlacementPolicy) {
     this.topicPlacementPolicy = topicPlacementPolicy;
@@ -3071,8 +3054,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       TopicManager topicManager,
       int partitionCount,
       VeniceControllerClusterConfig clusterConfig,
-      boolean useFastKafkaOperationTimeout,
-      TopicPlacementContext.Operation operation) {
+      boolean useFastKafkaOperationTimeout) {
     List<PubSubTopic> topicNamesToCreate = new ArrayList<>(2);
     topicNamesToCreate.add(getPubSubTopicRepository().getTopic(version.kafkaTopicName()));
     if (pushType.isStreamReprocessing()) {
@@ -3128,9 +3110,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           placementStoreName,
           topic.getName(),
           topicManager.getPubSubClusterAddress(),
-          store.isMigrating() || placementStore.isMigrating() || version.getDataRecoveryVersionConfig() != null
-              ? TopicPlacementContext.Operation.RECOVERY
-              : operation,
           useAltBackend);
       TopicPlacementPolicy.Selection selection = Objects.requireNonNull(topicPlacementPolicy.select(context));
       if (!shadow) {
@@ -3429,8 +3408,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   getTopicManager(),
                   numberOfPartitions,
                   clusterConfig,
-                  useFastKafkaOperationTimeout,
-                  TopicPlacementContext.Operation.NEW_VERSION);
+                  useFastKafkaOperationTimeout);
               addVersionLatencyStats
                   .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
             }
@@ -3524,8 +3502,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   getTopicManager(sourceKafkaBootstrapServers),
                   numberOfPartitions,
                   clusterConfig,
-                  useFastKafkaOperationTimeout,
-                  TopicPlacementContext.Operation.NEW_VERSION);
+                  useFastKafkaOperationTimeout);
               addVersionLatencyStats.recordBatchTopicCreationLatency(
                   LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicInParentTimestamp));
             }
