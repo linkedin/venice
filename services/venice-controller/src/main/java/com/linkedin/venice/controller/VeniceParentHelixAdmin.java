@@ -1230,8 +1230,12 @@ public class VeniceParentHelixAdmin implements Admin {
    * It is OK to clean up the old store versions in Parent Controller without notifying Child Controller since
    * store version in Parent Controller doesn't maintain actual version status, and only for tracking
    * the store version creation history.
+   *
+   * @param inFlightVersionNumber a version that was just created and has not finished its push yet; it is never
+   *                              deleted, otherwise a following end-of-push on it would fail with a missing version.
+   *                              Pass {@link Store#NON_EXISTING_VERSION} when there is none.
    */
-  void cleanupHistoricalVersions(String clusterName, String storeName) {
+  void cleanupHistoricalVersions(String clusterName, String storeName, int inFlightVersionNumber) {
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository storeRepo = resources.getStoreMetadataRepository();
@@ -1257,6 +1261,7 @@ public class VeniceParentHelixAdmin implements Admin {
       List<Version> clonedVersions = new ArrayList<>(versions);
       clonedVersions.stream()
           .sorted()
+          .filter(v -> v.getNumber() != inFlightVersionNumber)
           .filter(v -> !currentVersionsMap.containsValue(v.getNumber()))
           .limit(versionCount - storeVersionRetentionCount)
           .forEach(v -> store.deleteVersion(v.getNumber()));
@@ -2014,7 +2019,7 @@ public class VeniceParentHelixAdmin implements Admin {
       getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
     }
     deleteStrandedNonCurrentVersions(clusterName, storeName);
-    cleanupHistoricalVersions(clusterName, storeName);
+    cleanupHistoricalVersions(clusterName, storeName, newVersion.getNumber());
     return newVersion;
   }
 

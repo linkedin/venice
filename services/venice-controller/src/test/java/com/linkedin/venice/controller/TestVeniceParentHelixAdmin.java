@@ -2233,6 +2233,62 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
+  private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
+    String storeName = VeniceSystemStoreUtils.getMetaStoreName("synthetic_store");
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        -1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    for (int v: existing) {
+      store.addVersion(new VersionImpl(storeName, v));
+    }
+    HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
+    doReturn(store).when(storeRepo).getStore(storeName);
+    doReturn(storeRepo).when(resources).getStoreMetadataRepository();
+    doReturn(retention).when(config).getSystemStoreVersionRetentionCount();
+    mockControllerClients(storeName, regionCurrents);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, inFlightVersion);
+    return store;
+  }
+
+  @Test
+  public void testCleanupKeepsInFlightVersionWhenRegionalCurrentsDiffer() {
+    // retention=2, distinct regional currents 6 and 7, and a new in-flight version 9
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 6, 7, 9 }, 6, 7);
+    Assert.assertTrue(store.containsVersion(6));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9), "In-flight version must survive cleanup");
+  }
+
+  @Test
+  public void testCleanupWithAlignedRegionalCurrentsKeepsInFlightVersion() {
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 3, 7, 9 }, 7, 7);
+    Assert.assertFalse(store.containsVersion(3));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9));
+  }
+
+  @Test
+  public void testCleanupStillDeletesEligibleHistoricalVersionsAroundInFlightVersion() {
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 1, 2, 6, 7, 9 }, 6, 7);
+    Assert.assertFalse(store.containsVersion(1));
+    Assert.assertFalse(store.containsVersion(2));
+    Assert.assertTrue(store.containsVersion(6));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9));
+  }
+
+  @Test
+  public void testCleanupWithoutInFlightVersionStillDeletesOldest() {
+    Store store = runSystemStoreCleanup(2, Store.NON_EXISTING_VERSION, new int[] { 6, 7, 9 }, 6, 7);
+    Assert.assertFalse(store.containsVersion(9));
+  }
+
   @Test
   public void testStoreVersionCleanUpWithFewerVersions() {
     String storeName = "test_store";
@@ -2251,7 +2307,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
     doReturn(5).when(config).getUserStoreVersionRetentionCount();
-    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, Store.NON_EXISTING_VERSION);
     verify(storeRepo).getStore(storeName);
     verify(storeRepo, never()).updateStore(any());
   }
@@ -2277,7 +2333,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(5).when(config).getUserStoreVersionRetentionCount();
     mockControllerClients(storeName);
 
-    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, Store.NON_EXISTING_VERSION);
     verify(storeRepo).getStore(storeName);
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
     verify(storeRepo).updateStore(storeCaptor.capture());
@@ -2429,15 +2485,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   private void mockControllerClients(String storeName) {
+    mockControllerClients(storeName, 4, 5, 6);
+  }
+
+  private void mockControllerClients(String storeName, int... regionCurrentVersions) {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
     Map<String, String> map = new HashMap<>();
     map.put(storeName, "1");
 
-    for (int i = 0; i < NUM_REGIONS; i++) {
+    for (int i = 0; i < regionCurrentVersions.length; i++) {
       ControllerClient client = mock(ControllerClient.class);
       StoreResponse storeResponse = new StoreResponse();
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
-      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
+      s.setCurrentVersion(regionCurrentVersions[i]);
       storeResponse.setStore(StoreInfo.fromStore(s));
       MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
       doReturn(map).when(storeStatusResponse).getStoreStatusMap();
