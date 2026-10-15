@@ -26,7 +26,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
-import com.linkedin.venice.controller.placement.TopicPlacementPolicy;
+import com.linkedin.venice.controller.placement.TopicPlacement;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -59,7 +59,7 @@ public class VeniceControllerTest {
   public void testOwnerReadinessTracksStartupServicesAndShutdown(
       boolean sslEnabled,
       ParentControllerRegionState parentRegionState,
-      boolean placementPolicyEnabled) {
+      boolean placementEnabled) {
     boolean parent = parentRegionState != null;
     boolean expectedReady = !parent || parentRegionState == ACTIVE;
     Properties properties = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
@@ -75,7 +75,7 @@ public class VeniceControllerTest {
       properties.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childRegion, "localhost:9092");
     }
     Admin admin = parent ? mock(VeniceParentHelixAdmin.class) : mock(VeniceHelixAdmin.class);
-    TopicPlacementPolicy placementPolicy = placementPolicyEnabled ? mock(TopicPlacementPolicy.class) : null;
+    TopicPlacement placement = placementEnabled ? mock(TopicPlacement.class) : null;
     VeniceHelixAdmin internalAdmin = parent ? mock(VeniceHelixAdmin.class) : (VeniceHelixAdmin) admin;
     if (parent) {
       when(((VeniceParentHelixAdmin) admin).getVeniceHelixAdmin()).thenReturn(internalAdmin);
@@ -119,10 +119,10 @@ public class VeniceControllerTest {
               .setPropertiesList(Collections.singletonList(new VeniceProperties(properties)))
               .setMetricsRepository(metricsRepository)
               .setServiceDiscoveryAnnouncers(Collections.singletonList(announcer))
-              .setTopicPlacementPolicy(placementPolicy)
+              .setTopicPlacement(placement)
               .build());
-      if (placementPolicyEnabled) {
-        verify(internalAdmin).setTopicPlacementPolicy(placementPolicy);
+      if (placementEnabled) {
+        verify(internalAdmin).setTopicPlacement(placement);
       }
       try {
         assertEquals(readinessSignals.size(), sslEnabled ? 2 : 1);

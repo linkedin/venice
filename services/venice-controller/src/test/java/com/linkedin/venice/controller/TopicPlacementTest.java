@@ -21,8 +21,8 @@ import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.placement.TopicPlacement;
 import com.linkedin.venice.controller.placement.TopicPlacementContext;
-import com.linkedin.venice.controller.placement.TopicPlacementPolicy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
@@ -41,11 +41,11 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
-public class TopicPlacementPolicyTest {
+public class TopicPlacementTest {
   private VeniceHelixAdmin admin;
   private TopicManager manager;
   private VeniceControllerClusterConfig config;
-  private TopicPlacementPolicy policy;
+  private TopicPlacement placement;
   private PubSubTopicRepository topics;
   private Store store;
 
@@ -58,14 +58,14 @@ public class TopicPlacementPolicyTest {
     manager = mock(TopicManager.class);
     topics = new PubSubTopicRepository();
     store = mock(Store.class);
-    policy = mock(TopicPlacementPolicy.class);
-    when(policy.isEnabled(config.getClusterName())).thenReturn(true);
-    when(policy.select(any())).thenReturn(TopicPlacementPolicy.Selection.CONTROL);
+    placement = mock(TopicPlacement.class);
+    when(placement.isEnabled(config.getClusterName())).thenReturn(true);
+    when(placement.select(any())).thenReturn(TopicPlacement.Selection.CONTROL);
     doReturn(store).when(admin).getStore(eq(config.getClusterName()), any());
     doReturn(topics).when(admin).getPubSubTopicRepository();
-    doCallRealMethod().when(admin).setTopicPlacementPolicy(any());
+    doCallRealMethod().when(admin).setTopicPlacement(any());
     doCallRealMethod().when(admin).createBatchTopics(any(), any(), any(), anyInt(), any(), anyBoolean());
-    admin.setTopicPlacementPolicy(policy);
+    admin.setTopicPlacement(placement);
     when(manager.getPubSubClusterAddress()).thenReturn("destination.example:9092");
   }
 
@@ -85,12 +85,12 @@ public class TopicPlacementPolicyTest {
   }
 
   @Test(dataProvider = "selections")
-  public void testPushStatusUsesOwnerCohort(TopicPlacementPolicy.Selection selection, boolean alternative) {
+  public void testPushStatusUsesOwnerCohort(TopicPlacement.Selection selection, boolean alternative) {
     String name = preparePushStatusStore();
-    when(policy.select(any())).thenReturn(selection);
+    when(placement.select(any())).thenReturn(selection);
     create(name, PushType.BATCH);
     ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(policy).select(captured.capture());
+    verify(placement).select(captured.capture());
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().getTopicName(), name + "_v1");
     assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
@@ -111,7 +111,7 @@ public class TopicPlacementPolicyTest {
     String name = preparePushStatusStore();
     when(store.isHybrid()).thenReturn(true);
     create(name, PushType.BATCH);
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never()).containsTopic(any());
     verify(manager).createTopic(
         topics.getTopic(name + "_v1"),
@@ -140,10 +140,10 @@ public class TopicPlacementPolicyTest {
       props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, name);
     }
     config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    when(policy.select(any())).thenReturn(TopicPlacementPolicy.Selection.TREATMENT);
+    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
     create(name, PushType.BATCH);
     ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(policy).select(captured.capture());
+    verify(placement).select(captured.capture());
     assertEquals(captured.getValue().isLegacyAlternative(), false);
     verify(manager).createTopic(
         topics.getTopic(name + "_v1"),
@@ -157,13 +157,13 @@ public class TopicPlacementPolicyTest {
   }
 
   @Test(dataProvider = "selections")
-  public void testPushStatusOfMigratingOwnerUsesPolicy(TopicPlacementPolicy.Selection selection, boolean alternative) {
+  public void testPushStatusOfMigratingOwnerUsesPlacement(TopicPlacement.Selection selection, boolean alternative) {
     String name = preparePushStatusStore();
     when(store.isMigrating()).thenReturn(true);
-    when(policy.select(any())).thenReturn(selection);
+    when(placement.select(any())).thenReturn(selection);
     create(name, PushType.BATCH);
     ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(policy).select(captured.capture());
+    verify(placement).select(captured.capture());
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     verify(manager).createTopic(
         topics.getTopic(name + "_v1"),
@@ -181,18 +181,18 @@ public class TopicPlacementPolicyTest {
     String name = preparePushStatusStore();
     doReturn(null).when(admin).getStore(config.getClusterName(), "batch-store");
     assertThrows(VeniceNoStoreException.class, () -> create(name, PushType.BATCH));
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verifyNoInteractions(manager);
   }
 
   @Test
-  public void testExistingPushStatusTopicBypassesPolicy() {
+  public void testExistingPushStatusTopicBypassesPlacement() {
     String name = preparePushStatusStore();
     when(manager.containsTopic(topics.getTopic(name + "_v1"))).thenReturn(true);
     when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic(name + "_v1"), 2)).thenReturn(true);
     when(manager.getTopicRetention(topics.getTopic(name + "_v1"))).thenReturn(Long.MAX_VALUE);
     create(name, PushType.BATCH);
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never())
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
   }
@@ -204,7 +204,7 @@ public class TopicPlacementPolicyTest {
     when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic(name + "_v1"), 2)).thenReturn(true);
     when(manager.getTopicRetention(topics.getTopic(name + "_v1"))).thenReturn(retention);
     assertThrows(VeniceException.class, () -> create(name, PushType.BATCH));
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never())
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
   }
@@ -212,9 +212,9 @@ public class TopicPlacementPolicyTest {
   @Test
   public void testPushStatusShadowPreservesLegacyPlacement() {
     String name = preparePushStatusStore();
-    when(policy.isShadowMode(config.getClusterName())).thenReturn(true);
+    when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
     create(name, PushType.BATCH);
-    verify(policy).select(any());
+    verify(placement).select(any());
     verify(manager, never()).containsTopic(any());
     verify(manager).createTopic(
         topics.getTopic(name + "_v1"),
@@ -228,12 +228,12 @@ public class TopicPlacementPolicyTest {
   }
 
   @Test
-  public void testDisabledPushStatusPolicyDoesNotReadOwner() {
+  public void testDisabledPushStatusPlacementDoesNotReadOwner() {
     String name = preparePushStatusStore();
-    when(policy.isEnabled(config.getClusterName())).thenReturn(false);
+    when(placement.isEnabled(config.getClusterName())).thenReturn(false);
     create(name, PushType.BATCH);
     verify(admin, never()).getStore(config.getClusterName(), "batch-store");
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never()).containsTopic(any());
     verify(manager).createTopic(
         topics.getTopic(name + "_v1"),
@@ -250,7 +250,7 @@ public class TopicPlacementPolicyTest {
   public void testDestinationAndVeto() {
     create("batch-store", PushType.BATCH);
     ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(policy).select(captured.capture());
+    verify(placement).select(captured.capture());
     assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     verify(manager).createTopic(
@@ -265,10 +265,10 @@ public class TopicPlacementPolicyTest {
   }
 
   @Test
-  public void testPolicyCannotOverrideLegacyVeto() {
+  public void testPlacementCannotOverrideLegacyVeto() {
     Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
     config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    when(policy.select(any())).thenReturn(TopicPlacementPolicy.Selection.TREATMENT);
+    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
     create("batch-store", PushType.BATCH);
     verify(manager).createTopic(
         topics.getTopic("batch-store_v1"),
@@ -282,13 +282,13 @@ public class TopicPlacementPolicyTest {
   }
 
   @Test
-  public void testExclusionWinsOverInclusionAndPolicyAdmission() {
+  public void testExclusionWinsOverInclusionAndPlacementAdmission() {
     Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
     props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
     props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, "batch-store");
     props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "batch-store");
     config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    when(policy.select(any())).thenReturn(TopicPlacementPolicy.Selection.TREATMENT);
+    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
     create("batch-store", PushType.BATCH);
     verify(manager).createTopic(
         topics.getTopic("batch-store_v1"),
@@ -302,7 +302,7 @@ public class TopicPlacementPolicyTest {
   }
 
   @Test
-  public void testInclusionCannotOverridePolicyVeto() {
+  public void testInclusionCannotOverridePlacementVeto() {
     Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
     props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, "batch-store");
     config = new VeniceControllerClusterConfig(new VeniceProperties(props));
@@ -320,26 +320,26 @@ public class TopicPlacementPolicyTest {
 
   @DataProvider
   public Object[][] recoveryOperations() {
-    return new Object[][] { { true, false, TopicPlacementPolicy.Selection.CONTROL, false },
-        { true, false, TopicPlacementPolicy.Selection.TREATMENT, true },
-        { false, true, TopicPlacementPolicy.Selection.CONTROL, false },
-        { false, true, TopicPlacementPolicy.Selection.TREATMENT, true } };
+    return new Object[][] { { true, false, TopicPlacement.Selection.CONTROL, false },
+        { true, false, TopicPlacement.Selection.TREATMENT, true },
+        { false, true, TopicPlacement.Selection.CONTROL, false },
+        { false, true, TopicPlacement.Selection.TREATMENT, true } };
   }
 
   @Test(dataProvider = "recoveryOperations")
-  public void testMissingTopicDuringMigrationOrDataRecoveryUsesPolicy(
+  public void testMissingTopicDuringMigrationOrDataRecoveryUsesPlacement(
       boolean migrating,
       boolean recovering,
-      TopicPlacementPolicy.Selection selection,
+      TopicPlacement.Selection selection,
       boolean alternative) {
     when(store.isMigrating()).thenReturn(migrating);
-    when(policy.select(any())).thenReturn(selection);
+    when(placement.select(any())).thenReturn(selection);
     Version version = new VersionImpl("batch-store", 1, "push", 2);
     if (recovering) {
       version.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl("source-region", false, 1));
     }
     admin.createBatchTopics(version, PushType.BATCH, manager, 2, config, false);
-    verify(policy).select(any());
+    verify(placement).select(any());
     verify(manager).createTopic(
         topics.getTopic("batch-store_v1"),
         2,
@@ -353,15 +353,14 @@ public class TopicPlacementPolicyTest {
 
   @DataProvider
   public Object[][] selections() {
-    return new Object[][] { { TopicPlacementPolicy.Selection.CONTROL, false },
-        { TopicPlacementPolicy.Selection.TREATMENT, true } };
+    return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.TREATMENT, true } };
   }
 
   @Test(dataProvider = "selections")
-  public void testNewTopicUsesSelection(TopicPlacementPolicy.Selection selection, boolean alternative) {
-    when(policy.select(any())).thenReturn(selection);
+  public void testNewTopicUsesSelection(TopicPlacement.Selection selection, boolean alternative) {
+    when(placement.select(any())).thenReturn(selection);
     create("batch-store", PushType.BATCH);
-    verify(policy).select(any());
+    verify(placement).select(any());
     verify(manager).createTopic(
         topics.getTopic("batch-store_v1"),
         2,
@@ -375,20 +374,19 @@ public class TopicPlacementPolicyTest {
 
   @DataProvider
   public Object[][] shadowSelections() {
-    return new Object[][] { { TopicPlacementPolicy.Selection.CONTROL, false },
-        { TopicPlacementPolicy.Selection.CONTROL, true }, { TopicPlacementPolicy.Selection.TREATMENT, false },
-        { TopicPlacementPolicy.Selection.TREATMENT, true } };
+    return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.CONTROL, true },
+        { TopicPlacement.Selection.TREATMENT, false }, { TopicPlacement.Selection.TREATMENT, true } };
   }
 
   @Test(dataProvider = "shadowSelections")
-  public void testShadowPreservesLegacy(TopicPlacementPolicy.Selection selection, boolean legacyAlternative) {
+  public void testShadowPreservesLegacy(TopicPlacement.Selection selection, boolean legacyAlternative) {
     Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
     props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, Boolean.toString(legacyAlternative));
     config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    when(policy.isShadowMode(config.getClusterName())).thenReturn(true);
-    when(policy.select(any())).thenReturn(selection);
+    when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
+    when(placement.select(any())).thenReturn(selection);
     create("batch-store", PushType.BATCH);
-    verify(policy).select(any());
+    verify(placement).select(any());
     verify(manager, never()).containsTopic(any());
     verify(manager).createTopic(
         topics.getTopic("batch-store_v1"),
@@ -402,19 +400,19 @@ public class TopicPlacementPolicyTest {
   }
 
   @DataProvider
-  public Object[][] disabledPolicies() {
+  public Object[][] disabledPlacements() {
     return new Object[][] { { true }, { false } };
   }
 
-  @Test(dataProvider = "disabledPolicies")
-  public void testDisabledOrMissingPolicyPreservesLegacy(boolean missing) {
+  @Test(dataProvider = "disabledPlacements")
+  public void testDisabledOrMissingPlacementPreservesLegacy(boolean missing) {
     if (missing) {
-      admin.setTopicPlacementPolicy(null);
+      admin.setTopicPlacement(null);
     } else {
-      when(policy.isEnabled(config.getClusterName())).thenReturn(false);
+      when(placement.isEnabled(config.getClusterName())).thenReturn(false);
     }
     create("batch-store", PushType.BATCH);
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never()).containsTopic(any());
     verify(manager).createTopic(
         topics.getTopic("batch-store_v1"),
@@ -440,7 +438,7 @@ public class TopicPlacementPolicyTest {
   public void testUnsupportedScopePreservesLegacy(String name, PushType type, boolean hybrid) {
     when(store.isHybrid()).thenReturn(hybrid);
     create(name, type);
-    verifyNoInteractions(policy);
+    verifyNoInteractions(placement);
   }
 
   @DataProvider
@@ -459,7 +457,7 @@ public class TopicPlacementPolicyTest {
       version.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl("source-region", false, 1));
     }
     admin.createBatchTopics(version, PushType.BATCH, manager, 2, config, false);
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never())
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
   }
@@ -475,7 +473,7 @@ public class TopicPlacementPolicyTest {
     when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic("batch-store_v1"), 2)).thenReturn(true);
     when(manager.getTopicRetention(topics.getTopic("batch-store_v1"))).thenReturn(retention);
     assertThrows(VeniceException.class, () -> create("batch-store", PushType.BATCH));
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never())
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
   }
@@ -484,18 +482,13 @@ public class TopicPlacementPolicyTest {
   public void testUnavailableExistingTopicFailsWithoutCreate() {
     when(manager.containsTopic(topics.getTopic("batch-store_v1"))).thenReturn(true);
     assertThrows(VeniceException.class, () -> create("batch-store", PushType.BATCH));
-    verify(policy, never()).select(any());
+    verify(placement, never()).select(any());
     verify(manager, never())
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
   }
 
   @Test
-  public void testRequiredPolicyFailsAtContextConstruction() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> new VeniceControllerContext.Builder().setMetricsRepository(null)
-            .setTopicPlacementPolicyRequired(true)
-            .build());
-    assertNull(new VeniceControllerContext.Builder().setMetricsRepository(null).build().getTopicPlacementPolicy());
+  public void testPlacementIsOptionalAtContextConstruction() {
+    assertNull(new VeniceControllerContext.Builder().setMetricsRepository(null).build().getTopicPlacement());
   }
 }

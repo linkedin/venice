@@ -8,7 +8,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.controller.placement.TopicPlacementPolicy;
+import com.linkedin.venice.controller.placement.TopicPlacement;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -42,10 +42,10 @@ public class VeniceControllerContext {
   private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
   private ExternalETLService externalETLService;
   private StoreUpdateHandler storeUpdateHandler;
-  private TopicPlacementPolicy topicPlacementPolicy;
+  private TopicPlacement topicPlacement;
 
-  public TopicPlacementPolicy getTopicPlacementPolicy() {
-    return topicPlacementPolicy;
+  public TopicPlacement getTopicPlacement() {
+    return topicPlacement;
   }
 
   public List<VeniceProperties> getPropertiesList() {
@@ -109,10 +109,7 @@ public class VeniceControllerContext {
   }
 
   public VeniceControllerContext(Builder builder) {
-    if (builder.topicPlacementPolicyRequired && builder.topicPlacementPolicy == null) {
-      throw new IllegalArgumentException("An active topic placement policy is required but was not injected");
-    }
-    this.topicPlacementPolicy = builder.topicPlacementPolicy;
+    this.topicPlacement = builder.topicPlacement;
     this.propertiesList = builder.propertiesList;
     this.metricsRepository = builder.metricsRepository;
     this.serviceDiscoveryAnnouncers = builder.serviceDiscoveryAnnouncers;
@@ -150,16 +147,10 @@ public class VeniceControllerContext {
     private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
     private ExternalETLService externalETLService;
     private StoreUpdateHandler storeUpdateHandler;
-    private TopicPlacementPolicy topicPlacementPolicy;
-    private boolean topicPlacementPolicyRequired;
+    private TopicPlacement topicPlacement;
 
-    public Builder setTopicPlacementPolicy(TopicPlacementPolicy topicPlacementPolicy) {
-      this.topicPlacementPolicy = topicPlacementPolicy;
-      return this;
-    }
-
-    public Builder setTopicPlacementPolicyRequired(boolean required) {
-      this.topicPlacementPolicyRequired = required;
+    public Builder setTopicPlacement(TopicPlacement topicPlacement) {
+      this.topicPlacement = topicPlacement;
       return this;
     }
 

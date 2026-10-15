@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller.placement;
 
 /** Chooses the backend for new batch user-store and push-status version topics. */
-public interface TopicPlacementPolicy {
+public interface TopicPlacement {
   enum Selection {
     /** Use the adapter's default backend. */
     CONTROL,
@@ -9,7 +9,7 @@ public interface TopicPlacementPolicy {
     TREATMENT
   }
 
-  /** Disabled policies leave the existing placement logic unchanged. */
+  /** When disabled, use the existing placement logic. */
   default boolean isEnabled(String clusterName) {
     return true;
   }

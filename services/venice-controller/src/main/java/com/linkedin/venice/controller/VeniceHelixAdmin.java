@@ -78,8 +78,8 @@ import com.linkedin.venice.controller.logcompaction.StoreRepushCandidateFilter;
 import com.linkedin.venice.controller.logcompaction.VersionStalenessTrigger;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
+import com.linkedin.venice.controller.placement.TopicPlacement;
 import com.linkedin.venice.controller.placement.TopicPlacementContext;
-import com.linkedin.venice.controller.placement.TopicPlacementPolicy;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
@@ -486,7 +486,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
   private final Optional<ExternalETLService> externalETLService;
   private final StoreLifecycleHooksCache storeLifecycleHooksCache;
-  private TopicPlacementPolicy topicPlacementPolicy;
+  private TopicPlacement topicPlacement;
 
   // Test only.
   public VeniceHelixAdmin(
@@ -3044,8 +3044,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /** Set once, before the controller starts. */
-  void setTopicPlacementPolicy(TopicPlacementPolicy topicPlacementPolicy) {
-    this.topicPlacementPolicy = topicPlacementPolicy;
+  void setTopicPlacement(TopicPlacement topicPlacement) {
+    this.topicPlacement = topicPlacement;
   }
 
   void createBatchTopics(
@@ -3062,7 +3062,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
-    // New versions may not have hybrid config yet; use the store's config.
+    /**
+     * Resolve the alternative-backend decision from the authoritative store hybrid status rather than
+     * {@code version.isHybrid()}: a freshly constructed {@link Version} may not have its hybrid config populated yet
+     * when this runs (see the version-supplied addVersion path), which would misroute a hybrid store's VT to the
+     * batch backend.
+     */
     Store store = getStore(clusterConfig.getClusterName(), version.getStoreName());
     if (store == null) {
       throw new VeniceNoStoreException(version.getStoreName(), clusterConfig.getClusterName());
@@ -3072,9 +3077,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, isHybridStore);
     boolean isPushStatusStore = VeniceSystemStoreType
         .getSystemStoreType(version.getStoreName()) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
-    boolean placementEnabled = topicPlacementPolicy != null && pushType == PushType.BATCH
+    boolean placementEnabled = topicPlacement != null && pushType == PushType.BATCH
         && (isPushStatusStore || (!isHybridStore && !VeniceSystemStoreUtils.isSystemStore(version.getStoreName())))
-        && topicPlacementPolicy.isEnabled(clusterConfig.getClusterName());
+        && topicPlacement.isEnabled(clusterConfig.getClusterName());
     Store placementStore = store;
     String placementStoreName = version.getStoreName();
     if (placementEnabled && isPushStatusStore) {
@@ -3088,7 +3093,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     if (placementEnabled && !placementStore.isHybrid() && !VeniceSystemStoreUtils.isSystemStore(placementStoreName)) {
       PubSubTopic topic = topicNamesToCreate.get(0);
-      boolean shadow = topicPlacementPolicy.isShadowMode(clusterConfig.getClusterName());
+      boolean shadow = topicPlacement.isShadowMode(clusterConfig.getClusterName());
       // Reuse existing topics without reevaluating their placement.
       if (!shadow && topicManager.containsTopic(topic)) {
         if (!topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)) {
@@ -3111,10 +3116,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           topic.getName(),
           topicManager.getPubSubClusterAddress(),
           useAltBackend);
-      TopicPlacementPolicy.Selection selection = Objects.requireNonNull(topicPlacementPolicy.select(context));
+      TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
       if (!shadow) {
         // Treatment cannot override a static exclusion or disabled category.
-        useAltBackend = useAltBackend && selection == TopicPlacementPolicy.Selection.TREATMENT;
+        useAltBackend = useAltBackend && selection == TopicPlacement.Selection.TREATMENT;
       }
     }
     final boolean selectedAlternativeBackend = useAltBackend;
