@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -38,9 +39,15 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Filter;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.filter.LevelRangeFilter;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -219,6 +226,35 @@ public class TopicPlacementTest {
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().isLegacyAlternative(), true);
     verifyCreate(name, true);
+  }
+
+  @Test(dataProvider = "selectionsAndStaticSettings")
+  public void testShadowDecisionIsLogged(TopicPlacement.Selection selection, boolean staticAlternative) {
+    configureStaticSettings("batch-store", staticAlternative);
+    when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
+    when(placement.select(any())).thenReturn(selection);
+    Logger logger = (Logger) LogManager.getLogger(VeniceHelixAdmin.class);
+    InMemoryLogAppender logAppender = new InMemoryLogAppender.Builder().build();
+    logAppender
+        .addFilter(LevelRangeFilter.createFilter(Level.INFO, Level.INFO, Filter.Result.ACCEPT, Filter.Result.DENY));
+    logAppender.start();
+    logger.addAppender(logAppender);
+    try {
+      create("batch-store", PushType.BATCH);
+      boolean differsFromStatic = staticAlternative != (selection == TopicPlacement.Selection.TREATMENT);
+      assertTrue(
+          logAppender.getLogs()
+              .contains(
+                  "Topic placement shadow: cluster=" + config.getClusterName()
+                      + " store=batch-store topic=batch-store_v1 destination=destination.example:9092 staticAlternative="
+                      + staticAlternative + " proposed=" + selection + " appliedAlternative=" + staticAlternative
+                      + " differsFromStatic=" + differsFromStatic),
+          "Shadow must log both matching and differing decisions at INFO");
+      verifyCreate("batch-store", staticAlternative);
+    } finally {
+      logger.removeAppender(logAppender);
+      logAppender.stop();
+    }
   }
 
   @DataProvider

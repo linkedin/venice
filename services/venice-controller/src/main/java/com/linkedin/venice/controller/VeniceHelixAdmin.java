@@ -3101,6 +3101,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
       if (!shadow) {
         useAltBackend = selection == TopicPlacement.Selection.TREATMENT;
+      } else {
+        LOGGER.info(
+            "Topic placement shadow: cluster={} store={} topic={} destination={} staticAlternative={} proposed={} appliedAlternative={} differsFromStatic={}",
+            context.getClusterName(),
+            context.getStoreName(),
+            context.getTopicName(),
+            context.getDestinationAddress(),
+            context.isLegacyAlternative(),
+            selection,
+            useAltBackend,
+            context.isLegacyAlternative() != (selection == TopicPlacement.Selection.TREATMENT));
       }
     }
     final boolean selectedAlternativeBackend = useAltBackend;
