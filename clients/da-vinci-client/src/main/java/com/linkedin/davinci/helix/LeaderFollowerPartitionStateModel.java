@@ -251,8 +251,13 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
   public void onBecomeOfflineFromError(Message message, NotificationContext context) {
-    // Venice is not supporting automatically partition recovery. No-oped here.
-    logger.warn("unexpected state transition from ERROR to OFFLINE");
+    if (getStoreAndServerConfigs().isResetErrorReplicaEnabled()
+        && getStoreRepo().getStoreOrThrow(getStoreName()).getCurrentVersion() == getVersionNumber()) {
+      // The next OFFLINE -> STANDBY must establish a fresh subscription, not reuse an errored RUNNING replica.
+      executeStateTransition(message, context, () -> stopConsumption(false));
+    } else {
+      logger.warn("unexpected state transition from ERROR to OFFLINE");
+    }
   }
 
   /**

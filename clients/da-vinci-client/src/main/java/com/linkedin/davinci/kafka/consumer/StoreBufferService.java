@@ -654,6 +654,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
+   * A partition-scoped admission failure whose recovery must go through the partition error handler.
+   */
+  static class StalledDrainerException extends VeniceException {
+    StalledDrainerException(String message) {
+      super(message);
+    }
+  }
+
+  /**
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
   static class QueueNode implements Measurable {
@@ -1097,7 +1106,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
         if (stallFailure != null || processingStartedAtMs.get() != startedAtMs || currentNode == null) {
           return;
         }
-        exception = new VeniceException("Drainer " + drainerIndex + " stalled while holding " + currentTopicPartition);
+        exception =
+            new StalledDrainerException("Drainer " + drainerIndex + " stalled while holding " + currentTopicPartition);
         stallFailure = exception;
         reported = new CountDownLatch(1);
         stallFailureReported = reported;

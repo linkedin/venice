@@ -3362,6 +3362,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
       KafkaKey key = record.getKey();
       KafkaMessageEnvelope value = record.getValue();
+      if (key.isControlMessage() && shouldUseDolMechanism() && Arrays.equals(key.getKey(), KafkaKey.DOL_STAMP.getKey())
+          && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.START_OF_SEGMENT) {
+        // A completed batch replica still needs its leadership loopback when resubscribing after a reset.
+        return true;
+      }
       if (key.isControlMessage()
           && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.END_OF_SEGMENT) {
         // Still allow END_OF_SEGMENT control message
@@ -3728,6 +3733,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void setIngestionException(int partitionId, Exception e) {
+    if (e instanceof StoreBufferService.StalledDrainerException && !failedPartitions.add(partitionId)) {
+      // Held, discarded and rejected nodes may report the same failed subscription concurrently.
+      return;
+    }
     boolean replicaCompleted = false;
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if (partitionConsumptionState != null && partitionConsumptionState.isCompletionReported()) {

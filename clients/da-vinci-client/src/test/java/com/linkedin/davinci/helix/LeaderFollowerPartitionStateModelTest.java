@@ -58,6 +58,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -124,6 +125,30 @@ public class LeaderFollowerPartitionStateModelTest {
     when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED);
     when(store.getVersion(storeVersion)).thenReturn(mockVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+  }
+
+  @Test
+  public void testConfiguredCurrentVersionErrorResetStopsConsumption() {
+    when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(true);
+    when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(storeVersion);
+    Message message = mock(Message.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    leaderFollowerPartitionStateModel.onBecomeOfflineFromError(message, mock(NotificationContext.class));
+    verify(ingestionBackend).stopConsumption(eq(storeAndServerConfigs), eq(partition), anyString());
+    verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+  }
+
+  @DataProvider
+  public Object[][] disabledErrorReset() {
+    return new Object[][] { { false, storeVersion }, { true, storeVersion - 1 } };
+  }
+
+  @Test(dataProvider = "disabledErrorReset")
+  public void testErrorResetPreservesUnconfiguredAndFutureVersionBehavior(boolean enabled, int currentVersion) {
+    when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(enabled);
+    when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(currentVersion);
+    leaderFollowerPartitionStateModel.onBecomeOfflineFromError(mock(Message.class), mock(NotificationContext.class));
+    verify(ingestionBackend, never()).stopConsumption(any(), anyInt(), anyString());
   }
 
   @Test

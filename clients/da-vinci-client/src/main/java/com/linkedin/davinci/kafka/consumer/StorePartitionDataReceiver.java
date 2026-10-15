@@ -113,6 +113,12 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
        */
       throw e;
     }
+    if (ExceptionUtils.recursiveClassEquals(e, StoreBufferService.StalledDrainerException.class)) {
+      // Queue nodes already register the affected partitions. A task-level exception would bypass their
+      // error handler and prevent completed current-version replicas from reaching Helix ERROR.
+      LOGGER.error("Stalled drainer rejected records for {}; recovery is partition-scoped.", topicPartition, e);
+      return;
+    }
     LOGGER.error(
         "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will propagate via setLastConsumerException(e).",
         e.getClass().getSimpleName(),

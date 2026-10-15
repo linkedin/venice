@@ -8065,6 +8065,90 @@ public abstract class StoreIngestionTaskTest {
     verify(mockStorageMetadataService, never()).put(eq(topic), eq(PARTITION_FOO), any());
   }
 
+  private void createRecoveryTestTask() {
+    StoreIngestionTaskFactory factory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        new HashMap<>(),
+        false,
+        null,
+        null,
+        this.mockStorageService).build();
+    MockStoreVersionConfigs configs = setupStoreAndVersionMocks(
+        PARTITION_COUNT,
+        new PartitionerConfigImpl(),
+        Optional.empty(),
+        false,
+        false,
+        AAConfig.AA_OFF);
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+    storeIngestionTaskUnderTest = spy(
+        factory.getNewIngestionTask(
+            this.mockStorageService,
+            configs.store,
+            configs.version,
+            kafkaProps,
+            isCurrentVersion,
+            configs.storeVersionConfig,
+            PARTITION_FOO,
+            Optional.empty(),
+            null,
+            null));
+  }
+
+  @Test
+  public void testStalledDrainerFailureRegisteredOncePerAffectedSubscription() {
+    createRecoveryTestTask();
+    StoreBufferService.StalledDrainerException failure = new StoreBufferService.StalledDrainerException("stalled");
+    for (int partition = 0; partition < 2; partition++) {
+      storeIngestionTaskUnderTest.setIngestionException(partition, failure);
+      assertEquals(
+          storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(partition).getException(),
+          failure);
+      // Simulate the ingestion loop clearing a reported error while more rejected nodes are still arriving.
+      storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().set(partition, null);
+      storeIngestionTaskUnderTest.setIngestionException(partition, failure);
+      assertNull(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(partition));
+      assertTrue(storeIngestionTaskUnderTest.getFailedPartitions().contains(partition));
+    }
+    assertEquals(storeIngestionTaskUnderTest.getFailedPartitions().size(), 2);
+    VeniceException ordinaryFailure = new VeniceException("ordinary error");
+    storeIngestionTaskUnderTest.setIngestionException(0, ordinaryFailure);
+    assertEquals(
+        storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(0).getException(),
+        ordinaryFailure);
+  }
+
+  @Test
+  public void testCompletedBatchAcceptsLeadershipLoopbackButNotUserData() {
+    createRecoveryTestTask();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(true).when(pcs).isBatchOnly();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(pcs).getLatestProcessedVtPosition();
+    storeIngestionTaskUnderTest.setPartitionConsumptionState(PARTITION_FOO, pcs);
+    doReturn(true).when(storeIngestionTaskUnderTest).shouldUseDolMechanism();
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(PARTITION_FOO).when(record).getPartition();
+    doReturn(fooTopicPartition).when(record).getTopicPartition();
+    doReturn(PubSubSymbolicPosition.LATEST).when(record).getPosition();
+    doReturn(KafkaKey.DOL_STAMP).when(record).getKey();
+    KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+    ControlMessage control = new ControlMessage();
+    control.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+    envelope.payloadUnion = control;
+    doReturn(envelope).when(record).getValue();
+    assertTrue(storeIngestionTaskUnderTest.shouldProcessRecord(record));
+    doReturn(false).when(storeIngestionTaskUnderTest).shouldUseDolMechanism();
+    assertFalse(storeIngestionTaskUnderTest.shouldProcessRecord(record));
+    doReturn(true).when(storeIngestionTaskUnderTest).shouldUseDolMechanism();
+    doReturn(new KafkaKey(MessageType.PUT, KafkaKey.DOL_STAMP.getKey())).when(record).getKey();
+    assertFalse(storeIngestionTaskUnderTest.shouldProcessRecord(record));
+  }
+
   @Test
   public void testGetHeartbeatProducerTimestamp() {
     long producerTimestamp = 1780749996366L;

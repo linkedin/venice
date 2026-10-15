@@ -862,6 +862,8 @@ public class ConfigKeys {
   /**
    * Default false. When enabled, the stall monitor fails and clears a stalled drainer's queue,
    * releasing blocked enqueues and registering partition ingestion exceptions for the existing error-replica path.
+   * Admission failures remain partition-scoped: current-version server replicas require SERVER_RESET_ERROR_REPLICA_ENABLED
+   * and controller auto-reset capacity to reset and rebootstrap after the held operation returns.
    * The held write is not interrupted and its persistence future is left to the writer. Only after it actually ends
    * can the same drainer reopen its queue. Other drainers are unaffected. A write that never returns keeps its queue failed.
    * Requires a positive SERVER_BLOCKED_DRAINER_THRESHOLD_MS; read at construction time, so changes require restart.
