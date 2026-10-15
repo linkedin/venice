@@ -40,6 +40,7 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -60,7 +61,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -204,7 +204,7 @@ public abstract class AbstractPushMonitor
         try {
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
           routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-          if (!parallelLoader.isLoading(offlinePushStatus.getKafkaTopic())) {
+          if (!parallelLoader.isLoadedInParallel(offlinePushStatus.getKafkaTopic())) {
             getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
             /**
              * This update call is necessary so we won't miss updates between the initial offline push retrieval and
@@ -379,6 +379,10 @@ public abstract class AbstractPushMonitor
    */
   private class ParallelPushStatusLoader implements AutoCloseable {
     private final ExecutorService executor;
+    /**
+     * Only the thread that runs {@link #loadAllPushes} reads and writes this map. The load threads only run the tasks
+     * whose futures it holds.
+     */
     private final Map<String, Future<OfflinePushStatus>> loadedPushStatuses;
 
     ParallelPushStatusLoader(List<OfflinePushStatus> offlinePushStatusList) {
@@ -400,7 +404,10 @@ public abstract class AbstractPushMonitor
       }
     }
 
-    boolean isLoading(String kafkaTopic) {
+    /**
+     * Whether the push was handed to the load threads, whether or not its load has finished.
+     */
+    boolean isLoadedInParallel(String kafkaTopic) {
       return loadedPushStatuses.containsKey(kafkaTopic);
     }
 
@@ -410,21 +417,9 @@ public abstract class AbstractPushMonitor
      * interrupted on this thread, and the interrupt status is kept, so the pushes that are not loaded yet fail too.
      */
     OfflinePushStatus getLoadedPushStatus(String kafkaTopic) {
-      try {
-        return loadedPushStatuses.get(kafkaTopic).get();
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new VeniceException("Interrupted while loading push statuses in cluster: " + clusterName, e);
-      } catch (ExecutionException e) {
-        Throwable cause = e.getCause();
-        if (cause instanceof RuntimeException) {
-          throw (RuntimeException) cause;
-        }
-        if (cause instanceof Error) {
-          throw (Error) cause;
-        }
-        throw new VeniceException(cause);
-      }
+      return ConcurrencyUtils.getOrRethrowCause(
+          loadedPushStatuses.get(kafkaTopic),
+          "Interrupted while loading push statuses in cluster: " + clusterName);
     }
 
     @Override

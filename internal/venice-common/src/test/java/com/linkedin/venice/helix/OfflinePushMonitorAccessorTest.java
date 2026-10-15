@@ -45,10 +45,8 @@ public class OfflinePushMonitorAccessorTest {
         "cluster0",
         mockOfflinePushStatusAccessor,
         mock(ZkBaseDataAccessor.class),
-        LogContext.newBuilder()
-            .setComponentName(VeniceComponent.CONTROLLER.name())
-            .setRegionName("test-region")
-            .build());
+        getLogContext(),
+        1);
     Optional<Long> ctime = accessor.getOfflinePushStatusCreationTime("test");
     Assert.assertFalse(ctime.isPresent());
   }
@@ -61,10 +59,8 @@ public class OfflinePushMonitorAccessorTest {
         "cluster0",
         mockOfflinePushStatusAccessor,
         mock(ZkBaseDataAccessor.class),
-        LogContext.newBuilder()
-            .setComponentName(VeniceComponent.CONTROLLER.name())
-            .setRegionName("test-region")
-            .build());
+        getLogContext(),
+        1);
     Optional<Long> ctime = accessor.getOfflinePushStatusCreationTime("test");
     Assert.assertFalse(ctime.isPresent());
   }
@@ -78,10 +74,8 @@ public class OfflinePushMonitorAccessorTest {
         "cluster0",
         mockOfflinePushStatusAccessor,
         mockPartitionStatusAccessor,
-        LogContext.newBuilder()
-            .setComponentName(VeniceComponent.CONTROLLER.name())
-            .setRegionName("test-region")
-            .build());
+        getLogContext(),
+        1);
     when(mockPartitionStatusAccessor.exists(anyString(), anyInt())).thenReturn(true);
     when(mockPartitionStatusAccessor.update(anyString(), any(), anyInt())).thenReturn(true);
     accessor.batchUpdateReplicaIncPushStatus("test_topic", 0, "test_instance_id", Arrays.asList("a", "b"));

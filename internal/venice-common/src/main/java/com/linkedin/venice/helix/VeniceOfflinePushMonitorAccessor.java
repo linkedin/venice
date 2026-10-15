@@ -15,12 +15,12 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -73,6 +73,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   /**
    * Number of threads used to read the partition statuses in {@link #loadOfflinePushStatusesAndPartitionStatuses()}.
+   * With 1, they are read on the calling thread, one push at a time, as before.
    */
   private final int loadThreadCount;
   private final LogContext logContext;
@@ -114,17 +115,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String clusterName,
       ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor,
       ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor,
-      LogContext logContext) {
-    this(clusterName, offlinePushStatusAccessor, partitionStatusAccessor, logContext, 1);
-  }
-
-  /**
-   * For testing purpose only.
-   */
-  public VeniceOfflinePushMonitorAccessor(
-      String clusterName,
-      ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor,
-      ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor,
       LogContext logContext,
       int loadThreadCount) {
     this.clusterName = clusterName;
@@ -151,44 +141,34 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     LOGGER.info("Start loading all offline pushes statuses from ZK in cluster: {}.", clusterName);
     List<OfflinePushStatus> offlinePushStatuses =
         HelixUtils.getChildren(offlinePushStatusAccessor, offlinePushStatusParentPath, refreshAttemptsForZkReconnect);
-    // With more than one load thread, the partition statuses of different pushes are read concurrently.
-    ExecutorService executor = loadThreadCount > 1 && offlinePushStatuses.size() > 1
-        ? Executors
-            .newFixedThreadPool(loadThreadCount, new DaemonThreadFactory("PushStatusLoader-" + clusterName, logContext))
-        : null;
-    try {
-      List<Future<?>> partitionStatusReads = new ArrayList<>();
-      Iterator<OfflinePushStatus> iterator = offlinePushStatuses.iterator();
-      while (iterator.hasNext()) {
-        OfflinePushStatus pushStatus = iterator.next();
-        if (pushStatus == null) {
-          LOGGER.warn("Found null push status in cluster: {}.", clusterName);
-          iterator.remove();
-          continue;
-        }
-        if (pushStatus.getCurrentStatus().isTaskStatus()) {
-          if (executor == null) {
-            loadPartitionStatuses(pushStatus);
-          } else {
-            partitionStatusReads.add(executor.submit(() -> loadPartitionStatuses(pushStatus)));
-          }
+    boolean loadInParallel = loadThreadCount > 1 && offlinePushStatuses.size() > 1;
+    List<OfflinePushStatus> pushStatusesToLoadInParallel = new ArrayList<>();
+    Iterator<OfflinePushStatus> iterator = offlinePushStatuses.iterator();
+    while (iterator.hasNext()) {
+      OfflinePushStatus pushStatus = iterator.next();
+      if (pushStatus == null) {
+        LOGGER.warn("Found null push status in cluster: {}.", clusterName);
+        iterator.remove();
+        continue;
+      }
+      if (pushStatus.getCurrentStatus().isTaskStatus()) {
+        if (loadInParallel) {
+          pushStatusesToLoadInParallel.add(pushStatus);
         } else {
-          LOGGER.info(
-              "Found invalid push statues: {} for topic: {} in cluster: {}. Will delete it from ZK.",
-              pushStatus.getCurrentStatus(),
-              pushStatus.getKafkaTopic(),
-              clusterName);
-          HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
-          iterator.remove();
+          loadPartitionStatuses(pushStatus);
         }
+      } else {
+        LOGGER.info(
+            "Found invalid push statues: {} for topic: {} in cluster: {}. Will delete it from ZK.",
+            pushStatus.getCurrentStatus(),
+            pushStatus.getKafkaTopic(),
+            clusterName);
+        HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
+        iterator.remove();
       }
-      for (Future<?> partitionStatusRead: partitionStatusReads) {
-        waitForPartitionStatusRead(partitionStatusRead);
-      }
-    } finally {
-      if (executor != null) {
-        executor.shutdownNow();
-      }
+    }
+    if (loadInParallel) {
+      loadPartitionStatusesInParallel(pushStatusesToLoadInParallel);
     }
     LOGGER.info("Loaded {} offline pushes statuses from ZK in cluster: {}.", offlinePushStatuses.size(), clusterName);
     return offlinePushStatuses;
@@ -199,21 +179,25 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         .setPartitionStatuses(getPartitionStatuses(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartition()));
   }
 
-  private void waitForPartitionStatusRead(Future<?> partitionStatusRead) {
+  /**
+   * Reads the partition statuses of the given pushes concurrently on {@link #loadThreadCount} threads, and rethrows the
+   * first failure, in the order of the pushes, as if the reads had run on this thread.
+   */
+  private void loadPartitionStatusesInParallel(List<OfflinePushStatus> pushStatuses) {
+    ExecutorService executor = Executors
+        .newFixedThreadPool(loadThreadCount, new DaemonThreadFactory("PushStatusLoader-" + clusterName, logContext));
     try {
-      partitionStatusRead.get();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException("Interrupted while loading partition statuses from ZK in cluster: " + clusterName, e);
-    } catch (ExecutionException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof RuntimeException) {
-        throw (RuntimeException) cause;
+      List<Future<?>> partitionStatusReads = new ArrayList<>(pushStatuses.size());
+      for (OfflinePushStatus pushStatus: pushStatuses) {
+        partitionStatusReads.add(executor.submit(() -> loadPartitionStatuses(pushStatus)));
       }
-      if (cause instanceof Error) {
-        throw (Error) cause;
+      for (Future<?> partitionStatusRead: partitionStatusReads) {
+        ConcurrencyUtils.getOrRethrowCause(
+            partitionStatusRead,
+            "Interrupted while loading partition statuses from ZK in cluster: " + clusterName);
       }
-      throw new VeniceException(cause);
+    } finally {
+      executor.shutdownNow();
     }
   }
 
