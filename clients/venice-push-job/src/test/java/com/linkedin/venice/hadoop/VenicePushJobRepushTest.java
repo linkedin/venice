@@ -9,6 +9,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -28,13 +30,17 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Function;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -48,35 +54,58 @@ import org.testng.annotations.Test;
  */
 
 public class VenicePushJobRepushTest extends VenicePushJobTestBase {
-  @Test
-  public void testSourceDictionaryConsumerPropertiesRetainPubSubConfigAndOverrideBrokers() {
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testSourceDictionaryRetainsConfigAndUsesPublishedFlag(
+      Boolean enabled,
+      String keyUrn,
+      String expectedUrn) {
+    RecordingPubSubConsumerAdapterFactory.reset();
+    boolean encrypted = Boolean.TRUE.equals(enabled);
+    String factoryClass = RecordingPubSubConsumerAdapterFactory.class.getName();
+    String positionMapping = "1:" + ApacheKafkaOffsetPosition.class.getName();
     Properties jobProperties = new Properties();
-    jobProperties.setProperty(
-        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
-        "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
-    jobProperties.setProperty(
-        PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP,
-        "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
+    jobProperties.setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, factoryClass);
+    jobProperties.setProperty(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP, positionMapping);
     jobProperties.setProperty("xc.pubsub.broker.url.to.region.name.map", "northguard:ei4");
     jobProperties.setProperty(PUBSUB_BROKER_ADDRESS, "destination-broker");
     jobProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "legacy-broker");
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!encrypted));
+    jobProperties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale");
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(jobProperties, null)) {
+      PushJobSetting setting = pushJob.getPushJobSetting();
+      setting.isStoreEncryptionEnabled = encrypted;
+      setting.pubSubEncryptionKeyUrn = keyUrn;
+      setting.kafkaInputTopic = "test_store_v1";
+      setting.repushSourcePubsubBroker = "source-broker";
       VeniceProperties consumerProperties = pushJob.getSourceDictionaryConsumerProperties("source-broker");
 
-      assertEquals(
-          consumerProperties.getString(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS),
-          "com.linkedin.venice.pubsub.adapter.xinfra.consumer.XcConsumerAdapterFactory");
-      assertEquals(
-          consumerProperties.getString(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP),
-          "1:com.linkedin.venice.pubsub.adapter.xinfra.XinfraPosition");
+      assertEquals(consumerProperties.getString(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS), factoryClass);
+      assertEquals(consumerProperties.getString(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP), positionMapping);
       assertEquals(consumerProperties.getString("xc.pubsub.broker.url.to.region.name.map"), "northguard:ei4");
       assertEquals(consumerProperties.getString(PUBSUB_BROKER_ADDRESS), "source-broker");
       assertEquals(consumerProperties.getString(KAFKA_BOOTSTRAP_SERVERS), "source-broker");
+      assertEquals(consumerProperties.getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null), encrypted ? keyUrn : null);
+      assertEquals(consumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED), encrypted);
+      assertEquals(jobProperties.getProperty(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:stale");
       assertEquals(
           jobProperties.getProperty(PUBSUB_BROKER_ADDRESS),
           "destination-broker",
           "Building consumer properties must not mutate the job properties");
+      if (encrypted && expectedUrn == null) {
+        Assert.expectThrows(VeniceException.class, pushJob::readSourceDictionaryFromKafka);
+        Assert.assertNull(RecordingPubSubConsumerAdapterFactory.getObservedContext());
+        return;
+      }
+
+      assertEquals(
+          pushJob.readSourceDictionaryFromKafka().array(),
+          RecordingPubSubConsumerAdapterFactory.getDictionaryToServe());
+
+      Function<String, String> lookup =
+          RecordingPubSubConsumerAdapterFactory.getObservedContext().getPubSubEncryptionKeyUrnLookup();
+      assertEquals(lookup != null, expectedUrn != null);
+      assertEquals(lookup == null ? null : lookup.apply("store"), expectedUrn);
     }
   }
 

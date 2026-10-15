@@ -5,6 +5,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPU
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
@@ -30,6 +31,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator.PubSubInputRecord;
@@ -66,18 +68,20 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   private static PubSubConsumerAdapter createConsumer(JobConf job) {
     VeniceProperties consumerProps = KafkaInputUtils.getConsumerProperties(job);
-    return PubSubClientsFactory.createConsumerFactory(consumerProps)
-        .create(
-            new PubSubConsumerAdapterContext.Builder().setConsumerName("KafkaInputRecordReader-" + job.getJobName())
-                .setVeniceProperties(consumerProps)
-                .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(consumerProps))
-                .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
-                .setPubSubMessageDeserializer(
-                    new PubSubMessageDeserializer(
-                        KafkaInputUtils.getKafkaValueSerializer(job),
-                        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                        new LandFillObjectPool<>(KafkaMessageEnvelope::new)))
-                .build());
+    PubSubConsumerAdapterContext.Builder context =
+        new PubSubConsumerAdapterContext.Builder().setConsumerName("KafkaInputRecordReader-" + job.getJobName())
+            .setVeniceProperties(consumerProps)
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(consumerProps))
+            .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
+            .setPubSubMessageDeserializer(
+                new PubSubMessageDeserializer(
+                    KafkaInputUtils.getKafkaValueSerializer(job),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new)));
+    if (consumerProps.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+      context.setPubSubEncryptionKeyUrnLookup(PubSubEncryptionUtils.getRequiredKeyUrnLookup(consumerProps));
+    }
+    return PubSubClientsFactory.createConsumerFactory(consumerProps).create(context.build());
   }
 
   public KafkaInputRecordReader(

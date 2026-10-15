@@ -93,6 +93,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UN
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -188,6 +189,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
+            .setWriteQuotaEnabled(srcStore.isWriteQuotaEnabled())
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             .setBlobTransferInServerEnabled(
                 ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
@@ -883,6 +885,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getStorageNodeReadQuotaEnabled() {
     return getBoolean(STORAGE_NODE_READ_QUOTA_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    return putBoolean(WRITE_QUOTA_ENABLED, writeQuotaEnabled);
+  }
+
+  public Optional<Boolean> getWriteQuotaEnabled() {
+    return getBoolean(WRITE_QUOTA_ENABLED);
   }
 
   public UpdateStoreQueryParams setMinCompactionLagSeconds(long minCompactionLagSeconds) {

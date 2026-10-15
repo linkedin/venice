@@ -8,6 +8,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -76,6 +77,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final List<StoreBufferDrainer> drainerList = new CopyOnWriteArrayList<>();
   private final long bufferCapacityPerDrainer;
   private final long blockedDrainerThresholdMs;
+  private final int writePathThreadPriority;
   private final boolean stallMonitoringEnabled;
   private final boolean stalledDrainerQueueFailureEnabled;
   /**
@@ -113,7 +115,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         sorted,
         clusterName,
         blockedDrainerThresholdMs,
-        false);
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
   }
 
   public StoreBufferService(
@@ -132,12 +134,64 @@ public class StoreBufferService extends AbstractStoreBufferService {
         bufferCapacityPerDrainer,
         bufferNotifyDelta,
         queueLeaderWrites,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY,
+        stalledDrainerQueueFailureEnabled);
+  }
+
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs,
+      int writePathThreadPriority) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        writePathThreadPriority,
+        false);
+  }
+
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs,
+      int writePathThreadPriority,
+      boolean stalledDrainerQueueFailureEnabled) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
         null,
         logContext,
         metricsRepository,
         sorted,
         clusterName,
         blockedDrainerThresholdMs,
+        writePathThreadPriority,
         stalledDrainerQueueFailureEnabled);
   }
 
@@ -161,16 +215,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
         null,
         true,
         null,
-        TimeUnit.MINUTES.toMillis(5));
+        TimeUnit.MINUTES.toMillis(5),
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
   }
 
-  /**
-   * Shared code for the main and test constructors.
-   *
-   * N.B.: Either {@param stats} or {@param metricsRepository} should be null, but not both. If neither are null, then
-   * we default to the main code's expected path, meaning that the metric repo will be used to construct a
-   * {@link StoreBufferServiceStats} instance, and the passed in stats object will be ignored.
-   */
   StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
@@ -193,6 +241,33 @@ public class StoreBufferService extends AbstractStoreBufferService {
         sorted,
         clusterName,
         blockedDrainerThresholdMs,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs,
+      int writePathThreadPriority) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        stats,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        writePathThreadPriority,
         false);
   }
 
@@ -208,9 +283,45 @@ public class StoreBufferService extends AbstractStoreBufferService {
       String clusterName,
       long blockedDrainerThresholdMs,
       boolean stalledDrainerQueueFailureEnabled) {
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        stats,
+        logContext,
+        metricsRepository,
+        sorted,
+        clusterName,
+        blockedDrainerThresholdMs,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY,
+        stalledDrainerQueueFailureEnabled);
+  }
+
+  /**
+   * Shared code for the main and test constructors.
+   *
+   * N.B.: Either {@param stats} or {@param metricsRepository} should be null, but not both. If neither are null, then
+   * we default to the main code's expected path, meaning that the metric repo will be used to construct a
+   * {@link StoreBufferServiceStats} instance, and the passed in stats object will be ignored.
+   */
+  StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats,
+      LogContext logContext,
+      MetricsRepository metricsRepository,
+      boolean sorted,
+      String clusterName,
+      long blockedDrainerThresholdMs,
+      int writePathThreadPriority,
+      boolean stalledDrainerQueueFailureEnabled) {
     this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockedDrainerThresholdMs = blockedDrainerThresholdMs;
+    this.writePathThreadPriority = writePathThreadPriority;
     this.stallMonitoringEnabled = blockedDrainerThresholdMs > 0;
     this.stalledDrainerQueueFailureEnabled = stalledDrainerQueueFailureEnabled && stallMonitoringEnabled;
     this.blockingQueueArr = new ArrayList<>();
@@ -469,7 +580,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(
         drainerNum,
-        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", logContext));
+        new DaemonThreadFactory(
+            isSorted ? "Store-writer-sorted" : "Store-writer-hybrid",
+            writePathThreadPriority,
+            logContext));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {

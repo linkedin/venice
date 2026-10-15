@@ -115,6 +115,9 @@ dependencies {
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
     exclude group: 'org.apache.avro'
     exclude group: 'org.apache.logging.log4j'
+
+    // Spark 3.5's transitive netty 4.1.96 breaks Venice's pinned netty 4.1.74 TLS stack
+    exclude group: 'io.netty'
   }
   implementation libraries.antlr4
   implementation libraries.antlr4Runtime

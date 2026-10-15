@@ -291,7 +291,8 @@ public class VeniceController {
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
         pubSubTopicRepository,
-        secure ? secureRequestHandler : unsecureRequestHandler);
+        secure ? secureRequestHandler : unsecureRequestHandler,
+        controllerService.getPushJobDetailsSerializer());
   }
 
   private TopicCleanupService createTopicCleanupService() {

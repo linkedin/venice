@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
@@ -16,11 +17,13 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -28,6 +31,36 @@ import org.testng.annotations.Test;
  * Test cases for StoreJsonSerializer.
  */
 public class TestStoreJsonSerializer {
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testWriteQuotaEnabledJsonRoundTrip(boolean enabled) throws IOException {
+    Store store = TestUtils.createTestStore("writeQuotaStore", "owner", 1L);
+    store.setWriteQuotaEnabled(enabled);
+    StoreJSONSerializer serializer = new StoreJSONSerializer();
+    byte[] bytes = serializer.serialize(store, "");
+    Assert.assertEquals(
+        ObjectMapperFactory.getInstance().readTree(bytes).get("writeQuotaEnabled").booleanValue(),
+        enabled);
+    Assert.assertEquals(serializer.deserialize(bytes, "").isWriteQuotaEnabled(), enabled);
+    StoreInfo info = StoreInfo.fromStore(store);
+    Assert.assertEquals(
+        ObjectMapperFactory.getInstance()
+            .readValue(ObjectMapperFactory.getInstance().writeValueAsBytes(info), StoreInfo.class)
+            .isWriteQuotaEnabled(),
+        enabled);
+  }
+
+  @Test
+  public void testWriteQuotaEnabledDefaultsFalseForOlderJson() throws IOException {
+    byte[] bytes = "{\"name\":\"legacyStore\"}".getBytes(StandardCharsets.UTF_8);
+    Assert.assertFalse(new StoreJSONSerializer().deserialize(bytes, "").isWriteQuotaEnabled());
+    Assert.assertFalse(ObjectMapperFactory.getInstance().readValue(bytes, StoreInfo.class).isWriteQuotaEnabled());
+  }
+
   @Test
   void testRealTimeTopicNameDefault() throws IOException {
     StoreJSONSerializer serializer = new StoreJSONSerializer();

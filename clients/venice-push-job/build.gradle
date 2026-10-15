@@ -48,6 +48,9 @@ dependencies {
 
     // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
     exclude group: 'org.apache.logging.log4j'
+
+    // Spark 3.5's transitive netty 4.1.96 breaks Venice's pinned netty 4.1.74 TLS stack
+    exclude group: 'io.netty'
   }
   implementation (libraries.apacheSparkCore) {
     // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
@@ -63,6 +66,9 @@ dependencies {
 
     // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
     exclude group: 'org.apache.logging.log4j'
+
+    // Spark 3.5's transitive netty 4.1.96 breaks Venice's pinned netty 4.1.74 TLS stack
+    exclude group: 'io.netty'
   }
   implementation (libraries.apacheSparkSql) {
     // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
@@ -78,6 +84,9 @@ dependencies {
 
     // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
     exclude group: 'org.apache.logging.log4j'
+
+    // Spark 3.5's transitive netty 4.1.96 breaks Venice's pinned netty 4.1.74 TLS stack
+    exclude group: 'io.netty'
   }
 
   // Spark versions 3.2.X - 3.3.X are compiled with antlr4 4.8. In our classpath, antlr4 version 4.5 is used. This

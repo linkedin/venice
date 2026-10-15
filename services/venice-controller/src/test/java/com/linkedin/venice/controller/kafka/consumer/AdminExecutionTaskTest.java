@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -35,6 +36,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
+import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -44,6 +46,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.utils.TestUtils;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -66,6 +70,100 @@ import org.testng.annotations.Test;
 
 
 public class AdminExecutionTaskTest {
+  @DataProvider(name = "writeQuotaCreationVersions")
+  public Object[][] writeQuotaCreationVersions() {
+    return new Object[][] { { 104, false }, { 105, false }, { 105, true } };
+  }
+
+  @Test(dataProvider = "writeQuotaCreationVersions")
+  public void testStoreCreationIgnoresUnusedWriteQuotaField(int schemaId, boolean enabled) {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    AdminOperationWrapper wrapper = createMockAdminOperationWrapper(1L);
+    AdminOperation operation = wrapper.getAdminOperation();
+    ((StoreCreation) operation.payloadUnion).writeQuotaEnabled = enabled;
+    AdminOperationSerializer serializer = new AdminOperationSerializer();
+    AdminOperation decoded =
+        serializer.deserialize(ByteBuffer.wrap(serializer.serialize(operation, schemaId)), schemaId);
+    operation.payloadUnion = decoded.payloadUnion;
+
+    runWriteQuotaTask(wrapper, false, StoreUpdateHandler.NO_OP);
+
+    verify(mockAdmin).createStore(clusterName, storeName, "test-owner", "\"string\"", "\"string\"", false);
+    assertEquals(lastSucceededExecutionIdMap.get(storeName), Long.valueOf(1L));
+  }
+
+  @DataProvider(name = "writeQuotaUpdates")
+  public Object[][] writeQuotaUpdates() {
+    return new Object[][] { { true, false, true, true }, { false, false, true, true }, { true, true, false, true },
+        { false, true, false, true }, { false, false, false, true }, { true, false, true, false },
+        { false, false, true, false }, { true, true, false, false }, { false, true, false, false },
+        { false, false, false, false } };
+  }
+
+  @Test(dataProvider = "writeQuotaUpdates")
+  public void testWriteQuotaUpdateSelectionAndCallback(
+      boolean enabled,
+      boolean replicateAll,
+      boolean specified,
+      boolean parent) {
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(true);
+    when(mockAdmin.getStore(clusterName, storeName)).thenReturn(store);
+    doAnswer(invocation -> {
+      UpdateStoreQueryParams params = invocation.getArgument(2);
+      params.getWriteQuotaEnabled().ifPresent(store::setWriteQuotaEnabled);
+      return null;
+    }).when(mockAdmin).updateStore(eq(clusterName), eq(storeName), any());
+    StoreUpdateHandler handler = mock(StoreUpdateHandler.class);
+    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
+    UpdateStore message = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
+    message.writeQuotaEnabled = enabled;
+    message.replicateAllConfigs = replicateAll;
+    message.updatedConfigsList = replicateAll
+        ? Collections.emptyList()
+        : Collections.singletonList(specified ? WRITE_QUOTA_ENABLED : READ_QUOTA_IN_CU);
+
+    runWriteQuotaTask(wrapper, parent, handler);
+
+    ArgumentCaptor<UpdateStoreQueryParams> paramsCaptor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+    verify(mockAdmin).updateStore(eq(clusterName), eq(storeName), paramsCaptor.capture());
+    assertEquals(
+        paramsCaptor.getValue().getWriteQuotaEnabled(),
+        replicateAll || specified ? Optional.of(enabled) : Optional.empty());
+    assertEquals(store.isWriteQuotaEnabled(), replicateAll || specified ? enabled : true);
+    if (!parent) {
+      verify(handler, never()).handleStoreUpdate(anyString(), any(), any());
+      return;
+    }
+    ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
+    Set<String> expectedConfigs = replicateAll
+        ? Collections.emptySet()
+        : Collections.singleton(specified ? WRITE_QUOTA_ENABLED : READ_QUOTA_IN_CU);
+    verify(handler).handleStoreUpdate(eq(clusterName), storeCaptor.capture(), eq(expectedConfigs));
+    assertEquals(storeCaptor.getValue().isWriteQuotaEnabled(), replicateAll || specified ? enabled : true);
+    assertThrows(UnsupportedOperationException.class, () -> storeCaptor.getValue().setWriteQuotaEnabled(false));
+  }
+
+  private void runWriteQuotaTask(AdminOperationWrapper wrapper, boolean parent, StoreUpdateHandler handler) {
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(wrapper);
+    new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        parent,
+        mockStats,
+        regionName,
+        inflightThreadsByStore,
+        handler).call();
+  }
+
   private Logger mockLogger;
   private VeniceHelixAdmin mockAdmin;
   private ExecutionIdAccessor mockExecutionIdAccessor;

@@ -1101,6 +1101,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setVersions(convertVersions(getVersions()));
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
+    storeProperties.setWriteQuotaEnabled(isWriteQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
     storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
     storeProperties.setBlobDbEnabled(getBlobDbEnabled());
@@ -1699,6 +1700,16 @@ public class ReadOnlyStore implements Store {
   @Override
   public boolean isStorageNodeReadQuotaEnabled() {
     return this.delegate.isStorageNodeReadQuotaEnabled();
+  }
+
+  @Override
+  public boolean isWriteQuotaEnabled() {
+    return this.delegate.isWriteQuotaEnabled();
+  }
+
+  @Override
+  public void setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    throw new UnsupportedOperationException();
   }
 
   @Override

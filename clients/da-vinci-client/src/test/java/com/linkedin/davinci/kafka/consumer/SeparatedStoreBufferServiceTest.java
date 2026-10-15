@@ -21,6 +21,8 @@ public class SeparatedStoreBufferServiceTest {
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(true).when(serverConfig).isStalledDrainerQueueFailureEnabled();
     doReturn(50L).when(serverConfig).getBlockedDrainerThresholdMs();
+    int priority = Thread.NORM_PRIORITY - 2;
+    doReturn(priority).when(serverConfig).getWritePathThreadPriority();
     List<List<?>> arguments = new ArrayList<>();
     try (MockedConstruction<StoreBufferService> construction =
         mockConstruction(StoreBufferService.class, (mock, context) -> arguments.add(context.arguments()))) {
@@ -28,7 +30,8 @@ public class SeparatedStoreBufferServiceTest {
       Assert.assertEquals(construction.constructed().size(), 2);
       for (List<?> args: arguments) {
         Assert.assertEquals(args.get(8), 50L);
-        Assert.assertEquals(args.get(9), true);
+        Assert.assertEquals(args.get(9), priority);
+        Assert.assertEquals(args.get(10), true);
       }
     }
   }
@@ -40,6 +43,7 @@ public class SeparatedStoreBufferServiceTest {
     doReturn(8).when(serverConfig).getDrainerPoolSizeUnsortedInput();
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(1000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(serverConfig).getWritePathThreadPriority();
     SeparatedStoreBufferService separatedStoreBufferService =
         new SeparatedStoreBufferService(serverConfig, metricsRepo, "test-cluster");
     // Verify that metricsRepo has two sets of metrics, example metric:

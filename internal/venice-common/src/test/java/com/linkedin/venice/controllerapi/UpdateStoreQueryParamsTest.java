@@ -4,6 +4,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.meta.ExternalStorageReadMode;
@@ -18,10 +19,30 @@ import java.util.Map;
 import java.util.Optional;
 import org.apache.http.NameValuePair;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class UpdateStoreQueryParamsTest {
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testWriteQuotaEnabledWireAndMigrationCopy(boolean enabled) {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    assertEquals(params.getWriteQuotaEnabled(), Optional.empty());
+    params.setWriteQuotaEnabled(enabled);
+    assertEquals(toWireMap(params).get(WRITE_QUOTA_ENABLED), Boolean.toString(enabled));
+    assertEquals(new UpdateStoreQueryParams(toWireMap(params)).getWriteQuotaEnabled(), Optional.of(enabled));
+
+    StoreInfo source = new StoreInfo();
+    source.setWriteQuotaEnabled(enabled);
+    assertEquals(new UpdateStoreQueryParams(source, true).getWriteQuotaEnabled(), Optional.of(enabled));
+    assertEquals(new UpdateStoreQueryParams(source, false).getWriteQuotaEnabled(), Optional.of(enabled));
+  }
+
   @Test
   public void testSetStoreMigrationSetsBothKeys() {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();

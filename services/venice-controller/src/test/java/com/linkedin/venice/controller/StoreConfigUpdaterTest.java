@@ -29,12 +29,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -69,6 +71,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -141,6 +144,116 @@ import org.testng.annotations.Test;
  * </ul>
  */
 public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
+  @Test
+  public void testMigrationComputeReusesImportedSuperset() {
+    String storeName = "migration-compute";
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(true).when(internalAdmin).isStoreMigrationDestination(clusterName, storeName);
+    SchemaEntry initial = new SchemaEntry(
+        274,
+        "{\"type\":\"record\",\"name\":\"Value\",\"fields\":[{\"name\":\"a\",\"type\":\"int\",\"default\":0}]}");
+    SchemaEntry superset = new SchemaEntry(
+        315,
+        "{\"type\":\"record\",\"name\":\"Value\",\"fields\":[{\"name\":\"a\",\"type\":\"int\",\"default\":0},"
+            + "{\"name\":\"b\",\"type\":\"int\",\"default\":0}]}");
+    doReturn(Arrays.asList(new SchemaEntry(1, initial.getSchemaStr()), initial, superset)).when(internalAdmin)
+        .getValueSchemas(clusterName, storeName);
+    doReturn(superset).when(internalAdmin).getValueSchema(clusterName, storeName, 315);
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setReadComputationEnabled(true).setLatestSupersetSchemaId(315));
+    assertEquals(captureLastUpdateStore().latestSuperSetValueSchemaId, 315);
+    verify(internalAdmin).getValueSchemas(clusterName, storeName);
+    verify(veniceWriter)
+        .put(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  @Test
+  public void testMigrationComputeRejectsMissingSupersetBeforeConfigUpdate() {
+    String storeName = "migration-compute-missing";
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(true).when(internalAdmin).isStoreMigrationDestination(clusterName, storeName);
+    String first =
+        "{\"type\":\"record\",\"name\":\"Value\",\"fields\":[{\"name\":\"a\",\"type\":\"int\",\"default\":0}]}";
+    doReturn(
+        Arrays.asList(
+            new SchemaEntry(1, first),
+            new SchemaEntry(274, first),
+            new SchemaEntry(315, first.replace("\"a\"", "\"b\"")))).when(internalAdmin)
+                .getValueSchemas(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> parentAdmin
+            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)));
+    assertTrue(exception.getMessage().contains("Required superset schema is missing from imported source schemas"));
+    verify(internalAdmin).getValueSchemas(clusterName, storeName);
+    verify(veniceWriter, never())
+        .put(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testApplyOnParent_WriteQuotaEnabledRoundTrip(boolean enabled) {
+    String storeName = Utils.getUniqueString("write-quota-parent");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(!enabled);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(enabled));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertEquals(message.writeQuotaEnabled, enabled);
+    assertEquals(
+        message.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet()),
+        Collections.singleton(WRITE_QUOTA_ENABLED));
+  }
+
+  @Test
+  public void testApplyOnParent_UnrelatedUpdatePreservesWriteQuotaEnabled() {
+    String storeName = Utils.getUniqueString("write-quota-unset");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertTrue(message.writeQuotaEnabled);
+    assertEquals(
+        message.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet()),
+        Collections.singleton(OWNER));
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testApplyOnChild_WriteQuotaEnabledPersistsAndSurvivesUnrelatedUpdate(boolean enabled) {
+    String storeName = Utils.getUniqueString("write-quota-child");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(!enabled);
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater
+        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(enabled));
+    assertEquals(store.isWriteQuotaEnabled(), enabled);
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+    assertEquals(store.isWriteQuotaEnabled(), enabled);
+  }
+
   private static final String NEW_OWNER = "new-owner-for-trivial-test";
   private static final String NEW_PUSH_SRC = "kafka://broker:9092";
   private static final String NEW_NR_FABRIC = "dc-trivial-test";

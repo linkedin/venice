@@ -6,6 +6,7 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
@@ -253,5 +254,42 @@ public class VeniceSystemProducerConfigTest {
     assertSame(modified.getTime(), original.getTime());
     assertSame(modified.getSamzaConfig(), original.getSamzaConfig());
     assertEquals(modified.getRouterUrl(), original.getRouterUrl());
+  }
+
+  @Test
+  public void testClusterDiscoveryD2ServiceDefaultsToTheClientDefault() {
+    VeniceSystemProducerConfig config = new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setFactory(mock(VeniceSystemFactory.class))
+        .setProvidedChildColoD2Client(mock(D2Client.class))
+        .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
+        .setPrimaryControllerD2ServiceName("ChildController")
+        .build();
+
+    assertEquals(config.getClusterDiscoveryD2ServiceName(), ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+  }
+
+  @Test
+  public void testToBuilderKeepsClusterDiscoveryD2Service() {
+    VeniceSystemProducerConfig original = new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setFactory(mock(VeniceSystemFactory.class))
+        .setProvidedChildColoD2Client(mock(D2Client.class))
+        .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
+        .setPrimaryControllerD2ServiceName("ChildController")
+        .setClusterDiscoveryD2ServiceName("venice-discovery-custom")
+        .build();
+
+    // Subclasses rebuild the config through toBuilder, for example to add a writer hook.
+    VeniceSystemProducerConfig copy = original.toBuilder().setWriterHook(mock(VeniceWriterHook.class)).build();
+
+    assertEquals(copy.getClusterDiscoveryD2ServiceName(), "venice-discovery-custom");
+  }
+
+  @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "clusterDiscoveryD2ServiceName cannot be null")
+  public void testBuilderRejectsNullClusterDiscoveryD2Service() {
+    new VeniceSystemProducerConfig.Builder().setClusterDiscoveryD2ServiceName(null);
   }
 }

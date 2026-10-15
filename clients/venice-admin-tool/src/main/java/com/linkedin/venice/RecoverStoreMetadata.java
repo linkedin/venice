@@ -253,6 +253,7 @@ public class RecoverStoreMetadata {
             .setNativeReplicationSourceFabric(deletedStore.getNativeReplicationSourceFabric())
             .setActiveActiveReplicationEnabled(deletedStore.isActiveActiveReplicationEnabled())
             .setStorageNodeReadQuotaEnabled(deletedStore.isStorageNodeReadQuotaEnabled())
+            .setWriteQuotaEnabled(deletedStore.isWriteQuotaEnabled())
             .setMinCompactionLagSeconds(deletedStore.getMinCompactionLagSeconds())
             .setMaxCompactionLagSeconds(deletedStore.getMaxCompactionLagSeconds())
             .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())

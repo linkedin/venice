@@ -236,6 +236,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setRmdVersion(store.getRmdVersion());
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    setWriteQuotaEnabled(store.isWriteQuotaEnabled());
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setCompactionEnabled(store.isCompactionEnabled());
     setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
@@ -979,6 +980,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isStorageNodeReadQuotaEnabled() {
     return this.storeProperties.storageNodeReadQuotaEnabled;
+  }
+
+  @Override
+  public boolean isWriteQuotaEnabled() {
+    return this.storeProperties.writeQuotaEnabled;
+  }
+
+  @Override
+  public void setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    this.storeProperties.writeQuotaEnabled = writeQuotaEnabled;
   }
 
   @Override

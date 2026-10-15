@@ -6,6 +6,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -26,6 +27,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.pubsub.input.PartitionSplitStrategy;
 import java.io.IOException;
 import java.util.Arrays;
@@ -33,6 +35,7 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Function;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
@@ -198,6 +201,10 @@ public class KafkaInputDictTrainer {
     Properties splitProps = new Properties();
     splitProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION.name());
     VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(jobConf, splitProps);
+    Function<String, String> encryptionKeyUrnLookup =
+        !reusedConsumerOptional.isPresent() && veniceProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)
+            ? PubSubEncryptionUtils.getRequiredKeyUrnLookup(veniceProperties)
+            : null;
     KafkaInputSplit[] splits = kafkaInputFormat.getSplits(veniceProperties);
     // The following sort is trying to get a deterministic dict with the same input.
     Arrays.sort(splits, Comparator.comparingInt(o -> o.getTopicPartition().getPartitionNumber()));
@@ -224,20 +231,22 @@ public class KafkaInputDictTrainer {
     long totalSampledRecordCnt = 0;
 
     // Reuse the same Kafka Consumer across all partitions avoid log flooding
-    PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(
-        () -> PubSubClientsFactory.createConsumerFactory(veniceProperties)
-            .create(
-                new PubSubConsumerAdapterContext.Builder()
-                    .setConsumerName("KafkaInputDictTrainer-for-" + sourceTopicName)
-                    .setVeniceProperties(veniceProperties)
-                    .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
-                    .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
-                    .setPubSubMessageDeserializer(
-                        new PubSubMessageDeserializer(
-                            KafkaInputUtils.getKafkaValueSerializer(jobConf),
-                            new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                            new LandFillObjectPool<>(KafkaMessageEnvelope::new)))
-                    .build()));
+    PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(() -> {
+      PubSubConsumerAdapterContext.Builder context =
+          new PubSubConsumerAdapterContext.Builder().setConsumerName("KafkaInputDictTrainer-for-" + sourceTopicName)
+              .setVeniceProperties(veniceProperties)
+              .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
+              .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
+              .setPubSubMessageDeserializer(
+                  new PubSubMessageDeserializer(
+                      KafkaInputUtils.getKafkaValueSerializer(jobConf),
+                      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                      new LandFillObjectPool<>(KafkaMessageEnvelope::new)));
+      if (encryptionKeyUrnLookup != null) {
+        context.setPubSubEncryptionKeyUrnLookup(encryptionKeyUrnLookup);
+      }
+      return PubSubClientsFactory.createConsumerFactory(veniceProperties).create(context.build());
+    });
     try {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;

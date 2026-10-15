@@ -1,34 +1,41 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
+import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.concurrent.EventExecutor;
+import java.io.InputStream;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.StreamSupport;
 import org.testng.annotations.Test;
 
 
 /**
- * Targeted tests for the Netty event-loop pool sizing and thread priority configured in
+ * Targeted tests for receive-channel tracking, Netty event-loop pool sizing, and thread priority configured in
  * {@link NettyFileTransferClient}. Lives in the same package as the client so it can read the
  * package-private {@code workerGroup}.
  */
 public class TestNettyFileTransferClient {
   // Reuse the production floor so this test tracks it instead of hard-coding a second copy.
   private static final int MIN_NETTY_WORKER_THREADS = NettyFileTransferClient.MIN_NETTY_WORKER_THREADS;
-  // Mirrors NettyFileTransferClient#BLOB_TRANSFER_CLIENT_THREAD_PRIORITY.
-  private static final int EXPECTED_THREAD_PRIORITY = 4;
 
   private NettyFileTransferClient createClient(int nettyWorkerThreadCount) throws Exception {
     return createClient(nettyWorkerThreadCount, false);
@@ -54,6 +61,44 @@ public class TestNettyFileTransferClient {
 
   private static int countWorkerThreads(NettyFileTransferClient client) {
     return (int) StreamSupport.stream(client.workerGroup.spliterator(), false).count();
+  }
+
+  @Test
+  public void testFailedTransferCompletionDoesNotRemoveReplacementChannel() throws Exception {
+    NettyFileTransferClient client = createClient(MIN_NETTY_WORKER_THREADS);
+    EmbeddedChannel oldChannel = new EmbeddedChannel();
+    EmbeddedChannel replacementChannel = new EmbeddedChannel();
+    try {
+      client.clientBootstrap = mock(Bootstrap.class);
+      when(client.clientBootstrap.connect("old-peer", 0)).thenReturn(oldChannel.newSucceededFuture());
+      when(client.clientBootstrap.connect("replacement-peer", 0)).thenReturn(replacementChannel.newSucceededFuture());
+
+      String replicaId = "test_store_v1-0";
+      CompletableFuture<InputStream> oldTransfer =
+          client.get("old-peer", "test_store", 1, 0, BlobTransferTableFormat.BLOCK_BASED_TABLE).toCompletableFuture();
+      assertFalse(oldTransfer.isDone());
+      assertSame(client.getActiveChannel(replicaId), oldChannel);
+      assertEquals(client.getInFlightTransferCount(), 1);
+
+      // Reproduce a retry registering its channel before the old transfer's tracking cleanup runs.
+      CompletableFuture<InputStream> replacementTransfer =
+          client.get("replacement-peer", "test_store", 1, 0, BlobTransferTableFormat.BLOCK_BASED_TABLE)
+              .toCompletableFuture();
+      assertFalse(replacementTransfer.isDone());
+      assertSame(client.getActiveChannel(replicaId), replacementChannel);
+
+      assertTrue(oldTransfer.completeExceptionally(new IllegalStateException("Synthetic peer failure")));
+      assertSame(client.getActiveChannel(replicaId), replacementChannel);
+      assertEquals(client.getInFlightTransferCount(), 1);
+
+      assertTrue(replacementTransfer.complete(null));
+      assertNull(client.getActiveChannel(replicaId));
+      assertEquals(client.getInFlightTransferCount(), 0);
+    } finally {
+      oldChannel.finishAndReleaseAll();
+      replacementChannel.finishAndReleaseAll();
+      client.close();
+    }
   }
 
   @Test
@@ -118,7 +163,7 @@ public class TestNettyFileTransferClient {
         Thread thread = executor.submit(Thread::currentThread).get(5, TimeUnit.SECONDS);
         assertEquals(
             thread.getPriority(),
-            EXPECTED_THREAD_PRIORITY,
+            VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY,
             "Blob transfer event-loop threads should run below normal priority");
         assertTrue(
             thread.getName().startsWith("Venice-BlobTransfer-Client-Netty"),

@@ -35,14 +35,12 @@ public class EspressoHttp2FrameCodec extends Http2FrameCodec {
       Http2ConnectionDecoder decoder,
       Http2Settings initialSettings,
       boolean decoupleCloseAndGoAway,
-      boolean flushPreface,
       Predicate<Channel> canCreateStreams) {
     super(
         encoder,
         new DelegateDecoder(decoder, Objects.requireNonNull(canCreateStreams), encoder.frameWriter()),
         initialSettings,
-        decoupleCloseAndGoAway,
-        flushPreface);
+        decoupleCloseAndGoAway);
   }
 
   static class DelegateDecoder extends DecoratingHttp2ConnectionDecoder {

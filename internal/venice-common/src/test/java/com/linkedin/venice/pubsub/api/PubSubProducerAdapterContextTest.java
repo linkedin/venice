@@ -30,6 +30,7 @@ public class PubSubProducerAdapterContextTest {
         .setShouldValidateProducerConfigStrictly(false)
         .setPubSubMessageSerializer(PubSubMessageSerializer.DEFAULT_PUBSUB_SERIALIZER)
         .setProducerCompressionEnabled(false)
+        .setProducerEncryptionEnabled(true)
         .setCompressionType("snappy")
         .setPubSubEncryptionKeyUrnLookup(keyLookup)
         .build();
@@ -38,6 +39,7 @@ public class PubSubProducerAdapterContextTest {
     assertEquals(context.getBrokerAddress(), "localhost:9092");
     assertEquals(context.getCompressionType(), "none");
     assertFalse(context.isProducerCompressionEnabled());
+    assertTrue(context.isProducerEncryptionEnabled());
     assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
   }
 
@@ -58,6 +60,7 @@ public class PubSubProducerAdapterContextTest {
     assertNotNull(context.getPubSubMessageSerializer());
     assertEquals(context.getCompressionType(), "gzip");
     assertTrue(context.isProducerCompressionEnabled());
+    assertFalse(context.isProducerEncryptionEnabled());
     assertNull(context.getMetricsRepository());
     assertNull(context.getPubSubTopicRepository());
     assertNull(context.getPubSubEncryptionKeyUrnLookup());

@@ -9,6 +9,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.acl.VeniceComponent;
@@ -26,6 +27,7 @@ import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.pubsub.input.splitter.PubSubTopicPartitionSplitStrategy;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -66,6 +68,9 @@ public class PubSubSplitPlanner {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public List<PubSubPartitionSplit> plan(VeniceProperties jobConfig) {
+    if (jobConfig.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+      PubSubEncryptionUtils.getRequiredKeyUrnLookup(jobConfig);
+    }
     String brokerUrl = jobConfig.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER);
 
     try (TopicManager tm = createTopicManager(jobConfig, brokerUrl)) {

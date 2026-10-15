@@ -169,6 +169,8 @@ public class KafkaConsumptionTest {
     doReturn(sharedConsumerStrategy).when(veniceServerConfig).getSharedConsumerAssignmentStrategy();
     doReturn(localPubSubBroker.getPubSubPositionTypeRegistry()).when(veniceServerConfig)
         .getPubSubPositionTypeRegistry();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(veniceServerConfig)
+        .getWritePathThreadPriority();
 
     String localKafkaUrl = localPubSubBroker.getAddress();
     String remoteKafkaUrl = remotePubSubBroker.getAddress();

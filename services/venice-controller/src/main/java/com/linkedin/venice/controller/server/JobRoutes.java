@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Optional;
@@ -37,11 +38,20 @@ import spark.Route;
 
 public class JobRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(JobRoutes.class);
-  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
-      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
 
   public JobRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this(sslEnabled, accessController, AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer());
+  }
+
+  JobRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer) {
     super(sslEnabled, accessController);
+    this.pushJobDetailsSerializer = pushJobDetailsSerializer;
   }
 
   /**
@@ -157,7 +167,7 @@ public class JobRoutes extends AbstractRoute {
    * @see Admin#sendPushJobDetails(PushJobStatusRecordKey, PushJobDetails)
    */
   public Route sendPushJobDetails(Admin admin) {
-    return ((request, response) -> {
+    return (request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -171,7 +181,24 @@ public class JobRoutes extends AbstractRoute {
         PushJobStatusRecordKey key = new PushJobStatusRecordKey();
         key.storeName = storeName;
         key.versionNumber = versionNumber;
-        PushJobDetails pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
+        PushJobDetails pushJobDetails;
+        try {
+          pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
+        } catch (Exception e) {
+          // Deserialization failures (e.g. an unknown future protocol version) are best-effort telemetry failures.
+          controllerResponse.setError(e);
+          String errorMessage = e.getMessage();
+          if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(clusterName + ":" + errorMessage)) {
+            LOGGER.warn(
+                "Failed to deserialize best-effort push job details in cluster {} for store {} with version {}: {}",
+                clusterName,
+                storeName,
+                versionNumber,
+                errorMessage);
+          }
+          response.status(HttpStatus.SC_OK);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
+        }
         admin.sendPushJobDetails(key, pushJobDetails);
 
         if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
@@ -183,13 +210,12 @@ public class JobRoutes extends AbstractRoute {
               pushJobDetails.failureDetails.toString(),
               pushJobDetails.pushId.toString());
         }
-
       } catch (Throwable e) {
         controllerResponse.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
-    });
+    };
   }
 
   // TODO: remove the below API after the same version of codes is released to Venice Push Job.

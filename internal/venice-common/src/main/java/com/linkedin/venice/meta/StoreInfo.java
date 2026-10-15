@@ -78,6 +78,7 @@ public class StoreInfo {
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    storeInfo.setWriteQuotaEnabled(store.isWriteQuotaEnabled());
     storeInfo.setCompactionEnabled(store.isCompactionEnabled());
     storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
     storeInfo.setEncryptionEnabled(store.isEncryptionEnabled());
@@ -357,6 +358,7 @@ public class StoreInfo {
    * Whether storage node read quota is enabled for this store.
    */
   private boolean storageNodeReadQuotaEnabled;
+  private boolean writeQuotaEnabled;
 
   /**
    * Reasons for why or why not the store is dead
@@ -915,6 +917,14 @@ public class StoreInfo {
 
   public boolean isStorageNodeReadQuotaEnabled() {
     return storageNodeReadQuotaEnabled;
+  }
+
+  public boolean isWriteQuotaEnabled() {
+    return writeQuotaEnabled;
+  }
+
+  public void setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    this.writeQuotaEnabled = writeQuotaEnabled;
   }
 
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {

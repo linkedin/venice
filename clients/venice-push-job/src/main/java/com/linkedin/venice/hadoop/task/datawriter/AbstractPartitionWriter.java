@@ -19,6 +19,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WR
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
@@ -78,6 +79,7 @@ import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.vpj.ExternalStorageWriteUtils;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
@@ -1005,7 +1007,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         writerProps
             .put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
       }
-      return new VeniceWriterFactory(writerProps);
+      return new VeniceWriterFactory(writerProps, null, null, null, PubSubEncryptionUtils.getKeyUrnLookup(writerProps));
     });
 
     compressor = Lazy.of(() -> {
@@ -1021,7 +1023,15 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
         if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {
           String topicName = props.getString(TOPIC_PROP);
-          ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topicName, props);
+          ByteBuffer dict;
+          if (props.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+            dict = DictionaryUtils.readDictionaryFromEncryptedKafka(
+                topicName,
+                props,
+                PubSubEncryptionUtils.getRequiredKeyUrnLookup(props));
+          } else {
+            dict = DictionaryUtils.readDictionaryFromKafka(topicName, props);
+          }
           return compressorFactory.get()
               .createVersionSpecificCompressorIfNotExist(strategy, topicName, ByteUtils.extractByteArray(dict));
         } else {

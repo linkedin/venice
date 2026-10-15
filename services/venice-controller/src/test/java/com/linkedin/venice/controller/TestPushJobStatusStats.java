@@ -4,6 +4,8 @@ import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR
 import static com.linkedin.venice.PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.emitPushJobStatusMetrics;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.isPushJobFailedDueToUserError;
+import static com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket.AT_OR_OVER_SLA;
+import static com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket.UNDER_SLA;
 import static com.linkedin.venice.status.PushJobDetailsStatus.isFailed;
 import static com.linkedin.venice.status.PushJobDetailsStatus.isSucceeded;
 import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.EXTERNAL_STORAGE_WRITE_TIME_MS;
@@ -16,6 +18,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -27,6 +30,7 @@ import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
+import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -39,14 +43,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
 import org.mockito.Mockito;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class TestPushJobStatusStats {
   private static final String STORE_NAME = "test-store";
   private static final String CLUSTER_NAME = "cluster1";
+  private static final long DEFAULT_PUSH_JOB_SLA_MS = TimeUnit.HOURS.toMillis(24);
   private static final Set<PushJobCheckpoints> CUSTOM_USER_ERROR_CHECKPOINTS =
       new HashSet<>(Collections.singletonList(DVC_INGESTION_ERROR_OTHER));
 
@@ -63,6 +70,7 @@ public class TestPushJobStatusStats {
     Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
     pushJobConfigs.put(new Utf8("incremental.push"), String.valueOf(isIncrementalPush));
     when(pushJobDetails.getPushJobConfigs()).thenReturn(pushJobConfigs);
+    when(pushJobDetails.getJobDurationInMs()).thenReturn(1000L);
 
     String pushId = (isRepush ? Version.VENICE_RE_PUSH_PUSH_ID_PREFIX : "") + "test-push";
     when(pushJobDetails.getPushId()).thenReturn(pushId);
@@ -81,11 +89,10 @@ public class TestPushJobStatusStats {
 
     Cache<String, Boolean> dataWriterSinkWriteTimeEmittedPushIds = Caffeine.newBuilder().build();
 
-    int numberSuccess = 0;
-    int numberUserErrors = 0;
-    int numberNonUserErrors = 0;
-
     for (PushJobDetailsStatus status: PushJobDetailsStatus.values()) {
+      int numberSuccess = 0;
+      int numberUserErrors = 0;
+      int numberNonUserErrors = 0;
       boolean recordMetrics = false;
       if (isSucceeded(status) || isFailed(status)) {
         recordMetrics = true;
@@ -101,6 +108,7 @@ public class TestPushJobStatusStats {
             key,
             pushJobDetails,
             userErrorCheckpoints,
+            DEFAULT_PUSH_JOB_SLA_MS,
             dataWriterSinkWriteTimeEmittedPushIds);
         boolean isUserError = userErrorCheckpoints.contains(checkpoint);
 
@@ -111,17 +119,19 @@ public class TestPushJobStatusStats {
               numberUserErrors++;
               if (isIncrementalPush) {
                 verify(pushJobStatusStats, times(numberUserErrors))
-                    .recordIncrementalPushFailureDueToUserErrorSensor(storeName);
+                    .recordIncrementalPushFailureDueToUserErrorSensor(storeName, status, UNDER_SLA);
               } else {
                 verify(pushJobStatusStats, times(numberUserErrors))
-                    .recordBatchPushFailureDueToUserErrorSensor(storeName);
+                    .recordBatchPushFailureDueToUserErrorSensor(storeName, status, UNDER_SLA);
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
-                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor(storeName);
+                verify(pushJobStatusStats, times(numberSuccess))
+                    .recordIncrementalPushSuccessSensor(storeName, status, UNDER_SLA);
               } else {
-                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor(storeName);
+                verify(pushJobStatusStats, times(numberSuccess))
+                    .recordBatchPushSuccessSensor(storeName, status, UNDER_SLA);
               }
 
               if (isRepush) {
@@ -136,17 +146,19 @@ public class TestPushJobStatusStats {
               numberNonUserErrors++;
               if (isIncrementalPush) {
                 verify(pushJobStatusStats, times(numberNonUserErrors))
-                    .recordIncrementalPushFailureNotDueToUserErrorSensor(storeName);
+                    .recordIncrementalPushFailureNotDueToUserErrorSensor(storeName, status, UNDER_SLA);
               } else {
                 verify(pushJobStatusStats, times(numberNonUserErrors))
-                    .recordBatchPushFailureNotDueToUserErrorSensor(storeName);
+                    .recordBatchPushFailureNotDueToUserErrorSensor(storeName, status, UNDER_SLA);
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
-                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor(storeName);
+                verify(pushJobStatusStats, times(numberSuccess))
+                    .recordIncrementalPushSuccessSensor(storeName, status, UNDER_SLA);
               } else {
-                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor(storeName);
+                verify(pushJobStatusStats, times(numberSuccess))
+                    .recordBatchPushSuccessSensor(storeName, status, UNDER_SLA);
               }
 
               if (isRepush) {
@@ -159,6 +171,32 @@ public class TestPushJobStatusStats {
     }
   }
 
+  @DataProvider
+  public Object[][] pushJobDurationBuckets() {
+    long customSlaMs = TimeUnit.HOURS.toMillis(12);
+    return new Object[][] { { DEFAULT_PUSH_JOB_SLA_MS, 0L, UNDER_SLA },
+        { DEFAULT_PUSH_JOB_SLA_MS, DEFAULT_PUSH_JOB_SLA_MS - 1, UNDER_SLA },
+        { DEFAULT_PUSH_JOB_SLA_MS, DEFAULT_PUSH_JOB_SLA_MS, AT_OR_OVER_SLA },
+        { DEFAULT_PUSH_JOB_SLA_MS, DEFAULT_PUSH_JOB_SLA_MS + 1, AT_OR_OVER_SLA },
+        { DEFAULT_PUSH_JOB_SLA_MS, Long.MAX_VALUE, AT_OR_OVER_SLA }, { customSlaMs, customSlaMs - 1, UNDER_SLA },
+        { customSlaMs, customSlaMs, AT_OR_OVER_SLA }, { customSlaMs, customSlaMs + 1, AT_OR_OVER_SLA },
+        { customSlaMs, DEFAULT_PUSH_JOB_SLA_MS - 1, AT_OR_OVER_SLA } };
+  }
+
+  @Test(dataProvider = "pushJobDurationBuckets")
+  public void testKilledPushDurationBucket(
+      long slaMs,
+      long durationMs,
+      VenicePushJobDurationBucket expectedDurationBucket) {
+    DataWriterSinkWriteTimeFixture fixture = new DataWriterSinkWriteTimeFixture(null, null);
+    fixture.setOverallStatus(PushJobDetailsStatus.KILLED);
+    when(fixture.pushJobDetails.getJobDurationInMs()).thenReturn(durationMs);
+    fixture.emit(slaMs);
+
+    verify(fixture.pushJobStatusStats)
+        .recordBatchPushFailureNotDueToUserErrorSensor(STORE_NAME, PushJobDetailsStatus.KILLED, expectedDurationBucket);
+  }
+
   /**
    * The two data-writer durations are only meaningful once the push has reached a terminal, successful state:
    * a push that failed partway through would otherwise contribute a partial duration to the same histogram as
@@ -168,6 +206,8 @@ public class TestPushJobStatusStats {
   @Test
   public void testDataWriterSinkWriteTimeEmittedOnlyOnSucceededTerminalStatus() {
     DataWriterSinkWriteTimeFixture fixture = new DataWriterSinkWriteTimeFixture(1200L, 300L);
+    fixture.emit();
+    verifyNoInteractions(fixture.pushJobStatusStats);
 
     for (PushJobDetailsStatus status: PushJobDetailsStatus.values()) {
       fixture.reset();
@@ -187,6 +227,9 @@ public class TestPushJobStatusStats {
             300L);
       } else {
         verify(fixture.pushJobStatusStats, never()).recordDataWriterSinkWriteTime(anyString(), any(), any(), anyLong());
+        if (!PushJobDetailsStatus.isTerminal(status.getValue())) {
+          verifyNoInteractions(fixture.pushJobStatusStats);
+        }
       }
     }
   }
@@ -251,7 +294,8 @@ public class TestPushJobStatusStats {
     verify(fixture.pushJobStatusStats, times(1))
         .recordDataWriterSinkWriteTime(STORE_NAME, Version.PushType.BATCH, VenicePushJobDataWriterSink.VENICE, 300L);
     // The push-status counters are intentionally left alone by the dedup.
-    verify(fixture.pushJobStatusStats, times(3)).recordBatchPushSuccessSensor(STORE_NAME);
+    verify(fixture.pushJobStatusStats, times(3))
+        .recordBatchPushSuccessSensor(STORE_NAME, PushJobDetailsStatus.COMPLETED, UNDER_SLA);
   }
 
   @Test
@@ -306,6 +350,7 @@ public class TestPushJobStatusStats {
       pushJobConfigs.put(new Utf8("incremental.push"), "false");
       when(pushJobDetails.getClusterName()).thenReturn(new Utf8(CLUSTER_NAME));
       when(pushJobDetails.getPushJobConfigs()).thenReturn(pushJobConfigs);
+      when(pushJobDetails.getJobDurationInMs()).thenReturn(1000L);
       when(pushJobDetails.getOverallStatus()).thenReturn(statusTuples);
       when(pushJobDetails.getPushId()).thenReturn(new Utf8("test-push"));
       when(pushJobDetails.getPushJobLatestCheckpoint())
@@ -344,12 +389,17 @@ public class TestPushJobStatusStats {
     }
 
     void emit() {
+      emit(DEFAULT_PUSH_JOB_SLA_MS);
+    }
+
+    void emit(long slaMs) {
       emitPushJobStatusMetrics(
           pushJobStatusStatsMap,
           logCompactionStatsMap,
           key,
           pushJobDetails,
           DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS,
+          slaMs,
           dedupCache);
     }
   }

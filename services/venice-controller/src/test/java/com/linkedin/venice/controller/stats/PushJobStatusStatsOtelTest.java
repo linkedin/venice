@@ -3,24 +3,37 @@ package com.linkedin.venice.controller.stats;
 import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_DATA_WRITER_SINK;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_DURATION_BUCKET;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_EXECUTION_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket.AT_OR_OVER_SLA;
+import static com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket.UNDER_SLA;
+import static com.linkedin.venice.status.PushJobDetailsStatus.COMPLETED;
+import static com.linkedin.venice.status.PushJobDetailsStatus.ERROR;
+import static com.linkedin.venice.status.PushJobDetailsStatus.KILLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.controller.stats.PushJobStatusStats.PushJobTehutiMetricNameEnum;
 import com.linkedin.venice.meta.Version.PushType;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
+import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
+import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -29,145 +42,157 @@ public class PushJobStatusStatsOtelTest {
   private static final String TEST_CLUSTER_NAME = "test-cluster";
   private static final String TEST_STORE_NAME = "test-store";
   private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository metricsRepository;
   private PushJobStatusStats stats;
 
   @BeforeMethod
   public void setUp() {
     this.inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+    metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
 
     stats = new PushJobStatusStats(metricsRepository, TEST_CLUSTER_NAME);
   }
 
-  @Test
-  public void testRecordBatchPushSuccess() {
-    stats.recordBatchPushSuccessSensor(TEST_STORE_NAME);
-    validateCounter(
-        PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
-        1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.SUCCESS.getDimensionValue())
-            .build());
+  @DataProvider
+  public Object[][] durationBuckets() {
+    return new Object[][] { { UNDER_SLA }, { AT_OR_OVER_SLA } };
   }
 
-  @Test
-  public void testRecordBatchPushFailureDueToUserError() {
-    stats.recordBatchPushFailureDueToUserErrorSensor(TEST_STORE_NAME);
-    validateCounter(
-        PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
-        1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.USER_ERROR.getDimensionValue())
-            .build());
+  @DataProvider
+  public Object[][] failedStatesAndDurationBuckets() {
+    return new Object[][] { { ERROR, UNDER_SLA }, { ERROR, AT_OR_OVER_SLA }, { KILLED, UNDER_SLA },
+        { KILLED, AT_OR_OVER_SLA } };
   }
 
-  @Test
-  public void testRecordBatchPushFailureNotDueToUserError() {
-    stats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME);
+  @Test(dataProvider = "durationBuckets")
+  public void testRecordBatchPushSuccess(VenicePushJobDurationBucket durationBucket) {
+    stats.recordBatchPushSuccessSensor(TEST_STORE_NAME, COMPLETED, durationBucket);
     validateCounter(
         PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
         1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.SYSTEM_ERROR.getDimensionValue())
-            .build());
+        pushJobAttributes(TEST_STORE_NAME, PushType.BATCH, VenicePushJobStatus.SUCCESS, COMPLETED, durationBucket));
   }
 
-  @Test
-  public void testRecordIncrementalPushSuccess() {
-    stats.recordIncrementalPushSuccessSensor(TEST_STORE_NAME);
+  @Test(dataProvider = "failedStatesAndDurationBuckets")
+  public void testRecordBatchPushFailureDueToUserError(
+      PushJobDetailsStatus executionState,
+      VenicePushJobDurationBucket durationBucket) {
+    stats.recordBatchPushFailureDueToUserErrorSensor(TEST_STORE_NAME, executionState, durationBucket);
     validateCounter(
         PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
         1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.INCREMENTAL.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.SUCCESS.getDimensionValue())
-            .build());
+        pushJobAttributes(
+            TEST_STORE_NAME,
+            PushType.BATCH,
+            VenicePushJobStatus.USER_ERROR,
+            executionState,
+            durationBucket));
   }
 
-  @Test
-  public void testRecordIncrementalPushFailureDueToUserError() {
-    stats.recordIncrementalPushFailureDueToUserErrorSensor(TEST_STORE_NAME);
+  @Test(dataProvider = "failedStatesAndDurationBuckets")
+  public void testRecordBatchPushFailureNotDueToUserError(
+      PushJobDetailsStatus executionState,
+      VenicePushJobDurationBucket durationBucket) {
+    stats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, executionState, durationBucket);
     validateCounter(
         PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
         1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.INCREMENTAL.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.USER_ERROR.getDimensionValue())
-            .build());
+        pushJobAttributes(
+            TEST_STORE_NAME,
+            PushType.BATCH,
+            VenicePushJobStatus.SYSTEM_ERROR,
+            executionState,
+            durationBucket));
   }
 
-  @Test
-  public void testRecordIncrementalPushFailureNotDueToUserError() {
-    stats.recordIncrementalPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME);
+  @Test(dataProvider = "durationBuckets")
+  public void testRecordIncrementalPushSuccess(VenicePushJobDurationBucket durationBucket) {
+    stats.recordIncrementalPushSuccessSensor(TEST_STORE_NAME, COMPLETED, durationBucket);
     validateCounter(
         PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
         1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.INCREMENTAL.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.SYSTEM_ERROR.getDimensionValue())
-            .build());
+        pushJobAttributes(
+            TEST_STORE_NAME,
+            PushType.INCREMENTAL,
+            VenicePushJobStatus.SUCCESS,
+            COMPLETED,
+            durationBucket));
+  }
+
+  @Test(dataProvider = "failedStatesAndDurationBuckets")
+  public void testRecordIncrementalPushFailureDueToUserError(
+      PushJobDetailsStatus executionState,
+      VenicePushJobDurationBucket durationBucket) {
+    stats.recordIncrementalPushFailureDueToUserErrorSensor(TEST_STORE_NAME, executionState, durationBucket);
+    validateCounter(
+        PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
+        1,
+        pushJobAttributes(
+            TEST_STORE_NAME,
+            PushType.INCREMENTAL,
+            VenicePushJobStatus.USER_ERROR,
+            executionState,
+            durationBucket));
+  }
+
+  @Test(dataProvider = "failedStatesAndDurationBuckets")
+  public void testRecordIncrementalPushFailureNotDueToUserError(
+      PushJobDetailsStatus executionState,
+      VenicePushJobDurationBucket durationBucket) {
+    stats.recordIncrementalPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, executionState, durationBucket);
+    validateCounter(
+        PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
+        1,
+        pushJobAttributes(
+            TEST_STORE_NAME,
+            PushType.INCREMENTAL,
+            VenicePushJobStatus.SYSTEM_ERROR,
+            executionState,
+            durationBucket));
   }
 
   @Test
   public void testDifferentStoresRecordSeparately() {
-    stats.recordBatchPushSuccessSensor("store-a");
-    stats.recordBatchPushSuccessSensor("store-b");
+    stats.recordBatchPushSuccessSensor("store-a", COMPLETED, UNDER_SLA);
+    stats.recordBatchPushSuccessSensor("store-b", COMPLETED, UNDER_SLA);
 
     validateCounter(
         PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
         1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "store-a")
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.SUCCESS.getDimensionValue())
-            .build());
+        pushJobAttributes("store-a", PushType.BATCH, VenicePushJobStatus.SUCCESS, COMPLETED, UNDER_SLA));
 
     validateCounter(
         PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
         1,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "store-b")
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
-            .put(
-                VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePushJobStatus.SUCCESS.getDimensionValue())
-            .build());
+        pushJobAttributes("store-b", PushType.BATCH, VenicePushJobStatus.SUCCESS, COMPLETED, UNDER_SLA));
+  }
+
+  @Test
+  public void testExecutionStatesAndDurationBucketsRecordSeparately() {
+    stats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, ERROR, UNDER_SLA);
+    stats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, KILLED, UNDER_SLA);
+    stats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, KILLED, UNDER_SLA);
+    stats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, KILLED, AT_OR_OVER_SLA);
+
+    validateCounter(
+        PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
+        1,
+        pushJobAttributes(TEST_STORE_NAME, PushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR, ERROR, UNDER_SLA));
+    validateCounter(
+        PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
+        2,
+        pushJobAttributes(TEST_STORE_NAME, PushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR, KILLED, UNDER_SLA));
+    validateCounter(
+        PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricName(),
+        1,
+        pushJobAttributes(TEST_STORE_NAME, PushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR, KILLED, AT_OR_OVER_SLA));
+    validateTehutiCount(metricsRepository, PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_NON_USER_ERROR, 4);
   }
 
   @Test
@@ -252,7 +277,7 @@ public class PushJobStatusStatsOtelTest {
 
   @Test
   public void testExternalStorageWriteFailureNotRecordedWhenNothingFailed() {
-    stats.recordBatchPushSuccessSensor(TEST_STORE_NAME);
+    stats.recordBatchPushSuccessSensor(TEST_STORE_NAME, COMPLETED, UNDER_SLA);
 
     assertTrue(
         inMemoryMetricReader.collectAllMetrics()
@@ -276,16 +301,55 @@ public class PushJobStatusStatsOtelTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
     PushJobStatusStats disabledStats = new PushJobStatusStats(disabledRepo, TEST_CLUSTER_NAME);
 
-    disabledStats.recordBatchPushSuccessSensor(TEST_STORE_NAME);
-    disabledStats.recordBatchPushFailureDueToUserErrorSensor(TEST_STORE_NAME);
-    disabledStats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME);
-    disabledStats.recordIncrementalPushSuccessSensor(TEST_STORE_NAME);
-    disabledStats.recordIncrementalPushFailureDueToUserErrorSensor(TEST_STORE_NAME);
-    disabledStats.recordIncrementalPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME);
+    disabledStats.recordBatchPushSuccessSensor(TEST_STORE_NAME, COMPLETED, UNDER_SLA);
+    disabledStats.recordBatchPushFailureDueToUserErrorSensor(TEST_STORE_NAME, ERROR, AT_OR_OVER_SLA);
+    disabledStats.recordBatchPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, KILLED, UNDER_SLA);
+    disabledStats.recordIncrementalPushSuccessSensor(TEST_STORE_NAME, COMPLETED, AT_OR_OVER_SLA);
+    disabledStats.recordIncrementalPushFailureDueToUserErrorSensor(TEST_STORE_NAME, KILLED, UNDER_SLA);
+    disabledStats.recordIncrementalPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME, ERROR, AT_OR_OVER_SLA);
     disabledStats.recordExternalStorageWriteFailure(TEST_STORE_NAME, "dc-0");
+
+    for (PushJobTehutiMetricNameEnum metricName: new PushJobTehutiMetricNameEnum[] {
+        PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_SUCCESS,
+        PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_USER_ERROR,
+        PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_NON_USER_ERROR,
+        PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_SUCCESS,
+        PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_USER_ERROR,
+        PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_NON_USER_ERROR }) {
+      validateTehutiCount(disabledRepo, metricName, 1);
+    }
+  }
+
+  private static Attributes pushJobAttributes(
+      String storeName,
+      PushType pushType,
+      VenicePushJobStatus status,
+      PushJobDetailsStatus executionState,
+      VenicePushJobDurationBucket durationBucket) {
+    return Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), pushType.getDimensionValue())
+        .put(VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(), status.getDimensionValue())
+        .put(VENICE_PUSH_JOB_DURATION_BUCKET.getDimensionNameInDefaultFormat(), durationBucket.getDimensionValue())
+        .put(VENICE_PUSH_JOB_EXECUTION_STATE.getDimensionNameInDefaultFormat(), executionState.getDimensionValue())
+        .build();
+  }
+
+  private static void validateTehutiCount(
+      VeniceMetricsRepository repository,
+      PushJobTehutiMetricNameEnum metricName,
+      double expectedCount) {
+    String fullName =
+        AbstractVeniceStats.getSensorFullName("." + TEST_CLUSTER_NAME, metricName.getMetricName()) + ".Count";
+    assertNotNull(repository.getMetric(fullName));
+    assertEquals(repository.getMetric(fullName).value(), expectedCount);
   }
 
   private void validateCounter(String metricName, long expectedValue, Attributes expectedAttributes) {

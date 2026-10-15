@@ -7,12 +7,16 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -28,6 +32,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
@@ -199,5 +204,47 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
     VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
     D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
     assertEquals(resolved, mockD2Client);
+  }
+
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testStoreValidationResolvesEncryptionWithoutJobOverride(boolean enabled, String expectedUrn) {
+    ControllerClient client = getClient(store -> {
+      store.setEncryptionEnabled(enabled);
+      store.setPubSubEncryptionKeyUrn(PubSubEncryptionUtilsTest.KEY_URN);
+    });
+    Properties properties = getVpjRequiredProperties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!enabled));
+    properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-job-key");
+    try (VenicePushJob job = getSpyVenicePushJob(properties, client)) {
+      PushJobSetting setting = job.getPushJobSetting();
+      setting.isStoreEncryptionEnabled = !enabled;
+      setting.pubSubEncryptionKeyUrn = "urn:li:stale-setting";
+
+      job.validateStoreSettingAndPopulate(client, setting);
+
+      assertEquals(setting.isStoreEncryptionEnabled, enabled);
+      assertEquals(setting.pubSubEncryptionKeyUrn, expectedUrn);
+      verify(client, times(1)).getStore(TEST_STORE);
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*encryption enabled but the pubSubEncryptionKeyUrn is not set.*")
+  public void testEncryptionEnabledStoreWithUnprovisionedKeyUrnThrows() {
+    // StoreInfo defaults pubSubEncryptionKeyUrn to "", not null, so a null-only check would not fire here.
+    ControllerClient client = getClient(storeInfo -> storeInfo.setEncryptionEnabled(true));
+    try (VenicePushJob pushJob = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      pushJob.run();
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*encryption enabled but the pubSubEncryptionKeyUrn is not set.*")
+  public void testEncryptionEnabledStoreWithWhitespaceKeyUrnThrows() {
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setEncryptionEnabled(true);
+      storeInfo.setPubSubEncryptionKeyUrn("   ");
+    });
+    try (VenicePushJob pushJob = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      pushJob.run();
+    }
   }
 }

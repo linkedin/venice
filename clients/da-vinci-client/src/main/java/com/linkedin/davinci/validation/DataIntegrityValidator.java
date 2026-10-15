@@ -123,6 +123,15 @@ public class DataIntegrityValidator {
   }
 
   /**
+   * @return true if this validator is tracking a segment for the producer GUID of {@param consumerRecord}
+   */
+  public boolean hasProducerState(PartitionTracker.TopicType type, DefaultPubSubMessage consumerRecord) {
+    PartitionTracker partitionTracker = this.partitionTrackers.get(consumerRecord.getPartition());
+    return partitionTracker != null
+        && partitionTracker.getSegment(type, consumerRecord.getValue().getProducerMetadata().getProducerGUID()) != null;
+  }
+
+  /**
    * For a given partition, find all the producers that has written to this partition and update the offsetRecord using
    * segment information. Prior to this, the state which is expired according to {@link #maxAgeInMs} will be cleared.
    *

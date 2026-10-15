@@ -43,6 +43,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
@@ -485,6 +486,88 @@ public class TestVenicePushJobCheckpoints {
         status,
         properties -> {},
         expectedReportedCheckpoints);
+  }
+
+  /**
+   * The controller client stops at the first interrupted attempt, so a push that fails while its thread is interrupted
+   * must be reported and killed with the interrupt cleared, and the interrupt must be restored after all cleanup,
+   * including stopping the heartbeat sender, which can swallow an interrupt.
+   */
+  @Test
+  public void testFailedPushIsReportedAndKilledWhenTheThreadWasInterrupted() throws Exception {
+    Properties props = getVPJProps();
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    configureControllerClientMock(controllerClient, props, ExecutionStatus.COMPLETED);
+    configureClusterDiscoverControllerClient(controllerClient);
+    when(controllerClient.getAllReplicationMetadataSchemas(anyString())).thenReturn(new MultiSchemaResponse());
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { valueSchema });
+    doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(anyString());
+
+    List<Boolean> interruptedWhileKilling = new ArrayList<>();
+    doAnswer(invocation -> {
+      interruptedWhileKilling.add(Thread.currentThread().isInterrupted());
+      return new ControllerResponse();
+    }).when(controllerClient).killOfflinePushJob(anyString());
+    List<Boolean> interruptedWhileReporting = new ArrayList<>();
+    ControllerResponse reportResponse = new ControllerResponse();
+    doAnswer(invocation -> {
+      interruptedWhileReporting.add(Thread.currentThread().isInterrupted());
+      return reportResponse;
+    }).when(controllerClient).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+
+    // Like DefaultPushJobHeartbeatSender, whose last send swallows an InterruptedException.
+    PushJobHeartbeatSender heartbeatSender = mock(PushJobHeartbeatSender.class);
+    List<Boolean> interruptedWhileStoppingHeartbeat = new ArrayList<>();
+    doAnswer(invocation -> {
+      interruptedWhileStoppingHeartbeat.add(Thread.interrupted());
+      return null;
+    }).when(heartbeatSender).stop();
+
+    // The data writer job fails after restoring an interrupt, the way an interrupted task is expected to.
+    JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
+    when(jobClientWrapper.runJobWithConfig(any())).thenAnswer(invocation -> {
+      Thread.currentThread().interrupt();
+      throw new IOException("data writer job was interrupted");
+    });
+
+    boolean interruptedAfterRun;
+    try (VenicePushJob venicePushJob = new VenicePushJob("job-id", props)) {
+      venicePushJob.setControllerClient(controllerClient);
+      venicePushJob.setKmeSchemaSystemStoreControllerClient(controllerClient);
+      venicePushJob.setJobClientWrapper(jobClientWrapper);
+      venicePushJob.setInputDataInfoProvider(
+          getInputDataInfoProviderMock(
+              props,
+              venicePushJob.getPushJobSetting(),
+              10L,
+              NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT,
+              true,
+              false));
+      venicePushJob.setVeniceWriter(createVeniceWriterMock());
+      venicePushJob.setSentPushJobDetailsTracker(new SentPushJobDetailsTrackerImpl());
+      venicePushJob.setPushJobHeartbeatSenderFactory(
+          (kafkaUrl, properties, heartbeatControllerClient, sslProperties) -> heartbeatSender);
+
+      Assert.expectThrows(VeniceException.class, venicePushJob::run);
+      interruptedAfterRun = Thread.interrupted();
+    } finally {
+      // Never leak an interrupt flag onto the shared TestNG worker thread.
+      Thread.interrupted();
+    }
+
+    Assert.assertEquals(interruptedWhileKilling, Collections.singletonList(false), "The failed push must be killed");
+    Assert.assertFalse(interruptedWhileReporting.isEmpty(), "The failure must be reported to the controller");
+    Assert.assertFalse(interruptedWhileReporting.get(interruptedWhileReporting.size() - 1));
+    Assert.assertEquals(
+        interruptedWhileStoppingHeartbeat,
+        Collections.singletonList(false),
+        "The heartbeat sender must be stopped once, with the interrupt cleared");
+    Assert.assertTrue(interruptedAfterRun, "The interrupt must be restored after all cleanup");
   }
 
   private void testHandleErrorsInCounter(

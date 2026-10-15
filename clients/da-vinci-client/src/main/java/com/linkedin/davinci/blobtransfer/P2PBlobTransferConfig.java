@@ -1,5 +1,8 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
+
+
 /**
  * All configs for P2P blob transfer.
  */
@@ -43,6 +46,7 @@ public class P2PBlobTransferConfig {
   // Whether the sender and receiver channels allocate from a Netty PooledByteBufAllocator of their own rather than
   // the process-wide default, so their memory usage is attributable to blob transfer.
   private final boolean dedicatedAllocatorEnabled;
+  private final int writePathThreadPriority;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -64,6 +68,50 @@ public class P2PBlobTransferConfig {
       int clientCapacityPercent,
       boolean serverAcceptClientBlobRequestEnabled,
       boolean dedicatedAllocatorEnabled) {
+    this(
+        p2pTransferServerPort,
+        p2pTransferClientPort,
+        baseDir,
+        maxConcurrentSnapshotUser,
+        maxChunkSizeBytes,
+        snapshotRetentionTimeInMin,
+        blobTransferMaxTimeoutInMin,
+        blobReceiveMaxTimeoutInMin,
+        blobReceiveReaderIdleTimeInSeconds,
+        transferSnapshotTableFormat,
+        peersConnectivityFreshnessInSeconds,
+        blobTransferClientReadLimitBytesPerSec,
+        blobTransferServiceWriteLimitBytesPerSec,
+        snapshotCleanupIntervalInMins,
+        maxConcurrentBlobReceiveReplicas,
+        p2pTransferClientNettyWorkerThreadCount,
+        clientCapacityPercent,
+        serverAcceptClientBlobRequestEnabled,
+        dedicatedAllocatorEnabled,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  public P2PBlobTransferConfig(
+      int p2pTransferServerPort,
+      int p2pTransferClientPort,
+      String baseDir,
+      int maxConcurrentSnapshotUser,
+      long maxChunkSizeBytes,
+      int snapshotRetentionTimeInMin,
+      int blobTransferMaxTimeoutInMin,
+      int blobReceiveMaxTimeoutInMin,
+      int blobReceiveReaderIdleTimeInSeconds,
+      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
+      int peersConnectivityFreshnessInSeconds,
+      long blobTransferClientReadLimitBytesPerSec,
+      long blobTransferServiceWriteLimitBytesPerSec,
+      int snapshotCleanupIntervalInMins,
+      int maxConcurrentBlobReceiveReplicas,
+      int p2pTransferClientNettyWorkerThreadCount,
+      int clientCapacityPercent,
+      boolean serverAcceptClientBlobRequestEnabled,
+      boolean dedicatedAllocatorEnabled,
+      int writePathThreadPriority) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -83,6 +131,7 @@ public class P2PBlobTransferConfig {
     this.clientCapacityPercent = clientCapacityPercent;
     this.serverAcceptClientBlobRequestEnabled = serverAcceptClientBlobRequestEnabled;
     this.dedicatedAllocatorEnabled = dedicatedAllocatorEnabled;
+    this.writePathThreadPriority = writePathThreadPriority;
   }
 
   public int getP2pTransferServerPort() {
@@ -159,5 +208,9 @@ public class P2PBlobTransferConfig {
 
   public boolean isDedicatedAllocatorEnabled() {
     return dedicatedAllocatorEnabled;
+  }
+
+  public int getWritePathThreadPriority() {
+    return writePathThreadPriority;
   }
 }
