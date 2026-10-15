@@ -1,24 +1,24 @@
 package com.linkedin.venice.controller.placement;
 
-/**
- * Optional controller-boundary admission policy for batch user version topics. Implementations are borrowed:
- * the controller does not own their clients. Never evaluate this policy from a pub/sub retry or data path.
- */
+/** Chooses the backend for new batch user-store version topics. */
 public interface TopicPlacementPolicy {
   enum Selection {
-    ABSTAIN, ADAPTER_DEFAULT, REQUEST_ALTERNATIVE,
-    /** Ensure the existing topic is online without issuing another create request. */
-    PRESERVE_EXISTING
+    /** Use the adapter's default backend. */
+    CONTROL,
+    /** Use the alternative backend if the cluster configuration allows it. */
+    TREATMENT
   }
 
+  /** Disabled policies leave the existing placement logic unchanged. */
   default boolean isEnabled(String clusterName) {
     return true;
   }
 
-  /** Shadow policies must not add a broker read (or a new broker-read failure) to legacy creation. */
-  default boolean requiresTopicExistenceCheck(String clusterName) {
+  /** Evaluate for comparison only; do not change placement or add topic-existence checks. */
+  default boolean isShadowMode(String clusterName) {
     return false;
   }
 
+  /** Called once per creation request, not on each retry. */
   Selection select(TopicPlacementContext context);
 }

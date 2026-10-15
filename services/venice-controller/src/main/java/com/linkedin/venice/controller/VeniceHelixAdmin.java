@@ -3060,7 +3060,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         TopicPlacementContext.Operation.RECOVERY);
   }
 
-  /** Injected before controller startup; not a runtime policy replacement API. */
+  /** Set once, before the controller starts. */
   void setTopicPlacementPolicy(TopicPlacementPolicy topicPlacementPolicy) {
     this.topicPlacementPolicy = topicPlacementPolicy;
   }
@@ -3093,26 +3093,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean isHybridStore = store.isHybrid();
     boolean useAltBackend =
         clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, isHybridStore);
-    // Deliberately exclude the entire stream-reprocessing family, hybrid stores, and every system-store prefix.
+    // Only batch user-store VTs use the policy.
     if (topicPlacementPolicy != null && pushType == PushType.BATCH && !isHybridStore
         && !VeniceSystemStoreUtils.isSystemStore(version.getStoreName())
         && topicPlacementPolicy.isEnabled(clusterConfig.getClusterName())) {
       PubSubTopic topic = topicNamesToCreate.get(0);
-      boolean exists = topicPlacementPolicy.requiresTopicExistenceCheck(clusterConfig.getClusterName())
-          && topicManager.containsTopic(topic);
-      TopicPlacementContext context = new TopicPlacementContext(
-          clusterConfig.getClusterName(),
-          version.getStoreName(),
-          topic.getName(),
-          topicManager.getPubSubClusterAddress(),
-          store.isMigrating() || version.getDataRecoveryVersionConfig() != null
-              ? TopicPlacementContext.Operation.RECOVERY
-              : operation,
-          useAltBackend,
-          exists);
-      TopicPlacementPolicy.Selection selection = Objects.requireNonNull(topicPlacementPolicy.select(context));
-      if (selection == TopicPlacementPolicy.Selection.PRESERVE_EXISTING) {
-        if (!exists || !topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)) {
+      boolean shadow = topicPlacementPolicy.isShadowMode(clusterConfig.getClusterName());
+      // Reuse existing topics without reevaluating their placement.
+      if (!shadow && topicManager.containsTopic(topic)) {
+        if (!topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)) {
           throw new VeniceException(
               "Cannot preserve placement of unavailable topic " + topic.getName()
                   + "; reconcile the existing topic before retrying. No create request was issued.");
@@ -3126,9 +3115,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         return;
       }
-      if (selection != TopicPlacementPolicy.Selection.ABSTAIN) {
-        // Static exclusions/category selection are an upper bound, never overridden by policy admission.
-        useAltBackend = useAltBackend && selection == TopicPlacementPolicy.Selection.REQUEST_ALTERNATIVE;
+      TopicPlacementContext context = new TopicPlacementContext(
+          clusterConfig.getClusterName(),
+          version.getStoreName(),
+          topic.getName(),
+          topicManager.getPubSubClusterAddress(),
+          store.isMigrating() || version.getDataRecoveryVersionConfig() != null
+              ? TopicPlacementContext.Operation.RECOVERY
+              : operation,
+          useAltBackend);
+      TopicPlacementPolicy.Selection selection = Objects.requireNonNull(topicPlacementPolicy.select(context));
+      if (!shadow) {
+        // Treatment cannot override a static exclusion or disabled category.
+        useAltBackend = useAltBackend && selection == TopicPlacementPolicy.Selection.TREATMENT;
       }
     }
     final boolean selectedAlternativeBackend = useAltBackend;

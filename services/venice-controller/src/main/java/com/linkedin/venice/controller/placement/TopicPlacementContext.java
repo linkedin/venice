@@ -3,11 +3,7 @@ package com.linkedin.venice.controller.placement;
 import java.util.Objects;
 
 
-/**
- * A batch, non-system, non-hybrid user version topic creation request. The destination address comes from the
- * actual TopicManager, including when a parent creates a remote topic. Adapters must resolve destination fabric
- * and logical namespace from this address, never from the controller's execution region.
- */
+/** Store, topic and destination details used to select a backend. */
 public final class TopicPlacementContext {
   public enum Operation {
     NEW_VERSION, RECOVERY
@@ -19,7 +15,6 @@ public final class TopicPlacementContext {
   private final String destinationAddress;
   private final Operation operation;
   private final boolean legacyAlternative;
-  private final boolean topicExists;
 
   public TopicPlacementContext(
       String clusterName,
@@ -27,22 +22,20 @@ public final class TopicPlacementContext {
       String topicName,
       String destinationAddress,
       Operation operation,
-      boolean legacyAlternative,
-      boolean topicExists) {
+      boolean legacyAlternative) {
     this.clusterName = Objects.requireNonNull(clusterName);
     this.storeName = Objects.requireNonNull(storeName);
     this.topicName = Objects.requireNonNull(topicName);
     this.destinationAddress = destinationAddress;
     this.operation = Objects.requireNonNull(operation);
     this.legacyAlternative = legacyAlternative;
-    this.topicExists = topicExists;
   }
 
   public String getClusterName() {
     return clusterName;
   }
 
-  /** Exact canonical owning user-store name, not a version-topic name. */
+  /** The user-store name, without a topic version suffix. */
   public String getStoreName() {
     return storeName;
   }
@@ -51,6 +44,7 @@ public final class TopicPlacementContext {
     return topicName;
   }
 
+  /** The target TopicManager's address, which may differ from the controller's region. */
   public String getDestinationAddress() {
     return destinationAddress;
   }
@@ -63,8 +57,4 @@ public final class TopicPlacementContext {
     return legacyAlternative;
   }
 
-  /** False also when the policy opts out of existence checks (for example in shadow mode). */
-  public boolean isTopicExists() {
-    return topicExists;
-  }
 }
