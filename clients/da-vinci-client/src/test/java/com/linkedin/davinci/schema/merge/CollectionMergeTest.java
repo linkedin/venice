@@ -25,6 +25,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -220,6 +221,87 @@ public class CollectionMergeTest {
     Assert.assertEquals(UpdateResultStatus.PARTIALLY_UPDATED, resultStatus);
     Assert.assertNull(((Map<String, Object>) oldRecord.get(NULLABLE_MAP_FIELD_NAME)).get("key1"));
     Assert.assertEquals(((Map<String, Object>) oldRecord.get(NULLABLE_MAP_FIELD_NAME)).get("key2"), 2);
+  }
+
+  @DataProvider
+  public Object[][] mapDeleteCases() {
+    return new Object[][] { { NULLABLE_MAP_FIELD_NAME, true }, { MAP_FIELD_NAME, true },
+        { NULLABLE_MAP_FIELD_NAME, false }, { MAP_FIELD_NAME, false } };
+  }
+
+  @Test(dataProvider = "mapDeleteCases")
+  public void testMapOperationsAfterDelete(String fieldName, boolean newerTombstone) {
+    GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
+    Schema.Field field = VALUE_SCHEMA.getField(fieldName);
+    CollectionTimestampBuilder builder = new CollectionTimestampBuilder(Schema.create(Schema.Type.STRING));
+    builder.setCollectionTimestampSchema(RMD_TIMESTAMP_SCHEMA.getField(fieldName).schema());
+    CollectionRmdTimestamp<String> metadata = new CollectionRmdTimestamp<>(builder.build());
+    SortBasedCollectionFieldOpHandler handler =
+        new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
+    IndexedHashMap<String, Object> map = new IndexedHashMap<>();
+    map.put("active", 1);
+    handler.handlePutMap(1L, 1, map, metadata, record, field);
+    List<String> deletedKeys = Collections.singletonList("deleted");
+    Map<String, Object> deletedEntry = Collections.singletonMap("deleted", 2);
+    if (newerTombstone) {
+      handler.handleModifyMap(5L, metadata, record, field, Collections.emptyMap(), deletedKeys);
+    }
+    Assert.assertEquals(
+        handler.handleDeleteMap(2L, 1, metadata, record, field),
+        newerTombstone ? UpdateResultStatus.PARTIALLY_UPDATED : UpdateResultStatus.COMPLETELY_UPDATED);
+    Object defaultValue = fieldName.equals(NULLABLE_MAP_FIELD_NAME) ? null : Collections.emptyMap();
+    Assert.assertEquals(record.get(fieldName), defaultValue);
+    Assert.assertEquals(metadata.getTopLevelFieldTimestamp(), 2L);
+    Assert.assertEquals(metadata.getPutOnlyPartLength(), 0);
+    Assert.assertTrue(metadata.getActiveElementTimestamps().isEmpty());
+    Assert.assertEquals(metadata.isInPutOnlyState(), !newerTombstone);
+    Assert.assertEquals(
+        handler.handleDeleteMap(3L, 1, new CollectionRmdTimestamp<>(metadata), record, field),
+        newerTombstone ? UpdateResultStatus.NOT_UPDATED_AT_ALL : UpdateResultStatus.COMPLETELY_UPDATED);
+
+    CollectionRmdTimestamp<String> beforeNoOp = new CollectionRmdTimestamp<>(metadata);
+    for (long timestamp: newerTombstone ? Arrays.asList(2L, 4L, 5L) : Collections.singletonList(2L)) {
+      Assert.assertEquals(
+          handler.handleModifyMap(timestamp, metadata, record, field, deletedEntry, Collections.emptyList()),
+          UpdateResultStatus.NOT_UPDATED_AT_ALL);
+    }
+    Assert.assertEquals(
+        handler.handleModifyMap(2L, metadata, record, field, Collections.emptyMap(), deletedKeys),
+        UpdateResultStatus.NOT_UPDATED_AT_ALL);
+    Assert.assertEquals(
+        handler.handleModifyMap(3L, metadata, record, field, Collections.emptyMap(), Collections.emptyList()),
+        UpdateResultStatus.NOT_UPDATED_AT_ALL);
+    Assert.assertEquals(record.get(fieldName), defaultValue);
+    Assert.assertEquals(metadata, beforeNoOp);
+
+    IndexedHashMap<String, Object> replacement = new IndexedHashMap<>(deletedEntry);
+    replacement.put("new", 3);
+    CollectionRmdTimestamp<String> putMetadata = new CollectionRmdTimestamp<>(metadata);
+    Assert.assertEquals(
+        handler.handlePutMap(4L, 1, replacement, putMetadata, record, field),
+        newerTombstone ? UpdateResultStatus.PARTIALLY_UPDATED : UpdateResultStatus.COMPLETELY_UPDATED);
+    Assert.assertEquals(record.get(fieldName), newerTombstone ? Collections.singletonMap("new", 3) : replacement);
+    Assert.assertEquals(putMetadata.getDeletedElements(), metadata.getDeletedElements());
+    Assert.assertEquals(putMetadata.getDeletedElementTimestamps(), metadata.getDeletedElementTimestamps());
+
+    record.put(fieldName, defaultValue);
+    CollectionRmdTimestamp<String> unionMetadata = new CollectionRmdTimestamp<>(metadata);
+    Assert.assertEquals(
+        handler.handleModifyMap(7L, unionMetadata, record, field, deletedEntry, Collections.emptyList()),
+        UpdateResultStatus.PARTIALLY_UPDATED);
+    Assert.assertEquals(record.get(fieldName), deletedEntry);
+    Assert.assertEquals(unionMetadata.getActiveElementTimestamps(), Collections.singletonList(7L));
+    Assert.assertTrue(unionMetadata.getDeletedElements().isEmpty());
+    Assert.assertTrue(unionMetadata.getDeletedElementTimestamps().isEmpty());
+
+    record.put(fieldName, defaultValue);
+    Assert.assertEquals(
+        handler.handleModifyMap(6L, metadata, record, field, Collections.emptyMap(), deletedKeys),
+        UpdateResultStatus.PARTIALLY_UPDATED);
+    Assert.assertEquals(record.get(fieldName), Collections.emptyMap());
+    Assert.assertEquals(metadata.getDeletedElements(), deletedKeys);
+    Assert.assertEquals(metadata.getDeletedElementTimestamps(), Collections.singletonList(6L));
+    Assert.assertTrue(metadata.getActiveElementTimestamps().isEmpty());
   }
 
   @Test
