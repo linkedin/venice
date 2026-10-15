@@ -35,7 +35,7 @@ public final class TopicPlacementContext {
     return clusterName;
   }
 
-  /** The user-store name, without a topic version suffix. */
+  /** The owning user-store name, including when the topic belongs to its push-status store. */
   public String getStoreName() {
     return storeName;
   }

@@ -3080,12 +3080,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
-    /**
-     * Resolve the alternative-backend decision from the authoritative store hybrid status rather than
-     * {@code version.isHybrid()}: a freshly constructed {@link Version} may not have its hybrid config populated yet
-     * when this runs (see the version-supplied addVersion path), which would misroute a hybrid store's VT to the
-     * batch backend.
-     */
+    // New versions may not have hybrid config yet; use the store's config.
     Store store = getStore(clusterConfig.getClusterName(), version.getStoreName());
     if (store == null) {
       throw new VeniceNoStoreException(version.getStoreName(), clusterConfig.getClusterName());
@@ -3093,10 +3088,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean isHybridStore = store.isHybrid();
     boolean useAltBackend =
         clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, isHybridStore);
-    // Only batch user-store VTs use the policy.
-    if (topicPlacementPolicy != null && pushType == PushType.BATCH && !isHybridStore
-        && !VeniceSystemStoreUtils.isSystemStore(version.getStoreName())
-        && topicPlacementPolicy.isEnabled(clusterConfig.getClusterName())) {
+    boolean isPushStatusStore = VeniceSystemStoreType
+        .getSystemStoreType(version.getStoreName()) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
+    boolean placementEnabled = topicPlacementPolicy != null && pushType == PushType.BATCH
+        && (isPushStatusStore || (!isHybridStore && !VeniceSystemStoreUtils.isSystemStore(version.getStoreName())))
+        && topicPlacementPolicy.isEnabled(clusterConfig.getClusterName());
+    Store placementStore = store;
+    String placementStoreName = version.getStoreName();
+    if (placementEnabled && isPushStatusStore) {
+      // Push-status VTs share their user store's cohort, even though the system store itself is hybrid.
+      placementStoreName =
+          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(version.getStoreName());
+      placementStore = getStore(clusterConfig.getClusterName(), placementStoreName);
+      if (placementStore == null) {
+        throw new VeniceNoStoreException(placementStoreName, clusterConfig.getClusterName());
+      }
+    }
+    if (placementEnabled && !placementStore.isHybrid() && !VeniceSystemStoreUtils.isSystemStore(placementStoreName)) {
       PubSubTopic topic = topicNamesToCreate.get(0);
       boolean shadow = topicPlacementPolicy.isShadowMode(clusterConfig.getClusterName());
       // Reuse existing topics without reevaluating their placement.
@@ -3117,10 +3125,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       TopicPlacementContext context = new TopicPlacementContext(
           clusterConfig.getClusterName(),
-          version.getStoreName(),
+          placementStoreName,
           topic.getName(),
           topicManager.getPubSubClusterAddress(),
-          store.isMigrating() || version.getDataRecoveryVersionConfig() != null
+          store.isMigrating() || placementStore.isMigrating() || version.getDataRecoveryVersionConfig() != null
               ? TopicPlacementContext.Operation.RECOVERY
               : operation,
           useAltBackend);

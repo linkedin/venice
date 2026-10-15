@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.placement;
 
-/** Chooses the backend for new batch user-store version topics. */
+/** Chooses the backend for new batch user-store and push-status version topics. */
 public interface TopicPlacementPolicy {
   enum Selection {
     /** Use the adapter's default backend. */
