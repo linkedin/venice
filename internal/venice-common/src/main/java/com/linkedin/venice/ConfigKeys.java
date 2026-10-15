@@ -2559,61 +2559,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE =
       "controller.auto.materialize.davinci.push.status.system.store";
 
-  // --- Alternative PubSub backend configs (per-cluster, per-topic-type) ---
-  // Each per-topic flag falls back to the umbrella CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL.
-  // This lets operators enable all topic types at once (all=true) and selectively disable
-  // individual ones, or ramp each type independently without touching the others.
-
-  /** Enable alternative pubsub backend for ALL topic types. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL = "controller.pubsub.alternative.backend.all";
-
-  /** Create meta system store version topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT =
-      "controller.pubsub.alternative.backend.meta.system.store.vt";
-
-  /** Create meta system store RT topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT =
-      "controller.pubsub.alternative.backend.meta.system.store.rt";
-
-  /** Create push status system store VTs using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT =
-      "controller.pubsub.alternative.backend.push.status.system.store.vt";
-
-  /** Create push status system store RTs using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT =
-      "controller.pubsub.alternative.backend.push.status.system.store.rt";
-
-  /** Create batch-only user store version topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT =
-      "controller.pubsub.alternative.backend.batch.user.store.vt";
-
-  /** Create hybrid user store version topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT =
-      "controller.pubsub.alternative.backend.hybrid.user.store.vt";
-
-  /** Create hybrid user store RT topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT =
-      "controller.pubsub.alternative.backend.hybrid.user.store.rt";
-
-  /** Create batch job heartbeat system store version topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_VT =
-      "controller.pubsub.alternative.backend.batch.job.heartbeat.store.vt";
-
-  /** Create batch job heartbeat system store RT topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_JOB_HEARTBEAT_STORE_RT =
-      "controller.pubsub.alternative.backend.batch.job.heartbeat.store.rt";
-
-  /** Comma-separated store names excluded from alternative pubsub backend. Default: empty */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST =
-      "controller.pubsub.alternative.backend.exclusion.list";
-
-  /**
-   * Comma-separated store names always routed to the alternative pubsub backend, overriding the
-   * per-topic-type flags. The exclusion list takes precedence over this inclusion list. Default: empty
-   */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST =
-      "controller.pubsub.alternative.backend.inclusion.list";
-
   /**
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
    * This config should be set on a per-cluster level, meaning that each cluster can have its own RMD version ID.

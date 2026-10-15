@@ -191,7 +191,6 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -3072,54 +3071,34 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throw new VeniceNoStoreException(version.getStoreName(), clusterConfig.getClusterName());
     }
-    boolean isHybridStore = store.isHybrid();
-    boolean useAltBackend =
-        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, isHybridStore);
+    boolean useAltBackend = false;
     boolean isPushStatusStore = VeniceSystemStoreType
         .getSystemStoreType(version.getStoreName()) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
     boolean placementEnabled = topicPlacement != null && pushType == PushType.BATCH
-        && (isPushStatusStore || (!isHybridStore && !VeniceSystemStoreUtils.isSystemStore(version.getStoreName())))
+        && (isPushStatusStore || !VeniceSystemStoreUtils.isSystemStore(version.getStoreName()))
         && topicPlacement.isEnabled(clusterConfig.getClusterName());
-    Store placementStore = store;
-    String placementStoreName = version.getStoreName();
+    Store owningUserStore = store;
+    String owningUserStoreName = version.getStoreName();
     if (placementEnabled && isPushStatusStore) {
       // Push-status VTs share their user store's cohort, even though the system store itself is hybrid.
-      placementStoreName =
+      owningUserStoreName =
           VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(version.getStoreName());
-      placementStore = getStore(clusterConfig.getClusterName(), placementStoreName);
-      if (placementStore == null) {
-        throw new VeniceNoStoreException(placementStoreName, clusterConfig.getClusterName());
+      owningUserStore = getStore(clusterConfig.getClusterName(), owningUserStoreName);
+      if (owningUserStore == null) {
+        throw new VeniceNoStoreException(owningUserStoreName, clusterConfig.getClusterName());
       }
     }
-    if (placementEnabled && !placementStore.isHybrid() && !VeniceSystemStoreUtils.isSystemStore(placementStoreName)) {
+    if (placementEnabled && !owningUserStore.isHybrid() && !VeniceSystemStoreUtils.isSystemStore(owningUserStoreName)) {
       PubSubTopic topic = topicNamesToCreate.get(0);
       boolean shadow = topicPlacement.isShadowMode(clusterConfig.getClusterName());
-      // Reuse existing topics without reevaluating their placement.
-      if (!shadow && topicManager.containsTopic(topic)) {
-        if (!topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)) {
-          throw new VeniceException(
-              "Cannot preserve placement of unavailable topic " + topic.getName()
-                  + "; reconcile the existing topic before retrying. No create request was issued.");
-        }
-        long retention = topicManager.getTopicRetention(topic);
-        if (retention == PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION
-            || retention <= clusterConfig.getDeprecatedJobTopicMaxRetentionMs()) {
-          throw new VeniceException(
-              "Cannot reuse topic " + topic.getName()
-                  + " with unknown or truncated retention; reconcile it before retrying. No create request was issued.");
-        }
-        return;
-      }
       TopicPlacementContext context = new TopicPlacementContext(
           clusterConfig.getClusterName(),
-          placementStoreName,
+          owningUserStoreName,
           topic.getName(),
-          topicManager.getPubSubClusterAddress(),
-          useAltBackend);
+          topicManager.getPubSubClusterAddress());
       TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
       if (!shadow) {
-        // Treatment cannot override a static exclusion or disabled category.
-        useAltBackend = useAltBackend && selection == TopicPlacement.Selection.TREATMENT;
+        useAltBackend = selection == TopicPlacement.Selection.TREATMENT;
       }
     }
     final boolean selectedAlternativeBackend = useAltBackend;
@@ -3752,7 +3731,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
           false,
-          clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true, store.isHybrid()),
+          false,
           clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics());
     }
     LOGGER.info(

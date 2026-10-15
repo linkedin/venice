@@ -1,17 +1,16 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -32,7 +31,9 @@ import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.mockito.ArgumentCaptor;
@@ -51,13 +52,12 @@ public class TopicPlacementTest {
 
   @BeforeMethod
   public void setUp() {
-    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
-    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
+    config = new VeniceControllerClusterConfig(
+        new VeniceProperties(TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false)));
     admin = mock(VeniceHelixAdmin.class);
     manager = mock(TopicManager.class);
     topics = new PubSubTopicRepository();
-    store = mock(Store.class);
+    store = mock(Store.class, RETURNS_DEEP_STUBS);
     placement = mock(TopicPlacement.class);
     when(placement.isEnabled(config.getClusterName())).thenReturn(true);
     when(placement.select(any())).thenReturn(TopicPlacement.Selection.CONTROL);
@@ -73,19 +73,58 @@ public class TopicPlacementTest {
     admin.createBatchTopics(new VersionImpl(name, 1, "push", 2), type, manager, 2, config, false);
   }
 
+  private void verifyCreate(String name, boolean alternative) {
+    verify(manager).createTopic(
+        topics.getTopic(name + "_v1"),
+        2,
+        config.getKafkaReplicationFactor(),
+        true,
+        false,
+        config.getMinInSyncReplicas(),
+        false,
+        alternative);
+  }
+
   private String preparePushStatusStore() {
     String name = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("batch-store");
     Store pushStatusStore = mock(Store.class);
     when(pushStatusStore.isHybrid()).thenReturn(true);
     doReturn(pushStatusStore).when(admin).getStore(config.getClusterName(), name);
-    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT, "true");
-    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
     return name;
   }
 
+  private void configureRetiredStaticSettings(String name) {
+    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
+    props.put("controller.pubsub.alternative.backend.all", "true");
+    props.put("controller.pubsub.alternative.backend.batch.user.store.vt", "false");
+    props.put("controller.pubsub.alternative.backend.push.status.system.store.vt", "false");
+    props.put("controller.pubsub.alternative.backend.inclusion.list", name);
+    props.put("controller.pubsub.alternative.backend.exclusion.list", name);
+    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
+  }
+
+  @DataProvider
+  public Object[][] selections() {
+    return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.TREATMENT, true } };
+  }
+
   @Test(dataProvider = "selections")
-  public void testPushStatusUsesOwnerCohort(TopicPlacement.Selection selection, boolean alternative) {
+  public void testNewTopicUsesSelectionWithoutStaticEnablement(
+      TopicPlacement.Selection selection,
+      boolean alternative) {
+    when(placement.select(any())).thenReturn(selection);
+    create("batch-store", PushType.BATCH);
+    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
+    verify(placement).select(captured.capture());
+    assertEquals(captured.getValue().getClusterName(), config.getClusterName());
+    assertEquals(captured.getValue().getStoreName(), "batch-store");
+    assertEquals(captured.getValue().getTopicName(), "batch-store_v1");
+    assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
+    verifyCreate("batch-store", alternative);
+  }
+
+  @Test(dataProvider = "selections")
+  public void testPushStatusUsesNonHybridOwnerCohort(TopicPlacement.Selection selection, boolean alternative) {
     String name = preparePushStatusStore();
     when(placement.select(any())).thenReturn(selection);
     create(name, PushType.BATCH);
@@ -93,87 +132,28 @@ public class TopicPlacementTest {
     verify(placement).select(captured.capture());
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().getTopicName(), name + "_v1");
-    assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
-    assertEquals(captured.getValue().isLegacyAlternative(), true);
-    verify(manager).createTopic(
-        topics.getTopic(name + "_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        alternative);
-  }
-
-  @Test
-  public void testHybridOwnerPushStatusRetainsLegacyPlacement() {
-    String name = preparePushStatusStore();
-    when(store.isHybrid()).thenReturn(true);
-    create(name, PushType.BATCH);
-    verify(placement, never()).select(any());
-    verify(manager, never()).containsTopic(any());
-    verify(manager).createTopic(
-        topics.getTopic(name + "_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        true);
-  }
-
-  @DataProvider
-  public Object[][] pushStatusStaticVetoes() {
-    return new Object[][] { { false }, { true } };
-  }
-
-  @Test(dataProvider = "pushStatusStaticVetoes")
-  public void testPushStatusStaticVetoWins(boolean excluded) {
-    String name = preparePushStatusStore();
-    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
-    if (excluded) {
-      props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT, "true");
-      props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, name);
-      props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, name);
-    }
-    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
-    create(name, PushType.BATCH);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(placement).select(captured.capture());
-    assertEquals(captured.getValue().isLegacyAlternative(), false);
-    verify(manager).createTopic(
-        topics.getTopic(name + "_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        false);
+    verifyCreate(name, alternative);
   }
 
   @Test(dataProvider = "selections")
-  public void testPushStatusOfMigratingOwnerUsesPlacement(TopicPlacement.Selection selection, boolean alternative) {
-    String name = preparePushStatusStore();
-    when(store.isMigrating()).thenReturn(true);
+  public void testRetiredStaticSettingsDoNotOverrideSelection(TopicPlacement.Selection selection, boolean alternative) {
+    String pushStatus = preparePushStatusStore();
+    configureRetiredStaticSettings("batch-store," + pushStatus);
     when(placement.select(any())).thenReturn(selection);
+    create("batch-store", PushType.BATCH);
+    create(pushStatus, PushType.BATCH);
+    verifyCreate("batch-store", alternative);
+    verifyCreate(pushStatus, alternative);
+  }
+
+  @Test
+  public void testHybridOwnerPushStatusUsesDefault() {
+    String name = preparePushStatusStore();
+    when(store.isHybrid()).thenReturn(true);
+    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
     create(name, PushType.BATCH);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(placement).select(captured.capture());
-    assertEquals(captured.getValue().getStoreName(), "batch-store");
-    verify(manager).createTopic(
-        topics.getTopic(name + "_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        alternative);
+    verify(placement, never()).select(any());
+    verifyCreate(name, false);
   }
 
   @Test
@@ -186,136 +166,106 @@ public class TopicPlacementTest {
   }
 
   @Test
-  public void testExistingPushStatusTopicBypassesPlacement() {
-    String name = preparePushStatusStore();
-    when(manager.containsTopic(topics.getTopic(name + "_v1"))).thenReturn(true);
-    when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic(name + "_v1"), 2)).thenReturn(true);
-    when(manager.getTopicRetention(topics.getTopic(name + "_v1"))).thenReturn(Long.MAX_VALUE);
-    create(name, PushType.BATCH);
-    verify(placement, never()).select(any());
-    verify(manager, never())
-        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
+  public void testMissingStoreFailsBeforeCreate() {
+    doReturn(null).when(admin).getStore(config.getClusterName(), "batch-store");
+    assertThrows(VeniceNoStoreException.class, () -> create("batch-store", PushType.BATCH));
+    verifyNoInteractions(manager, placement);
   }
 
-  @Test(dataProvider = "invalidRetention")
-  public void testInvalidExistingPushStatusTopicFailsWithoutCreate(long retention) {
-    String name = preparePushStatusStore();
-    when(manager.containsTopic(topics.getTopic(name + "_v1"))).thenReturn(true);
-    when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic(name + "_v1"), 2)).thenReturn(true);
-    when(manager.getTopicRetention(topics.getTopic(name + "_v1"))).thenReturn(retention);
-    assertThrows(VeniceException.class, () -> create(name, PushType.BATCH));
-    verify(placement, never()).select(any());
-    verify(manager, never())
-        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
-  }
-
-  @Test
-  public void testPushStatusShadowPreservesLegacyPlacement() {
-    String name = preparePushStatusStore();
+  @Test(dataProvider = "selections")
+  public void testShadowUsesDefaultForUserAndPushStatusTopics(TopicPlacement.Selection selection, boolean alternative) {
+    String pushStatus = preparePushStatusStore();
+    configureRetiredStaticSettings("batch-store," + pushStatus);
     when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
-    create(name, PushType.BATCH);
-    verify(placement).select(any());
+    when(placement.select(any())).thenReturn(selection);
+    create("batch-store", PushType.BATCH);
+    create(pushStatus, PushType.BATCH);
+    verify(placement, times(2)).select(any());
     verify(manager, never()).containsTopic(any());
-    verify(manager).createTopic(
-        topics.getTopic(name + "_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        true);
+    verifyCreate("batch-store", false);
+    verifyCreate(pushStatus, false);
   }
 
-  @Test
-  public void testDisabledPushStatusPlacementDoesNotReadOwner() {
-    String name = preparePushStatusStore();
-    when(placement.isEnabled(config.getClusterName())).thenReturn(false);
-    create(name, PushType.BATCH);
+  @DataProvider
+  public Object[][] disabledPlacements() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "disabledPlacements")
+  public void testDisabledOrMissingPlacementUsesDefault(boolean missing) {
+    String pushStatus = preparePushStatusStore();
+    configureRetiredStaticSettings("batch-store," + pushStatus);
+    if (missing) {
+      admin.setTopicPlacement(null);
+    } else {
+      when(placement.isEnabled(config.getClusterName())).thenReturn(false);
+    }
+    create(pushStatus, PushType.BATCH);
     verify(admin, never()).getStore(config.getClusterName(), "batch-store");
+    create("batch-store", PushType.BATCH);
     verify(placement, never()).select(any());
-    verify(manager, never()).containsTopic(any());
-    verify(manager).createTopic(
-        topics.getTopic(name + "_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        true);
+    verifyCreate("batch-store", false);
+    verifyCreate(pushStatus, false);
   }
 
-  @Test
-  public void testDestinationAndVeto() {
-    create("batch-store", PushType.BATCH);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(placement).select(captured.capture());
-    assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
-    assertEquals(captured.getValue().getStoreName(), "batch-store");
-    verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        false);
+  @DataProvider
+  public Object[][] excludedScope() {
+    return new Object[][] { { "hybrid-store", PushType.BATCH, true },
+        { "batch-store", PushType.STREAM_REPROCESSING, false }, { "batch-store", PushType.INCREMENTAL, false },
+        { VeniceSystemStoreUtils.getParticipantStoreNameForCluster("cluster"), PushType.BATCH, false },
+        { VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushType.BATCH, false },
+        { VeniceSystemStoreUtils.getMetaStoreName("batch-store"), PushType.BATCH, false },
+        { VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(), PushType.BATCH, false } };
   }
 
-  @Test
-  public void testPlacementCannotOverrideLegacyVeto() {
-    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
+  @Test(dataProvider = "excludedScope")
+  public void testUnsupportedScopeUsesDefault(String name, PushType type, boolean hybrid) {
+    configureRetiredStaticSettings(name);
+    when(store.isHybrid()).thenReturn(hybrid);
     when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
-    create("batch-store", PushType.BATCH);
-    verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        false);
+    create(name, type);
+    verify(placement, never()).select(any());
+    verifyCreate(name, false);
+    if (type.isStreamReprocessing()) {
+      verify(manager).createTopic(
+          topics.getTopic(Version.composeStreamReprocessingTopic(name, 1)),
+          2,
+          config.getKafkaReplicationFactor(),
+          true,
+          false,
+          config.getMinInSyncReplicas(),
+          false,
+          false);
+    }
   }
 
-  @Test
-  public void testExclusionWinsOverInclusionAndPlacementAdmission() {
-    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, "batch-store");
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "batch-store");
-    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
-    create("batch-store", PushType.BATCH);
-    verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        false);
+  @DataProvider
+  public Object[][] realTimeStores() {
+    return new Object[][] { { "hybrid-store" }, { VeniceSystemStoreUtils.getMetaStoreName("batch-store") },
+        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("batch-store") },
+        { VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix() } };
   }
 
-  @Test
-  public void testInclusionCannotOverridePlacementVeto() {
-    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_INCLUSION_LIST, "batch-store");
-    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    create("batch-store", PushType.BATCH);
+  @Test(dataProvider = "realTimeStores")
+  public void testRealTimeTopicsUseDefault(String name) {
+    configureRetiredStaticSettings(name);
+    when(store.getName()).thenReturn(name);
+    when(admin.getTopicManager()).thenReturn(manager);
+    when(admin.getControllerConfig(config.getClusterName())).thenReturn(config);
+    doCallRealMethod().when(admin).createOrUpdateRealTimeTopic(any(), any(), any(), any());
+    Version version = new VersionImpl(name, 1, "push", 2);
+    admin.createOrUpdateRealTimeTopic(config.getClusterName(), store, version, topics.getTopic(name + "_rt"));
+    verifyNoInteractions(placement);
     verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
+        topics.getTopic(name + "_rt"),
         2,
-        config.getKafkaReplicationFactor(),
-        true,
+        config.getKafkaReplicationFactorRTTopics(),
+        StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
         false,
-        config.getMinInSyncReplicas(),
+        config.getMinInSyncReplicasRealTimeTopics(),
         false,
-        false);
+        false,
+        config.getUncleanLeaderElectionEnableRealTimeTopics());
   }
 
   @DataProvider
@@ -327,7 +277,7 @@ public class TopicPlacementTest {
   }
 
   @Test(dataProvider = "recoveryOperations")
-  public void testMissingTopicDuringMigrationOrDataRecoveryUsesPlacement(
+  public void testMigrationOrDataRecoveryUsesPlacement(
       boolean migrating,
       boolean recovering,
       TopicPlacement.Selection selection,
@@ -340,149 +290,54 @@ public class TopicPlacementTest {
     }
     admin.createBatchTopics(version, PushType.BATCH, manager, 2, config, false);
     verify(placement).select(any());
-    verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        alternative);
-  }
-
-  @DataProvider
-  public Object[][] selections() {
-    return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.TREATMENT, true } };
+    verifyCreate("batch-store", alternative);
   }
 
   @Test(dataProvider = "selections")
-  public void testNewTopicUsesSelection(TopicPlacement.Selection selection, boolean alternative) {
+  public void testPushStatusOfMigratingOwnerUsesPlacement(TopicPlacement.Selection selection, boolean alternative) {
+    String name = preparePushStatusStore();
+    when(store.isMigrating()).thenReturn(true);
     when(placement.select(any())).thenReturn(selection);
-    create("batch-store", PushType.BATCH);
+    create(name, PushType.BATCH);
     verify(placement).select(any());
-    verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        alternative);
+    verifyCreate(name, alternative);
   }
 
   @DataProvider
-  public Object[][] shadowSelections() {
-    return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.CONTROL, true },
-        { TopicPlacement.Selection.TREATMENT, false }, { TopicPlacement.Selection.TREATMENT, true } };
+  public Object[][] existingTopics() {
+    return new Object[][] { { false, true, Long.MAX_VALUE }, { false, false, Long.MAX_VALUE }, { false, true, 0L },
+        { false, true, PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION }, { true, true, Long.MAX_VALUE },
+        { true, false, Long.MAX_VALUE }, { true, true, 0L },
+        { true, true, PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION } };
   }
 
-  @Test(dataProvider = "shadowSelections")
-  public void testShadowPreservesLegacy(TopicPlacement.Selection selection, boolean legacyAlternative) {
-    Properties props = TestVeniceControllerClusterConfig.getBaseSingleRegionProperties(false);
-    props.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, Boolean.toString(legacyAlternative));
-    config = new VeniceControllerClusterConfig(new VeniceProperties(props));
-    when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
-    when(placement.select(any())).thenReturn(selection);
-    create("batch-store", PushType.BATCH);
+  @Test(dataProvider = "existingTopics")
+  public void testExistingTopicHandlingIsDelegatedToTopicManager(boolean pushStatus, boolean online, long retention) {
+    String name = pushStatus ? preparePushStatusStore() : "batch-store";
+    when(manager.containsTopic(topics.getTopic(name + "_v1"))).thenReturn(true);
+    when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic(name + "_v1"), 2)).thenReturn(online);
+    when(manager.getTopicRetention(topics.getTopic(name + "_v1"))).thenReturn(retention);
+    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
+    create(name, PushType.BATCH);
     verify(placement).select(any());
     verify(manager, never()).containsTopic(any());
-    verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        legacyAlternative);
-  }
-
-  @DataProvider
-  public Object[][] disabledPlacements() {
-    return new Object[][] { { true }, { false } };
-  }
-
-  @Test(dataProvider = "disabledPlacements")
-  public void testDisabledOrMissingPlacementPreservesLegacy(boolean missing) {
-    if (missing) {
-      admin.setTopicPlacement(null);
-    } else {
-      when(placement.isEnabled(config.getClusterName())).thenReturn(false);
-    }
-    create("batch-store", PushType.BATCH);
-    verify(placement, never()).select(any());
-    verify(manager, never()).containsTopic(any());
-    verify(manager).createTopic(
-        topics.getTopic("batch-store_v1"),
-        2,
-        config.getKafkaReplicationFactor(),
-        true,
-        false,
-        config.getMinInSyncReplicas(),
-        false,
-        true);
-  }
-
-  @DataProvider
-  public Object[][] excludedScope() {
-    return new Object[][] { { "hybrid-store", PushType.BATCH, true },
-        { "batch-store", PushType.STREAM_REPROCESSING, false },
-        { VeniceSystemStoreUtils.getParticipantStoreNameForCluster("cluster"), PushType.BATCH, false },
-        { VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushType.BATCH, false },
-        { VeniceSystemStoreUtils.getMetaStoreName("batch-store"), PushType.BATCH, false } };
-  }
-
-  @Test(dataProvider = "excludedScope")
-  public void testUnsupportedScopePreservesLegacy(String name, PushType type, boolean hybrid) {
-    when(store.isHybrid()).thenReturn(hybrid);
-    create(name, type);
-    verifyNoInteractions(placement);
-  }
-
-  @DataProvider
-  public Object[][] existingOperations() {
-    return new Object[][] { { false, false }, { true, false }, { false, true } };
-  }
-
-  @Test(dataProvider = "existingOperations")
-  public void testExistingTopicIsNotRecreated(boolean migrating, boolean recovering) {
-    when(store.isMigrating()).thenReturn(migrating);
-    when(manager.containsTopic(topics.getTopic("batch-store_v1"))).thenReturn(true);
-    when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic("batch-store_v1"), 2)).thenReturn(true);
-    when(manager.getTopicRetention(topics.getTopic("batch-store_v1"))).thenReturn(Long.MAX_VALUE);
-    Version version = new VersionImpl("batch-store", 1, "push", 2);
-    if (recovering) {
-      version.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl("source-region", false, 1));
-    }
-    admin.createBatchTopics(version, PushType.BATCH, manager, 2, config, false);
-    verify(placement, never()).select(any());
-    verify(manager, never())
-        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
-  }
-
-  @DataProvider
-  public Object[][] invalidRetention() {
-    return new Object[][] { { 0L }, { PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION } };
-  }
-
-  @Test(dataProvider = "invalidRetention")
-  public void testTruncatedOrUnknownExistingTopicIsNotRevived(long retention) {
-    when(manager.containsTopic(topics.getTopic("batch-store_v1"))).thenReturn(true);
-    when(manager.containsTopicAndAllPartitionsAreOnline(topics.getTopic("batch-store_v1"), 2)).thenReturn(true);
-    when(manager.getTopicRetention(topics.getTopic("batch-store_v1"))).thenReturn(retention);
-    assertThrows(VeniceException.class, () -> create("batch-store", PushType.BATCH));
-    verify(placement, never()).select(any());
-    verify(manager, never())
-        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
+    verify(manager, never()).containsTopicAndAllPartitionsAreOnline(any(), any());
+    verify(manager, never()).getTopicRetention(any(PubSubTopic.class));
+    verifyCreate(name, true);
   }
 
   @Test
-  public void testUnavailableExistingTopicFailsWithoutCreate() {
-    when(manager.containsTopic(topics.getTopic("batch-store_v1"))).thenReturn(true);
+  public void testCreationFailurePropagates() {
+    doThrow(new VeniceException("creation failed")).when(manager)
+        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
     assertThrows(VeniceException.class, () -> create("batch-store", PushType.BATCH));
-    verify(placement, never()).select(any());
+    verify(placement).select(any());
+  }
+
+  @Test
+  public void testNullSelectionFailsBeforeCreate() {
+    when(placement.select(any())).thenReturn(null);
+    assertThrows(NullPointerException.class, () -> create("batch-store", PushType.BATCH));
     verify(manager, never())
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), anyBoolean(), anyBoolean());
   }

@@ -5,16 +5,16 @@ public interface TopicPlacement {
   enum Selection {
     /** Use the adapter's default backend. */
     CONTROL,
-    /** Use the alternative backend if the cluster configuration allows it. */
+    /** Use the alternative backend. */
     TREATMENT
   }
 
-  /** When disabled, use the existing placement logic. */
+  /** When disabled, use the adapter's default backend. */
   default boolean isEnabled(String clusterName) {
     return true;
   }
 
-  /** Evaluate for comparison only; do not change placement or add topic-existence checks. */
+  /** Evaluate for comparison only; use the adapter's default backend. */
   default boolean isShadowMode(String clusterName) {
     return false;
   }
