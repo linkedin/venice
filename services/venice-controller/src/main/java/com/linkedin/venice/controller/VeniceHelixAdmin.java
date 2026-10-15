@@ -1927,10 +1927,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
       if (alsoWriteStartOfPush) {
+        CompressionStrategy compressionStrategy = version.getCompressionStrategy();
+        Optional<ByteBuffer> compressionDictionary = compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT
+            ? Optional.of(emptyPushZSTDDictionary.get())
+            : Optional.empty();
         veniceWriter.broadcastStartOfPush(
             false,
             version.isChunkingEnabled(),
-            version.getCompressionStrategy(),
+            compressionStrategy,
+            compressionDictionary,
             new HashMap<>());
       }
       veniceWriter.broadcastEndOfPush(new HashMap<>(), partitionRecordCounts);

@@ -823,31 +823,27 @@ public class CreateVersion extends AbstractRoute {
         }
 
         Set<Version> previousVersions = new HashSet<>(store.getVersions());
-        boolean isDeferredVersionSwapForEmptyPushEnabled = admin.isDeferredVersionSwapForEmptyPushEnabled(storeName);
-        if (isDeferredVersionSwapForEmptyPushEnabled) {
-          String targetRegion = admin.getDeferredVersionSwapRegionRollforwardOrder(storeName);
-          version = admin.incrementVersionIdempotent(
-              clusterName,
-              storeName,
-              pushJobId,
-              partitionNum,
-              replicationFactor,
-              Version.PushType.BATCH,
-              true,
-              false,
-              null,
-              Optional.empty(),
-              Optional.empty(),
-              -1,
-              Optional.empty(),
-              true,
-              targetRegion,
-              -1,
-              -1);
-        } else {
-          version =
-              admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
-        }
+        boolean deferredVersionSwap = admin.isDeferredVersionSwapForEmptyPushEnabled(storeName);
+        String targetRegion =
+            deferredVersionSwap ? admin.getDeferredVersionSwapRegionRollforwardOrder(storeName) : null;
+        version = admin.incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            pushJobId,
+            partitionNum,
+            replicationFactor,
+            Version.PushType.BATCH,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            deferredVersionSwap,
+            targetRegion,
+            -1,
+            -1);
 
         int versionNumber = version.getNumber();
         responseObject.setCluster(clusterName);

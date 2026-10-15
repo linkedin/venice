@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -87,6 +88,7 @@ import java.util.Set;
 import javax.security.auth.x500.X500Principal;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.http.HttpStatus;
+import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -1213,85 +1215,87 @@ public class CreateVersionTest {
     assertTrue(versionCreateResponse.isError(), "Expected error to be true");
   }
 
-  @Test
-  public void testEmptyPushCreatesNewVersionAndReturnsSuccess() throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testEmptyPushSendsControlMessagesOnlyForNewVersions(boolean deferredVersionSwap, boolean duplicatePush)
+      throws Exception {
     CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
     Route emptyPushRoute = createVersion.emptyPush(admin);
 
-    // Required params
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
     when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
     when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
 
-    // Admin behavior
     when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
     when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
     when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
+    when(admin.isDeferredVersionSwapForEmptyPushEnabled(STORE_NAME)).thenReturn(deferredVersionSwap);
+    String targetRegion = deferredVersionSwap ? "test-region" : null;
+    when(admin.getDeferredVersionSwapRegionRollforwardOrder(STORE_NAME)).thenReturn(targetRegion);
 
-    // Store and version mock
     Store mockStore = mock(Store.class);
     Version mockVersion = mock(Version.class);
-    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(mockStore.getVersions())
+        .thenReturn(duplicatePush ? Collections.singletonList(mockVersion) : Collections.emptyList());
     when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(mockStore);
-    when(admin.incrementVersionIdempotent(eq(CLUSTER_NAME), eq(STORE_NAME), eq("pushJobId"), eq(2), eq(3)))
-        .thenReturn(mockVersion);
+    when(
+        admin.incrementVersionIdempotent(
+            CLUSTER_NAME,
+            STORE_NAME,
+            "pushJobId",
+            2,
+            3,
+            BATCH,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            deferredVersionSwap,
+            targetRegion,
+            -1,
+            -1)).thenReturn(mockVersion);
 
     when(mockVersion.getNumber()).thenReturn(2);
     when(mockVersion.kafkaTopicName()).thenReturn("testStore_v2");
     when(mockVersion.getPushStreamSourceAddress()).thenReturn("localhost:9092");
 
-    // Execute
     Object result = emptyPushRoute.handle(request, response);
     VersionCreationResponse responseObj = OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
 
-    // Assertions
     assertFalse(responseObj.isError());
     assertEquals(responseObj.getVersion(), 2);
     assertEquals(responseObj.getKafkaTopic(), "testStore_v2");
     assertEquals(responseObj.getKafkaBootstrapServers(), "localhost:9092");
-    verify(admin).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 2, true);
-  }
-
-  @Test
-  public void testEmptyPushWithTheDuplicatePushJobIdSkipsSopAndEop() throws Exception {
-    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
-    Route emptyPushRoute = createVersion.emptyPush(admin);
-
-    // Set up required query params
-    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
-    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
-    when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
-
-    // Admin config
-    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
-    when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
-    when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
-
-    // Mock version and store
-    Version mockVersion = mock(Version.class);
-    when(mockVersion.getNumber()).thenReturn(2);
-    when(mockVersion.kafkaTopicName()).thenReturn("testStore_v2");
-    when(mockVersion.getPushStreamSourceAddress()).thenReturn("localhost:9092");
-
-    Store mockStore = mock(Store.class);
-    when(mockStore.getVersions()).thenReturn(Collections.singletonList(mockVersion));
-    when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(mockStore);
-
-    // Simulate version already exists
-    when(admin.incrementVersionIdempotent(CLUSTER_NAME, STORE_NAME, "pushJobId", 2, 3)).thenReturn(mockVersion);
-
-    // Execute
-    Object result = emptyPushRoute.handle(request, response);
-    VersionCreationResponse responseObj = OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-
-    // Assertions
-    assertFalse(responseObj.isError());
-    assertEquals(responseObj.getVersion(), 2);
-    assertEquals(responseObj.getKafkaTopic(), "testStore_v2");
-    assertEquals(responseObj.getKafkaBootstrapServers(), "localhost:9092");
-
-    // SOP and EOP should NOT be written
-    verify(admin, never()).writeEndOfPush(any(), any(), anyInt(), anyBoolean());
+    InOrder order = inOrder(admin);
+    order.verify(admin)
+        .incrementVersionIdempotent(
+            CLUSTER_NAME,
+            STORE_NAME,
+            "pushJobId",
+            2,
+            3,
+            BATCH,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            deferredVersionSwap,
+            targetRegion,
+            -1,
+            -1);
+    if (duplicatePush) {
+      verify(admin, never()).writeEndOfPush(any(), any(), anyInt(), anyBoolean());
+    } else {
+      order.verify(admin).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 2, true);
+    }
+    if (!deferredVersionSwap) {
+      verify(admin, never()).getDeferredVersionSwapRegionRollforwardOrder(STORE_NAME);
+    }
   }
 
   @Test

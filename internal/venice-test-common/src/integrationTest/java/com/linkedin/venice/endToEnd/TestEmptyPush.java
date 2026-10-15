@@ -24,12 +24,23 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
@@ -41,11 +52,16 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -75,6 +91,81 @@ public class TestEmptyPush {
     Properties props = (Properties) properties.clone();
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     return DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
+  }
+
+  @DataProvider
+  public Object[][] controllerEmptyPushCompressionStrategies() {
+    return new Object[][] { { CompressionStrategy.NO_OP }, { CompressionStrategy.GZIP },
+        { CompressionStrategy.ZSTD_WITH_DICT } };
+  }
+
+  @Test(timeOut = 120 * Time.MS_PER_SECOND, dataProvider = "controllerEmptyPushCompressionStrategies")
+  public void testControllerEmptyPushSendsOneSopThenEop(CompressionStrategy compressionStrategy) {
+    String storeName = Utils.getUniqueString("controller_empty_push");
+    int partitionCount = 2;
+    PubSubBrokerWrapper broker = venice.getPubSubBrokerWrapper();
+    try (ControllerClient controllerClient =
+        new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs())) {
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setPartitionCount(partitionCount)
+                  .setCompressionStrategy(compressionStrategy)));
+      TestUtils.assertCommand(
+          controllerClient
+              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60 * Time.MS_PER_SECOND));
+      assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+
+      Properties consumerProperties = new Properties();
+      consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, broker.getAddress());
+      PubSubTopic topic = venice.getPubSubTopicRepository().getTopic(Version.composeKafkaTopic(storeName, 1));
+      Map<PubSubTopicPartition, List<ControlMessage>> pushMessages = new HashMap<>();
+      try (PubSubConsumerAdapter consumer = broker.getPubSubClientsFactory()
+          .getConsumerAdapterFactory()
+          .create(
+              new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(consumerProperties))
+                  .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                  .setPubSubPositionTypeRegistry(broker.getPubSubPositionTypeRegistry())
+                  .setConsumerName("controllerEmptyPushMessages")
+                  .build())) {
+        for (int partition = 0; partition < partitionCount; partition++) {
+          PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partition);
+          pushMessages.put(topicPartition, new ArrayList<>());
+          consumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
+        }
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          consumer.poll(1000).forEach((partition, messages) -> {
+            for (DefaultPubSubMessage message: messages) {
+              if (!message.getKey().isControlMessage()) {
+                continue;
+              }
+              ControlMessage controlMessage = (ControlMessage) message.getValue().payloadUnion;
+              ControlMessageType type = ControlMessageType.valueOf(controlMessage);
+              if (type == ControlMessageType.START_OF_PUSH || type == ControlMessageType.END_OF_PUSH) {
+                pushMessages.get(partition).add(controlMessage);
+              }
+            }
+          });
+          for (List<ControlMessage> messages: pushMessages.values()) {
+            assertEquals(messages.size(), 2, "Each partition should contain exactly one SOP and one EOP");
+            assertEquals(ControlMessageType.valueOf(messages.get(0)), ControlMessageType.START_OF_PUSH);
+            assertEquals(ControlMessageType.valueOf(messages.get(1)), ControlMessageType.END_OF_PUSH);
+          }
+        });
+        for (List<ControlMessage> messages: pushMessages.values()) {
+          StartOfPush startOfPush = (StartOfPush) messages.get(0).controlMessageUnion;
+          assertEquals(startOfPush.compressionStrategy, compressionStrategy.getValue());
+          if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+            assertNotNull(startOfPush.compressionDictionary);
+            assertTrue(startOfPush.compressionDictionary.hasRemaining());
+          } else {
+            assertNull(startOfPush.compressionDictionary);
+          }
+        }
+      }
+    }
   }
 
   @Test(timeOut = 30 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
