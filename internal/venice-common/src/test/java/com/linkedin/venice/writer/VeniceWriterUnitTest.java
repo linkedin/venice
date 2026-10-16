@@ -107,9 +107,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -125,214 +124,73 @@ public class VeniceWriterUnitTest {
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
 
-  @DataProvider
-  public Object[][] sopBroadcastThreadCounts() {
-    return new Object[][] { { null, 8, false }, { null, 8, true }, { 1, 1, false }, { 1, 1, true }, { 2, 2, false },
-        { 2, 2, true }, { 8, 8, false }, { 8, 8, true } };
-  }
-
-  @Test(timeOut = TIMEOUT, dataProvider = "sopBroadcastThreadCounts")
-  public void testStartOfPushBroadcastsPartitionsConcurrentlyAndInOrder(
-      Integer configuredThreadCount,
-      int expectedThreadCount,
-      boolean includeDictionary) throws Exception {
-    int partitionCount = expectedThreadCount * 2 + 1;
-    Properties properties = new Properties();
-    if (configuredThreadCount != null) {
-      properties.setProperty(VeniceWriter.SOP_BROADCAST_THREAD_COUNT, configuredThreadCount.toString());
-    }
-    PubSubProducerAdapter producer = mock(PubSubProducerAdapter.class);
-    PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    CountDownLatch firstWaveStarted = new CountDownLatch(expectedThreadCount);
-    CountDownLatch releaseStartOfSegment = new CountDownLatch(1);
-    CountDownLatch allStartOfPushSent = new CountDownLatch(partitionCount);
-    AtomicInteger activeSegmentStarts = new AtomicInteger();
-    AtomicInteger maxActiveSegmentStarts = new AtomicInteger();
-    AtomicBoolean acknowledgeStartOfPush = new AtomicBoolean();
-    Map<Integer, List<ControlMessageType>> messageTypes = new ConcurrentHashMap<>();
-    Map<Integer, ControlMessage> startOfPushMessages = new ConcurrentHashMap<>();
-    Map<Integer, CompletableFuture<PubSubProduceResult>> acknowledgements = new ConcurrentHashMap<>();
-    when(producer.sendMessage(anyString(), anyInt(), any(), any(), any(), any())).thenAnswer(invocation -> {
-      int partition = invocation.getArgument(1);
-      KafkaMessageEnvelope envelope = invocation.getArgument(3);
-      ControlMessage message = (ControlMessage) envelope.payloadUnion;
-      ControlMessageType type = ControlMessageType.valueOf(message);
-      messageTypes.computeIfAbsent(partition, ignored -> new ArrayList<>()).add(type);
-      if (type == ControlMessageType.START_OF_SEGMENT) {
-        maxActiveSegmentStarts.accumulateAndGet(activeSegmentStarts.incrementAndGet(), Math::max);
-        firstWaveStarted.countDown();
-        try {
-          assertTrue(releaseStartOfSegment.await(5, TimeUnit.SECONDS));
-        } finally {
-          activeSegmentStarts.decrementAndGet();
-        }
-      } else if (type == ControlMessageType.START_OF_PUSH) {
-        startOfPushMessages.put(partition, message);
-        CompletableFuture<PubSubProduceResult> acknowledgement = new CompletableFuture<>();
-        acknowledgements.put(partition, acknowledgement);
-        allStartOfPushSent.countDown();
-        if (acknowledgeStartOfPush.get()) {
-          acknowledgement.complete(produceResult);
-        }
-        return acknowledgement;
-      }
-      return CompletableFuture.completedFuture(produceResult);
-    });
-    doAnswer(invocation -> {
-      assertEquals(acknowledgements.size(), partitionCount, "Every queued partition must be sent before flush");
-      acknowledgements.values().forEach(future -> assertTrue(future.isDone(), "SOP must be acknowledged before flush"));
-      return null;
-    }).when(producer).flush();
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder("test_v1").setPartitionCount(partitionCount).build();
-    VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter<>(options, new VeniceProperties(properties), producer);
-    ExecutorService broadcaster = Executors.newSingleThreadExecutor();
+  @Test(timeOut = TIMEOUT)
+  public void testStartOfPushRespectsConcurrencyAndWaitsForAcknowledgements() throws Exception {
     ByteBuffer dictionary = ByteBuffer.wrap(new byte[] { 0, 1, 2, 3, 0 });
     dictionary.position(1);
     dictionary.limit(4);
-    CompressionStrategy compressionStrategy =
-        includeDictionary ? CompressionStrategy.ZSTD_WITH_DICT : CompressionStrategy.GZIP;
-    Map<String, String> debugInfo = Collections.singletonMap("sop-test", "debug-info");
-    try {
-      Future<?> broadcast = broadcaster.submit(
-          () -> writer.broadcastStartOfPush(
+    try (BroadcastTest fixture = new BroadcastTest(17, null, false)) {
+      doAnswer(invocation -> {
+        assertEquals(fixture.messages.size(), 17, "Every queued partition must be sent before flush");
+        assertTrue(fixture.lastAck.isDone(), "SOP must be acknowledged before flush");
+        return null;
+      }).when(fixture.producer).flush();
+      Future<?> broadcast = fixture.broadcaster.submit(
+          () -> fixture.writer.broadcastStartOfPush(
               true,
               true,
-              compressionStrategy,
-              includeDictionary ? Optional.of(dictionary) : Optional.empty(),
-              debugInfo));
-      assertTrue(firstWaveStarted.await(5, TimeUnit.SECONDS), "Configured workers must start partitions concurrently");
-      assertEquals(maxActiveSegmentStarts.get(), expectedThreadCount);
-      assertFalse(broadcast.isDone());
-      verify(producer, never()).flush();
-      releaseStartOfSegment.countDown();
-      assertTrue(allStartOfPushSent.await(5, TimeUnit.SECONDS), "Queued partitions must also be dispatched");
+              CompressionStrategy.ZSTD_WITH_DICT,
+              Optional.of(dictionary),
+              Collections.singletonMap("sop-test", "debug-info")));
+      assertTrue(fixture.firstWaveStarted.await(5, TimeUnit.SECONDS), "Eight workers must start concurrently");
+      fixture.releaseStartOfSegment.countDown();
+      assertTrue(fixture.allSent.await(5, TimeUnit.SECONDS), "Queued partitions must also be dispatched");
       assertFalse(broadcast.isDone(), "SOP must wait for all partition acknowledgements");
-      acknowledgeStartOfPush.set(true);
-      acknowledgements.values().forEach(future -> future.complete(produceResult));
+      verify(fixture.producer, never()).flush();
+      fixture.lastAck.complete(null);
       broadcast.get(5, TimeUnit.SECONDS);
-      assertEquals(maxActiveSegmentStarts.get(), expectedThreadCount, "Dispatch must respect the configured limit");
-      verify(producer).flush();
-
-      writer.broadcastTopicSwitch(Collections.singletonList("broker"), "test_rt", -1L, Collections.emptyMap());
-      writer.broadcastEndOfPush(Collections.emptyMap());
-      Set<ControlMessage> distinctMessages = Collections.newSetFromMap(new IdentityHashMap<>());
-      Set<StartOfPush> distinctPayloads = Collections.newSetFromMap(new IdentityHashMap<>());
-      Set<ByteBuffer> distinctDictionaries = Collections.newSetFromMap(new IdentityHashMap<>());
-      for (int partition = 0; partition < partitionCount; partition++) {
-        assertEquals(
-            messageTypes.get(partition),
-            Arrays.asList(
-                ControlMessageType.START_OF_SEGMENT,
-                ControlMessageType.START_OF_PUSH,
-                ControlMessageType.TOPIC_SWITCH,
-                ControlMessageType.END_OF_PUSH,
-                ControlMessageType.END_OF_SEGMENT));
-        ControlMessage message = startOfPushMessages.get(partition);
+      verify(fixture.producer).flush();
+      Set<Object> distinctObjects = Collections.newSetFromMap(new IdentityHashMap<>());
+      for (ControlMessage message: fixture.messages.values()) {
         StartOfPush startOfPush = (StartOfPush) message.controlMessageUnion;
-        distinctMessages.add(message);
-        distinctPayloads.add(startOfPush);
-        assertTrue(startOfPush.sorted);
+        assertTrue(distinctObjects.add(message), "Partitions must have independent control messages");
+        assertTrue(distinctObjects.add(startOfPush), "Partitions must have independent SOP payloads");
         assertTrue(startOfPush.chunked);
-        assertEquals(startOfPush.compressionStrategy, compressionStrategy.getValue());
         assertEquals(message.debugInfo.get("sop-test").toString(), "debug-info");
-        if (includeDictionary) {
-          assertEquals(startOfPush.compressionDictionary, dictionary);
-          assertNotSame(startOfPush.compressionDictionary, dictionary);
-          distinctDictionaries.add(startOfPush.compressionDictionary);
-        } else {
-          assertNull(startOfPush.compressionDictionary);
-        }
+        assertEquals(startOfPush.compressionDictionary, dictionary);
+        assertNotSame(startOfPush.compressionDictionary, dictionary);
+        assertTrue(distinctObjects.add(startOfPush.compressionDictionary), "Partitions must have independent buffers");
       }
-      assertEquals(distinctMessages.size(), partitionCount);
-      assertEquals(distinctPayloads.size(), partitionCount);
-      assertEquals(distinctDictionaries.size(), includeDictionary ? partitionCount : 0);
       assertEquals(dictionary.position(), 1);
       assertEquals(dictionary.limit(), 4);
-    } finally {
-      acknowledgeStartOfPush.set(true);
-      releaseStartOfSegment.countDown();
-      acknowledgements.values().forEach(future -> future.complete(produceResult));
-      TestUtils.shutdownExecutor(broadcaster);
-      writer.close();
+      fixture.writer.close(false);
+      Assert.expectThrows(
+          RejectedExecutionException.class,
+          () -> fixture.writer.broadcastStartOfPush(Collections.emptyMap()));
     }
-    Assert.expectThrows(RejectedExecutionException.class, () -> writer.broadcastStartOfPush(Collections.emptyMap()));
   }
 
   @Test(timeOut = TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testStartOfPushWaitsForOtherPartitionsAfterFailure(boolean failSegmentStart, boolean asynchronousFailure)
       throws Exception {
-    int partitionCount = 3;
-    Properties properties = new Properties();
-    properties.setProperty(VeniceWriter.SOP_BROADCAST_THREAD_COUNT, "2");
-    PubSubProducerAdapter producer = mock(PubSubProducerAdapter.class);
-    PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    VeniceException failure = new VeniceException("test partition send failure");
-    CountDownLatch remainingPartitionsSent = new CountDownLatch(partitionCount - 1);
-    AtomicBoolean acknowledgeRemaining = new AtomicBoolean();
-    Map<Integer, CompletableFuture<PubSubProduceResult>> acknowledgements = new ConcurrentHashMap<>();
-    when(producer.sendMessage(anyString(), anyInt(), any(), any(), any(), any())).thenAnswer(invocation -> {
-      int partition = invocation.getArgument(1);
-      KafkaMessageEnvelope envelope = invocation.getArgument(3);
-      ControlMessageType type = ControlMessageType.valueOf((ControlMessage) envelope.payloadUnion);
-      ControlMessageType failingType =
-          failSegmentStart ? ControlMessageType.START_OF_SEGMENT : ControlMessageType.START_OF_PUSH;
-      if (partition == 0 && type == failingType) {
-        if (asynchronousFailure) {
-          CompletableFuture<PubSubProduceResult> failedFuture = new CompletableFuture<>();
-          failedFuture.completeExceptionally(failure);
-          return failedFuture;
-        }
-        throw failure;
-      }
-      if (type == ControlMessageType.START_OF_PUSH) {
-        CompletableFuture<PubSubProduceResult> acknowledgement = new CompletableFuture<>();
-        acknowledgements.put(partition, acknowledgement);
-        remainingPartitionsSent.countDown();
-        if (acknowledgeRemaining.get()) {
-          acknowledgement.complete(produceResult);
-        }
-        return acknowledgement;
-      }
-      return CompletableFuture.completedFuture(produceResult);
-    });
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder("test_v1").setPartitionCount(partitionCount).build();
-    VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter<>(options, new VeniceProperties(properties), producer);
-    ExecutorService broadcaster = Executors.newSingleThreadExecutor();
-    try {
-      Future<?> broadcast = broadcaster.submit(() -> writer.broadcastStartOfPush(Collections.emptyMap()));
-      assertTrue(remainingPartitionsSent.await(5, TimeUnit.SECONDS));
+    ControlMessageType failingType =
+        failSegmentStart ? ControlMessageType.START_OF_SEGMENT : ControlMessageType.START_OF_PUSH;
+    try (BroadcastTest fixture = new BroadcastTest(3, failingType, asynchronousFailure)) {
+      fixture.releaseStartOfSegment.countDown();
+      Future<?> broadcast =
+          fixture.broadcaster.submit(() -> fixture.writer.broadcastStartOfPush(Collections.emptyMap()));
+      assertTrue(fixture.allSent.await(5, TimeUnit.SECONDS));
       assertFalse(broadcast.isDone(), "One failed partition must not leave other partition sends in flight");
-      acknowledgeRemaining.set(true);
-      acknowledgements.values().forEach(future -> future.complete(produceResult));
+      fixture.lastAck.complete(null);
       ExecutionException exception =
           Assert.expectThrows(ExecutionException.class, () -> broadcast.get(5, TimeUnit.SECONDS));
-      assertTrue(ExceptionUtils.recursiveMessageContains(exception, failure.getMessage()));
-      verify(producer, never()).flush();
-    } finally {
-      acknowledgeRemaining.set(true);
-      acknowledgements.values().forEach(future -> future.complete(produceResult));
-      TestUtils.shutdownExecutor(broadcaster);
-      writer.close(false);
+      assertTrue(ExceptionUtils.recursiveMessageContains(exception, fixture.failure.getMessage()));
+      verify(fixture.producer, never()).flush();
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStartOfPushRejectsNonPositiveThreadCounts(boolean zero) {
-    Properties properties = new Properties();
-    properties.setProperty(VeniceWriter.SOP_BROADCAST_THREAD_COUNT, zero ? "0" : "-1");
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder("test_v1").setPartitionCount(1).build();
-    VeniceException exception = Assert.expectThrows(
-        VeniceException.class,
-        () -> new VeniceWriter<>(options, new VeniceProperties(properties), mock(PubSubProducerAdapter.class)));
-    assertTrue(exception.getMessage().contains(VeniceWriter.SOP_BROADCAST_THREAD_COUNT));
-    assertTrue(exception.getMessage().contains("must be positive"));
-  }
-
-  @Test(timeOut = TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVersionSwapBroadcastsPartitionsConcurrentlyAndInOrder(boolean singleStartOfPushThread)
-      throws Exception {
+  @Test(timeOut = TIMEOUT)
+  public void testVersionSwapBroadcastsPartitionsConcurrentlyAndInOrder() throws Exception {
     int partitionCount = 4;
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CountDownLatch allPartitionsStarted = new CountDownLatch(partitionCount);
@@ -352,12 +210,7 @@ public class VeniceWriterUnitTest {
       return CompletableFuture.completedFuture(mock(PubSubProduceResult.class));
     });
     VeniceWriterOptions options = new VeniceWriterOptions.Builder("test_rt").setPartitionCount(partitionCount).build();
-    Properties properties = new Properties();
-    if (singleStartOfPushThread) {
-      properties.setProperty(VeniceWriter.SOP_BROADCAST_THREAD_COUNT, "1");
-    }
-    VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter<>(options, new VeniceProperties(properties), mockedProducer);
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, VeniceProperties.empty(), mockedProducer);
 
     List<CompletableFuture<PubSubProduceResult>> futures = writer.nonBlockingBroadcastVersionSwapWithRegionInfo(
         "test_v1",
@@ -375,6 +228,63 @@ public class VeniceWriterUnitTest {
           Arrays.asList(ControlMessageType.START_OF_SEGMENT, ControlMessageType.VERSION_SWAP));
     }
     writer.close(false);
+  }
+
+  private static class BroadcastTest implements AutoCloseable {
+    final PubSubProducerAdapter producer = mock(PubSubProducerAdapter.class);
+    final ExecutorService broadcaster = Executors.newSingleThreadExecutor();
+    final CountDownLatch firstWaveStarted = new CountDownLatch(8);
+    final CountDownLatch releaseStartOfSegment = new CountDownLatch(1);
+    final CompletableFuture<PubSubProduceResult> lastAck = new CompletableFuture<>();
+    final Map<Integer, ControlMessage> messages = new ConcurrentHashMap<>();
+    final VeniceException failure = new VeniceException("test partition send failure");
+    final CountDownLatch allSent;
+    final VeniceWriter<Object, Object, Object> writer;
+
+    BroadcastTest(int partitionCount, ControlMessageType failingType, boolean asynchronousFailure) {
+      allSent = new CountDownLatch(partitionCount - (failingType == ControlMessageType.START_OF_SEGMENT ? 1 : 0));
+      Semaphore concurrentSegmentStarts = new Semaphore(8);
+      CompletableFuture<PubSubProduceResult> failedAck = new CompletableFuture<>();
+      failedAck.completeExceptionally(failure);
+      when(producer.sendMessage(anyString(), anyInt(), any(), any(), any(), any())).thenAnswer(invocation -> {
+        int partition = invocation.getArgument(1);
+        ControlMessage message = (ControlMessage) ((KafkaMessageEnvelope) invocation.getArgument(3)).payloadUnion;
+        ControlMessageType type = ControlMessageType.valueOf(message);
+        if (type == ControlMessageType.START_OF_SEGMENT) {
+          assertTrue(concurrentSegmentStarts.tryAcquire(), "Dispatch must respect the eight-worker limit");
+          firstWaveStarted.countDown();
+          try {
+            assertTrue(releaseStartOfSegment.await(5, TimeUnit.SECONDS));
+          } finally {
+            concurrentSegmentStarts.release();
+          }
+        } else {
+          messages.put(partition, message);
+          allSent.countDown();
+        }
+        if (partition == 0 && type == failingType) {
+          if (!asynchronousFailure) {
+            throw failure;
+          }
+          return failedAck;
+        }
+        return partition == partitionCount - 1 && type != ControlMessageType.START_OF_SEGMENT
+            ? lastAck
+            : CompletableFuture.completedFuture(null);
+      });
+      writer = new VeniceWriter<>(
+          new VeniceWriterOptions.Builder("test_v1").setPartitionCount(partitionCount).build(),
+          VeniceProperties.empty(),
+          producer);
+    }
+
+    @Override
+    public void close() throws InterruptedException {
+      releaseStartOfSegment.countDown();
+      lastAck.complete(null);
+      TestUtils.shutdownExecutor(broadcaster);
+      writer.close(false);
+    }
   }
 
   @Test(dataProvider = "Chunking-And-Partition-Counts", dataProviderClass = DataProviderUtils.class)

@@ -100,9 +100,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       new ChunkedPayloadAndManifest(null, null);
   private static final int ASYNC_BROADCAST_THREAD_COUNT = 8;
 
-  // use for running async close and to fetch number of partitions with timeout from producer
+  // Shared by control-message broadcasts, async close, and partition metadata lookups.
   private final ThreadPoolExecutor threadPoolExecutor;
-  private final ThreadPoolExecutor startOfPushThreadPoolExecutor;
 
   // log4j logger
   protected final Logger logger;
@@ -176,16 +175,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final String PRODUCER_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "producer.thread.count";
   public static final String PRODUCER_QUEUE_SIZE = VENICE_WRITER_CONFIG_PREFIX + "producer.queue.size";
 
-  /**
-   * Maximum concurrent start-of-push partition sends per writer. Must be positive.
-   * Default: {@value DEFAULT_SOP_BROADCAST_THREAD_COUNT}. Set to 1 to send partitions serially.
-   * This does not change the version-swap or writer-close executor.
-   */
-  public static final String SOP_BROADCAST_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "sop.broadcast.thread.count";
-
   // Config value defaults
-
-  public static final int DEFAULT_SOP_BROADCAST_THREAD_COUNT = 8;
 
   /**
    * 950 KB for user payload should be conservative enough.
@@ -372,10 +362,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.time = params.getTime();
     this.partitioner = params.getPartitioner();
     this.closeTimeOutInMs = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
-    int sopBroadcastThreadCount = props.getInt(SOP_BROADCAST_THREAD_COUNT, DEFAULT_SOP_BROADCAST_THREAD_COUNT);
-    if (sopBroadcastThreadCount <= 0) {
-      throw new VeniceException(SOP_BROADCAST_THREAD_COUNT + " must be positive, got: " + sopBroadcastThreadCount);
-    }
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     // override factory chunking settings
     this.isChunkingEnabled = params.isChunkingEnabled();
@@ -452,14 +438,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("VW-" + topicName, params.getLogContext()));
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
-    this.startOfPushThreadPoolExecutor = new ThreadPoolExecutor(
-        sopBroadcastThreadCount,
-        sopBroadcastThreadCount,
-        5,
-        TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("VW-SOP-" + topicName, params.getLogContext()));
-    this.startOfPushThreadPoolExecutor.allowCoreThreadTimeOut(true);
 
     this.protocolSchemaHeader = overrideProtocolSchema == null
         ? null
@@ -604,7 +582,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
           } finally {
             isClosed = true;
-            startOfPushThreadPoolExecutor.shutdown();
             threadPoolExecutor.shutdown();
             long elapsedTimeInMs = System.currentTimeMillis() - timeAtStartOfClose;
             logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs);
@@ -1565,7 +1542,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               debugInfo,
               null,
               DEFAULT_LEADER_METADATA_WRAPPER);
-        }, startOfPushThreadPoolExecutor).thenCompose(writeFuture -> writeFuture));
+        }, threadPoolExecutor).thenCompose(writeFuture -> writeFuture));
       } catch (RejectedExecutionException e) {
         CompletableFuture<PubSubProduceResult> failedFuture = new CompletableFuture<>();
         failedFuture.completeExceptionally(e);
