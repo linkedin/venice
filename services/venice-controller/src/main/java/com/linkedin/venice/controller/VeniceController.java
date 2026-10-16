@@ -257,6 +257,9 @@ public class VeniceController {
     this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.storeUpdateHandler = ctx.getStoreUpdateHandler();
     this.controllerService = createControllerService();
+    if (ctx.getTopicPlacement() != null) {
+      getVeniceHelixAdmin().setTopicPlacement(ctx.getTopicPlacement());
+    }
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
     this.topicCleanupService = createTopicCleanupService();
@@ -272,6 +275,13 @@ public class VeniceController {
 
     // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
     initializeSystemSchema(controllerService.getVeniceHelixAdmin());
+  }
+
+  private VeniceHelixAdmin getVeniceHelixAdmin() {
+    Admin admin = controllerService.getVeniceHelixAdmin();
+    return admin instanceof VeniceParentHelixAdmin
+        ? ((VeniceParentHelixAdmin) admin).getVeniceHelixAdmin()
+        : (VeniceHelixAdmin) admin;
   }
 
   private VeniceControllerService createControllerService() {
