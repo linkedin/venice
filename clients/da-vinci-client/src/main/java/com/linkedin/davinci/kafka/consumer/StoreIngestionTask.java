@@ -335,10 +335,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * The consumer and drainer DIV must remain separate. Since the consumer is always ahead of the drainer, the consumer
    * would be validating data ahead of the actual persisted data on the drainer.
    *
-   * NOTE: Currently, the state clearing happens only in drainerDiv which persists its state to disk.
-   * consumerDiv is transient, not persisted to disk, and its state is not expected to grow as large. Thus,
-   * bouncing effectively clears it (which is not the case for drainerDiv). Later on, we could trigger state
-   * cleaning for this consumer DIV as well, if deemed necessary.
+   * NOTE: Currently, the state clearing happens in drainerDiv which persists its state to disk. consumerDiv is
+   * transient and not persisted to disk; its expired state is cleared at checkpoint time (after EOP) using the same
+   * {@value com.linkedin.venice.ConfigKeys#DIV_PRODUCER_STATE_MAX_AGE_MS} max-age rule as the drainer. Before that,
+   * only bouncing or leader promotion clears it.
    *
    * NOTE: When {@link #isGlobalRtDivEnabled()} is enabled, this will be used by leaders to produce Global RT DIV state
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
@@ -2302,6 +2302,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * generation is an expensive operation.
      */
     div.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
+    /**
+     * consumerDiv is never persisted on this path, so nothing else expires its producers. Only clear after EOP: an
+     * unknown producer appearing mid-segment before EOP is a fatal UNREGISTERED_PRODUCER error.
+     */
+    if (pcs.isEndOfPushReceived()) {
+      consumerDiv.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, pcs.getLatestMessageTimeInMs());
+    }
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(pcs);
