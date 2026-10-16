@@ -650,6 +650,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           key.version,
           key.region,
           delay,
+          isReadyToServe,
           key.writeType,
           key.chunkingStatus,
           key.locality,
@@ -775,6 +776,25 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Readiness for leader OTel samples. The entry's flag changes only when a heartbeat or record arrives, so a
+   * leader whose partition completed since then is also checked against its partition state. The entry is not
+   * updated because Tehuti and ingestion decisions read it.
+   */
+  private boolean isLeaderReadyToServe(HeartbeatKey key, boolean entryReadyToServe) {
+    KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();
+    if (entryReadyToServe || ingestionService == null) {
+      return entryReadyToServe;
+    }
+    StoreIngestionTask ingestionTask =
+        ingestionService.getStoreIngestionTask(Version.composeKafkaTopic(key.storeName, key.version));
+    if (ingestionTask == null) {
+      return false;
+    }
+    PartitionConsumptionState pcs = ingestionTask.getPartitionConsumptionState(key.partition);
+    return pcs != null && pcs.isComplete();
+  }
+
   protected void record() {
     // Record heartbeat message delays — labels are baked on the HeartbeatKey at insertion.
     recordLags(
@@ -784,6 +804,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             key.version,
             key.region,
             heartbeatTs,
+            isLeaderReadyToServe(key, isReadyToServe),
             key.writeType,
             key.chunkingStatus,
             key.locality,
@@ -812,6 +833,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               key.version,
               key.region,
               recordTs,
+              isLeaderReadyToServe(key, isReadyToServe),
               key.writeType,
               key.chunkingStatus,
               key.locality,

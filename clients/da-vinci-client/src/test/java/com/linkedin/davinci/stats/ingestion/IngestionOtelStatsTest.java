@@ -175,6 +175,7 @@ public class IngestionOtelStatsTest {
        * assertion below would also pass when no task is registered (false negative).
        */
       StoreIngestionTask probeTask = mock(StoreIngestionTask.class);
+      when(probeTask.hasReplicaType(any(ReplicaType.class))).thenReturn(true);
       when(probeTask.getActiveKeyCount(any(ReplicaType.class))).thenReturn(42L);
       statsDisabled.setIngestionTask(CURRENT_VERSION, probeTask);
       // Recorder must be a safe no-op so producers can call it without checking the flag.
@@ -915,11 +916,12 @@ public class IngestionOtelStatsTest {
   // Active-key-count ASYNC_GAUGE: gauge-level wiring tests.
   // The aggregation logic itself lives on StoreIngestionTask.getActiveKeyCount(ReplicaType) and is
   // exercised by ActiveKeyCountTest; tests here mock that method directly and verify the gauge
-  // forwards the correct (role, replicaType) and emits its return value.
+  // forwards the correct (role, replicaType) and emits its return value for hosted replica types.
 
   @Test
   public void testActiveKeyCountGaugeEmitsViaOtel() {
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.hasReplicaType(any(ReplicaType.class))).thenReturn(true);
     when(mockTask.getActiveKeyCount(ReplicaType.LEADER)).thenReturn(150L);
     when(mockTask.getActiveKeyCount(ReplicaType.FOLLOWER)).thenReturn(250L);
 
@@ -934,6 +936,7 @@ public class IngestionOtelStatsTest {
   @Test
   public void testActiveKeyCountGaugeLiveValueUpdate() {
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.hasReplicaType(any(ReplicaType.class))).thenReturn(true);
     when(mockTask.getActiveKeyCount(ReplicaType.LEADER)).thenReturn(100L);
 
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
@@ -945,6 +948,20 @@ public class IngestionOtelStatsTest {
     // Live update: subsequent collection cycles should reflect the new value.
     when(mockTask.getActiveKeyCount(ReplicaType.LEADER)).thenReturn(500L);
     assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 500L);
+  }
+
+  @Test
+  public void testActiveKeyCountGaugeOmitsUnhostedReplicaType() {
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.hasReplicaType(ReplicaType.LEADER)).thenReturn(true);
+    when(mockTask.getActiveKeyCount(any(ReplicaType.class))).thenReturn(150L);
+
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    String metric = ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 150L);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.CURRENT, ReplicaType.FOLLOWER);
   }
 
   @Test
@@ -963,6 +980,7 @@ public class IngestionOtelStatsTest {
   @Test
   public void testActiveKeyCountGaugeEmitsNegativeOneSentinel() {
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.hasReplicaType(any(ReplicaType.class))).thenReturn(true);
     when(mockTask.getActiveKeyCount(any())).thenReturn(-1L);
 
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
@@ -988,6 +1006,7 @@ public class IngestionOtelStatsTest {
     assertNoGaugeDataPointWithReplica(metric, VersionRole.BACKUP, ReplicaType.LEADER);
 
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.hasReplicaType(any(ReplicaType.class))).thenReturn(true);
     when(mockTask.getEstimatedUniqueIngestedKeyCount(ReplicaType.LEADER)).thenReturn(30_000L);
     when(mockTask.getEstimatedUniqueIngestedKeyCount(ReplicaType.FOLLOWER)).thenReturn(12_000L);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
@@ -998,6 +1017,20 @@ public class IngestionOtelStatsTest {
 
     ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
     assertNoGaugeDataPointWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER);
+  }
+
+  @Test
+  public void testUniqueIngestedKeyCountGaugeOmitsUnhostedReplicaType() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    String metric = IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT.getMetricEntity().getMetricName();
+
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.hasReplicaType(ReplicaType.LEADER)).thenReturn(true);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(any(ReplicaType.class))).thenReturn(0L);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 0L);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.CURRENT, ReplicaType.FOLLOWER);
   }
 
   // OTel disabled
@@ -1236,6 +1269,38 @@ public class IngestionOtelStatsTest {
 
     // No backup version in versionInfo -> no data point emitted for BACKUP.
     assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
+  }
+
+  @Test
+  public void testRemoveIngestionTaskKeepsOnlyPushTimeoutUntilVersionCleanup() {
+    StoreIngestionTask currentTask = mock(StoreIngestionTask.class);
+    StoreIngestionTask futureTask = mock(StoreIngestionTask.class);
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, currentTask);
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, futureTask);
+
+    String pushTimeout = IngestionOtelMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity().getMetricName();
+    String idleTime = IngestionOtelMetricEntity.CONSUMER_IDLE_TIME.getMetricEntity().getMetricName();
+    ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 0);
+    ingestionOtelStats.setIngestionTaskPushTimeoutGauge(FUTURE_VERSION, 1);
+    ingestionOtelStats.recordIdleTime(FUTURE_VERSION, 5000);
+
+    // The timed-out future task stops right after recording the timeout, which must stay visible.
+    assertTrue(ingestionOtelStats.removeIngestionTask(FUTURE_VERSION, futureTask));
+    assertGaugeValue(pushTimeout, VersionRole.FUTURE, 1L);
+    assertNoGaugeDataPoint(idleTime, VersionRole.FUTURE);
+    assertGaugeValue(pushTimeout, VersionRole.CURRENT, 0L);
+
+    assertTrue(ingestionOtelStats.removeIngestionTask(CURRENT_VERSION, currentTask));
+    assertFalse(ingestionOtelStats.hasIngestionTasks());
+    assertFalse(ingestionOtelStats.isIdle(), "A reported push timeout keeps the store's OTel stats open");
+    assertNoGaugeDataPoint(pushTimeout, VersionRole.CURRENT);
+    assertGaugeValue(pushTimeout, VersionRole.FUTURE, 1L);
+
+    // Version cleanup clears the timeout.
+    ingestionOtelStats.removeIngestionTask(FUTURE_VERSION);
+    assertTrue(ingestionOtelStats.isIdle());
+    assertNoGaugeDataPoint(pushTimeout, VersionRole.FUTURE);
   }
 
   @Test

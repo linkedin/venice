@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient.stats;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.*;
+import static com.linkedin.venice.read.RequestType.MULTI_GET;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -17,32 +18,41 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
+import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.testng.annotations.Test;
 
 
 public class FastClientStatsTest {
   private FastClientStats createStats(InMemoryMetricReader inMemoryMetricReader) {
-    String storeName = "test_store";
+    return FastClientStats.getClientStats(createMetricsRepository(inMemoryMetricReader), "", "test_store", SINGLE_GET);
+  }
+
+  private static VeniceMetricsRepository createMetricsRepository(InMemoryMetricReader inMemoryMetricReader) {
     Set<MetricEntity> allMetricEntities = new HashSet<>(CLIENT_METRIC_ENTITIES);
     for (FastClientMetricEntity entity: FastClientMetricEntity.values()) {
       allMetricEntities.add(entity.getMetricEntity());
     }
-    VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(FAST_CLIENT, allMetricEntities, true, inMemoryMetricReader);
-    return FastClientStats.getClientStats(metricsRepository, "", storeName, SINGLE_GET);
+    return getVeniceMetricsRepository(FAST_CLIENT, allMetricEntities, true, inMemoryMetricReader);
   }
 
   @Test
@@ -287,6 +297,64 @@ public class FastClientStatsTest {
         .flatMap(md -> md.getLongGaugeData().getPoints().stream())
         .anyMatch(point -> point.getAttributes().equals(expectedStalenessAttrs));
     assertTrue(stalenessCarriesLatestCluster, "Sole staleness data point should carry " + clusterB);
+  }
+
+  @Test
+  public void testStalenessComesOnlyFromTheStatsWithAMetadataTimestamp() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository = createMetricsRepository(reader);
+    // As in ClientConfig, each request type has its own stats, whose staleness gauges share attributes, and only the
+    // single-get stats get metadata timestamps. Here another request type's gauge registers first, as it can after a
+    // cluster change re-creates the gauges.
+    FastClientStats.getClientStats(metricsRepository, "", "test_store", MULTI_GET);
+    FastClientStats singleGetStats = FastClientStats.getClientStats(metricsRepository, "", "test_store", SINGLE_GET);
+    assertTrue(stalenessValues(reader).isEmpty(), "No staleness before a metadata refresh");
+
+    singleGetStats.updateCacheTimestamp(System.currentTimeMillis() - 60_000L);
+    List<Long> values = stalenessValues(reader);
+    assertEquals(values.size(), 1);
+    assertTrue(values.get(0) >= 60_000L, "Staleness should come from the single-get stats, got " + values);
+  }
+
+  private static List<Long> stalenessValues(InMemoryMetricReader reader) {
+    String stalenessMetricName = "venice.fast_client." + METADATA_STALENESS_DURATION.getMetricEntity().getMetricName();
+    return reader.collectAllMetrics()
+        .stream()
+        .filter(md -> md.getName().equals(stalenessMetricName))
+        .flatMap(md -> md.getLongGaugeData().getPoints().stream())
+        .map(LongPointData::getValue)
+        .collect(Collectors.toList());
+  }
+
+  @Test
+  public void testClusterMigrationReleasesTheRetiredStalenessGauge() throws Exception {
+    FastClientStats stats = createStats(InMemoryMetricReader.create());
+    stats.onClusterNameUpdated("venice-cluster-A");
+    MetricScope clusterAScope = stats.getMetadataStalenessScope();
+
+    stats.onClusterNameUpdated("venice-cluster-B");
+    MetricScope clusterBScope = stats.getMetadataStalenessScope();
+
+    // The rebuild retires the previous gauge's own scope: it is closed, and the stats' scope no longer holds it.
+    assertNotSame(clusterBScope, clusterAScope);
+    assertTrue(clusterAScope.isClosed());
+    assertFalse(clusterBScope.isClosed());
+    List<?> statsScopeResources = getMetricScopeResources(stats);
+    assertFalse(statsScopeResources.contains(clusterAScope));
+    assertTrue(statsScopeResources.contains(clusterBScope));
+
+    // The current gauge's scope still closes with the stats.
+    stats.closeOtelMetrics();
+    assertTrue(clusterBScope.isClosed());
+  }
+
+  /** The resources held by the stats' own {@link MetricScope}. */
+  private static List<?> getMetricScopeResources(FastClientStats stats) throws Exception {
+    Field scopeField = AbstractVeniceStats.class.getDeclaredField("metricScope");
+    scopeField.setAccessible(true);
+    Field resourcesField = MetricScope.class.getDeclaredField("resources");
+    resourcesField.setAccessible(true);
+    return (List<?>) resourcesField.get(scopeField.get(stats));
   }
 
   @Test

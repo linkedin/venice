@@ -6769,6 +6769,10 @@ public abstract class StoreIngestionTaskTest {
       }
     });
     runTest(config);
+    verify(mockVersionedStorageIngestionStats, times(1)).removeIngestionTask(topic, storeIngestionTaskUnderTest);
+    String storeName = storeIngestionTaskUnderTest.getStoreName();
+    verify(mockVersionedDIVStats, times(1)).setIngestionTask(storeName, storeIngestionTaskUnderTest);
+    verify(mockVersionedDIVStats, times(1)).removeIngestionTask(storeName, storeIngestionTaskUnderTest);
     // The drop partition consumer action should still be handled as part of internalClose
     dropPartitionFuture.get().get();
   }

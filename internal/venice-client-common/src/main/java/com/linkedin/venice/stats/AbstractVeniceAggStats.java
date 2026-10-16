@@ -67,6 +67,14 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
     return storeStats.get(storeName);
   }
 
+  /** Closes and removes the store's stats; a later {@link #getStoreStats} creates fresh ones. */
+  public void removeStore(String storeName) {
+    storeStats.computeIfPresent(storeName, (ignored, stats) -> {
+      stats.close();
+      return null;
+    });
+  }
+
   public T getTotalStats() {
     return totalStats;
   }

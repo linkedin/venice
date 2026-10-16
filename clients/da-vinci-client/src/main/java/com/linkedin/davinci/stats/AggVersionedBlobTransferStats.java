@@ -6,9 +6,7 @@ import com.linkedin.venice.stats.dimensions.VeniceBlobTransferFallbackReason;
 import com.linkedin.venice.stats.dimensions.VeniceBlobTransferSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 
 
 /**
@@ -18,23 +16,12 @@ import java.util.Map;
  * It extends {@link AbstractVeniceAggVersionedStats} to provide automatic aggregation across
  * all versions of a store.
  *
- * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily by {@link #getBlobTransferOtelStats}
- * and updated by {@link #onVersionInfoUpdated} via {@code computeIfPresent}. This class uses
- * eager loading ({@code loadAllStats()} is NOT overridden), so {@code onVersionInfoUpdated}
- * needs a null guard because it is called during the super() constructor before subclass fields
- * ({@code otelStatsMap}) are initialized. {@code cleanupVersionResources} is not overridden
- * because {@link BlobTransferOtelStats} has no per-version state to clean up — version
- * classification is handled by volatile VersionInfo, which is updated separately.
+ * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily by {@link #getBlobTransferOtelStats};
+ * the shared per-store registry updates their version info and closes them on store deletion.
  */
 public class AggVersionedBlobTransferStats
     extends AbstractVeniceAggVersionedStats<BlobTransferStats, BlobTransferStatsReporter> {
-  /**
-   * Lazy per-store OTel stats. Bounded by the number of active stores on this server (typically
-   * tens, not hundreds). Entries are created on first recording via {@link #getBlobTransferOtelStats}
-   * and removed in {@link #handleStoreDeleted}. No periodic eviction — cleanup is tied to store
-   * lifecycle events.
-   */
-  private final Map<String, BlobTransferOtelStats> otelStatsMap = new VeniceConcurrentHashMap<>();
+  private final PerStoreVersionedOtelStats<BlobTransferOtelStats> otelStats;
   private final String clusterName;
 
   /**
@@ -55,6 +42,7 @@ public class AggVersionedBlobTransferStats
         BlobTransferStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     this.clusterName = serverConfig.getClusterName();
+    this.otelStats = createOtelStats();
   }
 
   /**
@@ -77,49 +65,16 @@ public class AggVersionedBlobTransferStats
         BlobTransferStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     this.clusterName = serverConfig.getClusterName();
+    this.otelStats = createOtelStats();
   }
 
-  /** Updates version info for existing OTel stats only. Null guard needed because eager loading
-   *  calls this from the super() constructor before {@code otelStatsMap} is initialized. */
-  @Override
-  protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
-    if (otelStatsMap == null) {
-      return; // Called during super() constructor before otelStatsMap is initialized
-    }
-    otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
-      stats.updateVersionInfo(currentVersion, futureVersion);
-      return stats;
-    });
+  private PerStoreVersionedOtelStats<BlobTransferOtelStats> createOtelStats() {
+    return createPerStoreOtelStats(
+        storeName -> new BlobTransferOtelStats(getMetricsRepository(), storeName, clusterName));
   }
 
-  @Override
-  public void handleStoreDeleted(String storeName) {
-    try {
-      super.handleStoreDeleted(storeName);
-    } finally {
-      otelStatsMap.remove(storeName);
-    }
-  }
-
-  /**
-   * Gets or creates OTel stats for a store. {@code getCurrentVersion}/{@code getFutureVersion}
-   * are called <b>before</b> {@code computeIfAbsent} because they can trigger
-   * {@code addStore} → {@code onVersionInfoUpdated} → {@code otelStatsMap.computeIfPresent},
-   * which would re-enter this same map from inside the lambda (violates ConcurrentHashMap contract).
-   * The {@code get()} fast-path skips these calls when stats already exist.
-   */
   private BlobTransferOtelStats getBlobTransferOtelStats(String storeName) {
-    BlobTransferOtelStats existing = otelStatsMap.get(storeName);
-    if (existing != null) {
-      return existing;
-    }
-    int currentVersion = getCurrentVersion(storeName);
-    int futureVersion = getFutureVersion(storeName);
-    return otelStatsMap.computeIfAbsent(storeName, k -> {
-      BlobTransferOtelStats stats = new BlobTransferOtelStats(getMetricsRepository(), k, clusterName);
-      stats.updateVersionInfo(currentVersion, futureVersion);
-      return stats;
-    });
+    return otelStats.getOrCreate(storeName);
   }
 
   /**

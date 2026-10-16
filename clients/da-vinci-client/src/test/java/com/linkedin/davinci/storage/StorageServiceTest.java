@@ -1,6 +1,7 @@
 package com.linkedin.davinci.storage;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -29,6 +30,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -136,6 +138,54 @@ public class StorageServiceTest {
     Map<String, Set<Integer>> expectedMapping = new HashMap<>();
     expectedMapping.put(resourceName, partitionSet);
     Assert.assertEquals(storageService.getStoreAndUserPartitionsMapping(), expectedMapping);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStorageEngineLeavingHostStopsItsOtelStats(boolean closeInsteadOfRemove) {
+    String storeName = "test_otel_store";
+    String topicName = Version.composeKafkaTopic(storeName, 1);
+    Store mockStore = mock(Store.class);
+    when(mockStore.getVersion(1)).thenReturn(mock(Version.class));
+    ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
+    when(mockStoreRepo.getStoreOrThrow(storeName)).thenReturn(mockStore);
+    VeniceStoreVersionConfig storeVersionConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeVersionConfig.getStoreVersionName()).thenReturn(topicName);
+    when(storeVersionConfig.isStorePersistenceTypeKnown()).thenReturn(true);
+    when(storeVersionConfig.getStorePersistenceType()).thenReturn(PersistenceType.ROCKS_DB);
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getDataBasePath()).thenReturn("/tmp");
+    when(configLoader.getVeniceServerConfig()).thenReturn(serverConfig);
+    when(configLoader.getStoreConfig(topicName)).thenReturn(storeVersionConfig);
+    StorageEngine storageEngine = mock(StorageEngine.class);
+    when(storageEngine.getStoreVersionName()).thenReturn(topicName);
+    StorageEngineFactory factory = mock(StorageEngineFactory.class);
+    when(factory.getPersistenceType()).thenReturn(PersistenceType.ROCKS_DB);
+    when(factory.getPersistedStoreNames()).thenReturn(new HashSet<>());
+    when(factory.getStorageEngine(eq(storeVersionConfig), anyBoolean())).thenReturn(storageEngine);
+    Map<PersistenceType, StorageEngineFactory> factoryMap = new HashMap<>();
+    factoryMap.put(PersistenceType.ROCKS_DB, factory);
+    AggVersionedStorageEngineStats storageEngineStats = mock(AggVersionedStorageEngineStats.class);
+    StorageService storageService = new StorageService(
+        configLoader,
+        storageEngineStats,
+        mock(RocksDBMemoryStats.class),
+        mock(InternalAvroSpecificSerializer.class),
+        mock(InternalAvroSpecificSerializer.class),
+        mockStoreRepo,
+        false,
+        false,
+        (s) -> true,
+        Optional.of(factoryMap));
+    storageService.openStore(storeVersionConfig, () -> null);
+
+    if (closeInsteadOfRemove) {
+      storageService.closeStorageEngine(topicName);
+    } else {
+      storageService.removeStorageEngine(topicName);
+    }
+
+    verify(storageEngineStats).removeStorageEngine(topicName);
   }
 
   @Test

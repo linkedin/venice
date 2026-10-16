@@ -11,9 +11,14 @@ import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.createStore;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX;
 import static java.lang.Double.NaN;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -33,6 +38,7 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -319,5 +325,66 @@ public class AggVersionedBlobTransferStatsTest {
       MetricData data = metricsData.stream().filter(md -> md.getName().equals(fullName)).findFirst().orElse(null);
       Assert.assertNotNull(data, "OTel RESPONSE_COUNT should be present after dual-recording method call");
     }
+  }
+
+  @Test
+  public void testOtelStatsRoleFollowsVersionSwap() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX)
+            .setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
+            .build())) {
+      String storeName = Utils.getUniqueString("store_foo");
+      Store initialStore = createVersionedStore(storeName, 1, 2, VersionStatus.STARTED);
+      ReadOnlyStoreRepository mockMetaRepo = mock(ReadOnlyStoreRepository.class);
+      doReturn(initialStore).when(mockMetaRepo).getStoreOrThrow(storeName);
+      doReturn(Arrays.asList(initialStore)).when(mockMetaRepo).getAllStores();
+
+      AggVersionedBlobTransferStats stats =
+          new AggVersionedBlobTransferStats(otelRepo, mockMetaRepo, createMockServerConfig());
+      stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 2, true);
+
+      String responseCountMetric = BlobTransferOtelMetricEntity.RESPONSE_COUNT.getMetricEntity().getMetricName();
+      Attributes futureAttrs = buildResponseCountAttributes(
+          storeName,
+          CLUSTER_NAME,
+          VersionRole.FUTURE,
+          VeniceResponseStatusCategory.SUCCESS);
+      OpenTelemetryDataTestUtils
+          .validateLongPointDataFromCounter(inMemoryMetricReader, 1, futureAttrs, responseCountMetric, METRIC_PREFIX);
+
+      Store swappedStore = createVersionedStore(storeName, 2, 3, VersionStatus.STARTED);
+      doReturn(swappedStore).when(mockMetaRepo).getStoreOrThrow(storeName);
+      stats.handleStoreChanged(swappedStore);
+      stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 2, true);
+
+      Attributes currentAttrs = buildResponseCountAttributes(
+          storeName,
+          CLUSTER_NAME,
+          VersionRole.CURRENT,
+          VeniceResponseStatusCategory.SUCCESS);
+      OpenTelemetryDataTestUtils
+          .validateLongPointDataFromCounter(inMemoryMetricReader, 1, currentAttrs, responseCountMetric, METRIC_PREFIX);
+    }
+  }
+
+  private static Store createVersionedStore(
+      String storeName,
+      int currentVersionNumber,
+      int futureVersionNumber,
+      VersionStatus futureStatus) {
+    Store store = mock(Store.class);
+    doReturn(storeName).when(store).getName();
+    doReturn(currentVersionNumber).when(store).getCurrentVersion();
+
+    Version currentVersion = new VersionImpl(storeName, currentVersionNumber, "push-current");
+    currentVersion.setStatus(VersionStatus.ONLINE);
+    Version futureVersion = new VersionImpl(storeName, futureVersionNumber, "push-future");
+    futureVersion.setStatus(futureStatus);
+    doReturn(Arrays.asList(currentVersion, futureVersion)).when(store).getVersions();
+    return store;
   }
 }

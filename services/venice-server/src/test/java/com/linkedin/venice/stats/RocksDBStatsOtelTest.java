@@ -19,6 +19,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROCKSDB_LEVEL;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -221,15 +222,24 @@ public class RocksDBStatsOtelTest {
                 .build())) {
       new RocksDBStats(uninitRepo, "rocksdb_uninit", TEST_CLUSTER_NAME);
 
-      // Joint metrics (AsyncMetricEntityStateBase) emit the -1 sentinel pre-init — the base
-      // wrapper has no liveness contract, so the LongSupplier callback fires every cycle and
-      // returns -1 when rocksDBStat is null.
-      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-          uninitReader,
-          -1,
-          buildClusterAttributes(),
-          BLOOM_FILTER_USEFUL_COUNT.getMetricEntity().getMetricName(),
-          TEST_METRIC_PREFIX);
+      assertEquals(
+          uninitRepo
+              .getMetric(
+                  AbstractVeniceStats.getSensorFullName("rocksdb_uninit", "rocksdb_bloom_filter_useful") + ".Gauge")
+              .value(),
+          -1.0);
+      assertEquals(
+          uninitRepo.getMetric(
+              AbstractVeniceStats.getSensorFullName("rocksdb_uninit", "rocksdb_read_amplification_factor") + ".Gauge")
+              .value(),
+          -1.0);
+
+      assertNull(
+          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+              uninitReader.collectAllMetrics(),
+              BLOOM_FILTER_USEFUL_COUNT.getMetricEntity().getMetricName(),
+              TEST_METRIC_PREFIX,
+              buildClusterAttributes()));
 
       // Per-component and SST-level metrics (AsyncMetricEntityStateOneEnum) honor the dormant
       // contract — the liveStateResolver returns null pre-init, so no data point is emitted.
