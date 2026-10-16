@@ -5,6 +5,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
@@ -12,7 +14,10 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.controller.StoreBackupVersionCleanupService;
@@ -21,6 +26,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -29,6 +35,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -42,7 +50,7 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
 
   @Override
   protected int getNumberOfRegions() {
-    return 1;
+    return 2;
   }
 
   @Override
@@ -67,6 +75,9 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
     controllerProps.put(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, "true");
     controllerProps.put(CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED, "false");
     controllerProps.put(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, "true");
+    // Required for the prior-current preservation test which uses a target-region push w/ deferred swap.
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
     return controllerProps;
   }
 
@@ -138,6 +149,155 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
   private static String describeStore(Store store) {
     return "currentVersion=" + store.getCurrentVersion() + ", versions="
         + store.getVersions().stream().map(v -> "v" + v.getNumber()).collect(java.util.stream.Collectors.joining(","));
+  }
+
+  /**
+   * Reproduces VENG-12676 end-to-end: push v1, push v2 with target-region={@code dc-0} and deferred
+   * swap, kill v2 before dc-1 swaps, push v3, verify dc-1 cleanup preserves v1 (prior current) and
+   * reaps the lingering v2. dc-1's child kill handler hits the bootstrap-completed early-return at
+   * VeniceHelixAdmin.killOfflinePush:8649 and leaves v2 at PUSHED — the upstream bug that produces
+   * the broken state. If that bug is fixed in a separate change, the v2-still-PUSHED-after-kill
+   * assertion below will fail and this test will need to inject the lingering state differently.
+   */
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testCleanupPreservesPriorCurrentVersionAcrossDeferredSwapKill() throws IOException {
+    final String targetRegion = "dc-0";
+    final String testRegion = "dc-1";
+    int targetIdx = -1;
+    int testIdx = -1;
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      if (targetRegion.equals(childDatacenters.get(i).getRegionName())) {
+        targetIdx = i;
+      } else if (testRegion.equals(childDatacenters.get(i).getRegionName())) {
+        testIdx = i;
+      }
+    }
+    Assert.assertTrue(targetIdx >= 0 && testIdx >= 0, "Expected dc-0 and dc-1 in childDatacenters");
+    VeniceHelixAdmin testRegionAdmin =
+        (VeniceHelixAdmin) childDatacenters.get(testIdx).getControllers().values().iterator().next().getVeniceAdmin();
+
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms =
+        new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true).setTargetRegionSwapWaitTime(60);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Store store = testRegionAdmin.getStore(CLUSTER_NAME, storeName);
+        assertEquals(store.getCurrentVersion(), 1, "v1 should be current in " + testRegion);
+      });
+
+      Properties v2Props = (Properties) props.clone();
+      v2Props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+      v2Props.put(TARGETED_REGION_PUSH_LIST, targetRegion);
+      AtomicReference<Throwable> v2VpjError = new AtomicReference<>();
+      Thread v2Thread = new Thread(() -> {
+        try {
+          IntegrationTestPushUtils.runVPJ(v2Props);
+        } catch (Throwable t) {
+          v2VpjError.set(t);
+        }
+      });
+      v2Thread.setDaemon(true);
+      v2Thread.start();
+
+      try {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          Store store = testRegionAdmin.getStore(CLUSTER_NAME, storeName);
+          Version v2 = store.getVersion(2);
+          assertNotNull(v2, "v2 should exist in " + testRegion + ". " + describeStore(store));
+          Assert.assertEquals(
+              v2.getStatus(),
+              VersionStatus.PUSHED,
+              "v2 should be PUSHED (deferred swap) in " + testRegion + ". " + describeStore(store));
+          assertEquals(
+              store.getCurrentVersion(),
+              1,
+              "current should still be v1 in " + testRegion + " (deferred). " + describeStore(store));
+        });
+
+        parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
+
+        // Wait for the parent to record KILLED so its version-status-based push admission allows v3.
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          com.linkedin.venice.meta.StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+          java.util.Optional<Version> parentV2 = parentStore.getVersion(2);
+          Assert.assertTrue(parentV2.isPresent(), "v2 should exist in parent before checking KILLED status");
+          Assert.assertEquals(parentV2.get().getStatus(), VersionStatus.KILLED);
+        });
+
+        // Child kill no-op (the upstream bug): v2 stays PUSHED in dc-1 because the resource
+        // already finished bootstrapping. If this fails, the kill handler has been fixed and the
+        // test needs to inject the lingering state differently.
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          Store store = testRegionAdmin.getStore(CLUSTER_NAME, storeName);
+          Version v2 = store.getVersion(2);
+          assertNotNull(v2, "v2 should still exist in " + testRegion + " after kill. " + describeStore(store));
+          Assert.assertEquals(
+              v2.getStatus(),
+              VersionStatus.PUSHED,
+              "v2 should remain PUSHED in " + testRegion + " after kill. " + describeStore(store));
+        });
+      } finally {
+        v2Thread.join(5_000);
+        if (v2Thread.isAlive()) {
+          v2Thread.interrupt();
+          v2Thread.join(5_000);
+        }
+        // Fail loudly if the VPJ thread refuses to die — letting it keep running concurrently
+        // with the v3 push below would mutate shared test state and produce flaky failures.
+        Assert.assertFalse(
+            v2Thread.isAlive(),
+            "v2 VPJ thread is still alive after interrupt; would race with subsequent v3 push");
+        // v2 push was killed mid-flight, so the VPJ thread is expected to surface an error.
+        // Asserting non-null guards against a silent success that would mask kill regressions.
+        Assert.assertNotNull(
+            v2VpjError.get(),
+            "v2 VPJ should have failed due to the parent kill, but completed without error");
+      }
+
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        Store store = testRegionAdmin.getStore(CLUSTER_NAME, storeName);
+        Version v3 = store.getVersion(3);
+        assertNotNull(v3, "v3 should exist in " + testRegion + ". " + describeStore(store));
+        assertEquals(
+            store.getCurrentVersion(),
+            3,
+            "v3 should be current in " + testRegion + ". " + describeStore(store));
+        // v2 never became current in dc-1, so v3.previousCurrentVersion auto-stamps to 1.
+        assertEquals(
+            v3.getPreviousCurrentVersion(),
+            1,
+            "v3.previousCurrentVersion should be 1 in " + testRegion + ". " + describeStore(store));
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        Store store = testRegionAdmin.getStore(CLUSTER_NAME, storeName);
+        assertNotNull(
+            store.getVersion(1),
+            "v1 (prior current) must be preserved in " + testRegion + ". " + describeStore(store));
+        assertNull(
+            store.getVersion(2),
+            "v2 (stale PUSHED lingering) should be cleaned up in " + testRegion + ". " + describeStore(store));
+        assertNotNull(
+            store.getVersion(3),
+            "v3 (current) must be preserved in " + testRegion + ". " + describeStore(store));
+        assertEquals(store.getCurrentVersion(), 3, "current should still be v3. " + describeStore(store));
+      });
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException(e);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
