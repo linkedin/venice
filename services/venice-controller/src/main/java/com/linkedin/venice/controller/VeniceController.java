@@ -258,11 +258,7 @@ public class VeniceController {
     this.storeUpdateHandler = ctx.getStoreUpdateHandler();
     this.controllerService = createControllerService();
     if (ctx.getTopicPlacement() != null) {
-      Admin placementAdmin = controllerService.getVeniceHelixAdmin();
-      VeniceHelixAdmin internalPlacementAdmin = placementAdmin instanceof VeniceParentHelixAdmin
-          ? ((VeniceParentHelixAdmin) placementAdmin).getVeniceHelixAdmin()
-          : (VeniceHelixAdmin) placementAdmin;
-      internalPlacementAdmin.setTopicPlacement(ctx.getTopicPlacement());
+      getVeniceHelixAdmin().setTopicPlacement(ctx.getTopicPlacement());
     }
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
@@ -279,6 +275,13 @@ public class VeniceController {
 
     // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
     initializeSystemSchema(controllerService.getVeniceHelixAdmin());
+  }
+
+  private VeniceHelixAdmin getVeniceHelixAdmin() {
+    Admin admin = controllerService.getVeniceHelixAdmin();
+    return admin instanceof VeniceParentHelixAdmin
+        ? ((VeniceParentHelixAdmin) admin).getVeniceHelixAdmin()
+        : (VeniceHelixAdmin) admin;
   }
 
   private VeniceControllerService createControllerService() {

@@ -3054,67 +3054,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int partitionCount,
       VeniceControllerClusterConfig clusterConfig,
       boolean useFastKafkaOperationTimeout) {
+    PubSubTopic versionTopic = getPubSubTopicRepository().getTopic(version.kafkaTopicName());
     List<PubSubTopic> topicNamesToCreate = new ArrayList<>(2);
-    topicNamesToCreate.add(getPubSubTopicRepository().getTopic(version.kafkaTopicName()));
+    topicNamesToCreate.add(versionTopic);
     if (pushType.isStreamReprocessing()) {
       PubSubTopic streamReprocessingTopic = getPubSubTopicRepository()
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
-    /**
-     * Resolve the alternative-backend decision from the authoritative store hybrid status rather than
-     * {@code version.isHybrid()}: a freshly constructed {@link Version} may not have its hybrid config populated yet
-     * when this runs (see the version-supplied addVersion path), which would misroute a hybrid store's VT to the
-     * batch backend.
-     */
-    Store store = getStore(clusterConfig.getClusterName(), version.getStoreName());
-    if (store == null) {
-      throw new VeniceNoStoreException(version.getStoreName(), clusterConfig.getClusterName());
-    }
-    boolean useAltBackend =
-        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, store.isHybrid());
-    boolean isPushStatusStore = VeniceSystemStoreType
-        .getSystemStoreType(version.getStoreName()) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
-    boolean placementEnabled = topicPlacement != null && pushType == PushType.BATCH
-        && (isPushStatusStore || !VeniceSystemStoreUtils.isSystemStore(version.getStoreName()))
-        && topicPlacement.isEnabled(clusterConfig.getClusterName());
-    Store owningUserStore = store;
-    String owningUserStoreName = version.getStoreName();
-    if (placementEnabled && isPushStatusStore) {
-      // Push-status VTs share their user store's cohort, even though the system store itself is hybrid.
-      owningUserStoreName =
-          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(version.getStoreName());
-      owningUserStore = getStore(clusterConfig.getClusterName(), owningUserStoreName);
-      if (owningUserStore == null) {
-        throw new VeniceNoStoreException(owningUserStoreName, clusterConfig.getClusterName());
-      }
-    }
-    if (placementEnabled && !owningUserStore.isHybrid() && !VeniceSystemStoreUtils.isSystemStore(owningUserStoreName)) {
-      PubSubTopic topic = topicNamesToCreate.get(0);
-      boolean shadow = topicPlacement.isShadowMode(clusterConfig.getClusterName());
-      TopicPlacementContext context = new TopicPlacementContext(
-          clusterConfig.getClusterName(),
-          owningUserStoreName,
-          topic.getName(),
-          topicManager.getPubSubClusterAddress(),
-          useAltBackend);
-      TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
-      if (!shadow) {
-        useAltBackend = selection == TopicPlacement.Selection.TREATMENT;
-      } else {
-        LOGGER.info(
-            "Topic placement shadow: cluster={} store={} topic={} destination={} staticAlternative={} proposed={} appliedAlternative={} differsFromStatic={}",
-            context.getClusterName(),
-            context.getStoreName(),
-            context.getTopicName(),
-            context.getDestinationAddress(),
-            context.isLegacyAlternative(),
-            selection,
-            useAltBackend,
-            context.isLegacyAlternative() != (selection == TopicPlacement.Selection.TREATMENT));
-      }
-    }
-    final boolean selectedAlternativeBackend = useAltBackend;
+    boolean useAltBackend = shouldUseAlternativeBackendForBatchTopics(
+        version.getStoreName(),
+        pushType,
+        versionTopic,
+        topicManager,
+        clusterConfig);
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
@@ -3124,7 +3077,71 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             false,
             clusterConfig.getMinInSyncReplicas(),
             useFastKafkaOperationTimeout,
-            selectedAlternativeBackend));
+            useAltBackend));
+  }
+
+  private boolean shouldUseAlternativeBackendForBatchTopics(
+      String storeName,
+      PushType pushType,
+      PubSubTopic versionTopic,
+      TopicManager topicManager,
+      VeniceControllerClusterConfig clusterConfig) {
+    String clusterName = clusterConfig.getClusterName();
+    /**
+     * Resolve the alternative-backend decision from the authoritative store hybrid status rather than
+     * {@code version.isHybrid()}: a freshly constructed {@link Version} may not have its hybrid config populated yet
+     * when this runs (see the version-supplied addVersion path), which would misroute a hybrid store's VT to the
+     * batch backend.
+     */
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    boolean staticAlternative = clusterConfig.shouldUseAlternativePubSubBackend(storeName, false, store.isHybrid());
+    if (topicPlacement == null || pushType != PushType.BATCH) {
+      return staticAlternative;
+    }
+    boolean isPushStatusStore =
+        VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
+    if ((!isPushStatusStore && VeniceSystemStoreUtils.isSystemStore(storeName))
+        || !topicPlacement.isEnabled(clusterName)) {
+      return staticAlternative;
+    }
+    if (isPushStatusStore) {
+      // Push-status VTs share their user store's cohort, even though the system store itself is hybrid.
+      storeName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(storeName);
+      store = getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName, clusterName);
+      }
+    }
+    if (store.isHybrid() || VeniceSystemStoreUtils.isSystemStore(storeName)) {
+      return staticAlternative;
+    }
+
+    boolean shadowMode = topicPlacement.isShadowMode(clusterName);
+    TopicPlacementContext context = new TopicPlacementContext(
+        clusterName,
+        storeName,
+        versionTopic.getName(),
+        topicManager.getPubSubClusterAddress(),
+        staticAlternative);
+    TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
+    boolean proposedAlternative = selection == TopicPlacement.Selection.TREATMENT;
+    if (!shadowMode) {
+      return proposedAlternative;
+    }
+    LOGGER.info(
+        "Topic placement shadow: cluster={} store={} topic={} destination={} staticAlternative={} proposed={} appliedAlternative={} differsFromStatic={}",
+        context.getClusterName(),
+        context.getStoreName(),
+        context.getTopicName(),
+        context.getDestinationAddress(),
+        context.isLegacyAlternative(),
+        selection,
+        staticAlternative,
+        context.isLegacyAlternative() != proposedAlternative);
+    return staticAlternative;
   }
 
   private Pair<Boolean, Version> addVersion(
