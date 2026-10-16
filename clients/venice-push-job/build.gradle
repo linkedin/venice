@@ -94,7 +94,7 @@ dependencies {
   implementation libraries.antlr4
   implementation libraries.antlr4Runtime
 
-  // Spark needs log4j-slf4j-impl that got excluded via exclude group: 'org.apache.logging.log4j'
+  // Spark needs log4j-slf4j2-impl that got excluded via exclude group: 'org.apache.logging.log4j'
   implementation libraries.log4j2Slf4j
 
   implementation project(':clients:venice-thin-client') // Needed by the KME SchemaReader
