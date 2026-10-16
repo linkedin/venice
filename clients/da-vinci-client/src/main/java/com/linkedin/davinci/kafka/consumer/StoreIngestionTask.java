@@ -3370,8 +3370,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
       KafkaKey key = record.getKey();
       KafkaMessageEnvelope value = record.getValue();
-      if (serverConfig.isStalledDrainerQueueFailureEnabled() && key.isControlMessage() && shouldUseDolMechanism()
-          && Arrays.equals(key.getKey(), KafkaKey.DOL_STAMP.getKey())
+      if (key.isControlMessage() && shouldUseDolMechanism() && Arrays.equals(key.getKey(), KafkaKey.DOL_STAMP.getKey())
           && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.START_OF_SEGMENT) {
         // A completed batch replica still needs its leadership loopback when resubscribing after a reset.
         return true;

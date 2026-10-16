@@ -8298,7 +8298,7 @@ public abstract class StoreIngestionTaskTest {
     control.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     envelope.payloadUnion = control;
     doReturn(envelope).when(record).getValue();
-    assertEquals(storeIngestionTaskUnderTest.shouldProcessRecord(record), featureEnabled);
+    assertTrue(storeIngestionTaskUnderTest.shouldProcessRecord(record));
     doReturn(false).when(storeIngestionTaskUnderTest).shouldUseDolMechanism();
     assertFalse(storeIngestionTaskUnderTest.shouldProcessRecord(record));
     control.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();

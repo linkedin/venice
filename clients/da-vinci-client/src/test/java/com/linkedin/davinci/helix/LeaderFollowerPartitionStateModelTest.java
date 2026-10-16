@@ -45,6 +45,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -127,9 +128,9 @@ public class LeaderFollowerPartitionStateModelTest {
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
   }
 
-  @Test
-  public void testConfiguredCurrentVersionErrorResetStopsConsumption() {
-    when(storeAndServerConfigs.isStalledDrainerQueueFailureEnabled()).thenReturn(true);
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testConfiguredCurrentVersionErrorResetStopsConsumption(boolean drainerFeatureEnabled) {
+    when(storeAndServerConfigs.isStalledDrainerQueueFailureEnabled()).thenReturn(drainerFeatureEnabled);
     when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(true);
     when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(storeVersion);
     Message message = mock(Message.class);
@@ -141,8 +142,8 @@ public class LeaderFollowerPartitionStateModelTest {
 
   @DataProvider
   public Object[][] disabledErrorReset() {
-    return new Object[][] { { false, true, storeVersion }, { true, false, storeVersion },
-        { true, true, storeVersion - 1 } };
+    return new Object[][] { { false, false, storeVersion }, { true, false, storeVersion },
+        { false, true, storeVersion - 1 }, { true, true, storeVersion - 1 } };
   }
 
   @Test(dataProvider = "disabledErrorReset")
