@@ -33,11 +33,14 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -58,7 +61,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -109,6 +116,8 @@ public abstract class AbstractPushMonitor
   private String sequentialRollForwardFirstRegion = null;
   private final CurrentVersionChangeNotifier currentVersionChangeNotifier;
   private final StoreLifecycleHooksCache storeLifecycleHooksCache;
+  private final int pushStatusLoadThreadCount;
+  private final LogContext logContext;
 
   public interface CurrentVersionChangeNotifier {
     void onCurrentVersionChange(Store store, String clusterName, int currentVersion, int previousVersion);
@@ -149,6 +158,8 @@ public abstract class AbstractPushMonitor
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
     this.offlineJobResourceAssignmentWaitTimeInMilliseconds = controllerConfig.getOffLineJobWaitTimeInMilliseconds();
+    this.pushStatusLoadThreadCount = controllerConfig.getPushStatusLoadThreadCount();
+    this.logContext = controllerConfig.getLogContext();
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
         pushStatusStoreReader,
@@ -185,23 +196,31 @@ public abstract class AbstractPushMonitor
 
   private void loadAllPushes(List<OfflinePushStatus> offlinePushStatusList) {
     pushStatusCollector.start();
-    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock();
+        ParallelPushStatusLoader parallelLoader = new ParallelPushStatusLoader(offlinePushStatusList)) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
 
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
           routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-          getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
-          /**
-           * This update call is necessary so we won't miss updates between the initial offline push retrieval and
-           * the watcher subscription above. It uses the same store-level lock as the partition status update listener
-           * callback. The returned value is the refreshed push status from ZK; we reassign {@code offlinePushStatus}
-           * so the subsequent {@link #checkPushStatus} evaluates the latest partition statuses rather than the stale
-           * loop variable — otherwise replicas that completed between the bulk load and watcher subscription could be
-           * missed and leave the push stuck at {@code END_OF_PUSH_RECEIVED} permanently.
-           */
-          offlinePushStatus = updateOfflinePush(offlinePushStatus.getKafkaTopic());
+          if (!parallelLoader.isLoadedInParallel(offlinePushStatus.getKafkaTopic())) {
+            getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
+            /**
+             * This update call is necessary so we won't miss updates between the initial offline push retrieval and
+             * the watcher subscription above. It uses the same store-level lock as the partition status update
+             * listener callback. The returned value is the refreshed push status from ZK; we reassign
+             * {@code offlinePushStatus} so the subsequent {@link #checkPushStatus} evaluates the latest partition
+             * statuses rather than the stale loop variable — otherwise replicas that completed between the bulk load
+             * and watcher subscription could be missed and leave the push stuck at {@code END_OF_PUSH_RECEIVED}
+             * permanently.
+             */
+            offlinePushStatus = updateOfflinePush(offlinePushStatus.getKafkaTopic());
+          } else {
+            // The subscription and the read in the branch above run in that order on the load threads; wait for them.
+            String kafkaTopic = offlinePushStatus.getKafkaTopic();
+            offlinePushStatus = updateOfflinePush(kafkaTopic, () -> parallelLoader.getLoadedPushStatus(kafkaTopic));
+          }
 
           // Check the status for running pushes. In case controller missed some notification during the failover, we
           // need to update it based on current routing data.
@@ -350,11 +369,76 @@ public abstract class AbstractPushMonitor
     return topicToPushMap.get(topic);
   }
 
+  /**
+   * With more than one push status load thread, subscribes to the partition status changes of each push and then reads
+   * the push from ZK on a thread pool, for all pushes at once. These are the two ZK calls that {@link #loadAllPushes}
+   * makes for each push otherwise, in the same order, so no partition status update in between is missed. They take no
+   * Venice lock, so they run while {@link #loadAllPushes} holds the cluster write lock and handles the pushes one at a
+   * time. {@link #close()} interrupts the loads that are still running and drops the ones not started, e.g. when an
+   * error or an interrupt ends the load early.
+   */
+  private class ParallelPushStatusLoader implements AutoCloseable {
+    private final ExecutorService executor;
+    /**
+     * Only the thread that runs {@link #loadAllPushes} reads and writes this map. The load threads only run the tasks
+     * whose futures it holds.
+     */
+    private final Map<String, Future<OfflinePushStatus>> loadedPushStatuses;
+
+    ParallelPushStatusLoader(List<OfflinePushStatus> offlinePushStatusList) {
+      if (pushStatusLoadThreadCount <= 1 || offlinePushStatusList.size() <= 1) {
+        this.executor = null;
+        this.loadedPushStatuses = Collections.emptyMap();
+        return;
+      }
+      this.executor = Executors.newFixedThreadPool(
+          pushStatusLoadThreadCount,
+          new DaemonThreadFactory("PushStatusLoader-" + clusterName, logContext));
+      this.loadedPushStatuses = new HashMap<>(offlinePushStatusList.size());
+      for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
+        loadedPushStatuses.put(offlinePushStatus.getKafkaTopic(), executor.submit(() -> {
+          getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, AbstractPushMonitor.this);
+          return getOfflinePushAccessor()
+              .getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic());
+        }));
+      }
+    }
+
+    /**
+     * Whether the push was handed to the load threads, whether or not its load has finished.
+     */
+    boolean isLoadedInParallel(String kafkaTopic) {
+      return loadedPushStatuses.containsKey(kafkaTopic);
+    }
+
+    /**
+     * Waits for the push and rethrows its failure as is, as if it had been read on this thread. If this thread is
+     * interrupted, e.g. when the leader transition times out, the push fails as it does when the ZK calls are
+     * interrupted on this thread, and the interrupt status is kept, so the pushes that are not loaded yet fail too.
+     */
+    OfflinePushStatus getLoadedPushStatus(String kafkaTopic) {
+      return ConcurrencyUtils.getOrRethrowCause(
+          loadedPushStatuses.get(kafkaTopic),
+          "Interrupted while loading push statuses in cluster: " + clusterName);
+    }
+
+    @Override
+    public void close() {
+      if (executor != null) {
+        executor.shutdownNow();
+      }
+    }
+  }
+
   protected OfflinePushStatus updateOfflinePush(String topic) {
+    return updateOfflinePush(topic, () -> getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic));
+  }
+
+  private OfflinePushStatus updateOfflinePush(String topic, Supplier<OfflinePushStatus> pushStatusReader) {
     String store = Version.parseStoreFromKafkaTopicName(topic);
     OfflinePushStatus offlinePushStatus;
     try (AutoCloseableLock ignored = clusterLockManager.createStoreWriteLock(store)) {
-      offlinePushStatus = getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic);
+      offlinePushStatus = pushStatusReader.get();
       topicToPushMap.put(topic, offlinePushStatus);
     }
     if (offlinePushStatus != null) {

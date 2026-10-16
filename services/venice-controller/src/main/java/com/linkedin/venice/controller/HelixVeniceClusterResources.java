@@ -183,7 +183,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         zkClient,
         adapterSerializer,
         config.getLogContext(),
-        config.getRefreshAttemptsForZkReconnect());
+        config.getRefreshAttemptsForZkReconnect(),
+        config.getPushStatusLoadThreadCount());
     String aggregateRealTimeSourceKafkaUrl =
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
