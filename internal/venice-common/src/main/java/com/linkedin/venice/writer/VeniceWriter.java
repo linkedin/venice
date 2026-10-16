@@ -1524,12 +1524,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       CompressionStrategy compressionStrategy,
       Optional<ByteBuffer> optionalCompressionDictionary,
       Map<String, String> debugInfo) {
-    List<Future<CompletableFuture<PubSubProduceResult>>> partitionTasks = new ArrayList<>(numberOfPartitions);
-    Throwable failure = null;
+    List<Future<CompletableFuture<PubSubProduceResult>>> partitionSendTasks = new ArrayList<>(numberOfPartitions);
+    // Only the first failure is reported; later ones are usually side effects of the same root cause.
+    Throwable firstFailure = null;
+
+    // Step 1: submit one task per partition. Each task sends SOP (plus SOS if the segment is new) and returns the
+    // future for the SOP ack.
     try {
       for (int partition = 0; partition < numberOfPartitions; partition++) {
         int destinationPartition = partition;
-        partitionTasks.add(threadPoolExecutor.submit(() -> {
+        partitionSendTasks.add(threadPoolExecutor.submit(() -> {
           ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
           StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
           startOfPush.sorted = sorted;
@@ -1545,35 +1549,46 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }));
       }
     } catch (RejectedExecutionException e) {
-      failure = e;
+      // The executor is shut down (writer closed). Stop submitting, but still wait for the partitions already
+      // submitted.
+      firstFailure = e;
     }
+
+    // Step 2: wait for every submitted partition to finish or fail before callers release their locks or send later
+    // control messages. A failed partition does not stop the wait for the others.
     try {
-      // All submitted partitions must finish, including after a failure, before callers release their locks or send
-      // later controls.
-      for (Future<CompletableFuture<PubSubProduceResult>> partitionTask: partitionTasks) {
+      for (Future<CompletableFuture<PubSubProduceResult>> partitionSendTask: partitionSendTasks) {
         try {
-          partitionTask.get().get();
+          // Throws if the send itself failed in the worker (e.g. SOS failure or producer rejection).
+          CompletableFuture<PubSubProduceResult> sopAck = partitionSendTask.get();
+          // Throws if the broker failed to acknowledge the SOP.
+          sopAck.get();
         } catch (ExecutionException e) {
-          if (failure == null) {
-            failure = e.getCause();
+          if (firstFailure == null) {
+            firstFailure = e.getCause();
           }
         }
       }
     } catch (InterruptedException e) {
-      // Cancel queued partitions before interrupting active ones, so freed workers cannot start them.
-      for (int i = partitionTasks.size() - 1; i >= 0; i--) {
-        partitionTasks.get(i).cancel(true);
+      // Step 2a (caller interrupted): stop waiting and cancel on a best-effort basis. Cancel newest first so queued
+      // tasks are cancelled before running ones are interrupted; otherwise a freed worker could start a queued task.
+      for (int i = partitionSendTasks.size() - 1; i >= 0; i--) {
+        partitionSendTasks.get(i).cancel(true);
       }
       Thread.currentThread().interrupt();
       throw new VeniceException(
           "Interrupted while broadcasting START_OF_PUSH Control Message for topic: " + topicName,
           e);
     }
-    if (failure instanceof RuntimeException) {
-      throw (RuntimeException) failure;
+
+    // Step 3: report the first failure. Runtime exceptions are rethrown as-is so callers see the original type.
+    if (firstFailure instanceof RuntimeException) {
+      throw (RuntimeException) firstFailure;
     }
-    if (failure != null) {
-      throw new VeniceException("Failed to broadcast START_OF_PUSH Control Message for topic: " + topicName, failure);
+    if (firstFailure != null) {
+      throw new VeniceException(
+          "Failed to broadcast START_OF_PUSH Control Message for topic: " + topicName,
+          firstFailure);
     }
     logger.info("Successfully broadcast {} Control Message for topic: {}", ControlMessageType.START_OF_PUSH, topicName);
     // Flush start of push message to avoid data message arrives before it.
