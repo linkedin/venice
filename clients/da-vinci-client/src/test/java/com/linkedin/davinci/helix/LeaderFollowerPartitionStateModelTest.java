@@ -45,6 +45,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -58,6 +59,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -124,6 +126,36 @@ public class LeaderFollowerPartitionStateModelTest {
     when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED);
     when(store.getVersion(storeVersion)).thenReturn(mockVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testConfiguredCurrentVersionErrorResetStopsConsumption(boolean drainerFeatureEnabled) {
+    when(storeAndServerConfigs.isStalledDrainerQueueFailureEnabled()).thenReturn(drainerFeatureEnabled);
+    when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(true);
+    when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(storeVersion);
+    Message message = mock(Message.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    leaderFollowerPartitionStateModel.onBecomeOfflineFromError(message, mock(NotificationContext.class));
+    verify(ingestionBackend).stopConsumption(eq(storeAndServerConfigs), eq(partition), anyString());
+    verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+  }
+
+  @DataProvider
+  public Object[][] disabledErrorReset() {
+    return new Object[][] { { false, false, storeVersion }, { true, false, storeVersion },
+        { false, true, storeVersion - 1 }, { true, true, storeVersion - 1 } };
+  }
+
+  @Test(dataProvider = "disabledErrorReset")
+  public void testErrorResetPreservesUnconfiguredAndFutureVersionBehavior(
+      boolean featureEnabled,
+      boolean resetEnabled,
+      int currentVersion) {
+    when(storeAndServerConfigs.isStalledDrainerQueueFailureEnabled()).thenReturn(featureEnabled);
+    when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(resetEnabled);
+    when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(currentVersion);
+    leaderFollowerPartitionStateModel.onBecomeOfflineFromError(mock(Message.class), mock(NotificationContext.class));
+    verify(ingestionBackend, never()).stopConsumption(any(), anyInt(), anyString());
   }
 
   @Test

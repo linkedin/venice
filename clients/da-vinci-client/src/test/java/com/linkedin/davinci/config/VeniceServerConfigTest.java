@@ -25,6 +25,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
@@ -94,12 +95,17 @@ public class VeniceServerConfigTest {
     Properties props = populatedBasicProperties();
     VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
     assertEquals(defaultConfig.getBlockedDrainerThresholdMs(), 300000L);
+    assertFalse(defaultConfig.isStalledDrainerQueueFailureEnabled());
 
     for (long thresholdMs: new long[] { 50L, 0L, -1L }) {
       props.setProperty(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, Long.toString(thresholdMs));
+      props.setProperty(SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED, "true");
       VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
       assertEquals(config.getBlockedDrainerThresholdMs(), thresholdMs);
+      assertTrue(config.isStalledDrainerQueueFailureEnabled());
     }
+    props.setProperty(SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED, "false");
+    assertFalse(new VeniceServerConfig(new VeniceProperties(props)).isStalledDrainerQueueFailureEnabled());
   }
 
   @Test

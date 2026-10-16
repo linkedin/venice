@@ -4,9 +4,13 @@ import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.memory.Measurable;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -61,6 +65,17 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
   private final Condition notEmpty = memoryLock.newCondition();
   // Accumulated free memory since last notification
   private long currentFreedMemoryInBytes = 0;
+  private volatile QueueState state = new QueueState(null, false);
+
+  private static final class QueueState {
+    private final VeniceException failure;
+    private final boolean failed;
+
+    private QueueState(VeniceException failure, boolean failed) {
+      this.failure = failure;
+      this.failed = failed;
+    }
+  }
 
   public MemoryBoundBlockingQueue(long memoryCapacityInByte, long notifyDeltaInByte) {
     if (notifyDeltaInByte > memoryCapacityInByte) {
@@ -92,6 +107,7 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
 
   @Override
   public void put(T record) throws InterruptedException {
+    QueueState admissionState = state;
     long recordSize = getRecordSize(record);
     if (recordSize > notifyDeltaInByte) {
       LOGGER.warn(
@@ -100,8 +116,10 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
     }
     memoryLock.lock();
     try {
+      throwIfFailed(admissionState);
       while (remainingMemoryCapacityInByte() < recordSize) {
         hasEnoughMemory.await();
+        throwIfFailed(admissionState);
       }
       queue.add(record);
       remainingMemoryCapacityInByte.getAndAdd(-recordSize);
@@ -113,12 +131,15 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
 
   @Override
   public T take() throws InterruptedException {
+    QueueState admissionState = state;
     T record = null;
 
     this.memoryLock.lock();
     try {
+      throwIfFailed(admissionState);
       while ((record = this.queue.poll()) == null) {
         notEmpty.await();
+        throwIfFailed(admissionState);
       }
       long recordSize = getRecordSize(record);
       currentFreedMemoryInBytes += recordSize;
@@ -136,6 +157,54 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
     }
 
     return record;
+  }
+
+  /**
+   * Rejects puts and takes until recovery, releases all waiters, and returns the unstarted records to the caller.
+   * The caller must fail their completion futures outside the queue lock. Repeated failures preserve the first cause.
+   */
+  public List<T> fail(VeniceException cause) {
+    Objects.requireNonNull(cause);
+    memoryLock.lock();
+    try {
+      if (state.failed) {
+        return Collections.emptyList();
+      }
+      state = new QueueState(cause, true);
+      List<T> discarded = new ArrayList<>(queue);
+      queue.clear();
+      currentFreedMemoryInBytes = 0;
+      remainingMemoryCapacityInByte.set(memoryCapacityInByte);
+      hasEnoughMemory.signalAll();
+      notEmpty.signalAll();
+      return discarded;
+    } finally {
+      memoryLock.unlock();
+    }
+  }
+
+  /**
+   * Opens an empty failed queue for new work. Call only after the consumer's held work has actually ended.
+   * Operations admitted before/during the failed episode still throw, even if they wake after recovery.
+   */
+  public void recover() {
+    memoryLock.lock();
+    try {
+      if (state.failed) {
+        state = new QueueState(state.failure, false);
+      }
+    } finally {
+      memoryLock.unlock();
+    }
+  }
+
+  private void throwIfFailed(QueueState admissionState) {
+    if (admissionState.failed) {
+      throw admissionState.failure;
+    }
+    if (admissionState != state) {
+      throw state.failure;
+    }
   }
 
   @Override

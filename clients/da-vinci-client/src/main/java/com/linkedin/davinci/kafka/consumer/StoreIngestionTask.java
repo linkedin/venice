@@ -1816,10 +1816,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return this.failedPartitions;
   }
 
-  private void processIngestionException() {
+  private void processIngestionException(boolean drainerFailuresOnly) {
     partitionIngestionExceptionList.forEach(partitionExceptionInfo -> {
       int exceptionPartition = partitionExceptionInfo.getPartitionId();
       Exception partitionException = partitionExceptionInfo.getException();
+      if (drainerFailuresOnly != isStalledDrainerFailure(partitionException)) {
+        return;
+      }
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(exceptionPartition);
       if (partitionConsumptionState == null || !partitionConsumptionState.isSubscribed()) {
         LOGGER.warn(
@@ -1882,6 +1885,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void checkIngestionProgress(Store store) throws InterruptedException {
+    // Drainer failures belong to the affected subscriptions, even when a separate task failure is pending.
+    if (serverConfig.isStalledDrainerQueueFailureEnabled()) {
+      processIngestionException(true);
+    }
     Exception ingestionTaskException = lastStoreIngestionException.get();
     if (ingestionTaskException != null) {
       throw new VeniceException(
@@ -1896,7 +1903,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * We will unsubscribe all the errored partitions without killing the ingestion task.
      */
-    processIngestionException();
+    processIngestionException(false);
     maybeUnsubscribeCompletedPartitions(store);
 
     // record before consumer unsub as it might lead to stale metrics after unsub
@@ -3363,6 +3370,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
       KafkaKey key = record.getKey();
       KafkaMessageEnvelope value = record.getValue();
+      if (key.isControlMessage() && shouldUseDolMechanism() && Arrays.equals(key.getKey(), KafkaKey.DOL_STAMP.getKey())
+          && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.START_OF_SEGMENT) {
+        // A completed batch replica still needs its leadership loopback when resubscribing after a reset.
+        return true;
+      }
       if (key.isControlMessage()
           && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.END_OF_SEGMENT) {
         // Still allow END_OF_SEGMENT control message
@@ -3729,6 +3741,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void setIngestionException(int partitionId, Exception e) {
+    if (isStalledDrainerFailure(e) && !failedPartitions.add(partitionId)) {
+      // Held, discarded and rejected nodes may report the same failed subscription concurrently.
+      return;
+    }
     boolean replicaCompleted = false;
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if (partitionConsumptionState != null && partitionConsumptionState.isCompletionReported()) {
@@ -3738,7 +3754,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     failedPartitions.add(partitionId);
   }
 
+  private boolean isStalledDrainerFailure(Exception e) {
+    return serverConfig.isStalledDrainerQueueFailureEnabled()
+        && ExceptionUtils.recursiveClassEquals(e, StoreBufferService.StalledDrainerException.class);
+  }
+
   public void setLastConsumerException(Exception e) {
+    if (isStalledDrainerFailure(e)) {
+      // Queue nodes register the affected subscriptions; re-registering here could target a reset subscription.
+      LOGGER.error("Stalled drainer consumer failure will be handled through partition recovery.", e);
+      return;
+    }
     lastConsumerException = e;
   }
 
