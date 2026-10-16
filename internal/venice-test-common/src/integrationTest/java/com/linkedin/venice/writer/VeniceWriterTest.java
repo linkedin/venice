@@ -3,6 +3,13 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static com.linkedin.venice.writer.VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -25,12 +32,14 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -54,12 +63,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -221,6 +235,74 @@ public class VeniceWriterTest {
       assertEquals(startOfPush.compressionStrategy, compressionStrategy.getValue());
       assertEquals(startOfPush.compressionDictionary, dictionary.orElse(null));
     });
+  }
+
+  @Test(timeOut = 30 * MS_PER_SECOND)
+  public void testStartOfPushInterruptionAbortsBlockedKafkaSends() throws Exception {
+    String topicName = Utils.getUniqueString("missing-sop-topic");
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
+    PubSubProducerAdapter producer = spy(
+        pubSubProducerAdapterFactory.create(
+            new PubSubProducerAdapterContext.Builder().setBrokerAddress(pubSubBrokerWrapper.getAddress())
+                .setVeniceProperties(new VeniceProperties(properties))
+                .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                .build()));
+    CountDownLatch sendsStarted = new CountDownLatch(8);
+    Set<Thread> sendingThreads = ConcurrentHashMap.newKeySet();
+    AtomicInteger activeSends = new AtomicInteger();
+    doAnswer(invocation -> {
+      sendingThreads.add(Thread.currentThread());
+      activeSends.incrementAndGet();
+      sendsStarted.countDown();
+      try {
+        return invocation.callRealMethod();
+      } finally {
+        activeSends.decrementAndGet();
+      }
+    }).when(producer).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
+    ExecutorService broadcaster = Executors.newSingleThreadExecutor();
+    AtomicReference<Thread> caller = new AtomicReference<>();
+    AtomicBoolean interruptedOnExit = new AtomicBoolean();
+    try (VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(
+        new VeniceWriterOptions.Builder(topicName).setPartitionCount(17).build(),
+        new VeniceProperties(properties),
+        producer)) {
+      Future<?> broadcast = broadcaster.submit(() -> {
+        caller.set(Thread.currentThread());
+        try {
+          writer.broadcastStartOfPush(Collections.emptyMap());
+        } finally {
+          interruptedOnExit.set(Thread.currentThread().isInterrupted());
+        }
+      });
+      try {
+        assertTrue(sendsStarted.await(5, TimeUnit.SECONDS));
+        TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+          assertEquals(activeSends.get(), 8);
+          sendingThreads.forEach(thread -> {
+            Thread.State state = thread.getState();
+            assertTrue(
+                state == Thread.State.BLOCKED || state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING);
+          });
+        });
+        caller.get().interrupt();
+        ExecutionException exception =
+            Assert.expectThrows(ExecutionException.class, () -> broadcast.get(5, TimeUnit.SECONDS));
+        assertTrue(ExceptionUtils.recursiveClassEquals(exception, InterruptedException.class));
+        assertTrue(interruptedOnExit.get());
+        assertEquals(activeSends.get(), 0, "All Kafka send calls must exit before interruption propagates");
+        verify(producer).close(0);
+        verify(producer, never()).flush();
+      } finally {
+        if (!broadcast.isDone()) {
+          producer.close(0);
+        }
+      }
+    } finally {
+      TestUtils.shutdownExecutor(broadcaster);
+    }
   }
 
   /**
