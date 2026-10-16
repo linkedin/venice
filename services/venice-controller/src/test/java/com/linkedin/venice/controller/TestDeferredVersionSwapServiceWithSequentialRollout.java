@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -123,6 +124,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
   private Store mockStore(int currentVersion, int largestUsedVersion, String storeName) {
     Store store = mock(Store.class);
+    doReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS).when(store).getBootstrapToOnlineTimeoutInHours();
     doReturn(storeName).when(store).getName();
     doReturn(currentVersion).when(store).getCurrentVersion();
     doReturn(largestUsedVersion).when(store).getLargestUsedVersionNumber();
@@ -133,6 +135,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Create and mock the target version
     Version targetVersion = mock(Version.class);
+    doReturn(System.currentTimeMillis()).when(targetVersion).getCreatedTime();
     doReturn(targetVersion).when(store).getVersion(largestUsedVersion);
     doReturn(VersionStatus.PUSHED).when(targetVersion).getStatus();
     doReturn(true).when(targetVersion).isVersionSwapDeferred();
@@ -211,6 +214,12 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
   private void mockVeniceHelixAdmin() {
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     repository = mock(ReadWriteStoreRepository.class);
+    doAnswer(
+        invocation -> admin.getAllStores(clusterName)
+            .stream()
+            .filter(store -> store.getName().equals(invocation.getArgument(0)))
+            .findFirst()
+            .orElse(null)).when(repository).getStore(anyString());
     doReturn(repository).when(resources).getStoreMetadataRepository();
     doReturn(resources).when(veniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
 
