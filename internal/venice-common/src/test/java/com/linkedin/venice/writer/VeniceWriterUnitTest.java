@@ -74,6 +74,7 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -765,6 +766,31 @@ public class VeniceWriterUnitTest {
       writer.sendStartOfSegment(0, null);
     } catch (Throwable t) {
       fail("VeniceWriter.close() should not cause StackOverflowError", t);
+    }
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testClosePartitionPreservesInterruptStatus() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder("test").setPartitionCount(1).build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter<>(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    writer.getSegment(0, false);
+
+    // The END_OF_SEGMENT write never completes, so the wait in closePartition can only end through an interrupt.
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(new CompletableFuture<>());
+
+    Thread.currentThread().interrupt();
+    try {
+      VeniceException e = Assert.expectThrows(VeniceException.class, () -> writer.closePartition(0));
+      assertTrue(ExceptionUtils.recursiveClassEquals(e, InterruptedException.class));
+      assertTrue(Thread.currentThread().isInterrupted(), "closePartition must not swallow the interrupt status");
+    } finally {
+      // Clears the interrupt status so it does not leak into other tests.
+      Thread.interrupted();
     }
   }
 

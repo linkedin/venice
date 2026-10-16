@@ -1804,7 +1804,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       logger.debug("Closing partition: {} in VeniceWriter.", partition);
       try {
         endSegment(partition, true).get();
-      } catch (InterruptedException | ExecutionException e) {
+      } catch (InterruptedException e) {
+        // Callers may swallow the thrown exception, so the interrupt status must survive for them to observe it.
+        Thread.currentThread().interrupt();
+        handleControlMessageProducingException(e, ControlMessageType.END_OF_SEGMENT);
+      } catch (ExecutionException e) {
         handleControlMessageProducingException(e, ControlMessageType.END_OF_SEGMENT);
       }
     }

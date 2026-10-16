@@ -3401,7 +3401,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testBatchUnsubscribeClosesVeniceWriterPartitions() {
+  public void testBatchUnsubscribeClosesVeniceWriterPartitionsUnlessInterrupted() {
     LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
 
@@ -3430,6 +3430,17 @@ public class LeaderFollowerStoreIngestionTaskTest {
     task.consumerBatchUnsubscribeAllTopics();
 
     verify(veniceWriter).closePartition(7);
+
+    clearInvocations(veniceWriter);
+    Thread.currentThread().interrupt();
+    try {
+      task.consumerBatchUnsubscribeAllTopics();
+      verify(veniceWriter, never()).closePartition(anyInt());
+      verify(task, times(2)).consumerBatchUnsubscribe(any());
+      assertTrue(Thread.currentThread().isInterrupted());
+    } finally {
+      Thread.interrupted();
+    }
   }
 
   @Test
