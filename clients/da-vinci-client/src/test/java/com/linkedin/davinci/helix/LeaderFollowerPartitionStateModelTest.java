@@ -129,6 +129,7 @@ public class LeaderFollowerPartitionStateModelTest {
 
   @Test
   public void testConfiguredCurrentVersionErrorResetStopsConsumption() {
+    when(storeAndServerConfigs.isStalledDrainerQueueFailureEnabled()).thenReturn(true);
     when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(true);
     when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(storeVersion);
     Message message = mock(Message.class);
@@ -140,12 +141,17 @@ public class LeaderFollowerPartitionStateModelTest {
 
   @DataProvider
   public Object[][] disabledErrorReset() {
-    return new Object[][] { { false, storeVersion }, { true, storeVersion - 1 } };
+    return new Object[][] { { false, true, storeVersion }, { true, false, storeVersion },
+        { true, true, storeVersion - 1 } };
   }
 
   @Test(dataProvider = "disabledErrorReset")
-  public void testErrorResetPreservesUnconfiguredAndFutureVersionBehavior(boolean enabled, int currentVersion) {
-    when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(enabled);
+  public void testErrorResetPreservesUnconfiguredAndFutureVersionBehavior(
+      boolean featureEnabled,
+      boolean resetEnabled,
+      int currentVersion) {
+    when(storeAndServerConfigs.isStalledDrainerQueueFailureEnabled()).thenReturn(featureEnabled);
+    when(storeAndServerConfigs.isResetErrorReplicaEnabled()).thenReturn(resetEnabled);
     when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(currentVersion);
     leaderFollowerPartitionStateModel.onBecomeOfflineFromError(mock(Message.class), mock(NotificationContext.class));
     verify(ingestionBackend, never()).stopConsumption(any(), anyInt(), anyString());

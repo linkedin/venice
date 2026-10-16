@@ -251,7 +251,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
   public void onBecomeOfflineFromError(Message message, NotificationContext context) {
-    if (getStoreAndServerConfigs().isResetErrorReplicaEnabled()
+    if (getStoreAndServerConfigs().isStalledDrainerQueueFailureEnabled()
+        && getStoreAndServerConfigs().isResetErrorReplicaEnabled()
         && getStoreRepo().getStoreOrThrow(getStoreName()).getCurrentVersion() == getVersionNumber()) {
       // The next OFFLINE -> STANDBY must establish a fresh subscription, not reuse an errored RUNNING replica.
       executeStateTransition(message, context, () -> stopConsumption(false));

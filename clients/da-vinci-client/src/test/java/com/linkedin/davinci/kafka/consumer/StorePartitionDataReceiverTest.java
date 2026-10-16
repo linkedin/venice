@@ -23,26 +23,21 @@ import org.testng.annotations.Test;
 public class StorePartitionDataReceiverTest {
   @DataProvider
   public Object[][] receiverFailures() {
-    return new Object[][] { { new StoreBufferService.StalledDrainerException("stalled"), false },
-        { new VeniceException(new StoreBufferService.StalledDrainerException("stalled")), false },
-        { new VeniceException("ordinary consumer failure"), true } };
+    return new Object[][] { { new StoreBufferService.StalledDrainerException("stalled") },
+        { new VeniceException(new StoreBufferService.StalledDrainerException("stalled")) },
+        { new VeniceException("ordinary consumer failure") } };
   }
 
   @Test(dataProvider = "receiverFailures")
-  public void testPartitionScopedStallDoesNotBecomeTaskFailure(Exception failure, boolean taskFailure)
-      throws Exception {
+  public void testReceiverDelegatesExceptionClassificationToIngestionTask(Exception failure) throws Exception {
     StoreIngestionTask task = mock(StoreIngestionTask.class);
     PubSubTopicPartition partition =
         new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic("receiver_v1"), 3);
     doThrow(failure).when(task).produceToStoreBufferServiceOrKafka(any(), eq(partition), anyString(), anyInt());
     new StorePartitionDataReceiver(task, partition, "kafka", 0).write(Collections.emptyList());
-    if (taskFailure) {
-      verify(task).setLastConsumerException(failure);
-    } else {
-      verify(task, never()).setLastConsumerException(any());
-      // The failed QueueNode owns registration; the receiver must not re-register it after a reset.
-      verify(task, never()).setIngestionException(anyInt(), any());
-    }
+    verify(task).setLastConsumerException(failure);
+    // The failed QueueNode owns registration; the receiver must not re-register it after a reset.
+    verify(task, never()).setIngestionException(anyInt(), any());
   }
 
   @Test

@@ -869,6 +869,10 @@ public class ConfigKeys {
   /**
    * Default false. When enabled, the stall monitor fails and clears a stalled drainer's queue,
    * releasing blocked enqueues and registering partition ingestion exceptions for the existing error-replica path.
+   * The ingestion task handles drainer partition failures before checking task-level failures; unrelated task failures
+   * remain fatal.
+   * This switch also gates stalled-drainer exception classification, ERROR-to-OFFLINE consumption cleanup, and
+   * completed-batch leadership loopback admission. Disabling it preserves the existing monitoring-only behavior.
    * Admission failures remain partition-scoped: current-version server replicas require SERVER_RESET_ERROR_REPLICA_ENABLED
    * and controller auto-reset capacity to reset and rebootstrap after the held operation returns.
    * The held write is not interrupted and its persistence future is left to the writer. Only after it actually ends
