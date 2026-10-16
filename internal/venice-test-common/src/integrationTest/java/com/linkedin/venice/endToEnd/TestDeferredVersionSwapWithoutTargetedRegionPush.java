@@ -6,6 +6,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -128,7 +129,7 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush extends AbstractMu
     validateData(cluster, storeName, 100);
   }
 
-  /** This test will fail the roll forward due to insufficient replicas, but eventually succeed */
+  /** Child roll-forward retries insufficient replicas after the parent accepts the command. */
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeferredVersionSwapFailureWithEventualRollForward() throws Exception {
     String storeName = Utils.getUniqueString("testDeferredVersionSwap");
@@ -142,40 +143,40 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush extends AbstractMu
     assertCurrentServingVersion(cluster, storeName, OLD_VERSION);
 
     // stop both standby and leader
-    stopInstance(cluster, storeName, HelixState.STANDBY);
-    stopInstance(cluster, storeName, HelixState.LEADER);
+    Instance standby = stopInstance(cluster, storeName, HelixState.STANDBY);
+    Instance leader = stopInstance(cluster, storeName, HelixState.LEADER);
 
-    // wait until all replicas are not ready to serve
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      Partition partition = cluster.getLeaderVeniceController()
-          .getVeniceHelixAdmin()
-          .getHelixVeniceClusterResources(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(Version.composeKafkaTopic(storeName, NEW_VERSION))
-          .getPartition(testPartition);
-      assertTrue(
-          partition == null || (partition.getAllInstancesByHelixState().get(HelixState.LEADER).isEmpty()
-              && partition.getAllInstancesByHelixState().get(HelixState.STANDBY).isEmpty()));
-    });
+    try {
+      // wait until all replicas are not ready to serve
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Partition partition = cluster.getLeaderVeniceController()
+            .getVeniceHelixAdmin()
+            .getHelixVeniceClusterResources(clusterName)
+            .getRoutingDataRepository()
+            .getPartitionAssignments(Version.composeKafkaTopic(storeName, NEW_VERSION))
+            .getPartition(testPartition);
+        assertTrue(
+            partition == null || (partition.getAllInstancesByHelixState().get(HelixState.LEADER).isEmpty()
+                && partition.getAllInstancesByHelixState().get(HelixState.STANDBY).isEmpty()));
+      });
 
-    // attempt roll forward (expected to fail due to missing ready to serve replicas)
-    ControllerResponse rollForwardResponse = parentClient
-        .rollForwardToFutureVersion(storeName, String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
-    assertTrue(rollForwardResponse.isError(), "Roll forward should have failed due to insufficient replicas");
-    assertTrue(
-        rollForwardResponse.getError().contains("Roll forward failed for store"),
-        "Unexpected error message: " + rollForwardResponse.getError());
-
-    // add new servers and wait for eventual success of roll forward as each child controllers will
-    // be retrying the roll forward until success
-    cluster.addVeniceServer(new Properties());
-    cluster.addVeniceServer(new Properties());
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      parentClient.rollForwardToFutureVersion(
+      // Parent acceptance does not wait for child readiness.
+      ControllerResponse rollForwardResponse = parentClient.rollForwardToFutureVersion(
           storeName,
           String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
-      assertCurrentServingVersion(cluster, storeName, NEW_VERSION);
-    });
+      assertFalse(rollForwardResponse.isError(), "Unexpected error message: " + rollForwardResponse.getError());
+      assertCurrentServingVersion(cluster, storeName, OLD_VERSION);
+    } finally {
+      // Restore the original replicas, including system-store data needed by the next test.
+      cluster.restartVeniceServer(standby.getPort());
+      cluster.restartVeniceServer(leader.getPort());
+    }
+
+    // The original queued command must succeed without another roll-forward request.
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        () -> assertCurrentServingVersion(cluster, storeName, NEW_VERSION));
 
     validateData(cluster, storeName, 100);
   }
