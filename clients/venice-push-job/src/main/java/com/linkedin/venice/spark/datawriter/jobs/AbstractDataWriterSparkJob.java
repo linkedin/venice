@@ -145,12 +145,11 @@ import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoder;
 import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RuntimeConfig;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
-import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.functions;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
@@ -538,7 +537,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     // Get schema for the encoder
     StructType schema = dataFrame.schema();
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
+    Encoder<Row> encoder = Encoders.row(schema);
 
     final LongAccumulator ttlFilteredAcc = accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter;
     final StageMetrics ttlMetrics = stageMetricsRegistry.register("ttl_filter");
@@ -628,7 +627,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     LOGGER.info("Applying compaction to Kafka input. Input schema: {}", dataFrame.schema());
 
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    Encoder<Row> encoder = Encoders.row(RAW_PUBSUB_INPUT_TABLE_SCHEMA);
 
     // Extract accumulators to local variables to avoid serialization issues
     final LongAccumulator totalDupKeyAcc = accumulatorsForDataWriterJob.totalDuplicateKeyCounter;
@@ -727,7 +726,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     }
     final VeniceProperties broadcastFilterProps = filterProps;
 
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
+    Encoder<Row> encoder = Encoders.row(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
 
     final LongAccumulator emptyRecordAcc = accumulatorsForDataWriterJob.emptyRecordCounter;
     final StageMetrics chunkMetrics = stageMetricsRegistry.register("chunk_assembly");
@@ -910,7 +909,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         sourceStrategy,
         destStrategy,
         metricEnabled);
-    ExpressionEncoder<Row> encoder = RowEncoder.apply(dataFrame.schema());
+    Encoder<Row> encoder = Encoders.row(dataFrame.schema());
     int valueIdx = dataFrame.schema().fieldIndex(VALUE_COLUMN_NAME);
     int keyIdx = dataFrame.schema().fieldIndex(KEY_COLUMN_NAME);
     StructType schema = dataFrame.schema();
@@ -1009,8 +1008,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     validateDataFrame(dataFrame);
     validateRmdSchema(pushJobSetting);
 
-    ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
-    ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
+    Encoder<Row> rowEncoder = Encoders.row(DEFAULT_SCHEMA);
+    Encoder<Row> partitionWriterTaskOutputEncoder = Encoders.row(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
 
     Properties jobProps = getWriterTaskProperties();

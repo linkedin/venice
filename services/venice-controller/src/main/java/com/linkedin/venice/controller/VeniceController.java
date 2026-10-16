@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.SSLConfig;
@@ -73,6 +74,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -114,6 +116,30 @@ public class VeniceController {
 
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
       ModuleMetricEntityInterface.getUniqueMetricEntities(getMetricEntityEnumClasses());
+
+  static final class ApiReadiness {
+    private enum Phase {
+      NOT_READY, READY, STOPPING
+    }
+
+    private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.NOT_READY);
+
+    void markReady() {
+      // Restart creates a new owner; stopping must defeat any late startup completion.
+      phase.compareAndSet(Phase.NOT_READY, Phase.READY);
+    }
+
+    void markStopping() {
+      phase.set(Phase.STOPPING);
+    }
+
+    boolean isReady() {
+      return phase.get() == Phase.READY;
+    }
+  }
+
+  private final ApiReadiness apiReadiness = new ApiReadiness();
+  private final boolean apiRegionEligible;
 
   // services
   private final VeniceControllerService controllerService;
@@ -205,6 +231,9 @@ public class VeniceController {
 
   public VeniceController(VeniceControllerContext ctx) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(ctx.getPropertiesList());
+    VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
+    // ACTIVE/PASSIVE is a parent-region failover role, not this host's cluster leadership.
+    this.apiRegionEligible = !commonConfig.isParent() || commonConfig.getParentControllerRegionState() == ACTIVE;
     this.logContext = multiClusterConfigs.getLogContext();
     this.metricsRepository = ctx.getMetricsRepository();
     this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
@@ -228,6 +257,9 @@ public class VeniceController {
     this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.storeUpdateHandler = ctx.getStoreUpdateHandler();
     this.controllerService = createControllerService();
+    if (ctx.getTopicPlacement() != null) {
+      getVeniceHelixAdmin().setTopicPlacement(ctx.getTopicPlacement());
+    }
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
     this.topicCleanupService = createTopicCleanupService();
@@ -243,6 +275,13 @@ public class VeniceController {
 
     // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
     initializeSystemSchema(controllerService.getVeniceHelixAdmin());
+  }
+
+  private VeniceHelixAdmin getVeniceHelixAdmin() {
+    Admin admin = controllerService.getVeniceHelixAdmin();
+    return admin instanceof VeniceParentHelixAdmin
+        ? ((VeniceParentHelixAdmin) admin).getVeniceHelixAdmin()
+        : (VeniceHelixAdmin) admin;
   }
 
   private VeniceControllerService createControllerService() {
@@ -291,7 +330,19 @@ public class VeniceController {
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
         pubSubTopicRepository,
-        secure ? secureRequestHandler : unsecureRequestHandler);
+        secure ? secureRequestHandler : unsecureRequestHandler,
+        controllerService.getPushJobDetailsSerializer(),
+        this::isApiReady);
+  }
+
+  /**
+   * Requires successful startup, no shutdown, running core/HTTP services, and an active region for parent controllers.
+   * HTTPS is required only when configured; eligible standbys do not need cluster leadership.
+   */
+  private boolean isApiReady() {
+    // Check lifecycle state last so shutdown during service checks makes this probe unready.
+    return apiRegionEligible && controllerService.isRunning() && adminServer.isRunning()
+        && (!sslEnabled || secureAdminServer.isRunning()) && apiReadiness.isReady();
   }
 
   private TopicCleanupService createTopicCleanupService() {
@@ -471,6 +522,7 @@ public class VeniceController {
       adminSecureGrpcServer.start();
     }
     LOGGER.info("Controller is started.");
+    apiReadiness.markReady();
   }
 
   private void initializeSystemSchema(Admin admin) {
@@ -573,6 +625,7 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
+    apiReadiness.markStopping();
     // unregister from service discovery first
     asyncRetryingServiceDiscoveryAnnouncer.unregister();
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.

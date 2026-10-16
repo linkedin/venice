@@ -38,7 +38,9 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -50,6 +52,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -125,6 +128,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final FastClientStats clientStats;
   private final ClientConfig clientConfig;
   private final AtomicInteger batchGetLimit = new AtomicInteger();
+  private volatile RetryPolicySnapshot retryPolicySnapshot = new RetryPolicySnapshot(null, null);
+
+  private static final class RetryPolicySnapshot {
+    private final String cluster;
+    private final MultiKeyLongTailRetryThresholds policy;
+
+    private RetryPolicySnapshot(String cluster, MultiKeyLongTailRetryThresholds policy) {
+      this.cluster = cluster;
+      this.policy = policy;
+    }
+  }
+
   // Only read/written under the synchronized monitor of updateCache(boolean) — same model as lastStoreConfigSnapshot
   private int externalStorageReadModeRaw = ExternalStorageReadMode.VENICE_ONLY.getValue();
   private RouterBackedSchemaReader metadataResponseSchemaReader;
@@ -454,6 +469,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer =
           FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, MetadataResponseRecord.class);
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
+      String policyCluster = serverClusterName.get();
+      RetryPolicySnapshot candidateRetryPolicy =
+          parseRetryPolicy(metadataResponse.getMultiKeyLongTailRetryThresholdsInMs().toString(), policyCluster);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
       batchGetLimit.set(metadataResponse.getBatchGetLimit());
       externalStorageReadModeRaw = metadataResponse.getExternalStorageReadMode();
@@ -639,6 +657,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       StoreConfigSnapshot previousSnapshot = lastStoreConfigSnapshot;
       lastStoreConfigSnapshot = newSnapshot;
       pendingCallbacks.add(buildStoreConfigChangeCallback(previousSnapshot, newSnapshot));
+      // Only this immutable policy is atomically published; the rest of metadata is not transactional.
+      retryPolicySnapshot = candidateRetryPolicy;
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
@@ -665,6 +685,27 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       }
     }
     return pendingCallbacks;
+  }
+
+  private RetryPolicySnapshot parseRetryPolicy(String ranges, String cluster) {
+    try {
+      return new RetryPolicySnapshot(cluster, ranges.isEmpty() ? null : MultiKeyLongTailRetryThresholds.parse(ranges));
+    } catch (RuntimeException e) {
+      clusterStats.recordInvalidMultiKeyRetryPolicy();
+      String message = "Invalid multi-key retry policy for store " + storeName + " in cluster " + cluster;
+      if (!RedundantExceptionFilter.getRedundantExceptionFilter().isRedundantException(message)) {
+        LOGGER.warn("{}; retaining only the last valid policy from the same cluster.", message, e);
+      }
+      RetryPolicySnapshot previous = retryPolicySnapshot;
+      return new RetryPolicySnapshot(cluster, Objects.equals(cluster, previous.cluster) ? previous.policy : null);
+    }
+  }
+
+  @Override
+  public MultiKeyLongTailRetryThresholds getMultiKeyLongTailRetryThresholds() {
+    RetryPolicySnapshot snapshot = retryPolicySnapshot;
+    // Discovery can change cluster before the first successful refresh there. Never leak the old origin's policy.
+    return Objects.equals(serverClusterName.get(), snapshot.cluster) ? snapshot.policy : null;
   }
 
   public static boolean whetherToSwitchToFetchedCurrentVersion(

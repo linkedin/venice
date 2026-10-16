@@ -36,6 +36,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_JOB_SLA_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -663,6 +664,17 @@ public class TestVeniceControllerClusterConfig {
     baseProps.setProperty(CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS, "12345");
     clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
     assertEquals(clusterConfig.getControllerStandbyToLeaderTransitionTimeoutMs(), 12345L);
+  }
+
+  @Test
+  public void testPushStatusLoadThreadCount() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getPushStatusLoadThreadCount(), 1);
+
+    baseProps.setProperty(CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT, "8");
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getPushStatusLoadThreadCount(), 8);
   }
 
   public void testVersionSwapBroadcastTimeoutSeconds() {

@@ -135,6 +135,23 @@ public class HelixOfflinePushMonitorAccessorTest {
     for (OfflinePushStatus loadedPush: loadedPushes) {
       Assert.assertEquals(loadedPush, pushesMap.get(loadedPush.getKafkaTopic()));
     }
+
+    // Loading with several threads reads the same statuses.
+    VeniceOfflinePushMonitorAccessor parallelAccessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        zkClient,
+        new HelixAdapterSerializer(),
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build(),
+        1,
+        4);
+    loadedPushes = parallelAccessor.loadOfflinePushStatusesAndPartitionStatuses();
+    Assert.assertEquals(loadedPushes.size(), offlinePushCount);
+    for (OfflinePushStatus loadedPush: loadedPushes) {
+      Assert.assertEquals(loadedPush, pushesMap.get(loadedPush.getKafkaTopic()));
+    }
   }
 
   @Test

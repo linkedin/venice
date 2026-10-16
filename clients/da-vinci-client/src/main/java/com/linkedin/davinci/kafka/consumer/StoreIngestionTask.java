@@ -4459,7 +4459,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
-        validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, offset);
+        validateEndOfPushReceivedBeforeTopicSwitch(
+            partitionConsumptionState,
+            offset,
+            daVinciClientCustomLifecycleEnabled);
 
         LOGGER.info(
             "Received {} control message. Replica: {}, Offset: {} SourceTopic: {} SourceKafkaServers: {}",
@@ -4764,9 +4767,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
         || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
       return; // Skip validation for ingestion heartbeat and DoL stamp records.
-    } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
-      // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
+    } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)
+        && !validator.hasProducerState(type, consumerRecord)) {
+      // Skip validation for self-produced records that this validator has no state for, since it never tracks its own
+      // producer. If there were any issues, the followers would've reported it already.
       // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
+      // Self-produced is based on hostname, so it also matches a previous process on the same host. If state exists for
+      // that producer (e.g. inherited via blob transfer), the record must be validated to advance it. Otherwise, the
+      // stale state is checkpointed and later reported as MISSING by replicas that bootstrap from this one.
       return;
     }
     // Global RT DIV messages are not skipped. See validateAndFilterOutDuplicateMessagesFromLeaderTopic()
@@ -6655,12 +6663,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *
    * @param partitionConsumptionState The partition consumption state to validate
    * @param position The position/offset for error reporting
-   * @throws VeniceException if END_OF_PUSH has not been received
+   * @param daVinciClientCustomLifecycleEnabled When true, skip the check (seek-resumed consumers may subscribe past
+   *          END_OF_PUSH and never consume the EOP control message)
+   * @throws VeniceMessageException if END_OF_PUSH has not been received and daVinciClientCustomLifecycleEnabled is false
    */
   protected static void validateEndOfPushReceivedBeforeTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubPosition position) {
+      PubSubPosition position,
+      boolean daVinciClientCustomLifecycleEnabled) {
     Objects.requireNonNull(partitionConsumptionState, "PCS cannot be null");
+    // A seek-resumed custom-lifecycle consumer (e.g. a CDC client) can subscribe past END_OF_PUSH, so it never
+    // consumes the EOP control message. A later TOPIC_SWITCH (e.g. written by store migration) must not fail it,
+    // so skip this ordering check for that lifecycle, mirroring the other relaxed custom-lifecycle checks.
+    if (daVinciClientCustomLifecycleEnabled) {
+      return;
+    }
     if (!partitionConsumptionState.isEndOfPushReceived()) {
       String errorMessage = String.format(
           "%s received TOPIC_SWITCH control message before receiving END_OF_PUSH. Position: %s",

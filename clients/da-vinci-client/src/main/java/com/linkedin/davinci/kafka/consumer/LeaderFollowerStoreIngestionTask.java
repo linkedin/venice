@@ -1933,7 +1933,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
       }
 
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
         // also update the leader topic position using the upstream position in LeaderMetadata
@@ -1941,10 +1940,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)
             && extractUpstreamClusterId(consumerRecord) != -1) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
-          PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-          if (upstreamTopic == null) {
-            upstreamTopic = versionTopic;
-          }
+          PubSubTopic upstreamTopic = isEndOfPushRecord(consumerRecord)
+              ? versionTopic
+              : getUpstreamTopicForPositionTracking(partitionConsumptionState);
           if (dryRun) {
             final PubSubPosition previousUpstreamPosition =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
@@ -1996,10 +1994,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (isDaVinciClient) {
       return;
     }
-    PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-    if (upstreamTopic == null) {
-      upstreamTopic = versionTopic;
-    }
+    PubSubTopic upstreamTopic = getUpstreamTopicForPositionTracking(partitionConsumptionState);
     if (upstreamTopic.isRealTime()) {
       offsetRecord.checkpointRtPositions(partitionConsumptionState.getLatestProcessedRtPositions());
     } else {
@@ -2007,6 +2002,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
     offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
+  }
+
+  /**
+   * Returns the topic whose upstream position slot (RT vs. remote VT) the replica's upstream positions are tracked and
+   * checkpointed under. This is the leader topic, or the version topic if the leader topic is not set or if the replica
+   * is a follower still replaying batch data.
+   */
+  PubSubTopic getUpstreamTopicForPositionTracking(PartitionConsumptionState partitionConsumptionState) {
+    PubSubTopic upstreamTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    if (upstreamTopic == null || (upstreamTopic.isRealTime() && isFollowerReplayingBatch(partitionConsumptionState))) {
+      return versionTopic;
+    }
+    return upstreamTopic;
+  }
+
+  /**
+   * A follower that has not received EOP is still replaying batch data, whose upstream positions belong to the remote
+   * VT, so it must not treat an RT topic as its upstream yet. The version-wide TS in
+   * {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState} can exist before this replica reaches EOP. TS
+   * follows EOP in every VT partition, and leaders only switch to RT after processing a TS, so leaders are unaffected.
+   */
+  private static boolean isFollowerReplayingBatch(PartitionConsumptionState partitionConsumptionState) {
+    return !isLeader(partitionConsumptionState) && !partitionConsumptionState.isEndOfPushReceived();
+  }
+
+  /**
+   * The EOP flag is already set when the EOP record's own offsets are recorded, but EOP is never sourced from an RT
+   * topic, so its upstream position always belongs to the remote VT.
+   */
+  private static boolean isEndOfPushRecord(DefaultPubSubMessage consumerRecord) {
+    return consumerRecord.getKey().isControlMessage()
+        && ControlMessageType.valueOf((ControlMessage) consumerRecord.getValue().payloadUnion) == END_OF_PUSH;
   }
 
   private void updateOffsetsAsRemoteConsumeLeader(
@@ -2455,11 +2482,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // leader-generated chunks or TopicSwitch) or on the RT-source path (whose position is checkpointed as the
         // LCRP).
         // The domain is gated on the leader's upstream topic (leaderTopic), NOT the source consumer record's topic:
-        // the graceful-shutdown flush (sendGlobalRtDivMessage) synthesizes a local-VT source record while
-        // getConsumedPosition() carries the RT-domain LCRP, so gating on the source record would cross-write an RT
-        // position into the remote-VT LCVP field. leaderTopic is the same predicate updateOffsetsAsRemoteConsumeLeader
-        // uses to route getConsumedPosition() to the RT vs remote-VT domain, so it stays correct on the flush path
-        // (leaderTopic == RT there) and preserves the steady-state VT-source behavior (leaderTopic == VT).
+        // the graceful-shutdown flush (sendGlobalRtDivMessage) synthesizes its source record, which is only tagged with
+        // an RT topic-partition when the leader topic is RT, while getConsumedPosition() always carries the RT-domain
+        // LCRP; gating on the source record could cross-write an RT position into the remote-VT LCVP field. leaderTopic
+        // is the same predicate updateOffsetsAsRemoteConsumeLeader uses to route getConsumedPosition() to the RT vs
+        // remote-VT domain, so it stays correct on the flush path and preserves the steady-state VT-source behavior
+        // (leaderTopic == VT).
         // The sync runs only after persistedToDBFuture completes, so the persisted remote LCVP never leads the
         // persisted data; an F->L resume (PartitionConsumptionState#getCheckpointedVtLeaderPosition) then
         // re-subscribes the remote VT at a position that is durable by construction.
@@ -2514,6 +2542,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     List<CompletableFuture<Void>> futures = new ArrayList<>();
 
     if (pcs.getLeaderFollowerState().equals(LEADER)) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+      boolean isLeaderTopicRealTime = leaderTopic != null && leaderTopic.isRealTime();
+      PubSubTopicPartition leaderTopicPartition =
+          isLeaderTopicRealTime ? pcs.getSourceTopicPartition(leaderTopic) : localVtTopicPartition;
       Set<String> realTimeDataSourceKafkaURLs = getRealTimeDataSourceKafkaAddress(pcs);
       for (String brokerUrl: realTimeDataSourceKafkaURLs) {
         // Read the LCRP through the per-mode accessor (same one the steady-state RT consume path uses): A/A keys the
@@ -2529,6 +2561,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // Resolve the cluster id from the canonical url->id reverse map (it also carries alias / _sep-topic url
         // variants that the forward id->url map lacks), matching how the steady-state RT consume path resolves it.
         int kafkaClusterId = getServerConfig().getKafkaClusterUrlToIdMap().getOrDefault(brokerUrl, -1);
+        // Tag the synthetic source record with the RT topic-partition this broker is consumed from, exactly as the
+        // steady-state path does (the consumed RT record's topic-partition). The leader's drainer only persists records
+        // from the leader topic (see shouldPersistRecord), so a local-VT tag would make it drop the flushed
+        // GlobalRtDivState: the leader's own GLOBAL_RT_DIV_KEY would stay at the last byte-threshold checkpoint and the
+        // next F->L start (loadGlobalRtDiv) would rewind to it. It also routes the record and its VT DIV sync node to
+        // the same drainer queue as the leader's other RT-sourced records.
+        PubSubTopicPartition sourceTopicPartition = isLeaderTopicRealTime
+            ? Utils.createPubSubTopicPartitionFromLeaderTopicPartition(brokerUrl, leaderTopicPartition)
+            : localVtTopicPartition;
         try {
           // sendGlobalRtDivMessage's produce-completion callback enqueues the waitable VT DIV sync node (carrying the
           // produced LCVP) into the FIFO drainer. Await that node's future directly: it completes only after the RT DIV
@@ -2537,7 +2578,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           futures.add(
               sendGlobalRtDivMessage(
                   lcrp,
-                  localVtTopicPartition,
+                  sourceTopicPartition,
                   pcs,
                   partition,
                   brokerUrl,
@@ -3700,7 +3741,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             break;
           case TOPIC_SWITCH:
-            validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, consumerRecord.getPosition());
+            validateEndOfPushReceivedBeforeTopicSwitch(
+                partitionConsumptionState,
+                consumerRecord.getPosition(),
+                isDaVinciClientCustomLifecycleEnabled());
             /**
              * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
              * checkpointRtPosition in:
@@ -4107,10 +4151,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * VT at RT offset.
      */
     TopicSwitchWrapper topicSwitch = partitionConsumptionState.getTopicSwitch();
-    if (topicSwitch != null) {
-      if (!topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
-        offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
-      }
+    if (topicSwitch != null && !isFollowerReplayingBatch(partitionConsumptionState)
+        && !topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
+      offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
     }
   }
 
@@ -4952,7 +4995,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           "event=globalRtDiv Loaded Global RT DIV State from disk topic-partition: {} brokerUrl: {} producer: {} position: {} pps: {}",
           topicPartition,
           brokerUrl,
-          producer,
+          GuidUtils.getHexFromGuid(GuidUtils.getGuidFromCharSequence(producer)),
           divRtCheckpointPosition,
           pps);
     });

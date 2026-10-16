@@ -105,6 +105,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_JOB_SLA_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
@@ -463,6 +464,7 @@ public class VeniceControllerClusterConfig {
 
   private final long controllerHelixParticipantDeregistrationTimeoutMs;
   private final long controllerStandbyToLeaderTransitionTimeoutMs;
+  private final int pushStatusLoadThreadCount;
 
   private final String helixRestCustomizedHealthUrl;
 
@@ -1203,6 +1205,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(10));
     this.controllerStandbyToLeaderTransitionTimeoutMs =
         props.getLong(CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(10));
+    this.pushStatusLoadThreadCount = props.getInt(CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT, 1);
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
 
     this.serverHelixClusterTopologyAware = props.getBoolean(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, false);
@@ -2219,6 +2222,10 @@ public class VeniceControllerClusterConfig {
 
   public long getControllerStandbyToLeaderTransitionTimeoutMs() {
     return controllerStandbyToLeaderTransitionTimeoutMs;
+  }
+
+  public int getPushStatusLoadThreadCount() {
+    return pushStatusLoadThreadCount;
   }
 
   public String getHelixRestCustomizedHealthUrl() {

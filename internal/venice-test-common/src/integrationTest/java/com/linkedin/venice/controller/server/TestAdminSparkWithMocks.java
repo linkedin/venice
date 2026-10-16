@@ -32,6 +32,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.apache.commons.io.IOUtils;
@@ -39,9 +40,11 @@ import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.util.EntityUtils;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -63,6 +66,29 @@ public class TestAdminSparkWithMocks {
     ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
     doReturn(admin).when(dependencies).getAdmin();
     requestHandler = new VeniceControllerRequestHandler(dependencies);
+  }
+
+  @Test(timeOut = 30000)
+  public void testMockServerHealthTracksStartupAndShutdown() throws Exception {
+    AdminSparkServer server = Mockito
+        .spy(ServiceFactory.getMockAdminSparkServer(admin, "test_cluster", Collections.emptyList(), requestHandler));
+    try (CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1, 1, Optional.empty())) {
+      httpClient.start();
+      HttpGet healthRequest = new HttpGet("http://localhost:" + server.getPort() + ControllerRoute.HEALTH.getPath());
+      HttpResponse response = httpClient.execute(healthRequest, null).get();
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
+      Assert.assertEquals(EntityUtils.toString(response.getEntity()), "OK");
+      Mockito.doAnswer(invocation -> {
+        Mockito.doCallRealMethod().when(server).stopInner();
+        HttpResponse stoppingResponse = httpClient.execute(healthRequest, null).get();
+        Assert.assertEquals(stoppingResponse.getStatusLine().getStatusCode(), HttpStatus.SC_SERVICE_UNAVAILABLE);
+        Assert.assertEquals(EntityUtils.toString(stoppingResponse.getEntity()), "NOT_READY");
+        return invocation.callRealMethod();
+      }).when(server).stopInner();
+      server.stop();
+    } finally {
+      server.stop();
+    }
   }
 
   @Test

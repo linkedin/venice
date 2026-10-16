@@ -8,6 +8,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controller.placement.TopicPlacement;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -41,6 +42,11 @@ public class VeniceControllerContext {
   private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
   private ExternalETLService externalETLService;
   private StoreUpdateHandler storeUpdateHandler;
+  private TopicPlacement topicPlacement;
+
+  public TopicPlacement getTopicPlacement() {
+    return topicPlacement;
+  }
 
   public List<VeniceProperties> getPropertiesList() {
     return propertiesList;
@@ -103,6 +109,7 @@ public class VeniceControllerContext {
   }
 
   public VeniceControllerContext(Builder builder) {
+    this.topicPlacement = builder.topicPlacement;
     this.propertiesList = builder.propertiesList;
     this.metricsRepository = builder.metricsRepository;
     this.serviceDiscoveryAnnouncers = builder.serviceDiscoveryAnnouncers;
@@ -140,6 +147,12 @@ public class VeniceControllerContext {
     private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
     private ExternalETLService externalETLService;
     private StoreUpdateHandler storeUpdateHandler;
+    private TopicPlacement topicPlacement;
+
+    public Builder setTopicPlacement(TopicPlacement topicPlacement) {
+      this.topicPlacement = topicPlacement;
+      return this;
+    }
 
     public Builder setPropertiesList(List<VeniceProperties> propertiesList) {
       this.propertiesList = propertiesList;

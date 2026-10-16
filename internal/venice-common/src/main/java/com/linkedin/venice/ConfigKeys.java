@@ -14,6 +14,12 @@ public class ConfigKeys {
   public static final String CLUSTER_NAME = "cluster.name";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
+  /**
+   * Optional cluster-wide Fast Client compute/batch-get retry ranges in milliseconds. Empty advertises no policy.
+   */
+  public static final String SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS =
+      "server.fast.client.multi.key.long.tail.retry.thresholds.ms";
+
   public static final String ADMIN_PORT = "admin.port";
   public static final String ADMIN_HOSTNAME = "admin.hostname";
 
@@ -705,6 +711,14 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS =
       "controller.standby.to.leader.transition.timeout.ms";
+
+  /**
+   * Number of threads a controller uses to read offline push statuses from ZK and subscribe to their partition status
+   * changes when it becomes the leader of a cluster and loads all pushes. With 1, the default, pushes are loaded one at
+   * a time. Clusters with thousands of push statuses spend most of the leader initialization in these ZK calls, and
+   * the cluster has no ready leader until it finishes.
+   */
+  public static final String CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT = "controller.push.status.load.thread.count";
 
   /**
    * Base URL for customized health checks triggered by Helix. Default is empty string.

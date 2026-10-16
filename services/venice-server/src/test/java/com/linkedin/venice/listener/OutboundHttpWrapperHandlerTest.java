@@ -59,6 +59,7 @@ public class OutboundHttpWrapperHandlerTest {
 
     when(mockCtx.writeAndFlush(any())).then(i -> {
       FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
+      Assert.assertEquals(actualResponse.headers().getInt(HttpConstants.VENICE_SCHEMA_ID).intValue(), 5);
       Assert.assertEquals(actualResponse.content(), response.content());
       Assert.assertTrue(actualResponse.headers().equals(response.headers()));
       Assert.assertTrue(actualResponse.equals(response));
