@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -8,6 +9,7 @@ import static org.testng.Assert.assertNull;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
@@ -186,6 +188,29 @@ public class AbstractPartitionWriterTest {
         DataWriterTaskTracker tracker) {
       return extract(keyBytes, values, tracker);
     }
+  }
+
+  @Test
+  public void testCloseEndsSegmentsWhenTaskSucceeded() throws Exception {
+    TestablePartitionWriter writer = createConfiguredWriter(1, -1);
+    AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = mock(AbstractVeniceWriter.class);
+    writer.setVeniceWriter(veniceWriter);
+
+    writer.close();
+
+    verify(veniceWriter).close(true);
+  }
+
+  @Test
+  public void testCloseDoesNotEndSegmentsWhenTaskFailed() throws Exception {
+    TestablePartitionWriter writer = createConfiguredWriter(1, -1);
+    AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = mock(AbstractVeniceWriter.class);
+    writer.setVeniceWriter(veniceWriter);
+
+    writer.markTaskFailed();
+    writer.close();
+
+    verify(veniceWriter).close(false);
   }
 
   private TestablePartitionWriter createConfiguredWriter(int globalValueSchemaId, int globalRmdSchemaId)

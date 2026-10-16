@@ -265,6 +265,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private boolean enableUncompressedRecordSizeLimit;
   private DuplicateKeyPrinter duplicateKeyPrinter;
   private Exception sendException = null;
+  /**
+   * Set by engines whose tasks are retried under the same deterministic producer GUID (e.g. Spark) when the task fails
+   * before {@link #close()}, so that no END_OF_SEGMENT is sent for a partially written segment.
+   */
+  private volatile boolean taskFailed = false;
 
   /**
    * Visible for testing purpose
@@ -839,6 +844,14 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
   }
 
+  /**
+   * Marks the task as failed so that {@link #close()} flushes and closes the writers without ending their segments.
+   * A retry of the task reuses the same producer GUID, and a segment that was already ended would fail DIV on retry.
+   */
+  protected void markTaskFailed() {
+    taskFailed = true;
+  }
+
   // Visible for testing
   protected boolean getExceedQuotaFlag() {
     return exceedQuota;
@@ -855,7 +868,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         try {
           try {
             veniceWriter.flush();
-            shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get()
+            shouldEndAllSegments = !taskFailed && messageErrored.get() == 0 && messageSent == messageCompleted.get()
                 && (dataWriterTaskTracker == null
                     || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_COMPLETED
                     || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_NOT_SUPPORTED);
