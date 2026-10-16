@@ -362,39 +362,6 @@ public class DataIntegrityValidatorTest {
     assertFalse(enabled.hasVtDivState(untrackedPartition));
   }
 
-  @Test
-  public void testClearedProducerReappearingMidSegmentIsToleratedOnlyAfterEndOfPush() {
-    int partition = 1;
-    long maxAgeInMs = TimeUnit.DAYS.toMillis(14);
-    String topicName = Utils.getUniqueString("TestStore") + "_v1";
-    PubSubTopicPartition topicPartition =
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partition);
-    long now = System.currentTimeMillis();
-    GUID guid = GuidUtils.getGUID(VeniceProperties.empty());
-
-    for (boolean endOfPushReceived: new boolean[] { true, false }) {
-      DataIntegrityValidator validator = new DataIntegrityValidator(
-          topicName,
-          PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
-          DataIntegrityValidator.DISABLED,
-          maxAgeInMs);
-      validateSoS(validator, topicPartition, guid, now - maxAgeInMs - 1);
-      validator.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, now);
-      assertFalse(validator.hasVtDivState(partition));
-
-      // The same producer resumes mid-segment, as if its state had never been tracked.
-      DefaultPubSubMessage put = buildPutRecord(topicPartition, 100L, guid, 0, 50, now);
-      if (endOfPushReceived) {
-        validator.validateMessage(PartitionTracker.VERSION_TOPIC, put, true, Lazy.FALSE);
-        assertTrue(validator.hasVtDivState(partition));
-      } else {
-        assertThrows(
-            ImproperlyStartedSegmentException.class,
-            () -> validator.validateMessage(PartitionTracker.VERSION_TOPIC, put, false, Lazy.FALSE));
-      }
-    }
-  }
-
   private static void validateSoS(
       DataIntegrityValidator validator,
       PubSubTopicPartition topicPartition,

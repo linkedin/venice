@@ -336,14 +336,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * would be validating data ahead of the actual persisted data on the drainer.
    *
    * NOTE: Currently, the state clearing happens in drainerDiv which persists its state to disk. consumerDiv is
-   * transient and not persisted to disk; its expired state is only cleared at checkpoint time when
-   * {@link #consumerDivExpiredStateCleanupEnabled} is true. Otherwise only bouncing or leader promotion clears it.
+   * transient and not persisted to disk; its expired state is cleared at checkpoint time (after EOP) using the same
+   * {@value com.linkedin.venice.ConfigKeys#DIV_PRODUCER_STATE_MAX_AGE_MS} max-age rule as the drainer. Before that,
+   * only bouncing or leader promotion clears it.
    *
    * NOTE: When {@link #isGlobalRtDivEnabled()} is enabled, this will be used by leaders to produce Global RT DIV state
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
    */
   protected final DataIntegrityValidator consumerDiv;
-  private final boolean consumerDivExpiredStateCleanupEnabled;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
@@ -603,7 +603,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pubSubContext.getPubSubPositionDeserializer(),
         DISABLED,
         producerStateMaxAgeMs);
-    this.consumerDivExpiredStateCleanupEnabled = builder.getServerConfig().isConsumerDivExpiredStateCleanupEnabled();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
@@ -2307,7 +2306,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * consumerDiv is never persisted on this path, so nothing else expires its producers. Only clear after EOP: an
      * unknown producer appearing mid-segment before EOP is a fatal UNREGISTERED_PRODUCER error.
      */
-    if (consumerDivExpiredStateCleanupEnabled && pcs.isEndOfPushReceived()) {
+    if (pcs.isEndOfPushReceived()) {
       consumerDiv.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, pcs.getLatestMessageTimeInMs());
     }
     // update the offset metadata in the OffsetRecord.
