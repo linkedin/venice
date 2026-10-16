@@ -74,14 +74,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
@@ -1519,7 +1516,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param compressionStrategy the store-version's {@link CompressionStrategy}
    * @param optionalCompressionDictionary The raw bytes of dictionary used to compress/decompress records.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
-   * @throws VeniceException if interrupted, after aborting the producer and settling submitted partition tasks.
+   * @throws VeniceException if interrupted, after cancelling the remaining partition sends.
    */
   public void broadcastStartOfPush(
       boolean sorted,
@@ -1527,110 +1524,60 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       CompressionStrategy compressionStrategy,
       Optional<ByteBuffer> optionalCompressionDictionary,
       Map<String, String> debugInfo) {
-    List<CompletableFuture<PubSubProduceResult>> partitionWriteFutures = new ArrayList<>(numberOfPartitions);
-    List<FutureTask<Void>> partitionTasks = new ArrayList<>(numberOfPartitions);
-    List<CompletableFuture<Void>> taskCompletions = new ArrayList<>(numberOfPartitions);
-    AtomicBoolean cancelled = new AtomicBoolean();
-    Executor interruptibleExecutor = runnable -> {
-      CompletableFuture<Void> taskCompletion = new CompletableFuture<>();
-      FutureTask<Void> task = new FutureTask<Void>(runnable, null) {
-        @Override
-        public void run() {
-          try {
-            if (cancelled.get()) {
-              cancel(false);
-            }
-            super.run();
-          } finally {
-            // FutureTask cancellation can finish before its running supplier exits.
-            taskCompletion.complete(null);
-          }
-        }
-      };
-      threadPoolExecutor.execute(task);
-      partitionTasks.add(task);
-      taskCompletions.add(taskCompletion);
-    };
-    for (int partition = 0; partition < numberOfPartitions; partition++) {
-      int destinationPartition = partition;
-      try {
-        partitionWriteFutures.add(CompletableFuture.supplyAsync(() -> {
+    List<Future<CompletableFuture<PubSubProduceResult>>> partitionTasks = new ArrayList<>(numberOfPartitions);
+    Throwable failure = null;
+    try {
+      for (int partition = 0; partition < numberOfPartitions; partition++) {
+        int destinationPartition = partition;
+        partitionTasks.add(threadPoolExecutor.submit(() -> {
           ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
-          StartOfPush startOfPush = new StartOfPush();
+          StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
           startOfPush.sorted = sorted;
           startOfPush.chunked = chunked;
           startOfPush.compressionStrategy = compressionStrategy.getValue();
           startOfPush.compressionDictionary = optionalCompressionDictionary.map(ByteBuffer::duplicate).orElse(null);
-          controlMessage.controlMessageUnion = startOfPush;
           return sendControlMessage(
               controlMessage,
               destinationPartition,
               debugInfo,
               null,
               DEFAULT_LEADER_METADATA_WRAPPER);
-        }, interruptibleExecutor).thenCompose(writeFuture -> writeFuture));
-      } catch (RejectedExecutionException e) {
-        CompletableFuture<PubSubProduceResult> failedFuture = new CompletableFuture<>();
-        failedFuture.completeExceptionally(e);
-        partitionWriteFutures.add(failedFuture);
+        }));
       }
+    } catch (RejectedExecutionException e) {
+      failure = e;
     }
     try {
-      // All partitions must finish, including after a failure, before callers release their locks or send later
-      // controls.
-      CompletableFuture.allOf(partitionWriteFutures.toArray(new CompletableFuture[0])).get();
-    } catch (InterruptedException e) {
-      cancelled.set(true);
-      partitionTasks.forEach(task -> task.cancel(true));
-      try {
-        abortStartOfPush(e);
-      } finally {
-        // Queued tasks must run their cancellation no-op, and active suppliers must actually exit.
-        CompletableFuture.allOf(taskCompletions.toArray(new CompletableFuture[0])).join();
-        // Buffered producer adapters can leave discarded acknowledgement futures incomplete on close.
-        partitionWriteFutures.forEach(future -> future.completeExceptionally(e));
-        Thread.currentThread().interrupt();
+      // All submitted partitions must finish, including after a failure, before callers release their locks or send
+      // later controls.
+      for (Future<CompletableFuture<PubSubProduceResult>> partitionTask: partitionTasks) {
+        try {
+          partitionTask.get().get();
+        } catch (ExecutionException e) {
+          if (failure == null) {
+            failure = e.getCause();
+          }
+        }
       }
+    } catch (InterruptedException e) {
+      // Cancel queued partitions before interrupting active ones, so freed workers cannot start them.
+      for (int i = partitionTasks.size() - 1; i >= 0; i--) {
+        partitionTasks.get(i).cancel(true);
+      }
+      Thread.currentThread().interrupt();
       throw new VeniceException(
           "Interrupted while broadcasting START_OF_PUSH Control Message for topic: " + topicName,
           e);
-    } catch (ExecutionException e) {
-      if (e.getCause() instanceof RuntimeException) {
-        throw (RuntimeException) e.getCause();
-      }
-      throw new VeniceException(
-          "Failed to broadcast START_OF_PUSH Control Message for topic: " + topicName,
-          e.getCause());
+    }
+    if (failure instanceof RuntimeException) {
+      throw (RuntimeException) failure;
+    }
+    if (failure != null) {
+      throw new VeniceException("Failed to broadcast START_OF_PUSH Control Message for topic: " + topicName, failure);
     }
     logger.info("Successfully broadcast {} Control Message for topic: {}", ControlMessageType.START_OF_PUSH, topicName);
     // Flush start of push message to avoid data message arrives before it.
     producerAdapter.flush();
-  }
-
-  private void abortStartOfPush(InterruptedException interruption) {
-    if (isClosed) {
-      return;
-    }
-    Exception closeFailure = null;
-    try {
-      // Neither the shared executor nor closeLock can be required to unblock saturated partition workers.
-      producerAdapter.close(0);
-    } catch (Exception e) {
-      closeFailure = e;
-      interruption.addSuppressed(e);
-    } finally {
-      synchronized (closeLock) {
-        if (!isClosed) {
-          if (closeFailure == null) {
-            OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-          } else {
-            handleExceptionInClose(closeFailure, false, false);
-          }
-          isClosed = true;
-          threadPoolExecutor.shutdown();
-        }
-      }
-    }
   }
 
   /**

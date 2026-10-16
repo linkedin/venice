@@ -109,7 +109,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -127,9 +126,7 @@ public class VeniceWriterUnitTest {
 
   @Test(timeOut = TIMEOUT)
   public void testStartOfPushRespectsConcurrencyAndWaitsForAcknowledgements() throws Exception {
-    ByteBuffer dictionary = ByteBuffer.wrap(new byte[] { 0, 1, 2, 3, 0 });
-    dictionary.position(1);
-    dictionary.limit(4);
+    ByteBuffer dictionary = ByteBuffer.wrap(new byte[] { 0, 1, 2, 3, 0 }, 1, 3);
     try (BroadcastTest fixture = new BroadcastTest(17, null, false)) {
       doAnswer(invocation -> {
         assertEquals(fixture.messages.size(), 17, "Every queued partition must be sent before flush");
@@ -190,126 +187,32 @@ public class VeniceWriterUnitTest {
     }
   }
 
-  @Test(timeOut = TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStartOfPushInterruptionAbortsProducerWithPendingAcknowledgements(boolean pendingStartOfSegment)
-      throws Exception {
-    try (BroadcastTest fixture = new BroadcastTest(17, null, false)) {
-      Map<Integer, CompletableFuture<PubSubProduceResult>> pendingAcks = new ConcurrentHashMap<>();
-      CountDownLatch pendingSends = new CountDownLatch(pendingStartOfSegment ? 8 : 17);
-      AtomicBoolean producerClosed = new AtomicBoolean();
-      doAnswer(invocation -> {
-        assertFalse(producerClosed.get(), "No sends may start after producer abort");
-        int partition = invocation.getArgument(1);
-        ControlMessage message = (ControlMessage) ((KafkaMessageEnvelope) invocation.getArgument(3)).payloadUnion;
-        ControlMessageType pendingType =
-            pendingStartOfSegment ? ControlMessageType.START_OF_SEGMENT : ControlMessageType.START_OF_PUSH;
-        if (ControlMessageType.valueOf(message) == pendingType) {
-          CompletableFuture<PubSubProduceResult> ack = new CompletableFuture<>();
-          pendingAcks.put(partition, ack);
-          pendingSends.countDown();
-          return ack;
-        }
-        return CompletableFuture.completedFuture(null);
-      }).when(fixture.producer).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
-      doAnswer(invocation -> {
-        producerClosed.set(true);
-        // Model a buffered adapter discarding queue entries without completing their acknowledgement futures.
-        return null;
-      }).when(fixture.producer).close(0);
-
-      try {
-        Future<?> broadcast = fixture.broadcastStartOfPush();
-        assertTrue(pendingSends.await(5, TimeUnit.SECONDS));
-        fixture.broadcastThread.interrupt();
-        ExecutionException exception =
-            Assert.expectThrows(ExecutionException.class, () -> broadcast.get(5, TimeUnit.SECONDS));
-        assertTrue(ExceptionUtils.recursiveClassEquals(exception, InterruptedException.class));
-        assertTrue(fixture.interruptedOnExit, "Cancellation must preserve the caller's interrupt status");
-        assertTrue(producerClosed.get());
-        assertEquals(pendingAcks.size(), pendingStartOfSegment ? 8 : 17);
-        pendingAcks.values().forEach(ack -> assertFalse(ack.isDone()));
-        verify(fixture.producer).close(0);
-        verify(fixture.producer, never()).flush();
-        clearInvocations(fixture.producer);
-        pendingAcks.values().forEach(ack -> ack.complete(null));
-        fixture.writer.close(false);
-        Assert.expectThrows(
-            RejectedExecutionException.class,
-            () -> fixture.writer.broadcastStartOfPush(Collections.emptyMap()));
-        verifyNoMoreInteractions(fixture.producer);
-      } finally {
-        pendingAcks.values().forEach(ack -> ack.complete(null));
-      }
-    }
-  }
-
   @Test(timeOut = TIMEOUT)
-  public void testStartOfPushInterruptionPreservesProducerAbortFailure() throws Exception {
-    try (BroadcastTest fixture = new BroadcastTest(1, null, false)) {
-      fixture.releaseStartOfSegment.countDown();
-      doThrow(fixture.failure).when(fixture.producer).close(0);
-      Future<?> broadcast = fixture.broadcastStartOfPush();
-      assertTrue(fixture.allSent.await(5, TimeUnit.SECONDS));
-      fixture.broadcastThread.interrupt();
-      ExecutionException exception =
-          Assert.expectThrows(ExecutionException.class, () -> broadcast.get(5, TimeUnit.SECONDS));
-      Throwable interruption = exception.getCause().getCause();
-      assertTrue(interruption instanceof InterruptedException);
-      assertEquals(interruption.getSuppressed(), new Throwable[] { fixture.failure });
-      assertTrue(fixture.interruptedOnExit);
-      verify(fixture.producer).close(0);
-      verify(fixture.producer, never()).flush();
-    }
-  }
-
-  @Test(timeOut = TIMEOUT)
-  public void testStartOfPushInterruptionWaitsForActiveSendToExit() throws Exception {
-    CountDownLatch releaseSends = new CountDownLatch(1);
+  public void testStartOfPushInterruptionCancelsPartitionSends() throws Exception {
     try (BroadcastTest fixture = new BroadcastTest(17, null, false)) {
       CountDownLatch interruptedSends = new CountDownLatch(8);
-      CountDownLatch exitedSends = new CountDownLatch(8);
-      CountDownLatch producerAborted = new CountDownLatch(1);
       doAnswer(invocation -> {
-        assertTrue((int) invocation.getArgument(1) < 8, "Queued partitions must be cancelled before they send");
         fixture.firstWaveStarted.countDown();
         try {
-          while (releaseSends.getCount() > 0) {
-            try {
-              releaseSends.await();
-            } catch (InterruptedException e) {
-              interruptedSends.countDown();
-            }
-          }
-          throw new VeniceException("producer aborted");
-        } finally {
-          exitedSends.countDown();
+          fixture.releaseStartOfSegment.await();
+        } catch (InterruptedException e) {
+          interruptedSends.countDown();
         }
+        throw fixture.failure;
       }).when(fixture.producer).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
-      doAnswer(invocation -> {
-        producerAborted.countDown();
-        return null;
-      }).when(fixture.producer).close(0);
-
-      try {
-        Future<?> broadcast = fixture.broadcastStartOfPush();
+      Thread caller = Thread.currentThread();
+      fixture.broadcaster.submit(() -> {
         assertTrue(fixture.firstWaveStarted.await(5, TimeUnit.SECONDS));
-        fixture.broadcastThread.interrupt();
-        assertTrue(interruptedSends.await(5, TimeUnit.SECONDS));
-        assertTrue(producerAborted.await(5, TimeUnit.SECONDS), "Abort must not queue behind saturated workers");
-        assertFalse(broadcast.isDone(), "Cancelling task futures is not proof that their suppliers exited");
-        fixture.broadcastThread.interrupt();
-        releaseSends.countDown();
-        ExecutionException exception =
-            Assert.expectThrows(ExecutionException.class, () -> broadcast.get(5, TimeUnit.SECONDS));
-        assertTrue(ExceptionUtils.recursiveClassEquals(exception, InterruptedException.class));
-        assertTrue(fixture.interruptedOnExit);
-        assertEquals(exitedSends.getCount(), 0);
-        verify(fixture.producer, times(8)).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
-        verify(fixture.producer).close(0);
-        verify(fixture.producer, never()).flush();
-      } finally {
-        releaseSends.countDown();
-      }
+        caller.interrupt();
+        return null;
+      });
+      VeniceException exception =
+          Assert.expectThrows(VeniceException.class, () -> fixture.writer.broadcastStartOfPush(Collections.emptyMap()));
+      assertTrue(exception.getCause() instanceof InterruptedException);
+      assertTrue(Thread.interrupted(), "The caller's interrupt status must be preserved");
+      assertTrue(interruptedSends.await(5, TimeUnit.SECONDS), "Active partition sends must be interrupted");
+      verify(fixture.producer, times(8)).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
+      verify(fixture.producer, never()).flush();
     }
   }
 
@@ -364,8 +267,6 @@ public class VeniceWriterUnitTest {
     final VeniceException failure = new VeniceException("test partition send failure");
     final CountDownLatch allSent;
     final VeniceWriter<Object, Object, Object> writer;
-    volatile Thread broadcastThread;
-    volatile boolean interruptedOnExit;
 
     BroadcastTest(int partitionCount, ControlMessageType failingType, boolean asynchronousFailure) {
       allSent = new CountDownLatch(partitionCount - (failingType == ControlMessageType.START_OF_SEGMENT ? 1 : 0));
@@ -402,17 +303,6 @@ public class VeniceWriterUnitTest {
           new VeniceWriterOptions.Builder("test_v1").setPartitionCount(partitionCount).build(),
           VeniceProperties.empty(),
           producer);
-    }
-
-    Future<?> broadcastStartOfPush() {
-      return broadcaster.submit(() -> {
-        broadcastThread = Thread.currentThread();
-        try {
-          writer.broadcastStartOfPush(Collections.emptyMap());
-        } finally {
-          interruptedOnExit = Thread.currentThread().isInterrupted();
-        }
-      });
     }
 
     @Override
