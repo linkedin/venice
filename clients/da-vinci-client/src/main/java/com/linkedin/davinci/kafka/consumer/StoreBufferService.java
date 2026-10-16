@@ -445,7 +445,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
     try {
       getDrainerForConsumerRecord(node.getConsumerRecord(), partition).put(node);
     } catch (VeniceException e) {
-      node.fail(e);
+      if (stalledDrainerQueueFailureEnabled) {
+        node.fail(e);
+      }
       throw e;
     }
   }

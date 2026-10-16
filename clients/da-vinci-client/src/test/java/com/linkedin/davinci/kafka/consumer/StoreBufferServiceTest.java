@@ -611,6 +611,42 @@ public class StoreBufferServiceTest {
   }
 
   @Test(dataProvider = "queueFailureThresholds")
+  public void testAdmissionFailureCallbacksRespectKillSwitch(boolean enabled, long thresholdMs) {
+    StoreBufferService bufferService = new StoreBufferService(
+        1,
+        10000,
+        1000,
+        true,
+        mockedStats,
+        null,
+        null,
+        true,
+        "test-cluster",
+        thresholdMs,
+        enabled);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    PubSubTopicPartition partition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("admission_failure_v1"), 0);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(partition).when(record).getTopicPartition();
+    VeniceException failure = new VeniceException("record size calculation failed");
+    doThrow(failure).when(record).getHeapSize();
+    LeaderProducedRecordContext context = LeaderProducedRecordContext.newPutRecord(0, mockPosition, key.getKey(), put);
+
+    VeniceException thrown = Assert.expectThrows(
+        VeniceException.class,
+        () -> bufferService.putConsumerRecord(record, task, context, 0, "kafka", 0L));
+
+    Assert.assertSame(thrown, failure);
+    boolean callbacksEnabled = enabled && thresholdMs > 0;
+    verify(task, times(callbacksEnabled ? 1 : 0)).setIngestionException(0, failure);
+    Assert.assertEquals(context.getPersistedToDBFuture().isCompletedExceptionally(), callbacksEnabled);
+    if (!callbacksEnabled) {
+      Assert.assertFalse(context.getPersistedToDBFuture().isDone());
+    }
+  }
+
+  @Test(dataProvider = "queueFailureThresholds")
   public void testQueueFailureThresholdAndKillSwitch(boolean enabled, long thresholdMs) throws Exception {
     StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, null, enabled);
     StoreIngestionTask task = mock(StoreIngestionTask.class);
