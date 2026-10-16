@@ -4078,6 +4078,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
       if (pcs.getVeniceWriterLazyRef() != null) {
         pcs.getVeniceWriterLazyRef().ifPresent(vw -> {
+          // Once the shutdown interrupt has arrived, further closes would only block again on a backed-up producer.
+          if (Thread.currentThread().isInterrupted()) {
+            return;
+          }
           try {
             vw.closePartition(partitionId);
           } catch (Exception e) {
