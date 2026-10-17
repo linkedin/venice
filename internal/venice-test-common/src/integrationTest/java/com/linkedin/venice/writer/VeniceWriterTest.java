@@ -185,6 +185,9 @@ public class VeniceWriterTest {
         });
   }
 
+  /**
+   * Verifies Kafka records preserve per-partition control-message order, sequence numbers, and optional SOP dictionaries.
+   */
   @Test(timeOut = 30 * MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testParallelStartOfPushPreservesPartitionOrderAndDictionary(boolean includeDictionary)
       throws ExecutionException, InterruptedException {

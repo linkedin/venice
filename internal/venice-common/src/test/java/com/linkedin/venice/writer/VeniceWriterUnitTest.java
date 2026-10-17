@@ -124,6 +124,9 @@ public class VeniceWriterUnitTest {
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
 
+  /**
+   * Verifies bounded parallel SOP dispatch, independent dictionary buffers, and acknowledgement completion before flush.
+   */
   @Test(timeOut = TIMEOUT)
   public void testStartOfPushRespectsConcurrencyAndWaitsForAcknowledgements() throws Exception {
     ByteBuffer dictionary = ByteBuffer.wrap(new byte[] { 0, 1, 2, 3, 0 }, 1, 3);
@@ -168,35 +171,49 @@ public class VeniceWriterUnitTest {
     }
   }
 
-  @Test(timeOut = TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStartOfPushWaitsForOtherPartitionsAfterFailure(boolean failSegmentStart, boolean asynchronousFailure)
-      throws Exception {
-    ControlMessageType failingType =
-        failSegmentStart ? ControlMessageType.START_OF_SEGMENT : ControlMessageType.START_OF_PUSH;
+  /**
+   * Verifies both broadcasts wait for other partitions after synchronous or asynchronous SOS or control-message failures.
+   */
+  @Test(timeOut = TIMEOUT, dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testParallelBroadcastWaitsForOtherPartitionsAfterFailure(
+      boolean startOfPush,
+      boolean failSegmentStart,
+      boolean asynchronousFailure) throws Exception {
+    ControlMessageType broadcastType = startOfPush ? ControlMessageType.START_OF_PUSH : ControlMessageType.VERSION_SWAP;
+    ControlMessageType failingType = failSegmentStart ? ControlMessageType.START_OF_SEGMENT : broadcastType;
     try (BroadcastTest fixture = new BroadcastTest(3, failingType, asynchronousFailure)) {
       fixture.releaseStartOfSegment.countDown();
-      Future<?> broadcast =
-          fixture.broadcaster.submit(() -> fixture.writer.broadcastStartOfPush(Collections.emptyMap()));
+      Future<?> broadcast = fixture.broadcaster.submit(() -> fixture.broadcast(startOfPush));
       assertTrue(fixture.allSent.await(5, TimeUnit.SECONDS));
       assertFalse(broadcast.isDone(), "One failed partition must not leave other partition sends in flight");
       fixture.lastAck.complete(null);
       ExecutionException exception =
           Assert.expectThrows(ExecutionException.class, () -> broadcast.get(5, TimeUnit.SECONDS));
       assertTrue(ExceptionUtils.recursiveMessageContains(exception, fixture.failure.getMessage()));
+      if (!failSegmentStart && asynchronousFailure) {
+        assertEquals(exception.getCause(), fixture.failure, "The original runtime exception must be preserved");
+      }
       verify(fixture.producer, never()).flush();
     }
   }
 
-  @Test(timeOut = TIMEOUT)
-  public void testStartOfPushInterruptionCancelsPartitionSends() throws Exception {
+  /**
+   * Verifies interruption preserves the caller's interrupt flag and skips queued sends without interrupting active sends.
+   */
+  @Test(timeOut = TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCancelledBroadcastSkipsQueuedSendsWithoutInterruptingRunningSends(boolean startOfPush)
+      throws Exception {
     try (BroadcastTest fixture = new BroadcastTest(17, null, false)) {
-      CountDownLatch interruptedSends = new CountDownLatch(8);
+      CountDownLatch interruptedSend = new CountDownLatch(1);
+      CountDownLatch completedSends = new CountDownLatch(8);
       doAnswer(invocation -> {
         fixture.firstWaveStarted.countDown();
         try {
           fixture.releaseStartOfSegment.await();
         } catch (InterruptedException e) {
-          interruptedSends.countDown();
+          interruptedSend.countDown();
+        } finally {
+          completedSends.countDown();
         }
         throw fixture.failure;
       }).when(fixture.producer).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
@@ -206,13 +223,36 @@ public class VeniceWriterUnitTest {
         caller.interrupt();
         return null;
       });
-      VeniceException exception =
-          Assert.expectThrows(VeniceException.class, () -> fixture.writer.broadcastStartOfPush(Collections.emptyMap()));
+      VeniceException exception = Assert.expectThrows(VeniceException.class, () -> fixture.broadcast(startOfPush));
       assertTrue(exception.getCause() instanceof InterruptedException);
       assertTrue(Thread.interrupted(), "The caller's interrupt status must be preserved");
-      assertTrue(interruptedSends.await(5, TimeUnit.SECONDS), "Active partition sends must be interrupted");
+      fixture.partitionAcks.forEach(ack -> assertTrue(ack.isCancelled()));
+      fixture.releaseStartOfSegment.countDown();
+      assertTrue(completedSends.await(5, TimeUnit.SECONDS));
+      fixture.writer.closeAsync(false).get(5, TimeUnit.SECONDS);
+      assertEquals(interruptedSend.getCount(), 1L, "Running sends must not be interrupted");
       verify(fixture.producer, times(8)).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
       verify(fixture.producer, never()).flush();
+    }
+  }
+
+  /**
+   * Verifies expired and pending deadlines cancel broadcast futures without cancelling producer acknowledgements.
+   */
+  @Test(timeOut = TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBroadcastTimeoutDoesNotAbortProducerAcknowledgements(boolean expiredDeadline) throws Exception {
+    try (BroadcastTest fixture = new BroadcastTest(1, null, false)) {
+      fixture.releaseStartOfSegment.countDown();
+      List<CompletableFuture<PubSubProduceResult>> partitionAcks = broadcastVersionSwap(fixture.writer);
+      assertTrue(fixture.allSent.await(5, TimeUnit.SECONDS));
+      long deadlineNs = System.nanoTime() + (expiredDeadline ? -1 : TimeUnit.MILLISECONDS.toNanos(1));
+      VeniceException exception = Assert.expectThrows(
+          VeniceException.class,
+          () -> VeniceWriter
+              .waitForControlMessageBroadcast(partitionAcks, ControlMessageType.VERSION_SWAP, "test_v1", deadlineNs));
+      assertTrue(exception.getCause() instanceof java.util.concurrent.TimeoutException);
+      assertTrue(partitionAcks.get(0).isCancelled());
+      assertFalse(fixture.lastAck.isDone(), "Cancellation must leave the producer's pending acknowledgement untouched");
     }
   }
 
@@ -239,13 +279,7 @@ public class VeniceWriterUnitTest {
     VeniceWriterOptions options = new VeniceWriterOptions.Builder("test_rt").setPartitionCount(partitionCount).build();
     VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, VeniceProperties.empty(), mockedProducer);
 
-    List<CompletableFuture<PubSubProduceResult>> futures = writer.nonBlockingBroadcastVersionSwapWithRegionInfo(
-        "test_v1",
-        "test_v2",
-        "source-region",
-        "destination-region",
-        1L,
-        Collections.emptyMap());
+    List<CompletableFuture<PubSubProduceResult>> futures = broadcastVersionSwap(writer);
     CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
 
     assertEquals(controlMessageTypesByPartition.size(), partitionCount);
@@ -255,6 +289,23 @@ public class VeniceWriterUnitTest {
           Arrays.asList(ControlMessageType.START_OF_SEGMENT, ControlMessageType.VERSION_SWAP));
     }
     writer.close(false);
+    List<CompletableFuture<PubSubProduceResult>> rejectedAcks = broadcastVersionSwap(writer);
+    assertEquals(rejectedAcks.size(), partitionCount);
+    for (CompletableFuture<PubSubProduceResult> rejectedAck: rejectedAcks) {
+      ExecutionException exception =
+          Assert.expectThrows(ExecutionException.class, () -> rejectedAck.get(5, TimeUnit.SECONDS));
+      assertTrue(exception.getCause() instanceof RejectedExecutionException);
+    }
+  }
+
+  private static List<CompletableFuture<PubSubProduceResult>> broadcastVersionSwap(VeniceWriter<?, ?, ?> writer) {
+    return writer.nonBlockingBroadcastVersionSwapWithRegionInfo(
+        "test_v1",
+        "test_v2",
+        "source-region",
+        "destination-region",
+        1L,
+        Collections.emptyMap());
   }
 
   private static class BroadcastTest implements AutoCloseable {
@@ -267,6 +318,7 @@ public class VeniceWriterUnitTest {
     final VeniceException failure = new VeniceException("test partition send failure");
     final CountDownLatch allSent;
     final VeniceWriter<Object, Object, Object> writer;
+    List<CompletableFuture<PubSubProduceResult>> partitionAcks = Collections.emptyList();
 
     BroadcastTest(int partitionCount, ControlMessageType failingType, boolean asynchronousFailure) {
       allSent = new CountDownLatch(partitionCount - (failingType == ControlMessageType.START_OF_SEGMENT ? 1 : 0));
@@ -303,6 +355,15 @@ public class VeniceWriterUnitTest {
           new VeniceWriterOptions.Builder("test_v1").setPartitionCount(partitionCount).build(),
           VeniceProperties.empty(),
           producer);
+    }
+
+    void broadcast(boolean startOfPush) {
+      if (startOfPush) {
+        writer.broadcastStartOfPush(Collections.emptyMap());
+      } else {
+        partitionAcks = broadcastVersionSwap(writer);
+        VeniceWriter.waitForControlMessageBroadcast(partitionAcks, ControlMessageType.VERSION_SWAP, "test_v1", 0);
+      }
     }
 
     @Override
