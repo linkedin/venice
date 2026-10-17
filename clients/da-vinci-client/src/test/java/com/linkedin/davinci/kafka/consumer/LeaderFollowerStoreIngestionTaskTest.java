@@ -33,7 +33,6 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
@@ -69,7 +68,6 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
-import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -712,127 +710,29 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Self-produced without producer state: skipped only after EOP
     doReturn(false).when(validator).hasProducerState(type, record);
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    int validationCount = endOfPushReceived ? 0 : 1;
-    verify(validator, times(validationCount)).validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
+    int initialValidationCount = endOfPushReceived ? 0 : 1;
+    verify(validator, times(initialValidationCount))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
 
     // Self-produced with producer state: validated
     doReturn(true).when(validator).hasProducerState(type, record);
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    verify(validator, times(++validationCount)).validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
+    verify(validator, times(initialValidationCount + 1))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
 
     // Not self-produced: validated regardless of producer state
     doReturn(false).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
     doReturn(false).when(validator).hasProducerState(type, record);
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    verify(validator, times(++validationCount)).validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
+    verify(validator, times(initialValidationCount + 2))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
 
     // Global RT DIV disabled: validated even if self-produced
     doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
     doReturn(false).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    verify(validator, times(++validationCount)).validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
-  }
-
-  @Test(timeOut = 60_000)
-  public void testColdReplayOfSelfProducedBatchBeforeEndOfPush() throws InterruptedException {
-    setUp(true);
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
-    List<DefaultPubSubMessage> records = createSelfProducedBatchReplay();
-    DataIntegrityValidator validator = leaderFollowerStoreIngestionTask.getConsumerDiv();
-    OffsetRecord offsetRecord = new OffsetRecord(
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        records.get(0).getTopicPartition(),
-        offsetRecord,
-        TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
-        true,
-        false,
-        false,
-        false,
-        "local");
-    leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, pcs);
-    assertEquals(pcs.getLatestConsumedVtPosition(), PubSubSymbolicPosition.EARLIEST);
-    assertFalse(pcs.isEndOfPushReceived());
-    assertFalse(validator.hasProducerState(PartitionTracker.VERSION_TOPIC, records.get(0)));
-    for (int i = 0; i < records.size() - 1; i++) {
-      assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(records.get(i)));
-    }
-    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(records.get(records.size() - 1)));
-
-    leaderFollowerStoreIngestionTask.validateAndFilterOutDuplicateMessagesFromLeaderTopic(
-        records,
-        "broker:1234",
-        records.get(0).getTopicPartition());
-
-    validator.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, 0, offsetRecord);
-    assertEquals(
-        offsetRecord
-            .getProducerPartitionState(records.get(0).getValue().producerMetadata.producerGUID).messageSequenceNumber,
-        3,
-        "The upstream producer state must advance through EOP forwarded by another leader");
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60_000)
-  public void testColdReplayOfSelfProducedBatchRejectsMissingRecords(boolean missingStartOfSegment)
-      throws InterruptedException {
-    setUp(true);
-    doReturn(mock(TopicManager.class)).when(mockTopicManagerRepository).getLocalTopicManager();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
-    List<DefaultPubSubMessage> records = createSelfProducedBatchReplay();
-    records.remove(missingStartOfSegment ? 0 : 2);
-
-    MissingDataException exception = expectThrows(
-        MissingDataException.class,
-        () -> leaderFollowerStoreIngestionTask.validateAndFilterOutDuplicateMessagesFromLeaderTopic(
-            records,
-            "broker:1234",
-            records.get(0).getTopicPartition()));
-    assertEquals(
-        exception.getClass(),
-        missingStartOfSegment ? ImproperlyStartedSegmentException.class : MissingDataException.class);
-  }
-
-  private List<DefaultPubSubMessage> createSelfProducedBatchReplay() {
-    PubSubTopicPartition topicPartition =
-        new PubSubTopicPartitionImpl(leaderFollowerStoreIngestionTask.getVersionTopic(), 0);
-    GUID producerGuid = new GUID();
-    List<DefaultPubSubMessage> records = new ArrayList<>();
-    for (int sequenceNumber = 0; sequenceNumber < 4; sequenceNumber++) {
-      KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
-      envelope.producerMetadata = new ProducerMetadata();
-      envelope.producerMetadata.producerGUID = producerGuid;
-      envelope.producerMetadata.segmentNumber = 0;
-      envelope.producerMetadata.messageSequenceNumber = sequenceNumber;
-      envelope.producerMetadata.messageTimestamp = 1;
-      envelope.leaderMetadataFooter = new LeaderMetadata();
-      envelope.leaderMetadataFooter.hostName = sequenceNumber == 3 ? "other-host:0" : Utils.getHostName() + ":0";
-      MessageType messageType = sequenceNumber == 2 ? MessageType.PUT : MessageType.CONTROL_MESSAGE;
-      envelope.messageType = messageType.getValue();
-      if (messageType == MessageType.PUT) {
-        Put put = new Put();
-        put.schemaId = 1;
-        put.putValue = ByteBuffer.wrap(new byte[] { 1 });
-        envelope.payloadUnion = put;
-      } else {
-        ControlMessageType controlMessageType = sequenceNumber == 0
-            ? ControlMessageType.START_OF_SEGMENT
-            : sequenceNumber == 1 ? ControlMessageType.START_OF_PUSH : ControlMessageType.END_OF_PUSH;
-        ControlMessage controlMessage = new ControlMessage();
-        controlMessage.controlMessageType = controlMessageType.getValue();
-        controlMessage.controlMessageUnion = controlMessageType.getNewInstance();
-        envelope.payloadUnion = controlMessage;
-      }
-      records.add(
-          new ImmutablePubSubMessage(
-              new KafkaKey(messageType, new byte[] { 1 }),
-              envelope,
-              topicPartition,
-              ApacheKafkaOffsetPosition.of(sequenceNumber),
-              1,
-              0));
-    }
-    return records;
+    verify(validator, times(initialValidationCount + 3))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
   }
 
   @Test

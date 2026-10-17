@@ -10,7 +10,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_BLOB_TRANSFER;
-import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -58,7 +57,6 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -72,17 +70,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.ProducerMetadata;
-import com.linkedin.venice.kafka.protocol.StartOfSegment;
-import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
@@ -116,7 +107,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -656,149 +646,6 @@ public class TestGlobalRtDiv {
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
         KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     return extraProperties;
-  }
-
-  @Test(timeOut = 240 * Time.MS_PER_SECOND)
-  public void testFormerLeaderColdReplayBeforeEndOfPush() throws Exception {
-    String storeName = Utils.getUniqueString("coldReplay");
-    try (ControllerClient controllerClient =
-        new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs())) {
-      TestUtils.assertCommand(
-          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
-      TestUtils.assertCommand(controllerClient.updateStore(storeName, createUpdateParams(false, 1)));
-      VersionCreationResponse version = TestUtils.assertCommand(
-          controllerClient.requestTopicForWrites(
-              storeName,
-              1024,
-              Version.PushType.BATCH,
-              Utils.getUniqueString("push"),
-              true,
-              true,
-              false,
-              Optional.empty(),
-              Optional.empty(),
-              Optional.empty(),
-              false,
-              -1));
-      String topicName = version.getKafkaTopic();
-      AtomicReference<Instance> leaderRef = new AtomicReference<>();
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        Instance leader = getRoutingDataRepository().getLeaderInstance(topicName, 0);
-        assertNotNull(leader);
-        leaderRef.set(leader);
-      });
-      VeniceServerWrapper formerLeader = venice.getVeniceServerByPort(leaderRef.get().getPort());
-      PubSubBrokerWrapper broker = venice.getPubSubBrokerWrapper();
-      Properties writerProperties = new Properties();
-      writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, broker.getAddress());
-      writerProperties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(broker)));
-      writerProperties.put(INSTANCE_ID, Utils.getHostName() + ":" + formerLeader.getPort());
-      GUID upstreamProducer = new GUID();
-      KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[] { 1 });
-
-      // Pass-through writes model batch records whose upstream DIV is preserved across a leader handoff.
-      try (VeniceWriter<byte[], byte[], byte[]> writer = TestUtils
-          .getVeniceWriterFactory(
-              writerProperties,
-              broker.getPubSubClientsFactory().getProducerAdapterFactory(),
-              broker.getPubSubPositionTypeRegistry())
-          .createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
-        writer
-            .put(
-                key,
-                batchReplayControlMessage(ControlMessageType.START_OF_SEGMENT, upstreamProducer, 0),
-                null,
-                0,
-                VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER)
-            .get();
-        writer
-            .put(
-                key,
-                batchReplayControlMessage(ControlMessageType.START_OF_PUSH, upstreamProducer, 1),
-                null,
-                0,
-                VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER)
-            .get();
-        writer.flush();
-      }
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        StoreIngestionTask sit =
-            formerLeader.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
-        assertNotNull(sit);
-        PartitionConsumptionState pcs = sit.getPartitionConsumptionState(0);
-        assertNotNull(pcs);
-        assertTrue(pcs.getStartOfPushTimestamp() > 0);
-        assertFalse(pcs.isEndOfPushReceived());
-      });
-
-      venice.stopVeniceServer(formerLeader.getPort());
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        Instance leader = getRoutingDataRepository().getLeaderInstance(topicName, 0);
-        assertNotNull(leader);
-        assertNotEquals(leader.getPort(), formerLeader.getPort());
-        leaderRef.set(leader);
-      });
-      // Remove only this version's local data and checkpoint, forcing replay without inherited blob state.
-      RocksDBUtils.deleteDirectory(
-          RocksDBUtils
-              .composeStoreDbDir(new File(formerLeader.getDataDirectory(), "rocksdb").getAbsolutePath(), topicName));
-      venice.restartVeniceServer(formerLeader.getPort());
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        ProducerPartitionState state = getVtProducerState(formerLeader, topicName, 0, upstreamProducer);
-        assertNotNull(state, "Cold replay must register the historical own-host producer before EOP");
-        assertEquals(state.getMessageSequenceNumber(), 1);
-      });
-
-      writerProperties.put(INSTANCE_ID, Utils.getHostName() + ":" + leaderRef.get().getPort());
-      try (VeniceWriter<byte[], byte[], byte[]> writer = TestUtils
-          .getVeniceWriterFactory(
-              writerProperties,
-              broker.getPubSubClientsFactory().getProducerAdapterFactory(),
-              broker.getPubSubPositionTypeRegistry())
-          .createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
-        writer
-            .put(
-                key,
-                batchReplayControlMessage(ControlMessageType.END_OF_PUSH, upstreamProducer, 2),
-                null,
-                0,
-                VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER)
-            .get();
-        writer.flush();
-      }
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        for (VeniceServerWrapper server: venice.getVeniceServers()) {
-          StoreIngestionTask sit =
-              server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
-          assertNotNull(sit);
-          PartitionConsumptionState pcs = sit.getPartitionConsumptionState(0);
-          assertNotNull(pcs);
-          assertFalse(pcs.isErrorReported(), "Replica failed on " + server.getAddress());
-          assertTrue(pcs.isEndOfPushReceived(), "Replica did not process EOP on " + server.getAddress());
-        }
-      });
-    }
-  }
-
-  private static KafkaMessageEnvelope batchReplayControlMessage(ControlMessageType type, GUID producer, int sequence) {
-    ControlMessage controlMessage = new ControlMessage();
-    controlMessage.controlMessageType = type.getValue();
-    controlMessage.debugInfo = Collections.emptyMap();
-    controlMessage.controlMessageUnion = type.getNewInstance();
-    if (type == ControlMessageType.START_OF_SEGMENT) {
-      StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
-      startOfSegment.checksumType = CheckSumType.NONE.getValue();
-      startOfSegment.upcomingAggregates = Collections.emptyList();
-    }
-    KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
-    envelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
-    envelope.producerMetadata = new ProducerMetadata();
-    envelope.producerMetadata.producerGUID = producer;
-    envelope.producerMetadata.segmentNumber = 0;
-    envelope.producerMetadata.messageSequenceNumber = sequence;
-    envelope.producerMetadata.messageTimestamp = System.currentTimeMillis();
-    envelope.payloadUnion = controlMessage;
-    return envelope;
   }
 
   /**

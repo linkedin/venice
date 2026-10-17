@@ -4762,10 +4762,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return; // Skip validation for ingestion heartbeat and DoL stamp records.
     } else if (isGlobalRtDivEnabled() && partitionConsumptionState.isEndOfPushReceived()
         && isRecordSelfProduced(consumerRecord) && !validator.hasProducerState(type, consumerRecord)) {
-      // After EOP, a demoted leader can encounter its own live records without tracking their producer.
-      // Before EOP, hostname also matches historical batch records from a previous process: their segment starts
-      // must reconstruct producer state so records forwarded by another leader can be validated.
-      // Existing state (e.g. inherited via blob transfer) must always advance rather than be checkpointed stale.
+      // Skip validation for self-produced records that this validator has no state for, since it never tracks its own
+      // producer. If there were any issues, the followers would've reported it already.
+      // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
+      // Self-produced is based on hostname, so it also matches a previous process on the same host. If state exists for
+      // that producer (e.g. inherited via blob transfer), the record must be validated to advance it. Otherwise, the
+      // stale state is checkpointed and later reported as MISSING by replicas that bootstrap from this one.
+      // Before EOP, leaders forward batch records with the push job's producer GUID. Validate own-host records too
+      // so producer state is reconstructed across leader handoffs.
       return;
     }
     // Global RT DIV messages are not skipped. See validateAndFilterOutDuplicateMessagesFromLeaderTopic()
