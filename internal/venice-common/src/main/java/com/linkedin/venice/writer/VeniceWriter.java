@@ -1525,7 +1525,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       CompressionStrategy compressionStrategy,
       Optional<ByteBuffer> optionalCompressionDictionary,
       Map<String, String> debugInfo) {
-    // Step 1: dispatch independent messages in parallel, with one acknowledgement future per partition.
+    // Each partition owns its control message and dictionary buffer.
     List<CompletableFuture<PubSubProduceResult>> partitionAcks = broadcastControlMessageInParallel(() -> {
       ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
       StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
@@ -2377,9 +2377,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       throw new VeniceException("Failed to broadcast " + broadcastDescription, failure);
     } finally {
       if (!broadcastAck.isDone()) {
-        for (CompletableFuture<PubSubProduceResult> partitionAck: partitionAcks) {
-          partitionAck.cancel(false);
-        }
+        partitionAcks.forEach(partitionAck -> partitionAck.cancel(false));
       }
     }
   }
