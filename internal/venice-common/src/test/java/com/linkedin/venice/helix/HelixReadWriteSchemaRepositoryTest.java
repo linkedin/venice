@@ -97,6 +97,19 @@ public class HelixReadWriteSchemaRepositoryTest {
   }
 
   @Test
+  public void testValueSchemaCreatedListenerSkippedWhenAnotherWriterCreatedSchema() {
+    String storeName = "testStore";
+    HelixReadWriteSchemaRepository repo = newRepoWithStore(storeName, Collections.emptyList(), false);
+    ValueSchemaCreatedListener listener = mock(ValueSchemaCreatedListener.class);
+    repo.registerValueSchemaCreatedListener(listener);
+
+    SchemaEntry result = repo.addValueSchema(storeName, "\"string\"", 1);
+
+    Assert.assertEquals(result.getId(), 1);
+    verify(listener, never()).handleValueSchemaCreated(any(), any());
+  }
+
+  @Test
   public void testValueSchemaCreatedListenerFiresForDocFieldUpdate() {
     String storeName = "testStore";
     String original =
@@ -170,6 +183,13 @@ public class HelixReadWriteSchemaRepositoryTest {
    * cross-test mock state.
    */
   private HelixReadWriteSchemaRepository newRepoWithStore(String storeName, Collection<SchemaEntry> initialSchemas) {
+    return newRepoWithStore(storeName, initialSchemas, true);
+  }
+
+  private HelixReadWriteSchemaRepository newRepoWithStore(
+      String storeName,
+      Collection<SchemaEntry> initialSchemas,
+      boolean schemaCreated) {
     ReadWriteStoreRepository mockStoreRepo = mock(ReadWriteStoreRepository.class);
     Store mockStore = mock(Store.class);
     doReturn(storeName).when(mockStore).getName();
@@ -181,6 +201,7 @@ public class HelixReadWriteSchemaRepositoryTest {
 
     HelixSchemaAccessor mockAccessor = mock(HelixSchemaAccessor.class);
     doAnswer(inv -> new ArrayList<>(initialSchemas)).when(mockAccessor).getAllValueSchemas(storeName);
+    doReturn(schemaCreated).when(mockAccessor).addValueSchemaIfAbsent(eq(storeName), any(SchemaEntry.class));
 
     return new HelixReadWriteSchemaRepository(mockStoreRepo, Optional.empty(), mockAccessor);
   }

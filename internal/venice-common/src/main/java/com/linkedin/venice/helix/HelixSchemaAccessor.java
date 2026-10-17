@@ -1,10 +1,14 @@
 package com.linkedin.venice.helix;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.List;
 import org.apache.helix.AccessOption;
@@ -114,23 +118,48 @@ public class HelixSchemaAccessor {
   }
 
   public void addValueSchema(String storeName, SchemaEntry schemaEntry) {
-    HelixUtils.create(schemaAccessor, getValueSchemaPath(storeName, String.valueOf(schemaEntry.getId())), schemaEntry);
-    logger.info("Added value schema ID: {} for store: {}.", schemaEntry.getId(), storeName);
+    addValueSchemaIfAbsent(storeName, schemaEntry);
+  }
+
+  /**
+   * @return true if this call created the schema; false if identical content already existed
+   */
+  boolean addValueSchemaIfAbsent(String storeName, SchemaEntry schemaEntry) {
+    boolean created = createSchema(getValueSchemaPath(storeName, String.valueOf(schemaEntry.getId())), schemaEntry);
+    logger.info("Registered value schema ID: {} for store: {}.", schemaEntry.getId(), storeName);
+    return created;
   }
 
   public void addDerivedSchema(String storeName, DerivedSchemaEntry derivedSchemaEntry) {
-    HelixUtils.create(
-        schemaAccessor,
+    createSchema(
         getDerivedSchemaPath(
             storeName,
             String.valueOf(derivedSchemaEntry.getValueSchemaID()),
             String.valueOf(derivedSchemaEntry.getId())),
         derivedSchemaEntry);
     logger.info(
-        "Added derived schema ID: {}/{} for store: {}.",
+        "Registered derived schema ID: {}/{} for store: {}.",
         derivedSchemaEntry.getValueSchemaID(),
         derivedSchemaEntry.getId(),
         storeName);
+  }
+
+  private boolean createSchema(String path, SchemaEntry schema) {
+    return HelixUtils.createIfAbsent(
+        schemaAccessor,
+        path,
+        schema,
+        HelixUtils.DEFAULT_HELIX_OP_RETRY_COUNT,
+        (existing, requested) -> {
+          try {
+            // Avro equality omits metadata such as docs, aliases, and enum defaults.
+            ObjectMapper mapper = ObjectMapperFactory.getInstance();
+            return mapper.readTree(existing.getSchema().toString())
+                .equals(mapper.readTree(requested.getSchema().toString()));
+          } catch (JsonProcessingException e) {
+            throw new VeniceException("Failed to compare schema content at path: " + path, e);
+          }
+        });
   }
 
   public void removeDerivedSchema(String storeName, String derivedSchemaIdPair) {
