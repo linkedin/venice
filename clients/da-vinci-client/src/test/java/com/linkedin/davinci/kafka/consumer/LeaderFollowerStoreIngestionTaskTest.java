@@ -123,6 +123,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
@@ -689,15 +690,15 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * Self-produced records (by hostname) are only skipped when the validator has no state for their producer. If state
-   * exists, e.g. inherited via blob transfer after a restart on the same host, the record must be validated so the
-   * state advances instead of being checkpointed stale.
+   * Before EOP, historical own-host records must reconstruct producer state. After EOP, self-produced records are
+   * skipped only without producer state; inherited state must still advance.
    */
-  @Test(timeOut = 60_000)
-  public void testValidateMessageSkipsSelfProducedRecordsOnlyWithoutProducerState() throws InterruptedException {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60_000)
+  public void testValidateMessageSkipsSelfProducedRecordsOnlyAfterEopWithoutProducerState(boolean endOfPushReceived)
+      throws InterruptedException {
     setUp();
     PartitionConsumptionState pcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
-    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(endOfPushReceived).when(pcs).isEndOfPushReceived();
     DataIntegrityValidator validator = mock(DataIntegrityValidator.class);
     DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
     doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(record).getKey();
@@ -706,27 +707,32 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
     doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
 
-    // Self-produced without producer state: skipped
+    // Self-produced without producer state: skipped only after EOP
     doReturn(false).when(validator).hasProducerState(type, record);
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    verify(validator, never()).validateMessage(any(), any(), anyBoolean(), any());
+    int initialValidationCount = endOfPushReceived ? 0 : 1;
+    verify(validator, times(initialValidationCount))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
 
     // Self-produced with producer state: validated
     doReturn(true).when(validator).hasProducerState(type, record);
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    verify(validator, times(1)).validateMessage(eq(type), eq(record), eq(true), any());
+    verify(validator, times(initialValidationCount + 1))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
 
     // Not self-produced: validated regardless of producer state
     doReturn(false).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
     doReturn(false).when(validator).hasProducerState(type, record);
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    verify(validator, times(2)).validateMessage(eq(type), eq(record), eq(true), any());
+    verify(validator, times(initialValidationCount + 2))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
 
     // Global RT DIV disabled: validated even if self-produced
     doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
     doReturn(false).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
     leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
-    verify(validator, times(3)).validateMessage(eq(type), eq(record), eq(true), any());
+    verify(validator, times(initialValidationCount + 3))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
   }
 
   @Test
