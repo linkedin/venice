@@ -76,8 +76,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
@@ -98,7 +100,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       new ChunkedPayloadAndManifest(null, null);
   private static final int ASYNC_BROADCAST_THREAD_COUNT = 8;
 
-  // use for running async close and to fetch number of partitions with timeout from producer
+  // Shared by control-message broadcasts, async close, and partition metadata lookups.
   private final ThreadPoolExecutor threadPoolExecutor;
 
   // log4j logger
@@ -1515,6 +1517,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param compressionStrategy the store-version's {@link CompressionStrategy}
    * @param optionalCompressionDictionary The raw bytes of dictionary used to compress/decompress records.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   * @throws VeniceException if interrupted, after best-effort cancellation of queued partition sends.
    */
   public void broadcastStartOfPush(
       boolean sorted,
@@ -1522,14 +1525,19 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       CompressionStrategy compressionStrategy,
       Optional<ByteBuffer> optionalCompressionDictionary,
       Map<String, String> debugInfo) {
-    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
-    StartOfPush startOfPush = new StartOfPush();
-    startOfPush.sorted = sorted;
-    startOfPush.chunked = chunked;
-    startOfPush.compressionStrategy = compressionStrategy.getValue();
-    startOfPush.compressionDictionary = optionalCompressionDictionary.orElse(null);
-    controlMessage.controlMessageUnion = startOfPush;
-    broadcastControlMessage(controlMessage, debugInfo);
+    // Each partition owns its control message and dictionary buffer.
+    List<CompletableFuture<PubSubProduceResult>> partitionAcks = broadcastControlMessageInParallel(() -> {
+      ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
+      StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
+      startOfPush.sorted = sorted;
+      startOfPush.chunked = chunked;
+      startOfPush.compressionStrategy = compressionStrategy.getValue();
+      startOfPush.compressionDictionary = optionalCompressionDictionary.map(ByteBuffer::duplicate).orElse(null);
+      return controlMessage;
+    }, debugInfo);
+
+    waitForControlMessageBroadcast(partitionAcks, ControlMessageType.START_OF_PUSH, topicName, 0);
+    logger.info("Successfully broadcast {} Control Message for topic: {}", ControlMessageType.START_OF_PUSH, topicName);
     // Flush start of push message to avoid data message arrives before it.
     producerAdapter.flush();
   }
@@ -1669,7 +1677,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * capture consumer to perform version swap correctly in a true A/A setup (with unique writers in each region). The
    * broadcast is also non-blocking and returns a list of future correspond to the control message write for each
    * partition. The caller is responsible for waiting on the futures to ensure the control message is written to all
-   * partitions.
+   * partitions. Submission rejections are reported through the returned futures. Use
+   * {@link #waitForControlMessageBroadcast(List, ControlMessageType, String, long)} to wait for all partitions and cancel
+   * queued sends if the wait is interrupted or times out.
    *
    * @param oldServingVersionTopic the version topic change capture consumer should switch from.
    * @param newServingVersionTopic the version topic change capture consumer should switch to.
@@ -1690,34 +1700,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Validate.notEmpty(newServingVersionTopic);
     Validate.notEmpty(sourceRegion);
     Validate.notEmpty(destinationRegion);
-    List<CompletableFuture<PubSubProduceResult>> partitionWriteFutures = new ArrayList<>(numberOfPartitions);
-    for (int partition = 0; partition < numberOfPartitions; partition++) {
-      int destinationPartition = partition;
-      CompletableFuture<PubSubProduceResult> partitionWriteFuture = new CompletableFuture<>();
-      partitionWriteFutures.add(partitionWriteFuture);
-      threadPoolExecutor.execute(() -> {
-        try {
-          ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
-          controlMessage.controlMessageUnion = generateVersionSwapMessage(
-              oldServingVersionTopic,
-              newServingVersionTopic,
-              sourceRegion,
-              destinationRegion,
-              generationId);
-          sendControlMessage(controlMessage, destinationPartition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER)
-              .whenComplete((result, throwable) -> {
-                if (throwable == null) {
-                  partitionWriteFuture.complete(result);
-                } else {
-                  partitionWriteFuture.completeExceptionally(throwable);
-                }
-              });
-        } catch (Exception e) {
-          partitionWriteFuture.completeExceptionally(e);
-        }
-      });
-    }
-    return partitionWriteFutures;
+    return broadcastControlMessageInParallel(() -> {
+      ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+      controlMessage.controlMessageUnion = generateVersionSwapMessage(
+          oldServingVersionTopic,
+          newServingVersionTopic,
+          sourceRegion,
+          destinationRegion,
+          generationId);
+      return controlMessage;
+    }, debugInfo);
   }
 
   private VersionSwap generateVersionSwapMessage(
@@ -2348,6 +2340,91 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         ControlMessageType.valueOf(controlMessage),
         topicName);
     return partitionWriteFuture;
+  }
+
+  /**
+   * Waits for every partition to succeed or fail, preserving runtime exception types and wrapping checked failures.
+   * Interruption or timeout cancels queued sends on a best-effort basis without interrupting running sends or aborting
+   * producer acknowledgements.
+   *
+   * @param deadlineNs the deadline based on {@link System#nanoTime()}, or zero to wait without a deadline.
+   */
+  public static void waitForControlMessageBroadcast(
+      List<CompletableFuture<PubSubProduceResult>> partitionAcks,
+      ControlMessageType controlMessageType,
+      String topicName,
+      long deadlineNs) {
+    CompletableFuture<Void> broadcastAck = CompletableFuture.allOf(partitionAcks.toArray(new CompletableFuture[0]));
+    String broadcastDescription = controlMessageType + " Control Message for topic: " + topicName;
+    try {
+      // A failed partition must not stop the wait for the others.
+      if (deadlineNs == 0) {
+        broadcastAck.get();
+      } else {
+        long remainingTimeNs = deadlineNs - System.nanoTime();
+        if (remainingTimeNs <= 0) {
+          throw new TimeoutException("Control message broadcast exceeded its deadline");
+        }
+        broadcastAck.get(remainingTimeNs, TimeUnit.NANOSECONDS);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while broadcasting " + broadcastDescription, e);
+    } catch (TimeoutException e) {
+      throw new VeniceException("Timed out while broadcasting " + broadcastDescription, e);
+    } catch (ExecutionException e) {
+      // Preserve the original runtime exception type; wrap checked failures.
+      Throwable failure = e.getCause();
+      if (failure instanceof RuntimeException) {
+        throw (RuntimeException) failure;
+      }
+      throw new VeniceException("Failed to broadcast " + broadcastDescription, failure);
+    } finally {
+      if (!broadcastAck.isDone()) {
+        partitionAcks.forEach(partitionAck -> partitionAck.cancel(false));
+      }
+    }
+  }
+
+  /**
+   * Dispatches one independent control message per partition without waiting for acknowledgements.
+   * Cancelling a returned future skips its send if the task has not started, but does not interrupt running sends.
+   */
+  private List<CompletableFuture<PubSubProduceResult>> broadcastControlMessageInParallel(
+      Supplier<ControlMessage> controlMessageSupplier,
+      Map<String, String> debugInfo) {
+    List<CompletableFuture<PubSubProduceResult>> partitionAcks = new ArrayList<>(numberOfPartitions);
+    for (int partition = 0; partition < numberOfPartitions; partition++) {
+      int destinationPartition = partition;
+      CompletableFuture<PubSubProduceResult> partitionAck = new CompletableFuture<>();
+      partitionAcks.add(partitionAck);
+      try {
+        threadPoolExecutor.execute(() -> {
+          if (partitionAck.isCancelled()) {
+            return;
+          }
+          try {
+            sendControlMessage(
+                controlMessageSupplier.get(),
+                destinationPartition,
+                debugInfo,
+                null,
+                DEFAULT_LEADER_METADATA_WRAPPER).whenComplete((result, throwable) -> {
+                  if (throwable == null) {
+                    partitionAck.complete(result);
+                  } else {
+                    partitionAck.completeExceptionally(throwable);
+                  }
+                });
+          } catch (Throwable e) {
+            partitionAck.completeExceptionally(e);
+          }
+        });
+      } catch (RejectedExecutionException e) {
+        partitionAck.completeExceptionally(e);
+      }
+    }
+    return partitionAcks;
   }
 
   private Map<CharSequence, CharSequence> getDebugInfo(Map<String, String> debugInfoToAdd) {
