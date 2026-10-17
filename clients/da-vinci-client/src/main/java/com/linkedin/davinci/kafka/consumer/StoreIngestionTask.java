@@ -4768,8 +4768,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Self-produced is based on hostname, so it also matches a previous process on the same host. If state exists for
       // that producer (e.g. inherited via blob transfer), the record must be validated to advance it. Otherwise, the
       // stale state is checkpointed and later reported as MISSING by replicas that bootstrap from this one.
-      // Before EOP, leaders forward batch records with the push job's producer GUID. Validate own-host records too
-      // so producer state is reconstructed across leader handoffs.
+      // Before EOP, records are produced by the push job rather than by a leader on this host, so they need to be
+      // validated.
       return;
     }
     // Global RT DIV messages are not skipped. See validateAndFilterOutDuplicateMessagesFromLeaderTopic()
