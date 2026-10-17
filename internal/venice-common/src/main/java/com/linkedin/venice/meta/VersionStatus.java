@@ -107,6 +107,14 @@ public enum VersionStatus implements VeniceEnumValue {
   }
 
   /**
+   * Check if a non-current version in this status can be deleted once a newer version exists. These pushes were
+   * never swapped in, so a newer version supersedes them.
+   */
+  public static boolean canDeleteWhenSuperseded(VersionStatus status) {
+    return status == STARTED || status == PUSHED;
+  }
+
+  /**
    * For all the status which returns true, last few versions
    * (few count, controlled by config) will be preserved.
    *

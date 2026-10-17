@@ -1010,9 +1010,13 @@ public class AdminExecutionTask implements Callable<Void> {
   }
 
   private void handleRollForwardToFutureVersion(RollForwardCurrentVersion message) {
+    if (isParentController) {
+      // The parent aggregates child completion; it must not promote on local message consumption.
+      return;
+    }
     String clusterName = message.getClusterName().toString();
     String storeName = message.getStoreName().toString();
-    String regionFilter = message.getRegionsFilter().toString();
+    String regionFilter = message.getRegionsFilter() == null ? null : message.getRegionsFilter().toString();
     admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
   }
 
