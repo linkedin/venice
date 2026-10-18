@@ -51,6 +51,8 @@ public class FastClientStats extends ClientStats {
   private final Sensor dualReadThinClientFastClientLatencyDeltaSensor;
 
   private final Sensor leakedRequestCountSensor;
+  private final Sensor cacheHitKeyCountSensor;
+  private final Sensor cacheMissKeyCountSensor;
   private volatile MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
 
   // OTel metrics
@@ -130,6 +132,16 @@ public class FastClientStats extends ClientStats {
       this.dualReadThinClientFastClientLatencyDeltaSensor = noopSensor;
     }
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
+    this.cacheHitKeyCountSensor = registerSensor("cache_hit_key_count", new Rate());
+    this.cacheMissKeyCountSensor = registerSensor("cache_miss_key_count", new Rate());
+  }
+
+  public void recordCacheHitKeyCount(int keyCount) {
+    cacheHitKeyCountSensor.record(keyCount);
+  }
+
+  public void recordCacheMissKeyCount(int keyCount) {
+    cacheMissKeyCountSensor.record(keyCount);
   }
 
   /**

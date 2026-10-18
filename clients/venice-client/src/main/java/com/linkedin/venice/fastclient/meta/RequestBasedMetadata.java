@@ -803,6 +803,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           LOGGER.error("Listener callback threw for store {}; continuing with remaining callbacks", storeName, t);
         }
       }
+      // The refresh succeeded and every change has been committed; let the record cache drop its entries.
+      fireRefreshCompleted();
     } catch (InterruptedException e) {
       // Interrupted during shutdown — restore the flag so the executor can terminate cleanly.
       Thread.currentThread().interrupt();

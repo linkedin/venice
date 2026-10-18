@@ -41,6 +41,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   protected volatile AbstractClientRoutingStrategy routingStrategy;
   protected final String storeName;
   private final CopyOnWriteArrayList<StoreVersionSwitchListener> versionSwitchListeners = new CopyOnWriteArrayList<>();
+  private final CopyOnWriteArrayList<Runnable> refreshListeners = new CopyOnWriteArrayList<>();
   private final CopyOnWriteArrayList<StoreConfigChangeListener> storeConfigChangeListeners =
       new CopyOnWriteArrayList<>();
 
@@ -263,6 +264,28 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
       throw new IllegalArgumentException("StoreVersionSwitchListener must not be null");
     }
     versionSwitchListeners.addIfAbsent(listener);
+  }
+
+  @Override
+  public void registerRefreshListener(Runnable listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("Refresh listener must not be null");
+    }
+    refreshListeners.addIfAbsent(listener);
+  }
+
+  /**
+   * Notify the registered refresh listeners that a metadata refresh completed successfully. Exceptions are caught and
+   * logged so that one failing listener cannot prevent others from running.
+   */
+  protected void fireRefreshCompleted() {
+    for (Runnable listener: refreshListeners) {
+      try {
+        listener.run();
+      } catch (Throwable t) {
+        LOGGER.error("Store {} refresh listener {} threw", storeName, listener.getClass().getName(), t);
+      }
+    }
   }
 
   /**
