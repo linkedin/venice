@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -16,6 +17,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
@@ -23,10 +25,12 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -243,6 +247,19 @@ public class VersionBackendTest {
     versionBackend.subscribe(ComplementSet.emptySet(), null, null, false);
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any(), any(), anyBoolean());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
+
+    doThrow(new VeniceException("startup failed")).doNothing()
+        .when(mockIngestionBackend)
+        .startConsumption(any(), eq(5), any(), any(), anyBoolean());
+    ComplementSet<Integer> retryPartition = ComplementSet.newSet(Collections.singleton(5));
+    expectThrows(VeniceException.class, () -> versionBackend.subscribe(retryPartition, null, null, false));
+    verify(mockHeartbeatMonitoringService, never())
+        .updateLagMonitor(anyString(), eq(5), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR), anyString());
+    versionBackend.unsubscribe(retryPartition);
+    versionBackend.subscribe(retryPartition, null, null, false);
+    verify(mockIngestionBackend, times(2)).startConsumption(any(), eq(5), any(), any(), anyBoolean());
+    verify(mockHeartbeatMonitoringService)
+        .updateLagMonitor(anyString(), eq(5), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR), anyString());
   }
 
   @Test

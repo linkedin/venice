@@ -1045,6 +1045,46 @@ public class HeartbeatMonitoringServiceTest {
   }
 
   @Test
+  public void testRemoveLagMonitorsPreservesOtherStoreCleanupProgress() {
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(Collections.singleton(LOCAL_FABRIC)).when(serverConfig).getRegionNames();
+    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
+    doReturn("localhost").when(serverConfig).getListenerHostname();
+    HeartbeatMonitoringService service = new HeartbeatMonitoringService(
+        new MetricsRepository(),
+        mock(ReadOnlyStoreRepository.class),
+        serverConfig,
+        mock(HeartbeatMonitoringServiceStats.class),
+        new CompletableFuture<>());
+    Version targetVersion = new VersionImpl("orders", 1, "1");
+    Version otherVersion = new VersionImpl("orders_v1-archive", 2, "2");
+    String targetReplicaId = Utils.getReplicaId(targetVersion.kafkaTopicName(), 0);
+    String otherReplicaId = Utils.getReplicaId(otherVersion.kafkaTopicName(), 0);
+    service.getCleanupHeartbeatMap().put(targetReplicaId, 2);
+    service.getCleanupHeartbeatMap().put(otherReplicaId, 3);
+    HeartbeatKey otherLeaderKey =
+        new HeartbeatKey(otherVersion.getStoreName(), otherVersion.getNumber(), 0, LOCAL_FABRIC);
+    HeartbeatKey otherFollowerKey =
+        new HeartbeatKey(otherVersion.getStoreName(), otherVersion.getNumber(), 1, LOCAL_FABRIC);
+    IngestionTimestampEntry leaderTimestamp = new IngestionTimestampEntry(1000L, true, true);
+    IngestionTimestampEntry followerTimestamp = new IngestionTimestampEntry(2000L, true, true);
+    service.getLeaderHeartbeatTimeStamps().put(otherLeaderKey, leaderTimestamp);
+    service.getFollowerHeartbeatTimeStamps().put(otherFollowerKey, followerTimestamp);
+
+    service.removeLagMonitors(targetVersion);
+
+    Assert.assertEquals(service.getCleanupHeartbeatMap(), Collections.singletonMap(otherReplicaId, 3));
+    Assert.assertEquals(
+        service.getLeaderHeartbeatTimeStamps(),
+        Collections.singletonMap(otherLeaderKey, leaderTimestamp));
+    Assert.assertEquals(
+        service.getFollowerHeartbeatTimeStamps(),
+        Collections.singletonMap(otherFollowerKey, followerTimestamp));
+    Assert.assertEquals(leaderTimestamp.heartbeatTimestamp, 1000L);
+    Assert.assertEquals(followerTimestamp.heartbeatTimestamp, 2000L);
+  }
+
+  @Test
   public void testLargestHeartbeatLag() {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     doCallRealMethod().when(heartbeatMonitoringService).getMaxHeartbeatLag(anyLong(), anyMap());

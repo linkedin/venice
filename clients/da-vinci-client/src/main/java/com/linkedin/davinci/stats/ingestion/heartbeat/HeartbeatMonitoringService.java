@@ -345,7 +345,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     String replicaIdPrefix = version.kafkaTopicName() + "-";
     cleanupHeartbeatMap.keySet()
         .stream()
-        .filter(replicaId -> replicaId.startsWith(replicaIdPrefix))
+        .filter(
+            replicaId -> replicaId.startsWith(replicaIdPrefix)
+                && replicaId.lastIndexOf('-') == replicaIdPrefix.length() - 1)
         .forEach(replicaId -> keysByReplica.computeIfAbsent(replicaId, k -> new HashSet<>()));
     for (Map.Entry<String, Set<HeartbeatKey>> replica: keysByReplica.entrySet()) {
       // Registration and view cleanup acquire the per-replica map lock before the service monitor.

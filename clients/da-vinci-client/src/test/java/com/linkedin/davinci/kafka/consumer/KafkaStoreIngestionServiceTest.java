@@ -23,6 +23,9 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.davinci.DaVinciBackend;
+import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.VersionBackendTestUtils;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -31,6 +34,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -54,6 +58,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -468,11 +473,12 @@ public abstract class KafkaStoreIngestionServiceTest {
 
   @DataProvider
   public Object[][] closingTaskRemovalModes() {
-    return new Object[][] { { "idle" }, { "shutdown" }, { "kill" } };
+    return new Object[][] { { "idle", false }, { "shutdown", false }, { "kill", false }, { "idle", true },
+        { "shutdown", true }, { "kill", true } };
   }
 
   @Test(dataProvider = "closingTaskRemovalModes")
-  public void testCloseStoreIngestionTask(String removalMode) throws Exception {
+  public void testCloseStoreIngestionTask(String removalMode, boolean daVinciSubscription) throws Exception {
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -528,17 +534,44 @@ public abstract class KafkaStoreIngestionServiceTest {
       waitingForShutdown.countDown();
       return invocation.callRealMethod();
     }).when(closingTask).shutdownAndWait(10);
-    ExecutorService replacementExecutor = Executors.newSingleThreadExecutor();
-    String threadName = Thread.currentThread().getName();
-    try {
-      Future<?> replacement = replacementExecutor.submit(() -> {
+    Runnable subscribe;
+    if (daVinciSubscription) {
+      DaVinciBackend backend = mock(DaVinciBackend.class);
+      SubscriptionBasedReadOnlyStoreRepository storeRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
+      doReturn(mockStore).when(storeRepository).getStoreOrThrow(storeName);
+      doReturn(storeRepository).when(backend).getStoreRepository();
+      doReturn(storageEngine1).when(mockStorageService).openStoreForNewPartition(any(), eq(0), any());
+      doReturn(mock(StoreBackend.class)).when(backend).getStoreOrThrow(storeName);
+      doReturn(
+          new DefaultIngestionBackend(
+              storageMetadataService,
+              kafkaStoreIngestionService,
+              mockStorageService,
+              serverConfig)).when(backend).getIngestionBackend();
+      subscribe = VersionBackendTestUtils.createSubscription(
+          backend,
+          mockStore.getVersion(1),
+          0,
+          new VeniceConfigLoader(veniceProperties),
+          mockStorageService,
+          heartbeatService,
+          kafkaStoreIngestionService);
+    } else {
+      subscribe = () -> {
         kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
         // Helix registers the replacement's monitor after startConsumption returns.
         heartbeatService
             .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
-      });
+      };
+    }
+    ExecutorService replacementExecutor = Executors.newSingleThreadExecutor();
+    String threadName = Thread.currentThread().getName();
+    try {
+      Future<?> replacement = replacementExecutor.submit(subscribe);
       assertTrue(waitingForShutdown.await(10, TimeUnit.SECONDS));
       assertFalse(replacement.isDone());
+      verify(heartbeatService, never())
+          .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
       assertEquals(kafkaStoreIngestionService.getStoreIngestionTask(topicName), mappedTask);
       // This acquires the topic lock, which must remain available while teardown is pending.
       kafkaStoreIngestionService.stopConsumption(config, 0).get(10, TimeUnit.SECONDS);
