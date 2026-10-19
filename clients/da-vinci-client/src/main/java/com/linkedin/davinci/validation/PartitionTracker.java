@@ -833,6 +833,24 @@ public class PartitionTracker {
     }
   }
 
+  /**
+   * Removes in-memory producer state whose last record is older than {@code minimumRequiredRecordProducerTimestamp},
+   * without touching any {@link OffsetRecord}. Used for validators whose state is not persisted.
+   */
+  void clearExpiredState(TopicType type, long minimumRequiredRecordProducerTimestamp) {
+    int numberOfClearedGUIDs = 0;
+    Iterator<Segment> iterator = getSegments(type).values().iterator();
+    while (iterator.hasNext()) {
+      if (iterator.next().getLastRecordProducerTimestamp() < minimumRequiredRecordProducerTimestamp) {
+        iterator.remove();
+        numberOfClearedGUIDs++;
+      }
+    }
+    if (numberOfClearedGUIDs > 0) {
+      logger.info("Cleared {} expired producer GUID(s) from in-memory state.", numberOfClearedGUIDs);
+    }
+  }
+
   public void removeProducerState(TopicType type, GUID guid, OffsetRecord offsetRecord) {
     if (TopicType.isVersionTopic(type)) {
       offsetRecord.removeProducerPartitionState(guid);
