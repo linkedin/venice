@@ -86,6 +86,33 @@ public class TopicMetadataFetcherTest {
   private PubSubConsumerAdapter consumerMock;
   private TopicManagerStats stats;
 
+  @Test
+  public void testFullyConsumedRequiresConcreteBrokerTail() {
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    PubSubPosition checkpoint = new ApacheKafkaOffsetPosition(10);
+    PubSubPosition end = new ApacheKafkaOffsetPosition(11);
+    when(consumerMock.endPositions(eq(Collections.singleton(partition)), any(Duration.class)))
+        .thenReturn(Collections.singletonMap(partition, end));
+    when(consumerMock.positionDifference(partition, end, checkpoint)).thenReturn(1L, 2L);
+    assertTrue(topicMetadataFetcher.isFullyConsumed(partition, checkpoint, Duration.ofSeconds(1)));
+    assertFalse(topicMetadataFetcher.isFullyConsumed(partition, checkpoint, Duration.ofSeconds(1)));
+    assertFalse(
+        topicMetadataFetcher.isFullyConsumed(partition, PubSubSymbolicPosition.EARLIEST, Duration.ofSeconds(1)));
+    when(consumerMock.endPositions(eq(Collections.singleton(partition)), any(Duration.class)))
+        .thenReturn(Collections.emptyMap());
+    assertFalse(topicMetadataFetcher.isFullyConsumed(partition, checkpoint, Duration.ofSeconds(1)));
+    when(consumerMock.endPositions(eq(Collections.singleton(partition)), any(Duration.class)))
+        .thenReturn(Collections.singletonMap(partition, PubSubSymbolicPosition.LATEST));
+    assertFalse(topicMetadataFetcher.isFullyConsumed(partition, checkpoint, Duration.ofSeconds(1)));
+    when(consumerMock.endPositions(eq(Collections.singleton(partition)), any(Duration.class)))
+        .thenThrow(new PubSubOpTimeoutException("Broker query timed out"));
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> topicMetadataFetcher.isFullyConsumed(partition, checkpoint, Duration.ofSeconds(1)));
+    assertTrue(pubSubConsumerPool.contains(consumerMock));
+    assertFalse(topicMetadataFetcher.isFullyConsumed(partition, checkpoint, Duration.ZERO));
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testConstructorPropagatesEncryptionKeyLookup(boolean lookupEnabled) throws Exception {
     PubSubConsumerAdapterFactory<PubSubConsumerAdapter> factory = mock(PubSubConsumerAdapterFactory.class);

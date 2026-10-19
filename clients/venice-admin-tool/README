@@ -599,6 +599,14 @@ java -jar venice-admin-tool-all.jar --update-store-acl --url <url> --store <stor
 java -jar venice-admin-tool-all.jar --wipe-cluster --url <url> --cluster <cluster> --fabric <fabric> [--store <store>] [--version <version>]
 ```
 
+For a completed deferred swap without a target region, `--roll-forward-to-future-version` can also
+reconcile the parent when every child already serves the pending version and reports no future version.
+This repair requires the parent admin checkpoint to reach the broker tail and every child to consume
+that checkpoint; pending rollbacks, incomplete region responses, or an exhausted query budget prevent
+reconciliation. An allocated-but-unpublished execution ID does not prevent this explicit repair.
+The reconciliation reads share a 10-second budget, with single-attempt requests capped at 5 seconds.
+Unrelated cluster backlog can delay repair. A regions filter does not bypass the all-region safety checks.
+
 Summarize the replicas status from the result of command "--replicas-on-storage-node" or "--replicas-of-store":
 1. Get number of ${status} replicas from the result of either commands, ${status} could be ONLINE/BOOTSTRAP/ERROR/OFFLINE
 > output | jq '[.replicas[].status == "${status}"]|length'
@@ -608,4 +616,3 @@ Summarize the replicas status from the result of command "--replicas-on-storage-
 > output | jq '.replicas | group_by(.instance)[]|.[0].instance.nodeId, length'
 4. Get number of ${status} replicas per node from result of "--replicas-of-store"
 > output | jq '[.replicas[]|select(.status=="${status}")] | group_by(.instance)[]|.[0].instance.nodeId, length'
-

@@ -851,6 +851,14 @@ public class TopicManager implements Closeable {
   }
 
   /**
+   * Checks a persisted, inclusive checkpoint against the uncached broker end position, without retries.
+   * The timeout covers both consumer-pool acquisition and the broker request.
+   */
+  public boolean isFullyConsumed(PubSubTopicPartition partition, PubSubPosition checkpoint, Duration timeout) {
+    return topicMetadataFetcher.isFullyConsumed(partition, checkpoint, timeout);
+  }
+
+  /**
    * Returns the total number of records currently available in the given topic-partition.
    *
    * <p>This counts from {@link PubSubSymbolicPosition#EARLIEST} up to the latest available position.

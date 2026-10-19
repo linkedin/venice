@@ -46,6 +46,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -104,6 +105,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -126,6 +128,7 @@ import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -140,6 +143,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
@@ -2203,7 +2207,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 0; i < regionVersions.length; i++) {
       currentVersionsPerRegion.put("dc-" + i, regionVersions[i]);
     }
-    doReturn(currentVersionsPerRegion).when(mockParentAdmin).getCurrentVersionsForMultiColos(clusterName, storeName);
+    doReturn(currentVersionsPerRegion).when(mockParentAdmin)
+        .getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
     Map<String, ControllerClient> childClients = new HashMap<>();
     childClients.put("dc-0", mock(ControllerClient.class));
     childClients.put("dc-1", mock(ControllerClient.class));
@@ -2215,7 +2220,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (ControllerClient client: childClients.values()) {
       AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
       response.setExecutionId(10L);
-      doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+      doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
       doReturn(response).when(client).getAdminTopicMetadata(Optional.of(storeName));
     }
 
@@ -2307,7 +2312,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       verify(repository, never()).updateStore(any());
     }
     verify(mockParentAdmin, never()).killOfflinePush(anyString(), anyString(), anyBoolean());
-    verify(mockParentAdmin).getCurrentVersionsForMultiColos(clusterName, storeName);
+    verify(mockParentAdmin).getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
   }
 
   @Test
@@ -2319,14 +2324,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         // Another store's command advances the cluster checkpoint, but not this store's checkpoint.
         AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
         response.setExecutionId(11L);
-        doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+        doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
       }
     });
   }
 
   @DataProvider(name = "deferredSwapAdminConsumption")
   public Object[][] deferredSwapAdminConsumption() {
-    return new Object[][] { { "pending", "is behind generated ID" },
+    return new Object[][] { { "pending", "is behind required ID" },
         { "missing", "Missing generated admin execution ID" },
         { "generated-error", "Could not read generated admin execution ID" },
         { "error", "Cannot read child checkpoint" }, { "exception", "Could not verify child admin consumption" },
@@ -2354,14 +2359,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         } else if ("error".equals(state)) {
           response.setError("Cannot read child checkpoint");
         } else if ("exception".equals(state)) {
-          doThrow(new VeniceException("Cannot reach child")).when(client).getAdminTopicMetadata(Optional.empty());
+          doThrow(new VeniceException("Cannot reach child")).when(client)
+              .getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
           return;
         } else if ("missing-response".equals(state)) {
           response = null;
         } else if ("missing-child-id".equals(state)) {
           response.setExecutionId(-1L);
         }
-        doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+        doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
       });
       assertTrue(
           appender.getLogs().stream().anyMatch(message -> message.contains(expectedLog)),
@@ -2421,13 +2427,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
       AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
       response.setExecutionId(11L);
-      doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+      doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
       doReturn(response).when(client).getAdminTopicMetadata(Optional.of(name));
     }
     Map<String, Integer> currentVersions = new HashMap<>();
     currentVersions.put("dc-0", 0);
     currentVersions.put("dc-1", 1);
-    doReturn(currentVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, name);
+    doReturn(currentVersions).when(admin)
+        .getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(name), anyLong());
     expectThrows(
         ConcurrentBatchPushException.class,
         () -> admin.incrementVersionIdempotent(clusterName, name, incomingPushId, 1, 1));
@@ -2479,7 +2486,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           currentVersions.put("dc-0", 1);
           currentVersions.put("dc-1", 1);
           return currentVersions;
-        }).when(admin).getCurrentVersionsForMultiColos(clusterName, name);
+        }).when(admin).getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(name), anyLong());
       });
     } finally {
       if (rollback[0] != null) {
@@ -2487,6 +2494,154 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       }
     }
     assertTrue(rollbackSent.get(), "Rollback must proceed after recovery releases the admin lock");
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryUsesOneDeadline() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+      AtomicLong clock = new AtomicLong();
+      doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+      doCallRealMethod().when(admin).getCurrentVersionsForDeferredSwapRecovery(anyString(), anyString(), anyLong());
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        doAnswer(invocation -> {
+          assertTrue(invocation.<Integer>getArgument(1) <= 5000);
+          // Exhaust the global budget inside the first blocking request, without sleeping.
+          clock.set(TimeUnit.SECONDS.toNanos(10));
+          AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+          response.setExecutionId(10);
+          return response;
+        }).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      }
+    });
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryShrinksRequestBudgetAcrossRegions() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+      AtomicLong clock = new AtomicLong();
+      doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+      doCallRealMethod().when(admin).getCurrentVersionsForDeferredSwapRecovery(anyString(), anyString(), anyLong());
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        doAnswer(invocation -> {
+          assertEquals(
+              invocation.<Integer>getArgument(1).intValue(),
+              (int) Math.min(5000, 10000 - TimeUnit.NANOSECONDS.toMillis(clock.get())));
+          clock.addAndGet(TimeUnit.SECONDS.toNanos(2));
+          AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+          response.setExecutionId(10);
+          return response;
+        }).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+        doAnswer(invocation -> {
+          assertEquals(
+              invocation.<Integer>getArgument(1).intValue(),
+              (int) Math.min(5000, 10000 - TimeUnit.NANOSECONDS.toMillis(clock.get())));
+          clock.addAndGet(TimeUnit.SECONDS.toNanos(2));
+          StoreResponse response = new StoreResponse();
+          StoreInfo child = new StoreInfo();
+          child.setCurrentVersion(1);
+          response.setStore(child);
+          return response;
+        }).when(client).getStoreWithTimeout(eq(name), anyInt());
+      }
+    });
+  }
+
+  @DataProvider
+  public Object[][] explicitDeferredSwapRecovery() {
+    return new Object[][] { { "allocated", true }, { "parent-rollback-pending", false },
+        { "child-rollback-pending", false }, { "missing-checkpoint", false }, { "checkpoint-error", false },
+        { "missing-child-id", false }, { "missing-parent-checkpoint", false }, { "broker-error", false },
+        { "missing-store", false }, { "store-error", false }, { "rolled-back", false }, { "deadline", false },
+        { "targeted", false }, { "newer-parent-version", false }, { "empty-regions", false } };
+  }
+
+  @Test(dataProvider = "explicitDeferredSwapRecovery")
+  public void testRollForwardReconcilesAlreadyCurrentDeferredVersion(String state, boolean recover) {
+    VeniceParentHelixAdmin admin = spy(parentAdmin);
+    doNothing().when(admin).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin).releaseAdminMessageLock(clusterName, storeName);
+    doReturn(store).when(admin).getStore(clusterName, storeName);
+    Version version = new VersionImpl(storeName, 5, "synthetic-push");
+    version.setVersionSwapDeferred(true);
+    version.setStatus(PUSHED);
+    if ("targeted".equals(state)) {
+      version.setTargetSwapRegion("dc-0");
+    }
+    if ("newer-parent-version".equals(state)) {
+      doReturn(6).when(store).getCurrentVersion();
+    }
+    doReturn(Collections.singletonList(version)).when(store).getVersions();
+    doReturn(version).when(store).getVersion(5);
+    ExecutionIdAccessor accessor = internalAdmin.getExecutionIdAccessor();
+    doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setExecutionId(10L);
+    metadata.setPubSubPosition(new ApacheKafkaOffsetPosition(100));
+    doReturn(metadata).when(internalAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
+    doReturn(!"parent-rollback-pending".equals(state)).when(topicManager)
+        .isFullyConsumed(any(), eq(metadata.getPosition()), any(Duration.class));
+    if ("broker-error".equals(state)) {
+      doThrow(new VeniceException("Cannot query broker")).when(topicManager)
+          .isFullyConsumed(any(), eq(metadata.getPosition()), any(Duration.class));
+    }
+    if ("missing-parent-checkpoint".equals(state)) {
+      doReturn(null).when(internalAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
+    }
+    Map<String, ControllerClient> clients = new HashMap<>();
+    clients.put("dc-0", mock(ControllerClient.class));
+    clients.put("dc-1", mock(ControllerClient.class));
+    if ("empty-regions".equals(state)) {
+      clients.clear();
+    }
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    AtomicLong clock = new AtomicLong();
+    doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+    for (ControllerClient client: clients.values()) {
+      MultiStoreStatusResponse future = new MultiStoreStatusResponse();
+      future.setStoreStatusMap(Collections.singletonMap(storeName, String.valueOf(Store.NON_EXISTING_VERSION)));
+      doReturn(future).when(client).getFutureVersionsWithTimeout(eq(storeName), anyInt());
+      AdminTopicMetadataResponse checkpoint = new AdminTopicMetadataResponse();
+      checkpoint.setExecutionId("child-rollback-pending".equals(state) ? 9 : 10);
+      if ("missing-child-id".equals(state)) {
+        checkpoint.setExecutionId(-1);
+      }
+      if ("checkpoint-error".equals(state)) {
+        checkpoint.setError("Cannot read checkpoint");
+      }
+      if ("missing-checkpoint".equals(state)) {
+        checkpoint = null;
+      }
+      doReturn(checkpoint).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      StoreResponse response = new StoreResponse();
+      StoreInfo child = new StoreInfo();
+      child.setCurrentVersion("rolled-back".equals(state) ? 4 : 5);
+      if (!"missing-store".equals(state)) {
+        response.setStore(child);
+      }
+      if ("store-error".equals(state)) {
+        response.setError("Cannot read store");
+      }
+      doAnswer(invocation -> {
+        if ("deadline".equals(state)) {
+          clock.set(TimeUnit.SECONDS.toNanos(10));
+        }
+        return response;
+      }).when(client).getStoreWithTimeout(eq(storeName), anyInt());
+    }
+    if (recover) {
+      admin.rollForwardToFutureVersion(clusterName, storeName, "");
+      verify(store).updateVersionStatus(5, ONLINE);
+      verify(store).setCurrentVersion(5);
+    } else {
+      expectThrows(VeniceException.class, () -> admin.rollForwardToFutureVersion(clusterName, storeName, ""));
+      verify(store, never()).updateVersionStatus(5, ONLINE);
+      verify(store, never()).setCurrentVersion(5);
+    }
+    verify(admin).releaseAdminMessageLock(clusterName, storeName);
+    verify(admin, never()).sendAdminMessageAndWaitForConsumed(anyString(), anyString(), any());
+    for (ControllerClient client: clients.values()) {
+      verify(client, never()).rollForwardToFutureVersion(anyString(), anyString(), anyInt());
+    }
   }
 
   private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
@@ -4740,7 +4895,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
-    doReturn(Collections.emptyMap()).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    doReturn(Collections.emptyMap()).when(adminSpy)
+        .getFutureVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "");
   }
 
@@ -4749,12 +4905,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
-    // Explicit roll-forward remains available when an allocated but unpublished ID cannot reach the children.
+    // Existing future-version roll-forward is independent of generated-ID allocations.
     ExecutionIdAccessor executionIdAccessor = internalAdmin.getExecutionIdAccessor();
     doReturn(11L).when(executionIdAccessor).getLastGeneratedExecutionId(clusterName);
 
     Map<String, String> future = Collections.singletonMap("r1", "5");
-    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    doReturn(future).when(adminSpy).getFutureVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
@@ -4788,7 +4944,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, String> future = new HashMap<>();
     future.put("r1", "5");
     future.put("r2", "5");
-    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    doReturn(future).when(adminSpy).getFutureVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
@@ -4810,7 +4966,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, String> future = new HashMap<>();
     future.put("r1", "5");
     future.put("r2", "5");
-    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    doReturn(future).when(adminSpy).getFutureVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));

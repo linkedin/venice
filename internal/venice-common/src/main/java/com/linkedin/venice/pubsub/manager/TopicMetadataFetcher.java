@@ -378,6 +378,35 @@ class TopicMetadataFetcher implements Closeable {
     });
   }
 
+  boolean isFullyConsumed(PubSubTopicPartition partition, PubSubPosition checkpoint, Duration timeout) {
+    if (checkpoint == null || checkpoint.isSymbolic()) {
+      return false;
+    }
+    long deadlineNs = System.nanoTime() + timeout.toNanos();
+    PubSubConsumerAdapter consumer = null;
+    try {
+      consumerWaitListSize.incrementAndGet();
+      consumer = pubSubConsumerPool.poll(Math.max(0, timeout.toNanos()), TimeUnit.NANOSECONDS);
+      long remainingNs = deadlineNs - System.nanoTime();
+      if (consumer == null || remainingNs <= 0) {
+        return false;
+      }
+      PubSubPosition end =
+          consumer.endPositions(Collections.singleton(partition), Duration.ofNanos(remainingNs)).get(partition);
+      // End positions are exclusive; persisted checkpoints include the last successfully processed record.
+      return end != null && !end.isSymbolic() && deadlineNs - System.nanoTime() > 0
+          && consumer.positionDifference(partition, end, checkpoint) == 1;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while checking consumption", e);
+    } finally {
+      consumerWaitListSize.decrementAndGet();
+      if (consumer != null) {
+        releaseConsumer(consumer);
+      }
+    }
+  }
+
   PubSubPosition getStartPositionsForPartition(PubSubTopicPartition partition) {
     validateTopicPartition(partition);
     return withConsumer(consumer -> {
