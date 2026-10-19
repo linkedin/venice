@@ -110,8 +110,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -218,16 +216,7 @@ public class VeniceWriterUnitTest {
         }
         throw fixture.failure;
       }).when(fixture.producer).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
-      Thread caller = Thread.currentThread();
-      fixture.broadcaster.submit(() -> {
-        assertTrue(fixture.firstWaveStarted.await(5, TimeUnit.SECONDS));
-        caller.interrupt();
-        return null;
-      });
-      VeniceException exception = Assert.expectThrows(VeniceException.class, () -> fixture.broadcast(startOfPush));
-      assertTrue(exception.getCause() instanceof InterruptedException);
-      assertTrue(Thread.interrupted(), "The caller's interrupt status must be preserved");
-      fixture.partitionAcks.forEach(ack -> assertTrue(ack.isCancelled()));
+      fixture.assertInterruptedBroadcast(startOfPush);
       fixture.releaseStartOfSegment.countDown();
       assertTrue(completedSends.await(5, TimeUnit.SECONDS));
       fixture.writer.closeAsync(false).get(5, TimeUnit.SECONDS);
@@ -238,10 +227,11 @@ public class VeniceWriterUnitTest {
   }
 
   /**
-   * Verifies failure cleanup closes the producer before releasing eight pending SOS acknowledgements.
+   * Verifies failure cleanup bypasses eight pending SOS waits and preserves idempotence and close-error accounting.
    */
-  @Test(timeOut = TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testFailureCloseBypassesWorkersBlockedOnStartOfSegment(boolean startOfPush) throws Exception {
+  @Test(timeOut = TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testFailureCloseBypassesWorkersBlockedOnStartOfSegment(boolean startOfPush, boolean failClose)
+      throws Exception {
     try (BroadcastTest fixture = new BroadcastTest(17, null, false)) {
       List<CompletableFuture<PubSubProduceResult>> segmentAcks = new ArrayList<>();
       for (int partition = 0; partition < 8; partition++) {
@@ -257,29 +247,25 @@ public class VeniceWriterUnitTest {
         assertFalse(Thread.currentThread().isInterrupted(), "VPJ clears the interrupt before failure cleanup");
         segmentAcks.forEach(ack -> assertFalse(ack.isDone(), "Only producer close may settle the SOS waits"));
         segmentAcks.forEach(ack -> ack.completeExceptionally(fixture.failure));
+        if (failClose) {
+          throw fixture.failure;
+        }
         return null;
       }).when(fixture.producer).close(0);
       long openWriters = VeniceWriter.OPEN_VENICE_WRITER_COUNT.get();
       long closeFailures = VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get();
-      Thread caller = Thread.currentThread();
       try {
-        fixture.broadcaster.submit(() -> {
-          assertTrue(fixture.firstWaveStarted.await(5, TimeUnit.SECONDS));
-          caller.interrupt();
-          return null;
-        });
-        VeniceException exception = Assert.expectThrows(VeniceException.class, () -> fixture.broadcast(startOfPush));
-        assertTrue(exception.getCause() instanceof InterruptedException);
-        assertTrue(Thread.interrupted(), "Clear the interrupt before cleanup, as VPJ does");
+        fixture.assertInterruptedBroadcast(startOfPush);
         fixture.writer.close(false, false);
         segmentAcks.forEach(ack -> assertTrue(ack.isCompletedExceptionally()));
         fixture.writer.close(false, false);
         assertEquals(fixture.writer.closeAsync(true).get(), VeniceResourceCloseResult.ALREADY_CLOSED);
-        assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters - 1);
-        assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures);
+        assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters - (failClose ? 0 : 1));
+        assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + (failClose ? 1 : 0));
         verify(fixture.producer).close(0);
         verify(fixture.producer, times(8)).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
         verify(fixture.producer, never()).flush();
+        verifyNoMoreInteractions(fixture.producer);
       } finally {
         Thread.interrupted();
         segmentAcks.forEach(ack -> ack.completeExceptionally(fixture.failure));
@@ -415,6 +401,19 @@ public class VeniceWriterUnitTest {
         partitionAcks = broadcastVersionSwap(writer);
         VeniceWriter.waitForControlMessageBroadcast(partitionAcks, ControlMessageType.VERSION_SWAP, "test_v1", 0);
       }
+    }
+
+    void assertInterruptedBroadcast(boolean startOfPush) {
+      Thread caller = Thread.currentThread();
+      broadcaster.submit(() -> {
+        assertTrue(firstWaveStarted.await(5, TimeUnit.SECONDS));
+        caller.interrupt();
+        return null;
+      });
+      VeniceException exception = Assert.expectThrows(VeniceException.class, () -> broadcast(startOfPush));
+      assertTrue(exception.getCause() instanceof InterruptedException);
+      assertTrue(Thread.interrupted(), "Clear the interrupt before cleanup, as VPJ does");
+      partitionAcks.forEach(ack -> assertTrue(ack.isCancelled()));
     }
 
     @Override
@@ -973,60 +972,23 @@ public class VeniceWriterUnitTest {
   /**
    * Verifies ordinary synchronous and asynchronous close retain retry behavior and lifecycle accounting.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
-  public void testVeniceWriterCloseRetry(boolean gracefulClose) throws ExecutionException, InterruptedException {
-    Supplier<PubSubProducerAdapter> producerSupplier = () -> {
-      PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
-      // Only graceful closes (those with a non-zero timeout) will throw a TimeoutException
-      doThrow(new TimeoutException()).when(mockedProducer).close(longThat(argument -> argument > 0));
-      return mockedProducer;
-    };
-    Function<PubSubProducerAdapter, VeniceWriter> veniceWriterSupplier = mockedProducer -> {
-      String testTopic = "test";
-      VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setPartitionCount(1).build();
-      return new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
-    };
-
-    // If attempting a graceful close, then the producer should receive an invocation of close with non-zero timeout,
-    // followed by another one with zero timeout. If, on the other hand, we attempt an ungraceful close, then there
-    // should only be a single close invocation, and it should be with zero timeout.
-
-    PubSubProducerAdapter mockedProducer = producerSupplier.get();
-    long openWriters = VeniceWriter.OPEN_VENICE_WRITER_COUNT.get();
-    long closeFailures = VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get();
-    VeniceWriter<Object, Object, Object> writer = veniceWriterSupplier.apply(mockedProducer);
-    writer.close(gracefulClose);
-    assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters);
-    assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + (gracefulClose ? 1 : 0));
-    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
-    verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
-
-    // Same test for asyncClose, after reinitializing everything
-    mockedProducer = producerSupplier.get();
-    writer = veniceWriterSupplier.apply(mockedProducer);
-    writer.closeAsync(gracefulClose).get();
-    assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters);
-    assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + (gracefulClose ? 2 : 0));
-    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
-    verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
-  }
-
-  /**
-   * Verifies a failed ungraceful close is counted once, swallowed without retry, and remains idempotent.
-   */
-  @Test(timeOut = TIMEOUT)
-  public void testFailureClosePreservesErrorAccounting() throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
+  public void testVeniceWriterCloseRetry(boolean gracefulClose, boolean asyncClose)
+      throws ExecutionException, InterruptedException {
     try (BroadcastTest fixture = new BroadcastTest(1, null, false)) {
-      doThrow(fixture.failure).when(fixture.producer).close(0);
+      // Only graceful closes (those with a non-zero timeout) will throw a TimeoutException
+      doThrow(new TimeoutException()).when(fixture.producer).close(longThat(argument -> argument > 0));
       long openWriters = VeniceWriter.OPEN_VENICE_WRITER_COUNT.get();
       long closeFailures = VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get();
-      fixture.writer.close(false, false);
-      fixture.writer.close(false, false);
-      assertEquals(fixture.writer.closeAsync(false).get(), VeniceResourceCloseResult.ALREADY_CLOSED);
-      assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters);
-      assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + 1);
+      if (asyncClose) {
+        fixture.writer.closeAsync(gracefulClose).get();
+      } else {
+        fixture.writer.close(gracefulClose);
+      }
+      assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters - 1);
+      assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + (gracefulClose ? 1 : 0));
+      verify(fixture.producer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
       verify(fixture.producer).close(0);
-      verifyNoMoreInteractions(fixture.producer);
     }
   }
 
