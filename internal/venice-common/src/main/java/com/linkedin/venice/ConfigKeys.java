@@ -1058,6 +1058,9 @@ public class ConfigKeys {
    *
    * To mitigate this issue, we will add a delay in state transition: 'OFFLINE' -> 'DROPPED' to drain all the incoming
    * requests to the to-drop partition, and we will enable error-retry on Router as well.
+   * The delay applies to the current version and the newest ONLINE version below it (the backup version), since
+   * routers may still query the backup until they observe a version swap. Time already spent OFFLINE counts toward
+   * this delay; older and future versions are dropped without this delay.
    */
   public static final String SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS =
       "server.partition.graceful.drop.time.in.seconds";
