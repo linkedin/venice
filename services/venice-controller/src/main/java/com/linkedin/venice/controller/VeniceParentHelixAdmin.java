@@ -79,6 +79,7 @@ import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -1691,10 +1692,18 @@ public class VeniceParentHelixAdmin implements Admin {
         String msg;
         boolean versionSwapFinalized = false;
         if (version.isVersionSwapDeferred() && version.getStatus() == PUSHED) {
-          Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
           String targetSwapRegion = version.getTargetSwapRegion();
-          versionSwapFinalized = StringUtils.isEmpty(targetSwapRegion)
-              && tryFinalizeDeferredVersionSwap(clusterName, storeName, currentPushVersion, currentVersions);
+          Map<String, Integer> currentVersions;
+          acquireAdminMessageLock(clusterName, storeName);
+          try {
+            boolean childrenCaughtUp =
+                StringUtils.isEmpty(targetSwapRegion) && haveChildRegionsConsumedAdminMessages(clusterName, storeName);
+            currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
+            versionSwapFinalized = childrenCaughtUp
+                && tryFinalizeDeferredVersionSwap(clusterName, storeName, currentPushVersion, currentVersions);
+          } finally {
+            releaseAdminMessageLock(clusterName, storeName);
+          }
           msg = ". Version " + version.getNumber() + " of store " + storeName
               + " has completed its push and is waiting on deferred version swap (colo-by-colo roll-forward);"
               + " current version per region: " + currentVersions
@@ -1844,6 +1853,66 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  private boolean haveChildRegionsConsumedAdminMessages(String clusterName, String storeName) {
+    // The store admin lock excludes new commands for this store, but a published rollback may still be pending in the
+    // parent or a child. The durable generated ID covers both queues, including across leadership changes. Since IDs
+    // are allocated cluster-wide, compare cluster checkpoints before reading current versions, not store checkpoints.
+    // An allocated-but-unpublished ID also fails closed here; explicit roll-forward can still finalize the swap.
+    Long executionId;
+    try {
+      executionId = getVeniceHelixAdmin().getExecutionIdAccessor().getLastGeneratedExecutionId(clusterName);
+    } catch (Exception e) {
+      LOGGER.warn("Could not read generated admin execution ID for store {} in cluster {}", storeName, clusterName, e);
+      return false;
+    }
+    if (executionId == null || executionId < 0) {
+      LOGGER.warn("Missing generated admin execution ID for store {} in cluster {}", storeName, clusterName);
+      return false;
+    }
+    for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
+        .entrySet()) {
+      try {
+        AdminTopicMetadataResponse response = entry.getValue().getAdminTopicMetadata(Optional.empty());
+        if (response == null || response.isError() || response.getExecutionId() < 0) {
+          String checkpointError;
+          if (response == null) {
+            checkpointError = "missing response";
+          } else if (response.isError()) {
+            checkpointError = response.getError();
+          } else {
+            checkpointError = "missing execution ID";
+          }
+          LOGGER.warn(
+              "Could not read child admin checkpoint for store {} in cluster {} region {}: {}",
+              storeName,
+              clusterName,
+              entry.getKey(),
+              checkpointError);
+          return false;
+        }
+        if (response.getExecutionId() < executionId) {
+          LOGGER.info(
+              "Deferring version swap recovery for store {} in cluster {}: region {} admin checkpoint {} is behind generated ID {}",
+              storeName,
+              clusterName,
+              entry.getKey(),
+              response.getExecutionId(),
+              executionId);
+          return false;
+        }
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Could not verify child admin consumption for store {} in cluster {} region {}",
+            storeName,
+            clusterName,
+            entry.getKey(),
+            e);
+        return false;
+      }
+    }
+    return true;
   }
 
   private boolean tryFinalizeDeferredVersionSwap(

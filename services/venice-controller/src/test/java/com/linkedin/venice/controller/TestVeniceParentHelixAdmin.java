@@ -61,12 +61,14 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -113,6 +115,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -134,10 +137,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -2155,6 +2165,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       String targetSwapRegion,
       Integer[] regionVersions,
       boolean shouldRecover) {
+    verifyDeferredVersionSwapRecovery(targetSwapRegion, regionVersions, shouldRecover, (admin, name) -> {});
+  }
+
+  private void verifyDeferredVersionSwapRecovery(
+      String targetSwapRegion,
+      Integer[] regionVersions,
+      boolean shouldRecover,
+      BiConsumer<VeniceParentHelixAdmin, String> configureAdmin) {
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
@@ -2190,6 +2208,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     childClients.put("dc-0", mock(ControllerClient.class));
     childClients.put("dc-1", mock(ControllerClient.class));
     doReturn(childClients).when(mockInternalAdmin).getControllerClientMap(clusterName);
+    doReturn(10L).when(mockInternalAdmin).getLastSucceededExecutionId(clusterName, storeName);
+    ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
+    doReturn(executionIdAccessor).when(mockInternalAdmin).getExecutionIdAccessor();
+    doReturn(10L).when(executionIdAccessor).getLastGeneratedExecutionId(clusterName);
+    for (ControllerClient client: childClients.values()) {
+      AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+      response.setExecutionId(10L);
+      doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+      doReturn(response).when(client).getAdminTopicMetadata(Optional.of(storeName));
+    }
 
     doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
         .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
@@ -2253,6 +2281,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             false);
 
+    configureAdmin.accept(mockParentAdmin, storeName);
     if (shouldRecover) {
       assertSame(mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1), newVersion);
       assertEquals(store.getVersion(1).getStatus(), ONLINE);
@@ -2279,6 +2308,185 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
     verify(mockParentAdmin, never()).killOfflinePush(anyString(), anyString(), anyBoolean());
     verify(mockParentAdmin).getCurrentVersionsForMultiColos(clusterName, storeName);
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryUsesClusterAdminCheckpoint() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+      ExecutionIdAccessor accessor = admin.getVeniceHelixAdmin().getExecutionIdAccessor();
+      doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        // Another store's command advances the cluster checkpoint, but not this store's checkpoint.
+        AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+        response.setExecutionId(11L);
+        doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+      }
+    });
+  }
+
+  @DataProvider(name = "deferredSwapAdminConsumption")
+  public Object[][] deferredSwapAdminConsumption() {
+    return new Object[][] { { "pending", "is behind generated ID" },
+        { "missing", "Missing generated admin execution ID" },
+        { "generated-error", "Could not read generated admin execution ID" },
+        { "error", "Cannot read child checkpoint" }, { "exception", "Could not verify child admin consumption" },
+        { "missing-response", "missing response" }, { "missing-child-id", "missing execution ID" } };
+  }
+
+  @Test(dataProvider = "deferredSwapAdminConsumption")
+  public void testDeferredVersionSwapRecoveryWaitsForChildAdminConsumption(String state, String expectedLog) {
+    Logger logger = (Logger) LogManager.getLogger(VeniceParentHelixAdmin.class);
+    InMemoryLogAppender appender = new InMemoryLogAppender.Builder().build();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+        VeniceHelixAdmin internal = admin.getVeniceHelixAdmin();
+        ExecutionIdAccessor accessor = internal.getExecutionIdAccessor();
+        ControllerClient client = internal.getControllerClientMap(clusterName).get("dc-0");
+        AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+        response.setExecutionId(9L);
+        if ("missing".equals(state)) {
+          doReturn(null).when(accessor).getLastGeneratedExecutionId(clusterName);
+        } else if ("generated-error".equals(state)) {
+          doThrow(new VeniceException("Cannot read generated ID")).when(accessor)
+              .getLastGeneratedExecutionId(clusterName);
+        } else if ("error".equals(state)) {
+          response.setError("Cannot read child checkpoint");
+        } else if ("exception".equals(state)) {
+          doThrow(new VeniceException("Cannot reach child")).when(client).getAdminTopicMetadata(Optional.empty());
+          return;
+        } else if ("missing-response".equals(state)) {
+          response = null;
+        } else if ("missing-child-id".equals(state)) {
+          response.setExecutionId(-1L);
+        }
+        doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+      });
+      assertTrue(
+          appender.getLogs().stream().anyMatch(message -> message.contains(expectedLog)),
+          appender.getLogs().toString());
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @DataProvider(name = "pendingDeferredSwapRollback")
+  public Object[][] pendingDeferredSwapRollback() {
+    return new Object[][] { { false, false }, { false, true }, { true, false }, { true, true } };
+  }
+
+  @Test(dataProvider = "pendingDeferredSwapRollback")
+  public void testDeferredVersionSwapRecoveryWithPendingRollback(boolean deferredRollback, boolean parentConsumed) {
+    AtomicReference<VeniceParentHelixAdmin> recoveryAdmin = new AtomicReference<>();
+    AtomicReference<String> recoveryStoreName = new AtomicReference<>();
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+      recoveryAdmin.set(admin);
+      recoveryStoreName.set(name);
+      VeniceHelixAdmin internal = admin.getVeniceHelixAdmin();
+      ExecutionIdAccessor accessor = internal.getExecutionIdAccessor();
+      doCallRealMethod().when(admin).rollbackToBackupVersion(clusterName, name, "dc-0");
+      doCallRealMethod().when(admin).rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+      doAnswer(invocation -> {
+        AdminOperation message = invocation.getArgument(2);
+        assertEquals(message.operationType, AdminMessageType.ROLLBACK_CURRENT_VERSION.getValue());
+        doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+        if (!parentConsumed) {
+          // Publication succeeded, but parent consumption times out with no recorded store exception.
+          throw new AdminMessageConsumptionTimeoutException("Parent has not consumed rollback 11", null);
+        }
+        doReturn(11L).when(internal).getLastSucceededExecutionId(clusterName, name);
+        return null;
+      }).when(admin).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(name), any());
+      Runnable rollback = () -> {
+        if (deferredRollback) {
+          admin.rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+        } else {
+          admin.rollbackToBackupVersion(clusterName, name, "dc-0");
+        }
+      };
+      if (parentConsumed) {
+        rollback.run();
+      } else {
+        expectThrows(AdminMessageConsumptionTimeoutException.class, rollback::run);
+        assertEquals(internal.getLastSucceededExecutionId(clusterName, name), Long.valueOf(10L));
+        Assert.assertNull(internal.getLastExceptionForStore(clusterName, name));
+      }
+      assertEquals(admin.getStore(clusterName, name).getVersion(1).getStatus(), PUSHED);
+    });
+    VeniceParentHelixAdmin admin = recoveryAdmin.get();
+    String name = recoveryStoreName.get();
+    String incomingPushId = Version.generateCompliancePushId("compliance_push");
+    for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+      AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+      response.setExecutionId(11L);
+      doReturn(response).when(client).getAdminTopicMetadata(Optional.empty());
+      doReturn(response).when(client).getAdminTopicMetadata(Optional.of(name));
+    }
+    Map<String, Integer> currentVersions = new HashMap<>();
+    currentVersions.put("dc-0", 0);
+    currentVersions.put("dc-1", 1);
+    doReturn(currentVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, name);
+    expectThrows(
+        ConcurrentBatchPushException.class,
+        () -> admin.incrementVersionIdempotent(clusterName, name, incomingPushId, 1, 1));
+    assertEquals(admin.getStore(clusterName, name).getVersion(1).getStatus(), PUSHED);
+
+    // A subsequent manual roll-forward can still complete the deferred swap.
+    currentVersions.put("dc-0", 1);
+    assertEquals(admin.incrementVersionIdempotent(clusterName, name, incomingPushId, 1, 1).getNumber(), 2);
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoverySerializesRollbackWithSnapshot() throws Exception {
+    CountDownLatch rollbackAttempted = new CountDownLatch(1);
+    AtomicBoolean rollbackBlocked = new AtomicBoolean();
+    AtomicBoolean rollbackSent = new AtomicBoolean();
+    ReentrantLock adminLock = new ReentrantLock();
+    Thread recoveryThread = Thread.currentThread();
+    CompletableFuture<?>[] rollback = new CompletableFuture<?>[1];
+    try {
+      verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+        doAnswer(invocation -> {
+          if (Thread.currentThread() != recoveryThread) {
+            boolean acquired = adminLock.tryLock();
+            rollbackBlocked.set(!acquired);
+            rollbackAttempted.countDown();
+            if (acquired) {
+              return null;
+            }
+          }
+          adminLock.lock();
+          return null;
+        }).when(admin).acquireAdminMessageLock(clusterName, name);
+        doAnswer(invocation -> {
+          adminLock.unlock();
+          return null;
+        }).when(admin).releaseAdminMessageLock(clusterName, name);
+        doCallRealMethod().when(admin).rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+        doAnswer(invocation -> {
+          rollbackSent.set(true);
+          return null;
+        }).when(admin).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(name), any());
+        doAnswer(invocation -> {
+          rollback[0] = CompletableFuture
+              .runAsync(() -> admin.rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0"));
+          assertTrue(rollbackAttempted.await(10, TimeUnit.SECONDS));
+          assertTrue(rollbackBlocked.get(), "Rollback must not pass the admin lock between snapshot and finalization");
+          Assert.assertFalse(rollbackSent.get());
+          Map<String, Integer> currentVersions = new HashMap<>();
+          currentVersions.put("dc-0", 1);
+          currentVersions.put("dc-1", 1);
+          return currentVersions;
+        }).when(admin).getCurrentVersionsForMultiColos(clusterName, name);
+      });
+    } finally {
+      if (rollback[0] != null) {
+        rollback[0].get(10, TimeUnit.SECONDS);
+      }
+    }
+    assertTrue(rollbackSent.get(), "Rollback must proceed after recovery releases the admin lock");
   }
 
   private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
@@ -4541,6 +4749,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    // Explicit roll-forward remains available when an allocated but unpublished ID cannot reach the children.
+    ExecutionIdAccessor executionIdAccessor = internalAdmin.getExecutionIdAccessor();
+    doReturn(11L).when(executionIdAccessor).getLastGeneratedExecutionId(clusterName);
 
     Map<String, String> future = Collections.singletonMap("r1", "5");
     doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
@@ -4563,6 +4774,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
     verify(store).setCurrentVersion(5);
+    for (ControllerClient client: controllerClients.values()) {
+      verify(client, never()).getAdminTopicMetadata(any());
+    }
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in the following regions.*")
