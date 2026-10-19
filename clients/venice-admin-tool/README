@@ -247,6 +247,9 @@ Commands:
     --request-based-metadata                          Get the store's metadata using request based metadata endpoint via a transport client
                                                       and a server URL.
                                                       Requires: --url --server-url --store
+    --roll-forward-to-future-version                   Roll forward to the future version; use the parent controller URL.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster --regions-filter
     --schemas                                         Show the key and value schemas for a store.
                                                       Requires: --url --store
                                                       Optional args: --cluster
@@ -577,6 +580,7 @@ java -jar venice-admin-tool-all.jar --replicas-of-store --url <url> --store <sto
 java -jar venice-admin-tool-all.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
 java -jar venice-admin-tool-all.jar --replicate-meta-data --url <url> --cluster <cluster> --source-fabric <source-fabric> --dest-fabric <dest-fabric>
 java -jar venice-admin-tool-all.jar --request-based-metadata --url <url> --server-url <server-url> --store <store>
+java -jar venice-admin-tool-all.jar --roll-forward-to-future-version --url <parent-controller-url> --store <store> [--cluster <cluster>] [--regions-filter <comma-separated-regions>]
 java -jar venice-admin-tool-all.jar --schemas --url <url> --store <store> [--cluster <cluster>]
 java -jar venice-admin-tool-all.jar --send-end-of-push --url <url> --store <store> --version <version> [--cluster <cluster>]
 java -jar venice-admin-tool-all.jar --set-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store> --migration-push-strategy <migration-push-strategy>

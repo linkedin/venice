@@ -1689,12 +1689,12 @@ public class VeniceParentHelixAdmin implements Admin {
             storeName);
       } else {
         String msg;
+        boolean versionSwapFinalized = false;
         if (version.isVersionSwapDeferred() && version.getStatus() == PUSHED) {
-          // The blocking version finished its push but is mid deferred (colo-by-colo) version swap:
-          // PUSHED on the parent (push complete but swap not yet done) and not yet current in every region.
-          // Surface the per-region status so operators do not mistake this for an in-flight concurrent push.
           Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
           String targetSwapRegion = version.getTargetSwapRegion();
+          versionSwapFinalized = StringUtils.isEmpty(targetSwapRegion)
+              && tryFinalizeDeferredVersionSwap(clusterName, storeName, currentPushVersion, currentVersions);
           msg = ". Version " + version.getNumber() + " of store " + storeName
               + " has completed its push and is waiting on deferred version swap (colo-by-colo roll-forward);"
               + " current version per region: " + currentVersions
@@ -1705,10 +1705,12 @@ public class VeniceParentHelixAdmin implements Admin {
               + ", pushJobId " + existingPushJobId + ", topic " + currentPushTopic.get()
               + ") is still in progress and must complete or be terminated before another push can be started.";
         }
-        VeniceException e = new ConcurrentBatchPushException(
-            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
-        e.setStackTrace(EMPTY_STACK_TRACE);
-        throw e;
+        if (!versionSwapFinalized) {
+          VeniceException e = new ConcurrentBatchPushException(
+              "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
+          e.setStackTrace(EMPTY_STACK_TRACE);
+          throw e;
+        }
       }
     }
 
@@ -1842,6 +1844,40 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  private boolean tryFinalizeDeferredVersionSwap(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      Map<String, Integer> currentVersions) {
+    if (currentVersions.isEmpty()
+        || !currentVersions.keySet().equals(getVeniceHelixAdmin().getControllerClientMap(clusterName).keySet())
+        || !currentVersions.values()
+            .stream()
+            .allMatch(currentVersion -> Integer.valueOf(versionNumber).equals(currentVersion))) {
+      return false;
+    }
+
+    HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+      Store parentStore = repository.getStore(storeName);
+      Version parentVersion = parentStore.getVersion(versionNumber);
+      if (parentVersion == null || !parentVersion.isVersionSwapDeferred()
+          || StringUtils.isNotEmpty(parentVersion.getTargetSwapRegion()) || parentVersion.getStatus() != PUSHED
+          || parentStore.getCurrentVersion() > versionNumber) {
+        return false;
+      }
+      parentStore.updateVersionStatus(versionNumber, ONLINE);
+      parentStore.setCurrentVersion(versionNumber);
+      repository.updateStore(parentStore);
+      LOGGER.info(
+          "Finalized deferred version swap for store {} version {} after all regions reported it as current",
+          storeName,
+          versionNumber);
+      return true;
+    }
   }
 
   @VisibleForTesting

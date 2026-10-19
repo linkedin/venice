@@ -262,6 +262,10 @@ public enum Command {
   ),
   SET_VERSION(
       "set-version", "Set the version that will be served", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
+  ),
+  ROLL_FORWARD_TO_FUTURE_VERSION(
+      "roll-forward-to-future-version", "Roll forward to the future version; use the parent controller URL",
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER, REGIONS_FILTER }
   ), ADD_SCHEMA("add-schema", "", new Arg[] { URL, STORE, VALUE_SCHEMA }, new Arg[] { CLUSTER }),
   ADD_SCHEMA_TO_ZK(
       "add-schema-to-zk", "",

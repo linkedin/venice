@@ -76,10 +76,52 @@ import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class TestAdminTool {
+  @DataProvider(name = "rollForwardToFutureVersion")
+  public Object[][] rollForwardToFutureVersion() {
+    return new Object[][] { { "", false }, { "dc-0,dc-1", false }, { "", true } };
+  }
+
+  @Test(dataProvider = "rollForwardToFutureVersion")
+  public void testRollForwardToFutureVersion(String regionsFilter, boolean responseError) throws Exception {
+    List<String> args = new ArrayList<>(
+        Arrays.asList(
+            "--roll-forward-to-future-version",
+            "--url",
+            "http://localhost:7036",
+            "--cluster",
+            "test-cluster",
+            "--store",
+            "test-store"));
+    if (!regionsFilter.isEmpty()) {
+      args.add("--regions-filter");
+      args.add(regionsFilter);
+    }
+    ControllerClient client = mock(ControllerClient.class);
+    ControllerResponse response = new ControllerResponse();
+    if (responseError) {
+      response.setError("Roll forward failed without any future version");
+    }
+    doReturn(response).when(client).rollForwardToFutureVersion("test-store", regionsFilter);
+    try (MockedStatic<ControllerClientFactory> factory = Mockito.mockStatic(ControllerClientFactory.class);
+        MockedStatic<AdminTool> adminTool = Mockito.mockStatic(AdminTool.class, Mockito.CALLS_REAL_METHODS)) {
+      factory.when(
+          () -> ControllerClientFactory.getControllerClient("test-cluster", "http://localhost:7036", Optional.empty()))
+          .thenReturn(client);
+      adminTool.when(() -> AdminTool.printSuccess(response)).thenAnswer(invocation -> null);
+      adminTool.clearInvocations();
+
+      AdminTool.main(args.toArray(new String[0]));
+
+      Mockito.verify(client).rollForwardToFutureVersion("test-store", regionsFilter);
+      adminTool.verify(() -> AdminTool.printSuccess(response));
+    }
+  }
+
   @Test
   public void testPrintObject() {
     List<String> output = new ArrayList<>();

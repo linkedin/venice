@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
@@ -2141,8 +2142,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
   }
 
-  @Test
-  public void testDeferredVersionSwapWaitMessageIsDistinctFromConcurrentPush() {
+  @DataProvider(name = "deferredSwapRecovery")
+  public Object[][] deferredSwapRecovery() {
+    return new Object[][] { { null, new Integer[] { 1, 1 }, true }, { "", new Integer[] { 1, 1 }, true },
+        { "", new Integer[] { 1, 0 }, false }, { "", new Integer[] { 1, IGNORED_CURRENT_VERSION }, false },
+        { "", new Integer[] { 1, null }, false }, { "", new Integer[] {}, false }, { "", new Integer[] { 1 }, false },
+        { "dc-0", new Integer[] { 1, 0 }, false }, { "dc-0", new Integer[] { 1, 1 }, false } };
+  }
+
+  @Test(dataProvider = "deferredSwapRecovery")
+  public void testDeferredVersionSwapRecovery(
+      String targetSwapRegion,
+      Integer[] regionVersions,
+      boolean shouldRecover) {
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
@@ -2159,37 +2171,30 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
 
-    // The existing version finished its push but is mid deferred (colo-by-colo) version swap: PUSHED on
-    // the parent (push complete but swap not yet done) and not yet current in every region.
     String userPushId = System.currentTimeMillis() + "_https://example.com/user-job";
     VersionImpl version = new VersionImpl(storeName, 1, userPushId);
     version.setVersionSwapDeferred(true);
-    version.setTargetSwapRegion("dc-0");
+    if (targetSwapRegion != null) {
+      version.setTargetSwapRegion(targetSwapRegion);
+    }
     version.setStatus(VersionStatus.PUSHED);
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
     Map<String, Integer> currentVersionsPerRegion = new HashMap<>();
-    currentVersionsPerRegion.put("dc-0", 1);
-    currentVersionsPerRegion.put("dc-1", 0);
+    for (int i = 0; i < regionVersions.length; i++) {
+      currentVersionsPerRegion.put("dc-" + i, regionVersions[i]);
+    }
     doReturn(currentVersionsPerRegion).when(mockParentAdmin).getCurrentVersionsForMultiColos(clusterName, storeName);
+    Map<String, ControllerClient> childClients = new HashMap<>();
+    childClients.put("dc-0", mock(ControllerClient.class));
+    childClients.put("dc-1", mock(ControllerClient.class));
+    doReturn(childClients).when(mockInternalAdmin).getControllerClientMap(clusterName);
 
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    doReturn(
-        (LingeringStoreVersionChecker) (
-            store1,
-            version1,
-            time,
-            controllerAdmin,
-            requesterCert,
-            identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
-    doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
-    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
     doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
         .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
 
-    // A compliance push cannot kill the existing push, so the flow reaches the rejection path.
+    // A compliance push cannot preempt the existing user push.
     String incomingPushId = Version.generateCompliancePushId("compliance_push");
     // Stub both the 5-arg overload and the full 17-arg impl it delegates to.
     doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1);
@@ -2216,21 +2221,64 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
     doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
+    doReturn(new ClusterLockManager(clusterName)).when(mockHelixVeniceClusterResources).getClusterLockManager();
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(mockHelixVeniceClusterResources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(storeName);
 
-    try {
-      mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1);
-      fail("Expected VeniceException to be thrown");
-    } catch (VeniceException e) {
+    Version newVersion = new VersionImpl(storeName, 2, incomingPushId);
+    doAnswer(invocation -> {
+      assertEquals(store.getCurrentVersion(), 1);
+      assertEquals(store.getVersion(1).getStatus(), ONLINE);
+      return newVersion;
+    }).when(mockParentAdmin)
+        .addVersionAndTopicOnly(
+            clusterName,
+            storeName,
+            incomingPushId,
+            VERSION_ID_UNSET,
+            1,
+            1,
+            Version.PushType.BATCH,
+            true,
+            false,
+            null,
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            store.getLargestUsedRTVersionNumber(),
+            -1,
+            false);
+
+    if (shouldRecover) {
+      assertSame(mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1), newVersion);
+      assertEquals(store.getVersion(1).getStatus(), ONLINE);
+      assertEquals(store.getCurrentVersion(), 1);
+      verify(repository).updateStore(store);
+    } else {
+      ConcurrentBatchPushException e = expectThrows(
+          ConcurrentBatchPushException.class,
+          () -> mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1));
       assertTrue(
           e.getMessage().contains("waiting on deferred version swap"),
           "Blocking message should identify the deferred version swap wait: " + e.getMessage());
-      assertTrue(
-          e.getMessage().contains("target swap region(s): dc-0"),
-          "Blocking message should include the target swap region: " + e.getMessage());
+      if (targetSwapRegion != null && !targetSwapRegion.isEmpty()) {
+        assertTrue(
+            e.getMessage().contains("target swap region(s): " + targetSwapRegion),
+            "Blocking message should include the target swap region: " + e.getMessage());
+      }
       Assert.assertFalse(
           e.getMessage().contains("is still in progress"),
           "A deferred-swap wait must not be reported as an in-flight concurrent push: " + e.getMessage());
+      assertEquals(store.getVersion(1).getStatus(), PUSHED);
+      Assert.assertNotEquals(store.getCurrentVersion(), 1);
+      verify(repository, never()).updateStore(any());
     }
+    verify(mockParentAdmin, never()).killOfflinePush(anyString(), anyString(), anyBoolean());
+    verify(mockParentAdmin).getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
   private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
