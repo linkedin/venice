@@ -56,6 +56,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
@@ -407,15 +408,17 @@ public class LeaderFollowerPartitionStateModelTest {
 
   @DataProvider
   public Object[][] gracefulDropVersionRoles() {
-    return new Object[][] { { storeVersion, false, true }, { storeVersion + 2, false, true },
-        { storeVersion + 3, false, false }, { storeVersion - 2, false, false },
-        { Store.NON_EXISTING_VERSION, false, false }, { storeVersion + 2, true, true } };
+    return new Object[][] { { storeVersion, false, false, true }, { storeVersion + 2, false, false, true },
+        { storeVersion + 3, false, false, false }, { storeVersion - 2, false, false, false },
+        { Store.NON_EXISTING_VERSION, false, false, false }, { storeVersion + 2, true, false, true },
+        { storeVersion + 2, false, true, false } };
   }
 
   @Test(dataProvider = "gracefulDropVersionRoles")
   public void testGracefulDropForCurrentAndBackupVersions(
       int currentVersion,
       boolean demoteBeforeDrop,
+      boolean removeVersionFromMetadata,
       boolean expectDelay) {
     Message message = mock(Message.class);
     NotificationContext context = mock(NotificationContext.class);
@@ -426,14 +429,21 @@ public class LeaderFollowerPartitionStateModelTest {
     when(store.getCurrentVersion()).thenReturn(demoteBeforeDrop ? storeVersion : currentVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
     Version failedVersion = new VersionImpl(storeName, storeVersion + 1, "test-push");
-    List<Version> versions = Arrays.asList(
-        new VersionImpl(storeName, storeVersion + 3, "test-push"),
-        new VersionImpl(storeName, storeVersion - 2, "test-push"),
-        new VersionImpl(storeName, storeVersion + 2, "test-push"),
-        new VersionImpl(storeName, storeVersion, "test-push"),
-        failedVersion);
+    List<Version> versions = new ArrayList<>(
+        Arrays.asList(
+            new VersionImpl(storeName, storeVersion + 3, "test-push"),
+            new VersionImpl(storeName, storeVersion - 2, "test-push"),
+            new VersionImpl(storeName, storeVersion + 2, "test-push"),
+            new VersionImpl(storeName, storeVersion, "test-push"),
+            failedVersion));
     versions.forEach(version -> version.setStatus(VersionStatus.ONLINE));
     failedVersion.setStatus(VersionStatus.ERROR);
+    if (removeVersionFromMetadata) {
+      assertTrue(versions.removeIf(version -> version.getNumber() == storeVersion));
+      assertTrue(
+          versions.stream()
+              .anyMatch(version -> version.getNumber() < storeVersion && version.getStatus() == VersionStatus.ONLINE));
+    }
     when(store.getVersions()).thenReturn(versions);
 
     if (demoteBeforeDrop) {

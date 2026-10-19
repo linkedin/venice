@@ -227,7 +227,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       }
       if (isCurrentOrBackupVersion) {
         // Routers may still query the backup version until they observe the version swap.
-        executeGracefulDropDelayForServingVersionReplica(replicaId);
+        executeGracefulDropDelayForReplica(replicaId);
       }
 
       CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully();
@@ -285,7 +285,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    *
    * @param replicaId The replica identifier for logging
    */
-  private void executeGracefulDropDelayForServingVersionReplica(String replicaId) {
+  private void executeGracefulDropDelayForReplica(String replicaId) {
     long gracefulDropDelayMs =
         TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
     long remainingWaitMs = gracefulDropDelayMs;
