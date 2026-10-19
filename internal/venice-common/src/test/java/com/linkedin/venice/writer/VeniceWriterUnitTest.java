@@ -85,6 +85,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -233,6 +234,56 @@ public class VeniceWriterUnitTest {
       assertEquals(interruptedSend.getCount(), 1L, "Running sends must not be interrupted");
       verify(fixture.producer, times(8)).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
       verify(fixture.producer, never()).flush();
+    }
+  }
+
+  /**
+   * Verifies failure cleanup closes the producer before releasing eight pending SOS acknowledgements.
+   */
+  @Test(timeOut = TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testFailureCloseBypassesWorkersBlockedOnStartOfSegment(boolean startOfPush) throws Exception {
+    try (BroadcastTest fixture = new BroadcastTest(17, null, false)) {
+      List<CompletableFuture<PubSubProduceResult>> segmentAcks = new ArrayList<>();
+      for (int partition = 0; partition < 8; partition++) {
+        segmentAcks.add(new CompletableFuture<>());
+      }
+      doAnswer(invocation -> {
+        ControlMessage message = (ControlMessage) ((KafkaMessageEnvelope) invocation.getArgument(3)).payloadUnion;
+        assertEquals(ControlMessageType.valueOf(message), ControlMessageType.START_OF_SEGMENT);
+        fixture.firstWaveStarted.countDown();
+        return segmentAcks.get((int) invocation.getArgument(1));
+      }).when(fixture.producer).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
+      doAnswer(invocation -> {
+        assertFalse(Thread.currentThread().isInterrupted(), "VPJ clears the interrupt before failure cleanup");
+        segmentAcks.forEach(ack -> assertFalse(ack.isDone(), "Only producer close may settle the SOS waits"));
+        segmentAcks.forEach(ack -> ack.completeExceptionally(fixture.failure));
+        return null;
+      }).when(fixture.producer).close(0);
+      long openWriters = VeniceWriter.OPEN_VENICE_WRITER_COUNT.get();
+      long closeFailures = VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get();
+      Thread caller = Thread.currentThread();
+      try {
+        fixture.broadcaster.submit(() -> {
+          assertTrue(fixture.firstWaveStarted.await(5, TimeUnit.SECONDS));
+          caller.interrupt();
+          return null;
+        });
+        VeniceException exception = Assert.expectThrows(VeniceException.class, () -> fixture.broadcast(startOfPush));
+        assertTrue(exception.getCause() instanceof InterruptedException);
+        assertTrue(Thread.interrupted(), "Clear the interrupt before cleanup, as VPJ does");
+        fixture.writer.close(false, false);
+        segmentAcks.forEach(ack -> assertTrue(ack.isCompletedExceptionally()));
+        fixture.writer.close(false, false);
+        assertEquals(fixture.writer.closeAsync(true).get(), VeniceResourceCloseResult.ALREADY_CLOSED);
+        assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters - 1);
+        assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures);
+        verify(fixture.producer).close(0);
+        verify(fixture.producer, times(8)).sendMessage(anyString(), anyInt(), any(), any(), any(), any());
+        verify(fixture.producer, never()).flush();
+      } finally {
+        Thread.interrupted();
+        segmentAcks.forEach(ack -> ack.completeExceptionally(fixture.failure));
+      }
     }
   }
 
@@ -919,7 +970,9 @@ public class VeniceWriterUnitTest {
             + schemaJson.substring(0, Math.min(80, schemaJson.length())));
   }
 
-  // Write a unit test for the retry mechanism in VeniceWriter.close(true) method.
+  /**
+   * Verifies ordinary synchronous and asynchronous close retain retry behavior and lifecycle accounting.
+   */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
   public void testVeniceWriterCloseRetry(boolean gracefulClose) throws ExecutionException, InterruptedException {
     Supplier<PubSubProducerAdapter> producerSupplier = () -> {
@@ -939,8 +992,12 @@ public class VeniceWriterUnitTest {
     // should only be a single close invocation, and it should be with zero timeout.
 
     PubSubProducerAdapter mockedProducer = producerSupplier.get();
+    long openWriters = VeniceWriter.OPEN_VENICE_WRITER_COUNT.get();
+    long closeFailures = VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get();
     VeniceWriter<Object, Object, Object> writer = veniceWriterSupplier.apply(mockedProducer);
     writer.close(gracefulClose);
+    assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters);
+    assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + (gracefulClose ? 1 : 0));
     verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
     verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
 
@@ -948,8 +1005,29 @@ public class VeniceWriterUnitTest {
     mockedProducer = producerSupplier.get();
     writer = veniceWriterSupplier.apply(mockedProducer);
     writer.closeAsync(gracefulClose).get();
+    assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters);
+    assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + (gracefulClose ? 2 : 0));
     verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
     verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
+  }
+
+  /**
+   * Verifies a failed ungraceful close is counted once, swallowed without retry, and remains idempotent.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testFailureClosePreservesErrorAccounting() throws Exception {
+    try (BroadcastTest fixture = new BroadcastTest(1, null, false)) {
+      doThrow(fixture.failure).when(fixture.producer).close(0);
+      long openWriters = VeniceWriter.OPEN_VENICE_WRITER_COUNT.get();
+      long closeFailures = VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get();
+      fixture.writer.close(false, false);
+      fixture.writer.close(false, false);
+      assertEquals(fixture.writer.closeAsync(false).get(), VeniceResourceCloseResult.ALREADY_CLOSED);
+      assertEquals(VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), openWriters);
+      assertEquals(VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(), closeFailures + 1);
+      verify(fixture.producer).close(0);
+      verifyNoMoreInteractions(fixture.producer);
+    }
   }
 
   /**

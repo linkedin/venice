@@ -1056,7 +1056,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         pushJobDetails.failureDetails = e.toString();
         sendTerminalPushJobDetailsToController(PushJobDetailsStatus.ERROR);
-        closeVeniceWriter();
+        closeVeniceWriter(false);
       } catch (Exception ex) {
         LOGGER.error(
             "Error before killing the failed push job; still issue the kill job command to clean up states in backend",
@@ -3119,9 +3119,17 @@ public class VenicePushJob implements AutoCloseable {
     return veniceWriterProperties;
   }
 
-  private synchronized void closeVeniceWriter() {
+  private void closeVeniceWriter() {
+    closeVeniceWriter(true);
+  }
+
+  private synchronized void closeVeniceWriter(boolean gracefulClose) {
     if (veniceWriter != null) {
-      veniceWriter.close();
+      if (gracefulClose) {
+        veniceWriter.close();
+      } else {
+        veniceWriter.close(false, false);
+      }
       veniceWriter = null;
     }
   }

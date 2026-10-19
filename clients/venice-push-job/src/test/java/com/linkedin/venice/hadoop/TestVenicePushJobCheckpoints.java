@@ -508,6 +508,11 @@ public class TestVenicePushJobCheckpoints {
     when(multiSchemaResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { valueSchema });
     doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(anyString());
 
+    VeniceWriter veniceWriter = createVeniceWriterMock();
+    doAnswer(invocation -> {
+      Assert.assertFalse(Thread.currentThread().isInterrupted(), "Failure close must run with the interrupt cleared");
+      return null;
+    }).when(veniceWriter).close(false, false);
     List<Boolean> interruptedWhileKilling = new ArrayList<>();
     doAnswer(invocation -> {
       interruptedWhileKilling.add(Thread.currentThread().isInterrupted());
@@ -548,7 +553,7 @@ public class TestVenicePushJobCheckpoints {
               NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT,
               true,
               false));
-      venicePushJob.setVeniceWriter(createVeniceWriterMock());
+      venicePushJob.setVeniceWriter(veniceWriter);
       venicePushJob.setSentPushJobDetailsTracker(new SentPushJobDetailsTrackerImpl());
       venicePushJob.setPushJobHeartbeatSenderFactory(
           (kafkaUrl, properties, heartbeatControllerClient, sslProperties) -> heartbeatSender);
@@ -568,6 +573,10 @@ public class TestVenicePushJobCheckpoints {
         Collections.singletonList(false),
         "The heartbeat sender must be stopped once, with the interrupt cleared");
     Assert.assertTrue(interruptedAfterRun, "The interrupt must be restored after all cleanup");
+    org.mockito.InOrder cleanupOrder = Mockito.inOrder(veniceWriter, controllerClient);
+    cleanupOrder.verify(veniceWriter).close(false, false);
+    cleanupOrder.verify(controllerClient).killOfflinePushJob(anyString());
+    Mockito.verify(veniceWriter, Mockito.never()).close();
   }
 
   private void testHandleErrorsInCounter(
@@ -657,12 +666,15 @@ public class TestVenicePushJobCheckpoints {
           inputFileHasRecords,
           datasetChanged);
       venicePushJob.setInputDataInfoProvider(inputDataInfoProvider);
-      venicePushJob.setVeniceWriter(createVeniceWriterMock());
+      VeniceWriter veniceWriter = createVeniceWriterMock();
+      venicePushJob.setVeniceWriter(veniceWriter);
       SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
       venicePushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
 
       try {
         venicePushJob.run();
+        Mockito.verify(veniceWriter).close();
+        Mockito.verify(veniceWriter, Mockito.never()).close(false, false);
       } finally {
         List<Integer> actualReportedCheckpointValues =
             new ArrayList<>(pushJobDetailsTracker.getRecordedPushJobDetails().size());

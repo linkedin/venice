@@ -518,6 +518,19 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   @Override
   public void close(boolean gracefulClose) {
+    close(gracefulClose, true);
+  }
+
+  /**
+   * @param gracefulClose whether to end segments before closing the producer.
+   * @param useExecutor whether to queue close on the shared executor; false closes on the calling thread so failure
+   *                    cleanup can bypass blocked broadcast workers. Producer close itself may still block.
+   */
+  public void close(boolean gracefulClose, boolean useExecutor) {
+    if (!useExecutor) {
+      closeInternal(gracefulClose, true);
+      return;
+    }
     try {
       closeAsync(gracefulClose).get();
     } catch (ExecutionException | InterruptedException e) {
@@ -541,55 +554,58 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         return CompletableFuture.completedFuture(VeniceResourceCloseResult.ALREADY_CLOSED);
       }
 
-      return CompletableFuture.supplyAsync(() -> {
-        synchronized (closeLock) {
-          if (isClosed) {
-            return VeniceResourceCloseResult.ALREADY_CLOSED;
-          }
+      return CompletableFuture
+          .supplyAsync(() -> closeInternal(gracefulClose, retryOnGracefulCloseFailure), threadPoolExecutor);
+    }
+  }
 
-          logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
-          long timeAtStartOfClose = System.currentTimeMillis();
+  private VeniceResourceCloseResult closeInternal(boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
+    synchronized (closeLock) {
+      if (isClosed) {
+        return VeniceResourceCloseResult.ALREADY_CLOSED;
+      }
+
+      logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
+      long timeAtStartOfClose = System.currentTimeMillis();
+      try {
+        if (gracefulClose) {
+          /**
+           * If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+           * will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+           * N.B.: This call is run async because it could block indefinitely in case the topic does not exist.
+           */
+          CompletableFuture<Void> endSegmentsFuture =
+              CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
           try {
-            if (gracefulClose) {
-              /**
-               * If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-               * will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
-               * N.B.: This call is run async because it could block indefinitely in case the topic does not exist.
-               */
-              CompletableFuture<Void> endSegmentsFuture =
-                  CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
-              try {
-                endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
-              } catch (Exception e) {
-                // cancel the endSegmentsFuture if it's not done in time.
-                if (!endSegmentsFuture.isDone()) {
-                  endSegmentsFuture.cancel(true);
-                }
-                logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
-              }
-            }
-
-            long timeLeftToClose = 0; // N.B.: 0 indicates an ungraceful close
-            if (gracefulClose) {
-              /** N.B.: We measure the time left to try to adhere strictly to the configured {@link closeTimeOutInMs} */
-              long timeSinceStartOfClose = System.currentTimeMillis() - timeAtStartOfClose;
-              timeLeftToClose = Math.max(0, closeTimeOutInMs - timeSinceStartOfClose);
-            }
-
-            producerAdapter.close(timeLeftToClose);
-            OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+            endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
           } catch (Exception e) {
-            handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
-          } finally {
-            isClosed = true;
-            threadPoolExecutor.shutdown();
-            long elapsedTimeInMs = System.currentTimeMillis() - timeAtStartOfClose;
-            logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs);
+            // cancel the endSegmentsFuture if it's not done in time.
+            if (!endSegmentsFuture.isDone()) {
+              endSegmentsFuture.cancel(true);
+            }
+            logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
           }
         }
-        return VeniceResourceCloseResult.SUCCESS;
-      }, threadPoolExecutor);
+
+        long timeLeftToClose = 0; // N.B.: 0 indicates an ungraceful close
+        if (gracefulClose) {
+          /** N.B.: We measure the time left to try to adhere strictly to the configured {@link closeTimeOutInMs} */
+          long timeSinceStartOfClose = System.currentTimeMillis() - timeAtStartOfClose;
+          timeLeftToClose = Math.max(0, closeTimeOutInMs - timeSinceStartOfClose);
+        }
+
+        producerAdapter.close(timeLeftToClose);
+        OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+      } catch (Exception e) {
+        handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
+      } finally {
+        isClosed = true;
+        threadPoolExecutor.shutdown();
+        long elapsedTimeInMs = System.currentTimeMillis() - timeAtStartOfClose;
+        logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs);
+      }
     }
+    return VeniceResourceCloseResult.SUCCESS;
   }
 
   void handleExceptionInClose(Exception e, boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
