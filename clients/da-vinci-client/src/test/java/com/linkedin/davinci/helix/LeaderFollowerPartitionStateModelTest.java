@@ -419,7 +419,7 @@ public class LeaderFollowerPartitionStateModelTest {
   public void testGracefulDropForCurrentAndBackupVersions(
       int currentVersion,
       boolean demoteBeforeDrop,
-      boolean removeVersionFromMetadata,
+      boolean versionRemovedFromMetadata,
       boolean expectDelay,
       boolean backupGracefulDropEnabled) {
     Message message = mock(Message.class);
@@ -437,16 +437,12 @@ public class LeaderFollowerPartitionStateModelTest {
             new VersionImpl(storeName, storeVersion + 3, "test-push"),
             new VersionImpl(storeName, storeVersion - 2, "test-push"),
             new VersionImpl(storeName, storeVersion + 2, "test-push"),
-            new VersionImpl(storeName, storeVersion, "test-push"),
             failedVersion));
+    if (!versionRemovedFromMetadata) {
+      versions.add(new VersionImpl(storeName, storeVersion, "test-push"));
+    }
     versions.forEach(version -> version.setStatus(VersionStatus.ONLINE));
     failedVersion.setStatus(VersionStatus.ERROR);
-    if (removeVersionFromMetadata) {
-      assertTrue(versions.removeIf(version -> version.getNumber() == storeVersion));
-      assertTrue(
-          versions.stream()
-              .anyMatch(version -> version.getNumber() < storeVersion && version.getStatus() == VersionStatus.ONLINE));
-    }
     when(store.getVersions()).thenReturn(versions);
 
     if (demoteBeforeDrop) {
