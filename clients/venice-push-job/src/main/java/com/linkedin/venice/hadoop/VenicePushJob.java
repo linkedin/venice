@@ -177,6 +177,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -1664,18 +1665,23 @@ public class VenicePushJob implements AutoCloseable {
     return externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
   }
 
-  private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
+  @VisibleForTesting
+  Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
     if (!pushJobSetting.isZstdDictCreationRequired) {
       return Optional.empty();
     }
 
+    long startTimeNs = System.nanoTime();
+    throwIfDictionaryBuildInterrupted(null, startTimeNs);
     ByteBuffer compressionDictionary;
     try {
       compressionDictionary = fetchOrBuildCompressionDictionary();
     } catch (Exception e) {
+      throwIfDictionaryBuildInterrupted(e, startTimeNs);
       LOGGER.warn("Failed to fetch or build compression dictionary", e);
       compressionDictionary = null;
     }
+    throwIfDictionaryBuildInterrupted(null, startTimeNs);
 
     if (compressionDictionary != null && compressionDictionary.remaining() > 0) {
       pushJobSetting.isZstdDictCreationSuccess = true;
@@ -1693,6 +1699,16 @@ public class VenicePushJob implements AutoCloseable {
     LOGGER.info("No dictionary fetched. Creating a default dictionary since compression strategy is ZSTD_WITH_DICT");
     pushJobSetting.isZstdDictCreationSuccess = true;
     return Optional.of(emptyPushZstdDictionary.get());
+  }
+
+  private static void throwIfDictionaryBuildInterrupted(Throwable cause, long startTimeNs) {
+    if (Thread.currentThread().isInterrupted()
+        || ExceptionUtils.recursiveClassEquals(cause, InterruptedException.class)) {
+      Thread.currentThread().interrupt();
+      throw new DictionaryBuildInterruptedException(
+          TimeUnit.NANOSECONDS.toMinutes(System.nanoTime() - startTimeNs),
+          cause);
+    }
   }
 
   private VeniceProperties getSourceDictionaryConsumerProperties() {
@@ -1739,7 +1755,8 @@ public class VenicePushJob implements AutoCloseable {
     return new VeniceProperties(consumerProperties);
   }
 
-  private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
+  @VisibleForTesting
+  ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))

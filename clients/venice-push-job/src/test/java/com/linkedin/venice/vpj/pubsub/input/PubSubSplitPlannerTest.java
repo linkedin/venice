@@ -1,5 +1,6 @@
 package com.linkedin.venice.vpj.pubsub.input;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_MAX_MESSAGES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION;
@@ -77,79 +78,40 @@ public class PubSubSplitPlannerTest {
     }
   }
 
-  @Test
-  public void testPlanWithVenicePropertiesNormalScenarios() {
-    // Case 1: Default values scenario
-    VeniceProperties props1 = createVeniceProperties(TEST_TOPIC_NAME, TEST_BROKER_URL);
-    doReturn(mockTopicManager).when(planner).createTopicManager(any(VeniceProperties.class), anyString());
-    setupTopicManagerMocks(4, 3000L);
-
-    List<PubSubPartitionSplit> splits1 = planner.plan(props1);
-
-    assertNotNull(splits1);
-    assertFalse(splits1.isEmpty());
-    verify(mockTopicManager, times(1)).getPartitionCount(any(PubSubTopic.class));
-
-    // Case 2: Custom properties configuration
-    Map<String, String> customProps = new HashMap<>();
-    customProps.put(KAFKA_INPUT_TOPIC, TEST_TOPIC_NAME);
-    customProps.put(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, TEST_BROKER_URL);
-    customProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.FIXED_RECORD_COUNT.name());
-    customProps.put(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2000");
-    customProps.put(PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION, "8");
-    customProps.put(PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, "120");
-    VeniceProperties props2 = new VeniceProperties(customProps);
-    setupTopicManagerMocks(6, 4000L);
-
-    List<PubSubPartitionSplit> splits2 = planner.plan(props2);
-
-    assertNotNull(splits2);
-    assertFalse(splits2.isEmpty());
-
-    // Case 3: Minimal required properties
-    Map<String, String> minimalProps = new HashMap<>();
-    minimalProps.put(KAFKA_INPUT_TOPIC, TEST_TOPIC_NAME);
-    minimalProps.put(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, TEST_BROKER_URL);
-    VeniceProperties props3 = new VeniceProperties(minimalProps);
-    setupTopicManagerMocks(1, 500L);
-
-    List<PubSubPartitionSplit> splits3 = planner.plan(props3);
-
-    assertNotNull(splits3);
-    assertFalse(splits3.isEmpty());
+  @DataProvider
+  public Object[][] planningConfigurations() {
+    return new Object[][] { { 4, 3000L, null, 0L, 0, 0L },
+        { 6, 4000L, PartitionSplitStrategy.FIXED_RECORD_COUNT, 2000L, 8, 120L }, { 1, 500L, null, 0L, 0, 0L },
+        { 1, 1000L, null, 0L, 0, 0L }, { 50, 2000L, null, 0L, 0, 0L }, { 0, 0L, null, 0L, 0, 0L },
+        { 3, 1500L, PartitionSplitStrategy.FIXED_RECORD_COUNT, 1L, 1, 1L },
+        { 3, 1500L, PartitionSplitStrategy.CAPPED_SPLIT_COUNT, 1000000L, 10000, 525600L },
+        { 3, 1500L, PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION, 0L, 0, 0L } };
   }
 
-  @Test
-  public void testPlanWithEdgeCaseScenarios() {
+  @Test(dataProvider = "planningConfigurations")
+  public void testPlanWithConfigurations(
+      int partitions,
+      long recordsPerPartition,
+      PartitionSplitStrategy strategy,
+      long recordsPerSplit,
+      int maxSplits,
+      long timeWindowMinutes) {
     doReturn(mockTopicManager).when(planner).createTopicManager(any(VeniceProperties.class), anyString());
-
-    // Case 1: Single partition topic
-    VeniceProperties props1 = createVeniceProperties(TEST_TOPIC_NAME, TEST_BROKER_URL);
-    setupTopicManagerMocks(1, 1000L);
-
-    List<PubSubPartitionSplit> splits1 = planner.plan(props1);
-
-    assertNotNull(splits1);
-    assertFalse(splits1.isEmpty());
-
-    // Case 2: Many partitions (50) topic
-    VeniceProperties props2 = createVeniceProperties(TEST_TOPIC_NAME, TEST_BROKER_URL);
-    setupTopicManagerMocks(50, 2000L);
-
-    List<PubSubPartitionSplit> splits2 = planner.plan(props2);
-
-    assertNotNull(splits2);
-    assertFalse(splits2.isEmpty());
-    assertTrue(splits2.size() >= 50); // At least one split per partition
-
-    // Case 3: Zero partition topic
-    VeniceProperties props3 = createVeniceProperties(TEST_TOPIC_NAME, TEST_BROKER_URL);
-    setupTopicManagerMocks(0, 0L);
-
-    List<PubSubPartitionSplit> splits3 = planner.plan(props3);
-
-    assertNotNull(splits3);
-    assertTrue(splits3.isEmpty()); // No partitions means no splits
+    setupTopicManagerMocks(partitions, recordsPerPartition);
+    VeniceProperties properties = strategy == null
+        ? createVeniceProperties(TEST_TOPIC_NAME, TEST_BROKER_URL)
+        : createVenicePropertiesWithValues(
+            TEST_TOPIC_NAME,
+            TEST_BROKER_URL,
+            strategy.name(),
+            recordsPerSplit,
+            maxSplits,
+            timeWindowMinutes);
+    List<PubSubPartitionSplit> splits = planner.plan(properties);
+    assertNotNull(splits);
+    assertEquals(splits.isEmpty(), partitions == 0);
+    assertTrue(splits.size() >= partitions);
+    verify(mockTopicManager).getPartitionCount(any(PubSubTopic.class));
   }
 
   @Test
@@ -175,54 +137,6 @@ public class PubSubSplitPlannerTest {
         createVenicePropertiesWithValues(TEST_TOPIC_NAME, TEST_BROKER_URL, "INVALID_SPLIT_TYPE", 1000L, 5, 60L);
 
     expectThrows(IllegalArgumentException.class, () -> planner.plan(props3));
-  }
-
-  @Test
-  public void testPlanWithConfigurationVariations() {
-    doReturn(mockTopicManager).when(planner).createTopicManager(any(VeniceProperties.class), anyString());
-    setupTopicManagerMocks(3, 1500L);
-
-    // Case 1: Extreme values testing (very small/large)
-    VeniceProperties props1 = createVenicePropertiesWithValues(
-        TEST_TOPIC_NAME,
-        TEST_BROKER_URL,
-        PartitionSplitStrategy.FIXED_RECORD_COUNT.name(),
-        1L,
-        1,
-        1L);
-
-    List<PubSubPartitionSplit> splits1 = planner.plan(props1);
-
-    assertNotNull(splits1);
-    assertFalse(splits1.isEmpty());
-
-    // Case 2: Large values testing (use reasonable large values to avoid overflow)
-    VeniceProperties props2 = createVenicePropertiesWithValues(
-        TEST_TOPIC_NAME,
-        TEST_BROKER_URL,
-        PartitionSplitStrategy.CAPPED_SPLIT_COUNT.name(),
-        1000000L,
-        10000,
-        525600L);
-
-    List<PubSubPartitionSplit> splits2 = planner.plan(props2);
-
-    assertNotNull(splits2);
-    assertFalse(splits2.isEmpty());
-
-    // Case 3: Zero values testing (should use defaults)
-    VeniceProperties props3 = createVenicePropertiesWithValues(
-        TEST_TOPIC_NAME,
-        TEST_BROKER_URL,
-        PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION.name(),
-        0L,
-        0,
-        0L);
-
-    List<PubSubPartitionSplit> splits3 = planner.plan(props3);
-
-    assertNotNull(splits3);
-    assertFalse(splits3.isEmpty());
   }
 
   @Test(dataProvider = "splitTypeProvider")
@@ -295,7 +209,44 @@ public class PubSubSplitPlannerTest {
   @DataProvider(name = "splitTypeProvider")
   public Object[][] splitTypeProvider() {
     return new Object[][] { { PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION },
-        { PartitionSplitStrategy.FIXED_RECORD_COUNT }, { PartitionSplitStrategy.CAPPED_SPLIT_COUNT } };
+        { PartitionSplitStrategy.FIXED_RECORD_COUNT }, { PartitionSplitStrategy.CAPPED_SPLIT_COUNT },
+        { PartitionSplitStrategy.CAPPED_SINGLE_SPLIT_PER_PARTITION } };
+  }
+
+  @DataProvider
+  public Object[][] dictionaryScanBudgets() {
+    return new Object[][] { { null, 4, 1_000_000L, 250_000L }, { "8000", 4, 1_000_000L, 2000L },
+        { "1", 4, 1_000_000L, 1000L }, { "8000", 4, 2L, 2L }, { "8000", 4, 0L, 0L } };
+  }
+
+  @Test(dataProvider = "dictionaryScanBudgets")
+  public void testDictionaryScanBudgetIsDividedAcrossPartitions(
+      String budget,
+      int partitions,
+      long records,
+      long expectedLimit) {
+    doReturn(mockTopicManager).when(planner).createTopicManager(any(VeniceProperties.class), anyString());
+    setupTopicManagerMocks(partitions, records);
+    Properties properties = new Properties();
+    properties.setProperty(KAFKA_INPUT_TOPIC, TEST_TOPIC_NAME);
+    properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, TEST_BROKER_URL);
+    properties
+        .setProperty(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.CAPPED_SINGLE_SPLIT_PER_PARTITION.name());
+    properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "1");
+    if (budget != null) {
+      properties.setProperty(COMPRESSION_DICTIONARY_MAX_MESSAGES, budget);
+    }
+
+    List<PubSubPartitionSplit> splits = planner.plan(new VeniceProperties(properties));
+    assertEquals(splits.size(), partitions);
+    for (PubSubPartitionSplit split: splits) {
+      assertEquals(split.getNumberOfRecords(), expectedLimit);
+      assertEquals(split.getEndPubSubPosition(), ApacheKafkaOffsetPosition.of(expectedLimit));
+    }
+    properties.setProperty(COMPRESSION_DICTIONARY_MAX_MESSAGES, "0");
+    expectThrows(IllegalArgumentException.class, () -> planner.plan(new VeniceProperties(properties)));
+    properties.setProperty(COMPRESSION_DICTIONARY_MAX_MESSAGES, "-1");
+    expectThrows(IllegalArgumentException.class, () -> planner.plan(new VeniceProperties(properties)));
   }
 
   // Helper methods

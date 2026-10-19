@@ -115,6 +115,23 @@ repush.ttl.enable = true
 
 More details on how to configure TTL can be found in the [TTL](ttl.md) guide.
 
+### Dictionary sampling
+
+For ZSTD_WITH_DICT stores, dictionary rebuilding scans a bounded prefix of each source-topic partition.
+This also applies to hybrid empty pushes, which sample the current version's data before starting the compute job.
+
+```
+compression.dictionary.max.messages = 1000000
+```
+
+This positive message budget is divided by the source partition count, with a floor of 1,000 messages per partition.
+Control messages, including heartbeats, count toward the limit. The floor can make the aggregate limit exceed the
+configured budget. The existing sample-byte budget (`compression.dictionary.sample.size`, default 200 MB) can stop
+sampling earlier. These limits do not bound split-planning or polling time.
+
+If fewer than 20 samples are collected, the source version's dictionary is reused when available; otherwise VPJ uses
+its synthetic dictionary. Interruptions abort dictionary creation without attempting fallbacks.
+
 ## Future Work
 
 One potential enhancement would be to add support for changing the compression setting of a store, which currently

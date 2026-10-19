@@ -46,6 +46,10 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
     this.decompressor = new CloseableThreadLocal<>(() -> new ZstdDecompressCtx().loadDict(dictDecompress));
   }
 
+  public byte[] getDictionary() {
+    return Arrays.copyOf(dictionary, dictionary.length);
+  }
+
   @Override
   protected byte[] compressInternal(byte[] data) {
     return compressor.get().compress(data);
