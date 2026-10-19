@@ -1019,12 +1019,29 @@ public class HeartbeatMonitoringServiceTest {
     long currentFollowerCount =
         countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2);
     Assert.assertTrue(currentFollowerCount > 0);
+    heartbeatMonitoringService.removeLagMonitor(backupVersion, 2, Utils.getReplicaId(backupVersionTopic, 2));
+    Assert.assertTrue(
+        heartbeatMonitoringService.getCleanupHeartbeatMap().containsKey(Utils.getReplicaId(backupVersionTopic, 2)));
     heartbeatMonitoringService.removeLagMonitors(backupVersion);
     Assert.assertEquals(countPartitions(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1), 0);
     Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 0);
     Assert.assertEquals(
         countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2),
         currentFollowerCount);
+    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 2);
+    for (int partition = 0; partition < 3; partition++) {
+      Assert.assertFalse(
+          heartbeatMonitoringService.getCleanupHeartbeatMap()
+              .containsKey(Utils.getReplicaId(backupVersionTopic, partition)));
+    }
+    Assert.assertEquals(
+        heartbeatMonitoringService.getCleanupHeartbeatMap().get(Utils.getReplicaId(currentVersionTopic, 0)).intValue(),
+        1);
+    Assert.assertEquals(
+        heartbeatMonitoringService.getCleanupHeartbeatMap().get(Utils.getReplicaId(currentVersionTopic, 2)).intValue(),
+        1);
+    heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
+    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 2);
   }
 
   @Test

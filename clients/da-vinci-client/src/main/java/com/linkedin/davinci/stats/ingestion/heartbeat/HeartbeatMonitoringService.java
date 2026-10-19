@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -329,13 +330,35 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   /**
-   * Removes all monitoring for a closed ingestion task, including partitions already unsubscribed due to errors.
+   * Removes all monitoring and cleanup counters for a closed ingestion task, including unsubscribed partitions.
    */
-  public synchronized void removeLagMonitors(Version version) {
+  public void removeLagMonitors(Version version) {
     Predicate<HeartbeatKey> matchesVersion =
         key -> key.storeName.equals(version.getStoreName()) && key.version == version.getNumber();
-    removeEntry(leaderHeartbeatTimeStamps, matchesVersion);
-    removeEntry(followerHeartbeatTimeStamps, matchesVersion);
+    Map<String, Set<HeartbeatKey>> keysByReplica;
+    synchronized (this) {
+      keysByReplica =
+          Stream.concat(leaderHeartbeatTimeStamps.keySet().stream(), followerHeartbeatTimeStamps.keySet().stream())
+              .filter(matchesVersion)
+              .collect(Collectors.groupingBy(HeartbeatKey::getReplicaId, Collectors.toSet()));
+    }
+    String replicaIdPrefix = version.kafkaTopicName() + "-";
+    cleanupHeartbeatMap.keySet()
+        .stream()
+        .filter(replicaId -> replicaId.startsWith(replicaIdPrefix))
+        .forEach(replicaId -> keysByReplica.computeIfAbsent(replicaId, k -> new HashSet<>()));
+    for (Map.Entry<String, Set<HeartbeatKey>> replica: keysByReplica.entrySet()) {
+      // Registration and view cleanup acquire the per-replica map lock before the service monitor.
+      cleanupHeartbeatMap.compute(replica.getKey(), (k, v) -> {
+        synchronized (this) {
+          for (HeartbeatKey key: replica.getValue()) {
+            leaderHeartbeatTimeStamps.remove(key);
+            followerHeartbeatTimeStamps.remove(key);
+          }
+        }
+        return null;
+      });
+    }
     LOGGER.info("Removed heartbeat monitoring for version: {}", version.kafkaTopicName());
   }
 

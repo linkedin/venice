@@ -5,9 +5,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMostOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -19,6 +21,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
@@ -29,6 +32,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -78,6 +82,7 @@ import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -98,6 +103,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -105,11 +114,13 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.MockedConstruction;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -455,8 +466,13 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.close();
   }
 
-  @Test
-  public void testCloseStoreIngestionTask() {
+  @DataProvider
+  public Object[][] closingTaskRemovalModes() {
+    return new Object[][] { { "idle" }, { "shutdown" }, { "kill" } };
+  }
+
+  @Test(dataProvider = "closingTaskRemovalModes")
+  public void testCloseStoreIngestionTask(String removalMode) throws Exception {
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -486,6 +502,59 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService
         .startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0, Optional.empty());
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    LeaderFollowerStoreIngestionTask closingTask = spy((LeaderFollowerStoreIngestionTask) storeIngestionTask);
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topicName, closingTask);
+    HeartbeatMonitoringService heartbeatService = closingTask.getHeartbeatMonitoringService();
+    closingTask.getGracefulShutdownLatch().get();
+    closingTask.close();
+    if ("shutdown".equals(removalMode)) {
+      kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
+    } else if ("kill".equals(removalMode)) {
+      KafkaStoreIngestionService runningService = spy(kafkaStoreIngestionService);
+      doReturn(true).when(runningService).isRunning();
+      assertFalse(runningService.killConsumptionTask(topicName));
+    }
+    StoreIngestionTask mappedTask = "idle".equals(removalMode) ? closingTask : null;
+
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
+    // A timed-out close must not allow replacement before the old task's cleanup completes.
+    expectThrows(VeniceException.class, () -> kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty()));
+    assertEquals(kafkaStoreIngestionService.getStoreIngestionTask(topicName), mappedTask);
+
+    VeniceServerConfig serverConfig = mockVeniceConfigLoader.getVeniceServerConfig();
+    doReturn(10).when(serverConfig).getShutdownSitWaitTimeSeconds();
+    CountDownLatch waitingForShutdown = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      waitingForShutdown.countDown();
+      return invocation.callRealMethod();
+    }).when(closingTask).shutdownAndWait(10);
+    ExecutorService replacementExecutor = Executors.newSingleThreadExecutor();
+    String threadName = Thread.currentThread().getName();
+    try {
+      Future<?> replacement = replacementExecutor.submit(() -> {
+        kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
+        // Helix registers the replacement's monitor after startConsumption returns.
+        heartbeatService
+            .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
+      });
+      assertTrue(waitingForShutdown.await(10, TimeUnit.SECONDS));
+      assertFalse(replacement.isDone());
+      assertEquals(kafkaStoreIngestionService.getStoreIngestionTask(topicName), mappedTask);
+      // This acquires the topic lock, which must remain available while teardown is pending.
+      kafkaStoreIngestionService.stopConsumption(config, 0).get(10, TimeUnit.SECONDS);
+      closingTask.run();
+      replacement.get(10, TimeUnit.SECONDS);
+      Assert.assertNotSame(kafkaStoreIngestionService.getStoreIngestionTask(topicName), closingTask);
+      InOrder heartbeatUpdates = inOrder(heartbeatService);
+      heartbeatUpdates.verify(heartbeatService).removeLagMonitors(mockStore.getVersion(1));
+      heartbeatUpdates.verify(heartbeatService)
+          .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
+      heartbeatUpdates.verifyNoMoreInteractions();
+    } finally {
+      closingTask.getGracefulShutdownLatch().get().countDown();
+      replacementExecutor.shutdownNow();
+      Thread.currentThread().setName(threadName);
+    }
     kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     assertNull(closedStoreIngestionTask);
@@ -509,6 +578,29 @@ public abstract class KafkaStoreIngestionServiceTest {
     // Graceful shutdown wait should time out
     Assert.assertFalse(shutdownTimeoutTask.shutdownAndWait(1));
     kafkaStoreIngestionService.close();
+  }
+
+  @Test
+  public void testInterruptedTaskShutdownPreventsReplacement() {
+    String topicName = "test-store_v1";
+    StoreIngestionTask closingTask = mock(StoreIngestionTask.class);
+    Lazy<CountDownLatch> shutdownLatch = Lazy.of(() -> new CountDownLatch(1));
+    shutdownLatch.get();
+    doReturn(shutdownLatch).when(closingTask).getGracefulShutdownLatch();
+    doCallRealMethod().when(closingTask).shutdownAndWait(0);
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topicName, closingTask);
+    VeniceStoreVersionConfig config = mock(VeniceStoreVersionConfig.class);
+    doReturn(topicName).when(config).getStoreVersionName();
+    Thread.currentThread().interrupt();
+    try {
+      expectThrows(
+          VeniceException.class,
+          () -> kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty()));
+      assertTrue(Thread.currentThread().isInterrupted());
+      assertEquals(kafkaStoreIngestionService.getStoreIngestionTask(topicName), closingTask);
+    } finally {
+      Thread.interrupted();
+    }
   }
 
   @Test

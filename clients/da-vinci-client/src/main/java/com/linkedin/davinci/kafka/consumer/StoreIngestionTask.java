@@ -486,6 +486,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
+  private final CompletableFuture<Void> shutdownCompleteFuture = new CompletableFuture<>();
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
@@ -2148,6 +2149,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.error("{}: unexpected error in internalClose during shutdown", ingestionTaskName, t);
       } finally {
         shutdownLatch.countDown();
+        shutdownCompleteFuture.complete(null);
       }
     }
   }
@@ -5871,7 +5873,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
       }
     } catch (Exception e) {
-      LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
+      timelyShutDown = false;
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
+      LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic, e);
     }
     return timelyShutDown;
   }
@@ -6351,6 +6357,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   Lazy<CountDownLatch> getGracefulShutdownLatch() {
     return gracefulShutdownLatch;
+  }
+
+  CompletableFuture<Void> getShutdownCompleteFuture() {
+    return shutdownCompleteFuture;
   }
 
   // For unit test purpose.
