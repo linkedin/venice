@@ -178,7 +178,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
-  private final Map<String, StoreIngestionTask> topicNameToClosingIngestionTaskMap = new VeniceConcurrentHashMap<>();
 
   /**
    * Set of Kafka version topics that DaVinci has assigned to its future-version slot.
@@ -880,86 +879,61 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     final String topic = veniceStore.getStoreVersionName();
 
-    StoreIngestionTask taskPendingShutdown = null;
-    while (true) {
-      if (taskPendingShutdown != null) {
-        if (!taskPendingShutdown.shutdownAndWait(serverConfig.getShutdownSitWaitTimeSeconds())) {
-          throw new VeniceException("Cannot replace ingestion task for " + topic + " before its shutdown completes");
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      // Create new store ingestion task atomically, flagging it before submit if createPaused.
+      AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
+      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
+        if (v == null || !v.isIngestionTaskActive()) {
+          createNewStoreIngestionTask.set(true);
+          return createStoreIngestionTask(veniceStore, partitionId, createPaused);
         }
-        topicNameToClosingIngestionTaskMap.remove(topic, taskPendingShutdown);
+        return v;
+      });
+      if (createNewStoreIngestionTask.get()) {
+        versionedIngestionStats.setIngestionTask(topic, storeIngestionTask);
+        if (!isRunning()) {
+          LOGGER.info(
+              "Ignore start consumption for replica: {} as service is stopping.",
+              Utils.getReplicaId(topic, partitionId));
+          return;
+        }
+        ingestionExecutorService.submit(storeIngestionTask);
+      } else if (createPaused && !storeIngestionTask.isPauseAfterStartOfPush()) {
+        // A SIT already exists for this topic and was NOT created in future-slot-paused mode, so the
+        // createPaused=true request cannot be honored (the flag is only wired in at task creation,
+        // before SOP is processed). Fail loudly rather than silently starting an unpaused task when
+        // the caller expects a paused one, which would let a non-target region complete ingestion
+        // before promotion.
+        throw new VeniceException(
+            "createPaused=true requested for topic " + topic
+                + " but an active ingestion task already exists that is not configured to pause after START_OF_PUSH.");
       }
-      try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-        StoreIngestionTask closingTask = topicNameToClosingIngestionTaskMap.get(topic);
-        if (closingTask != null) {
-          taskPendingShutdown = closingTask;
-          continue;
-        }
-        StoreIngestionTask existingTask = topicNameToIngestionTaskMap.get(topic);
-        if (existingTask != null && existingTask != taskPendingShutdown && !existingTask.isIngestionTaskActive()) {
-          // Teardown may need service locks. Wait outside the topic and ingestion-task-map locks.
-          taskPendingShutdown = existingTask;
-          continue;
-        }
-        final StoreIngestionTask taskToReplace = taskPendingShutdown;
-        // Create new store ingestion task atomically, flagging it before submit if createPaused.
-        AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
-        StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
-          if (v == null || v == taskToReplace) {
-            createNewStoreIngestionTask.set(true);
-            return createStoreIngestionTask(veniceStore, partitionId, createPaused);
-          }
-          return v;
-        });
-        if (createNewStoreIngestionTask.get()) {
-          versionedIngestionStats.setIngestionTask(topic, storeIngestionTask);
-          if (!isRunning()) {
-            LOGGER.info(
-                "Ignore start consumption for replica: {} as service is stopping.",
-                Utils.getReplicaId(topic, partitionId));
-            return;
-          }
-          // Queued tasks also own cleanup, even before their run method starts.
-          storeIngestionTask.getGracefulShutdownLatch().get();
-          ingestionExecutorService.submit(storeIngestionTask);
-        } else if (createPaused && !storeIngestionTask.isPauseAfterStartOfPush()) {
-          // A SIT already exists for this topic and was NOT created in future-slot-paused mode, so the
-          // createPaused=true request cannot be honored (the flag is only wired in at task creation,
-          // before SOP is processed). Fail loudly rather than silently starting an unpaused task when
-          // the caller expects a paused one, which would let a non-target region complete ingestion
-          // before promotion.
-          throw new VeniceException(
-              "createPaused=true requested for topic " + topic
-                  + " but an active ingestion task already exists that is not configured to pause after START_OF_PUSH.");
-        }
 
-        /**
-         * Since Venice metric is store-level, and it would have multiply topics tasks exist in the same time.
-         * Only the task with the largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
-         * to get the max version may be unreliable, since the information in this object is not guaranteed
-         * to be up-to-date. As a sanity check, we will also look at the version in the topic name, and
-         * pick whichever number is highest as the max version number.
-         */
-        String storeName = Version.parseStoreFromKafkaTopicName(topic);
-        int maxVersionNumberFromTopicName = Version.parseVersionFromKafkaTopicName(topic);
-        int maxVersionNumberFromMetadataRepo = getStoreMaximumVersionNumber(storeName);
-        if (maxVersionNumberFromTopicName > maxVersionNumberFromMetadataRepo) {
-          LOGGER.warn(
-              "Got stale info from metadataRepo. maxVersionNumberFromTopicName: {}, maxVersionNumberFromMetadataRepo: {}. "
-                  + "Will rely on the topic name's version.",
-              maxVersionNumberFromTopicName,
-              maxVersionNumberFromMetadataRepo);
-        }
-        /**
-         * Notice that the version push for maxVersionNumberFromMetadataRepo might be killed already (this code path will
-         * also be triggered after server restarts).
-         */
-        int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
-        updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
-        PubSubTopicPartition partition =
-            new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
-        storeIngestionTask.subscribePartition(partition, pubSubPosition);
-        break;
+      /**
+       * Since Venice metric is store-level, and it would have multiply topics tasks exist in the same time.
+       * Only the task with the largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
+       * to get the max version may be unreliable, since the information in this object is not guaranteed
+       * to be up-to-date. As a sanity check, we will also look at the version in the topic name, and
+       * pick whichever number is highest as the max version number.
+       */
+      String storeName = Version.parseStoreFromKafkaTopicName(topic);
+      int maxVersionNumberFromTopicName = Version.parseVersionFromKafkaTopicName(topic);
+      int maxVersionNumberFromMetadataRepo = getStoreMaximumVersionNumber(storeName);
+      if (maxVersionNumberFromTopicName > maxVersionNumberFromMetadataRepo) {
+        LOGGER.warn(
+            "Got stale info from metadataRepo. maxVersionNumberFromTopicName: {}, maxVersionNumberFromMetadataRepo: {}. "
+                + "Will rely on the topic name's version.",
+            maxVersionNumberFromTopicName,
+            maxVersionNumberFromMetadataRepo);
       }
+      /**
+       * Notice that the version push for maxVersionNumberFromMetadataRepo might be killed already (this code path will
+       * also be triggered after server restarts).
+       */
+      int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
+      updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+      storeIngestionTask.subscribePartition(partition, pubSubPosition);
     }
     LOGGER.info(
         "Started Consuming{} - Replica: {}.",
@@ -969,7 +943,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   /**
    * Registers monitoring only while the current task owns the topic and has not started closing.
-   * Call after startup so the previous task's version-wide cleanup has completed.
+   * Closing a task completes its monitor cleanup before a replacement can become active.
    */
   public void registerFollowerLagMonitor(String topic, int partition, String replicaId) {
     heartbeatMonitoringService
@@ -982,16 +956,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                   replicaId);
               return;
             }
-            synchronized (task) {
-              // internalClose marks the task stopped under this same lock before removing its monitors.
-              if (task.isRunning()) {
-                registration.run();
-              } else {
-                LOGGER.info(
-                    "Skipping follower lag monitor registration for replica: {} because its task is closing",
-                    replicaId);
-              }
-            }
+            task.updateHeartbeatMonitoring(registration);
           }
         });
   }
@@ -1003,10 +968,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   public void shutdownStoreIngestionTask(String topicName) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
-      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.get(topicName);
+      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
       if (storeIngestionTask != null) {
-        trackClosingIngestionTask(topicName, storeIngestionTask);
-        topicNameToIngestionTaskMap.remove(topicName);
         storeIngestionTask.shutdownAndWait(serverConfig.getShutdownSitWaitTimeSeconds());
         LOGGER.info("Successfully shut down ingestion task for {}", topicName);
       } else {
@@ -1014,15 +977,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     }
     topicLockManager.removeLockForResource(topicName);
-  }
-
-  private void trackClosingIngestionTask(String topicName, StoreIngestionTask task) {
-    if (task.getGracefulShutdownLatch().isPresent()) {
-      // Removed tasks retain ownership of version-wide cleanup until their run method exits.
-      topicNameToClosingIngestionTaskMap.put(topicName, task);
-      task.getShutdownCompleteFuture()
-          .whenComplete((ignored, exception) -> topicNameToClosingIngestionTaskMap.remove(topicName, task));
-    }
   }
 
   @Override
@@ -1367,7 +1321,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       compressorFactory.removeVersionSpecificCompressor(topicName);
       // cleanup the map regardless if the task was running or not to prevent mem leak when failed tasks lingers
       // in the map since isRunning is set to false already.
-      trackClosingIngestionTask(topicName, consumerTask);
       topicNameToIngestionTaskMap.remove(topicName);
       if (aggKafkaConsumerService != null) {
         aggKafkaConsumerService.unsubscribeAll(consumerTask.getVersionTopic());

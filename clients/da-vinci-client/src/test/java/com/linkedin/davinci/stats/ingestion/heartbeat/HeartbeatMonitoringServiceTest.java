@@ -1080,46 +1080,20 @@ public class HeartbeatMonitoringServiceTest {
         1);
     heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
     Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 2);
-  }
-
-  @Test
-  public void testRemoveLagMonitorsPreservesOtherStoreCleanupProgress() {
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    doReturn(Collections.singleton(LOCAL_FABRIC)).when(serverConfig).getRegionNames();
-    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
-    doReturn("localhost").when(serverConfig).getListenerHostname();
-    HeartbeatMonitoringService service = new HeartbeatMonitoringService(
-        new MetricsRepository(),
-        mock(ReadOnlyStoreRepository.class),
-        serverConfig,
-        mock(HeartbeatMonitoringServiceStats.class),
-        new CompletableFuture<>());
-    Version targetVersion = new VersionImpl("orders", 1, "1");
-    Version otherVersion = new VersionImpl("orders_v1-archive", 2, "2");
-    String targetReplicaId = Utils.getReplicaId(targetVersion.kafkaTopicName(), 0);
-    String otherReplicaId = Utils.getReplicaId(otherVersion.kafkaTopicName(), 0);
-    service.getCleanupHeartbeatMap().put(targetReplicaId, 2);
-    service.getCleanupHeartbeatMap().put(otherReplicaId, 3);
-    HeartbeatKey otherLeaderKey =
-        new HeartbeatKey(otherVersion.getStoreName(), otherVersion.getNumber(), 0, LOCAL_FABRIC);
-    HeartbeatKey otherFollowerKey =
-        new HeartbeatKey(otherVersion.getStoreName(), otherVersion.getNumber(), 1, LOCAL_FABRIC);
-    IngestionTimestampEntry leaderTimestamp = new IngestionTimestampEntry(1000L, true, true);
-    IngestionTimestampEntry followerTimestamp = new IngestionTimestampEntry(2000L, true, true);
-    service.getLeaderHeartbeatTimeStamps().put(otherLeaderKey, leaderTimestamp);
-    service.getFollowerHeartbeatTimeStamps().put(otherFollowerKey, followerTimestamp);
-
-    service.removeLagMonitors(targetVersion);
-
-    Assert.assertEquals(service.getCleanupHeartbeatMap(), Collections.singletonMap(otherReplicaId, 3));
-    Assert.assertEquals(
-        service.getLeaderHeartbeatTimeStamps(),
-        Collections.singletonMap(otherLeaderKey, leaderTimestamp));
-    Assert.assertEquals(
-        service.getFollowerHeartbeatTimeStamps(),
-        Collections.singletonMap(otherFollowerKey, followerTimestamp));
-    Assert.assertEquals(leaderTimestamp.heartbeatTimestamp, 1000L);
-    Assert.assertEquals(followerTimestamp.heartbeatTimestamp, 2000L);
+    String otherStore = TEST_STORE + "_v1-archive";
+    String otherReplicaId = Utils.getReplicaId(otherStore + "_v2", 0);
+    HeartbeatKey otherKey = new HeartbeatKey(otherStore, 2, 0, LOCAL_FABRIC);
+    IngestionTimestampEntry otherTimestamp = new IngestionTimestampEntry(1000L, true, true);
+    heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().put(otherKey, otherTimestamp);
+    heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().put(otherKey, otherTimestamp);
+    heartbeatMonitoringService.getCleanupHeartbeatMap().put(otherReplicaId, 3);
+    String backupReplicaId = Utils.getReplicaId(backupVersionTopic, 0);
+    heartbeatMonitoringService.getCleanupHeartbeatMap().put(backupReplicaId, 2);
+    heartbeatMonitoringService.removeLagMonitors(backupVersion);
+    Assert.assertFalse(heartbeatMonitoringService.getCleanupHeartbeatMap().containsKey(backupReplicaId));
+    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().get(otherReplicaId).intValue(), 3);
+    Assert.assertSame(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(otherKey), otherTimestamp);
+    Assert.assertSame(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().get(otherKey), otherTimestamp);
   }
 
   @Test

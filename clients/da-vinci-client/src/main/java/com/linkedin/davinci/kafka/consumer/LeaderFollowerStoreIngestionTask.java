@@ -387,7 +387,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void removeHeartbeatMonitoring(int partition) {
     HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
     if (hbService != null) {
-      hbService.removeLagMonitor(version, partition, Utils.getReplicaId(kafkaVersionTopic, partition));
+      updateHeartbeatMonitoring(
+          () -> hbService.removeLagMonitor(version, partition, Utils.getReplicaId(kafkaVersionTopic, partition)));
     }
   }
 
@@ -603,7 +604,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             topicName,
             partitionConsumptionState.getPartition(),
             HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
-            partitionConsumptionState.getReplicaId());
+            partitionConsumptionState.getReplicaId(),
+            this::updateHeartbeatMonitoring);
         LOGGER.info("Replica: {} moved to standby/follower state", partitionConsumptionState.getReplicaId());
 
         /**
@@ -767,7 +769,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 getKafkaVersionTopic(),
                 partitionConsumptionState.getPartition(),
                 HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
-                partitionConsumptionState.getReplicaId());
+                partitionConsumptionState.getReplicaId(),
+                this::updateHeartbeatMonitoring);
 
             /**
              * May adjust the underlying storage partition to optimize the ingestion performance.

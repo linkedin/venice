@@ -164,7 +164,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
@@ -479,6 +481,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // A queued demotion can re-register monitoring after Helix starts teardown.
     HeartbeatMonitoringService service = leaderFollowerStoreIngestionTask.getHeartbeatMonitoringService();
+    AtomicReference<Consumer<Runnable>> registrationGuard = new AtomicReference<>();
+    doAnswer(invocation -> {
+      registrationGuard.set(invocation.getArgument(4));
+      return null;
+    }).when(service).updateLagMonitor(anyString(), anyInt(), any(), anyString(), any());
     service.updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.REMOVE_MONITOR, "test-topic_v1-0");
 
     // Process LEADER_TO_STANDBY transition
@@ -496,7 +503,15 @@ public class LeaderFollowerStoreIngestionTaskTest {
     heartbeatUpdates.verify(service)
         .updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.REMOVE_MONITOR, "test-topic_v1-0");
     heartbeatUpdates.verify(service)
-        .updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, "test-topic_v1-0");
+        .updateLagMonitor(
+            eq("test-topic"),
+            eq(0),
+            eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+            eq("test-topic_v1-0"),
+            any());
+    AtomicBoolean registered = new AtomicBoolean();
+    registrationGuard.get().accept(() -> registered.set(true));
+    assertTrue(registered.get());
 
     when(mockConsumerAction.getType()).thenReturn(ConsumerActionType.UNSUBSCRIBE);
     doNothing().when(leaderFollowerStoreIngestionTask).consumerUnSubscribeAllTopics(any());
@@ -509,6 +524,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Version version = mockStore.getVersion(1);
     String replicaId = Utils.getReplicaId(leaderFollowerStoreIngestionTask.getKafkaVersionTopic(), 0);
     heartbeatUpdates.verify(service).removeLagMonitor(version, 0, replicaId);
+    leaderFollowerStoreIngestionTask.close();
+    registered.set(false);
+    registrationGuard.get().accept(() -> registered.set(true));
+    leaderFollowerStoreIngestionTask.removeHeartbeatMonitoring(0);
+    assertFalse(registered.get());
+    verify(service).removeLagMonitor(version, 0, replicaId);
   }
 
   @Test
@@ -518,9 +539,16 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Version version = mockStore.getVersion(1);
     // Error-unsubscribed partitions have no PCS but still need task-wide cleanup.
     leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().clear();
+    doAnswer(invocation -> {
+      assertTrue(Thread.holdsLock(leaderFollowerStoreIngestionTask));
+      assertTrue(leaderFollowerStoreIngestionTask.isRunning());
+      return null;
+    }).when(service).removeLagMonitors(version);
     String threadName = Thread.currentThread().getName();
     try {
       leaderFollowerStoreIngestionTask.close();
+      verify(service).removeLagMonitors(version);
+      assertFalse(leaderFollowerStoreIngestionTask.isRunning());
       leaderFollowerStoreIngestionTask.run();
       verify(service).removeLagMonitors(version);
     } finally {

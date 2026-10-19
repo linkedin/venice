@@ -486,7 +486,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
-  private final CompletableFuture<Void> shutdownCompleteFuture = new CompletableFuture<>();
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
@@ -2149,7 +2148,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.error("{}: unexpected error in internalClose during shutdown", ingestionTaskName, t);
       } finally {
         shutdownLatch.countDown();
-        shutdownCompleteFuture.complete(null);
       }
     }
   }
@@ -2413,13 +2411,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void internalClose(boolean doFlush) {
-    // Set isRunning to false to prevent messages being added after we've already looped through consumerActionsQueue.
-    // Wrapping in synchronized to prevent a race condition on methods reading the value of isRunning.
-    synchronized (this) {
-      getIsRunning().set(false);
-    }
-
-    removeAllHeartbeatMonitoring();
+    stopRunning();
     this.missingSOPCheckExecutor.shutdownNow();
 
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
@@ -3568,6 +3560,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void removeAllHeartbeatMonitoring() {
     // No Op
+  }
+
+  private synchronized void stopRunning() {
+    if (isRunning()) {
+      // Publish inactivity only after monitor cleanup, so a replacement cannot lose its registrations.
+      try {
+        removeAllHeartbeatMonitoring();
+      } finally {
+        getIsRunning().set(false);
+      }
+    }
+  }
+
+  protected synchronized void updateHeartbeatMonitoring(Runnable update) {
+    if (isRunning()) {
+      update.run();
+    } else {
+      LOGGER.info("Skipping heartbeat monitor update for closing ingestion task: {}", kafkaVersionTopic);
+    }
   }
 
   protected void removeHeartbeatMonitoring(int partition) {
@@ -5829,7 +5840,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void close() {
     // Evict any pending repair tasks
-    getIsRunning().set(false);
+    stopRunning();
     // KafkaConsumer is closed at the end of the run method.
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the
@@ -5873,11 +5884,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
       }
     } catch (Exception e) {
-      timelyShutDown = false;
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
-      LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic, e);
+      LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
     }
     return timelyShutDown;
   }
@@ -6357,10 +6364,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   Lazy<CountDownLatch> getGracefulShutdownLatch() {
     return gracefulShutdownLatch;
-  }
-
-  CompletableFuture<Void> getShutdownCompleteFuture() {
-    return shutdownCompleteFuture;
   }
 
   // For unit test purpose.
