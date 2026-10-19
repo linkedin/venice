@@ -9,7 +9,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_S
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
-import static com.linkedin.venice.ConfigKeys.SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
@@ -26,7 +25,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
@@ -101,22 +99,6 @@ public class VeniceServerConfigTest {
       props.setProperty(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, Long.toString(thresholdMs));
       VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
       assertEquals(config.getBlockedDrainerThresholdMs(), thresholdMs);
-    }
-  }
-
-  @Test
-  public void testBackupVersionGracefulDropEnabledConfig() {
-    Properties props = populatedBasicProperties();
-    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
-    assertTrue(defaultConfig.isBackupVersionGracefulDropEnabled());
-    assertEquals(defaultConfig.getPartitionGracefulDropDelaySeconds(), 30);
-
-    props.setProperty(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, "42");
-    for (boolean enabled: new boolean[] { false, true }) {
-      props.setProperty(SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED, Boolean.toString(enabled));
-      VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
-      assertEquals(config.isBackupVersionGracefulDropEnabled(), enabled);
-      assertEquals(config.getPartitionGracefulDropDelaySeconds(), 42);
     }
   }
 
