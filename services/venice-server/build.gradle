@@ -54,7 +54,6 @@ dependencies {
   implementation libraries.httpAsyncClient
   implementation libraries.kafkaClients
   implementation libraries.log4j2core
-  implementation libraries.log4j2Slf4j
   implementation libraries.netty
   implementation libraries.rocksdbjni
   implementation libraries.tehuti

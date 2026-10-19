@@ -15,7 +15,6 @@ dependencies {
   implementation libraries.kafka
   implementation libraries.log4j2api
   implementation libraries.log4j2core
-  implementation libraries.log4j2Slf4j
   implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }

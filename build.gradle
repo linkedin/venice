@@ -44,7 +44,7 @@ def grpcVersion = '1.59.1'
 // N.B.: The build should also work when substituting Kafka from the Apache fork to LinkedIn's fork:
 def kafkaGroup = 'org.apache.kafka' // 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1' // '2.4.1.65'
-def log4j2Version = '2.20.0'
+def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 def protobufVersion = '3.24.0'
 def jacksonVersion = '2.15.0'
@@ -52,7 +52,7 @@ def pulsarGroup = 'org.apache.pulsar'
 def pulsarVersion = '2.10.4'
 def alpnAgentVersion = '2.0.10'
 def hadoopVersion = '2.10.2'
-def apacheSparkVersion = '3.5.2'
+def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
 def scala = '2.12'
 def openTelemetryVersion = '1.47.0'
@@ -116,7 +116,7 @@ ext.libraries = [
     kafkaClientsTest: "${kafkaGroup}:kafka-clients:${kafkaVersion}:test",
     log4j2api: "org.apache.logging.log4j:log4j-api:${log4j2Version}",
     log4j2core: "org.apache.logging.log4j:log4j-core:${log4j2Version}",
-    log4j2Slf4j: "org.apache.logging.log4j:log4j-slf4j2-impl:${log4j2Version}",
+    log4j2Slf4j: "org.apache.logging.log4j:log4j-slf4j-impl:${log4j2Version}",
     mail: 'javax.mail:mail:1.4.4',
     mapreduceClientCore: "org.apache.hadoop:hadoop-mapreduce-client-core:${hadoopVersion}",
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
@@ -138,9 +138,9 @@ ext.libraries = [
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     beamSdk: 'org.apache.beam:beam-sdks-java-core:2.60.0',
     beamExtensionAvro: 'org.apache.beam:beam-sdks-java-extensions-avro:2.60.0',
-    slf4j: 'org.slf4j:slf4j:2.0.17',
-    slf4jApi: 'org.slf4j:slf4j-api:2.0.17',
-    slf4jSimple: 'org.slf4j:slf4j-simple:2.0.17',
+    slf4j: 'org.slf4j:slf4j:1.7.36',
+    slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
+    slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
@@ -270,7 +270,6 @@ subprojects {
       exclude group: 'com.linkedin.linkedin-kafka-clients'
       exclude group: 'com.linkedin.util', module: 'util-sql'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
-      exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
       exclude module: 'clojure'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       exclude module: 'kafka_2.11'
@@ -300,7 +299,7 @@ subprojects {
 
     avroCompiler libraries.avroCompiler
     avroCompiler libraries.avroUtilBuilder
-    avroCompiler 'org.slf4j:slf4j-simple:2.0.17'
+    avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
     implementation libraries.grpcNettyShaded
     implementation libraries.grpcProtobuf
     implementation libraries.grpcServices
