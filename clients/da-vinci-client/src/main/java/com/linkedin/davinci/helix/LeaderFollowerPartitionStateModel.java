@@ -211,7 +211,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         Store store = getStoreRepo().getStoreOrThrow(getStoreName());
         int currentVersion = store.getCurrentVersion();
         isCurrentOrBackupVersion = currentVersion == getVersionNumber();
-        if (!isCurrentOrBackupVersion) {
+        if (!isCurrentOrBackupVersion && getStoreAndServerConfigs().isBackupVersionGracefulDropEnabled()) {
           // Protect only the newest ONLINE version below current, regardless of when it last served.
           // This conservatively allows routers to converge after a swap without delaying older backup cleanup.
           int backupVersion = store.getVersions()

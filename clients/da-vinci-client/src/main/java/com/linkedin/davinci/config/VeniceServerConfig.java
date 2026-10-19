@@ -86,6 +86,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_ID
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ACCEPT_CLIENT_REQUEST_ENABLED;
@@ -468,6 +469,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final double versionSwapDiskSizeDropAlertThreshold;
 
   private final int partitionGracefulDropDelaySeconds;
+
+  private final boolean backupVersionGracefulDropEnabled;
 
   private final int stopConsumptionTimeoutInSeconds;
   private final long leakedResourceCleanUpIntervalInMS;
@@ -1001,6 +1004,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     versionSwapDiskSizeDropAlertThreshold =
         serverProperties.getDouble(SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD, 0.5);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30);
+    backupVersionGracefulDropEnabled = serverProperties.getBoolean(SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED, true);
     stopConsumptionTimeoutInSeconds = serverProperties.getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
     leakedResourceCleanUpIntervalInMS =
         TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10));
@@ -1671,6 +1675,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getPartitionGracefulDropDelaySeconds() {
     return partitionGracefulDropDelaySeconds;
+  }
+
+  public boolean isBackupVersionGracefulDropEnabled() {
+    return backupVersionGracefulDropEnabled;
   }
 
   public int getStopConsumptionTimeoutInSeconds() {

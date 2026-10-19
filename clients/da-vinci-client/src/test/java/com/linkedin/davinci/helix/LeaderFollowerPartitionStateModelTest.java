@@ -408,10 +408,11 @@ public class LeaderFollowerPartitionStateModelTest {
 
   @DataProvider
   public Object[][] gracefulDropVersionRoles() {
-    return new Object[][] { { storeVersion, false, false, true }, { storeVersion + 2, false, false, true },
-        { storeVersion + 3, false, false, false }, { storeVersion - 2, false, false, false },
-        { Store.NON_EXISTING_VERSION, false, false, false }, { storeVersion + 2, true, false, true },
-        { storeVersion + 2, false, true, false } };
+    return new Object[][] { { storeVersion, false, false, true, true }, { storeVersion + 2, false, false, true, true },
+        { storeVersion + 3, false, false, false, true }, { storeVersion - 2, false, false, false, true },
+        { Store.NON_EXISTING_VERSION, false, false, false, true }, { storeVersion + 2, true, false, true, true },
+        { storeVersion + 2, false, true, false, true }, { storeVersion, false, false, true, false },
+        { storeVersion + 2, false, false, false, false }, { storeVersion + 2, true, false, false, false } };
   }
 
   @Test(dataProvider = "gracefulDropVersionRoles")
@@ -419,11 +420,13 @@ public class LeaderFollowerPartitionStateModelTest {
       int currentVersion,
       boolean demoteBeforeDrop,
       boolean removeVersionFromMetadata,
-      boolean expectDelay) {
+      boolean expectDelay,
+      boolean backupGracefulDropEnabled) {
     Message message = mock(Message.class);
     NotificationContext context = mock(NotificationContext.class);
     when(message.getResourceName()).thenReturn(resourceName);
     when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(30);
+    when(storeAndServerConfigs.isBackupVersionGracefulDropEnabled()).thenReturn(backupGracefulDropEnabled);
 
     Store store = mock(Store.class);
     when(store.getCurrentVersion()).thenReturn(demoteBeforeDrop ? storeVersion : currentVersion);
