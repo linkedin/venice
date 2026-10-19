@@ -93,27 +93,18 @@ public class VeniceSinkTest {
 
     when(producer.put(Mockito.any(), Mockito.any())).thenAnswer((InvocationOnMock invocation) -> {
       CompletableFuture<Void> future = new CompletableFuture<>();
-      executor.schedule(
-          () -> future.complete(null),
-          ThreadLocalRandom.current().nextInt(minFlushDelay, maxFlushDelay),
-          TimeUnit.MILLISECONDS);
-
       futures.add(future);
       return future;
     });
 
     when(producer.delete(Mockito.any())).thenAnswer((InvocationOnMock invocation) -> {
       CompletableFuture<Void> future = new CompletableFuture<>();
-      executor.schedule(
-          () -> future.complete(null),
-          ThreadLocalRandom.current().nextInt(minFlushDelay, maxFlushDelay),
-          TimeUnit.MILLISECONDS);
-
       futures.add(future);
       return future;
     });
 
-    // Flush mock: drain pending futures synchronously on the caller's thread (the sink's internal
+    // Complete futures only during flush so acknowledgements cannot bypass the flush assertions.
+    // Drain pending futures synchronously on the caller's thread (the sink's internal
     // scheduler). Optional sleep simulates slow flush for throttle tests. This avoids the previous
     // approach of scheduling a drain task on the test executor and blocking on f.get(), which caused
     // thread contention and flakiness under CI load.
