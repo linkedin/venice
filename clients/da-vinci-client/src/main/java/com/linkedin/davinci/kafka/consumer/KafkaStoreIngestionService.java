@@ -32,6 +32,7 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -964,6 +965,35 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         "Started Consuming{} - Replica: {}.",
         createPaused ? " (paused)" : "",
         Utils.getReplicaId(topic, partitionId));
+  }
+
+  /**
+   * Registers monitoring only while the current task owns the topic and has not started closing.
+   * Call after startup so the previous task's version-wide cleanup has completed.
+   */
+  public void registerFollowerLagMonitor(String topic, int partition, String replicaId) {
+    heartbeatMonitoringService
+        .updateLagMonitor(topic, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId, registration -> {
+          try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+            StoreIngestionTask task = topicNameToIngestionTaskMap.get(topic);
+            if (task == null) {
+              LOGGER.info(
+                  "Skipping follower lag monitor registration for replica: {} because its task is absent",
+                  replicaId);
+              return;
+            }
+            synchronized (task) {
+              // internalClose marks the task stopped under this same lock before removing its monitors.
+              if (task.isRunning()) {
+                registration.run();
+              } else {
+                LOGGER.info(
+                    "Skipping follower lag monitor registration for replica: {} because its task is closing",
+                    replicaId);
+              }
+            }
+          }
+        });
   }
 
   /**

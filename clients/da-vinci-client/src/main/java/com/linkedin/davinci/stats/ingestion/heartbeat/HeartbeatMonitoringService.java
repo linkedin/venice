@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -474,6 +475,19 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       int partitionId,
       HeartbeatLagMonitorAction heartbeatLagMonitorAction,
       String replicaId) {
+    updateLagMonitor(resourceName, partitionId, heartbeatLagMonitorAction, replicaId, Runnable::run);
+  }
+
+  /**
+   * Resolves metadata before applying the lifecycle guard to monitor registration.
+   * The guard must run registration synchronously under its lifecycle lock, or reject it without retaining it.
+   */
+  public void updateLagMonitor(
+      String resourceName,
+      int partitionId,
+      HeartbeatLagMonitorAction heartbeatLagMonitorAction,
+      String replicaId,
+      Consumer<Runnable> registrationGuard) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
@@ -513,15 +527,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       VeniceReplicationMode replicationMode = version.isActiveActiveReplicationEnabled()
           ? VeniceReplicationMode.ACTIVE_ACTIVE
           : VeniceReplicationMode.NON_ACTIVE_ACTIVE;
-      switch (heartbeatLagMonitorAction) {
-        case SET_LEADER_MONITOR:
-          addLeaderLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
-          break;
-        case SET_FOLLOWER_MONITOR:
-          addFollowerLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
-          break;
-        default:
-      }
+      registrationGuard.accept(() -> {
+        switch (heartbeatLagMonitorAction) {
+          case SET_LEADER_MONITOR:
+            addLeaderLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
+            break;
+          case SET_FOLLOWER_MONITOR:
+            addFollowerLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
+            break;
+          default:
+        }
+      });
     } catch (Exception e) {
       LOGGER.error(
           "Failed to update lag monitor for replica: {} with trigger: {}",

@@ -25,7 +25,6 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
-import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
@@ -208,7 +207,8 @@ public class VersionBackendTest {
             recordTransformerConfig,
             mock(AggVersionedDaVinciRecordTransformerStats.class)));
     when(mockDaVinciBackend.getInternalRecordTransformerConfig(storeName)).thenReturn(internalRecordTransformerConfig);
-    when(mockDaVinciBackend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
+    KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
+    when(mockDaVinciBackend.getIngestionService()).thenReturn(mockIngestionService);
     when(mockDaVinciBackend.getExecutor()).thenReturn(mock(java.util.concurrent.ScheduledExecutorService.class));
     VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
 
@@ -253,13 +253,11 @@ public class VersionBackendTest {
         .startConsumption(any(), eq(5), any(), any(), anyBoolean());
     ComplementSet<Integer> retryPartition = ComplementSet.newSet(Collections.singleton(5));
     expectThrows(VeniceException.class, () -> versionBackend.subscribe(retryPartition, null, null, false));
-    verify(mockHeartbeatMonitoringService, never())
-        .updateLagMonitor(anyString(), eq(5), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR), anyString());
+    verify(mockIngestionService, never()).registerFollowerLagMonitor(anyString(), eq(5), anyString());
     versionBackend.unsubscribe(retryPartition);
     versionBackend.subscribe(retryPartition, null, null, false);
     verify(mockIngestionBackend, times(2)).startConsumption(any(), eq(5), any(), any(), anyBoolean());
-    verify(mockHeartbeatMonitoringService)
-        .updateLagMonitor(anyString(), eq(5), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR), anyString());
+    verify(mockIngestionService).registerFollowerLagMonitor(anyString(), eq(5), anyString());
   }
 
   @Test

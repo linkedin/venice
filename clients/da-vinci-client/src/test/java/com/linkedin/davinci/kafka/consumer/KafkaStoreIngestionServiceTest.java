@@ -116,6 +116,7 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.ArgumentCaptor;
@@ -142,6 +143,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
+  private HeartbeatMonitoringService mockHeartbeatMonitoringService;
   private MetricsRepository metricsRepository;
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -167,7 +169,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     setupMockConfig();
 
-    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
     metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
@@ -473,12 +475,14 @@ public abstract class KafkaStoreIngestionServiceTest {
 
   @DataProvider
   public Object[][] closingTaskRemovalModes() {
-    return new Object[][] { { "idle", false }, { "shutdown", false }, { "kill", false }, { "idle", true },
-        { "shutdown", true }, { "kill", true } };
+    return new Object[][] { { "idle", false, false }, { "shutdown", false, false }, { "kill", false, false },
+        { "idle", true, false }, { "shutdown", true, false }, { "kill", true, false }, { "idle", true, true },
+        { "shutdown", true, true }, { "kill", true, true } };
   }
 
   @Test(dataProvider = "closingTaskRemovalModes")
-  public void testCloseStoreIngestionTask(String removalMode, boolean daVinciSubscription) throws Exception {
+  public void testCloseStoreIngestionTask(String removalMode, boolean daVinciSubscription, boolean closeAfterStartup)
+      throws Exception {
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -535,6 +539,7 @@ public abstract class KafkaStoreIngestionServiceTest {
       return invocation.callRealMethod();
     }).when(closingTask).shutdownAndWait(10);
     Runnable subscribe;
+    AtomicInteger registrations = new AtomicInteger();
     if (daVinciSubscription) {
       DaVinciBackend backend = mock(DaVinciBackend.class);
       SubscriptionBasedReadOnlyStoreRepository storeRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
@@ -542,12 +547,40 @@ public abstract class KafkaStoreIngestionServiceTest {
       doReturn(storeRepository).when(backend).getStoreRepository();
       doReturn(storageEngine1).when(mockStorageService).openStoreForNewPartition(any(), eq(0), any());
       doReturn(mock(StoreBackend.class)).when(backend).getStoreOrThrow(storeName);
-      doReturn(
+      DefaultIngestionBackend ingestionBackend = spy(
           new DefaultIngestionBackend(
               storageMetadataService,
               kafkaStoreIngestionService,
               mockStorageService,
-              serverConfig)).when(backend).getIngestionBackend();
+              serverConfig));
+      doReturn(ingestionBackend).when(backend).getIngestionBackend();
+      if (closeAfterStartup) {
+        doAnswer(invocation -> {
+          invocation.callRealMethod();
+          StoreIngestionTask task = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+          task.close();
+          task.run();
+          assertEquals(task.getGracefulShutdownLatch().get().getCount(), 0L);
+          return null;
+        }).when(ingestionBackend).startConsumption(any(), eq(0), any(), anyString(), eq(false));
+      }
+      doAnswer(invocation -> {
+        StoreIngestionTask task = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+        assertFalse(Thread.holdsLock(task), "Metadata resolution must not hold the task lifecycle lock");
+        Consumer<Runnable> guard = invocation.getArgument(4);
+        guard.accept(() -> {
+          assertTrue(Thread.holdsLock(task), "Registration must finish before task cleanup can mark it stopped");
+          assertTrue(task.isRunning());
+          registrations.incrementAndGet();
+        });
+        return null;
+      }).when(heartbeatService)
+          .updateLagMonitor(
+              eq(topicName),
+              eq(0),
+              eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+              eq(topicName + "-0"),
+              any());
       subscribe = VersionBackendTestUtils.createSubscription(
           backend,
           mockStore.getVersion(1),
@@ -570,8 +603,12 @@ public abstract class KafkaStoreIngestionServiceTest {
       Future<?> replacement = replacementExecutor.submit(subscribe);
       assertTrue(waitingForShutdown.await(10, TimeUnit.SECONDS));
       assertFalse(replacement.isDone());
-      verify(heartbeatService, never())
-          .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
+      if (daVinciSubscription) {
+        verify(heartbeatService, never()).updateLagMonitor(anyString(), eq(0), any(), anyString(), any());
+      } else {
+        verify(heartbeatService, never())
+            .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
+      }
       assertEquals(kafkaStoreIngestionService.getStoreIngestionTask(topicName), mappedTask);
       // This acquires the topic lock, which must remain available while teardown is pending.
       kafkaStoreIngestionService.stopConsumption(config, 0).get(10, TimeUnit.SECONDS);
@@ -579,9 +616,25 @@ public abstract class KafkaStoreIngestionServiceTest {
       replacement.get(10, TimeUnit.SECONDS);
       Assert.assertNotSame(kafkaStoreIngestionService.getStoreIngestionTask(topicName), closingTask);
       InOrder heartbeatUpdates = inOrder(heartbeatService);
-      heartbeatUpdates.verify(heartbeatService).removeLagMonitors(mockStore.getVersion(1));
-      heartbeatUpdates.verify(heartbeatService)
-          .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
+      if (closeAfterStartup) {
+        heartbeatUpdates.verify(heartbeatService, Mockito.times(2)).removeLagMonitors(mockStore.getVersion(1));
+        assertEquals(registrations.get(), 0);
+      } else {
+        heartbeatUpdates.verify(heartbeatService).removeLagMonitors(mockStore.getVersion(1));
+      }
+      if (daVinciSubscription) {
+        heartbeatUpdates.verify(heartbeatService)
+            .updateLagMonitor(
+                eq(topicName),
+                eq(0),
+                eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+                eq(topicName + "-0"),
+                any());
+        assertEquals(registrations.get(), closeAfterStartup ? 0 : 1);
+      } else {
+        heartbeatUpdates.verify(heartbeatService)
+            .updateLagMonitor(topicName, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, topicName + "-0");
+      }
       heartbeatUpdates.verifyNoMoreInteractions();
     } finally {
       closingTask.getGracefulShutdownLatch().get().countDown();
@@ -611,6 +664,35 @@ public abstract class KafkaStoreIngestionServiceTest {
     // Graceful shutdown wait should time out
     Assert.assertFalse(shutdownTimeoutTask.shutdownAndWait(1));
     kafkaStoreIngestionService.close();
+  }
+
+  @Test
+  public void testFollowerLagMonitorRegistrationRequiresLiveCurrentTask() {
+    String topic = "test-store_v1";
+    String replicaId = topic + "-0";
+    AtomicInteger registrations = new AtomicInteger();
+    doAnswer(invocation -> {
+      Consumer<Runnable> guard = invocation.getArgument(4);
+      guard.accept(() -> {
+        StoreIngestionTask task = kafkaStoreIngestionService.getStoreIngestionTask(topic);
+        assertTrue(Thread.holdsLock(task));
+        assertTrue(task.isRunning());
+        registrations.incrementAndGet();
+      });
+      return null;
+    }).when(mockHeartbeatMonitoringService)
+        .updateLagMonitor(eq(topic), eq(0), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR), eq(replicaId), any());
+    kafkaStoreIngestionService.registerFollowerLagMonitor(topic, 0, replicaId);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topic, task);
+    kafkaStoreIngestionService.registerFollowerLagMonitor(topic, 0, replicaId);
+    assertEquals(registrations.get(), 0);
+
+    doReturn(true).when(task).isRunning();
+    kafkaStoreIngestionService.registerFollowerLagMonitor(topic, 0, replicaId);
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().remove(topic, task);
+    kafkaStoreIngestionService.registerFollowerLagMonitor(topic, 0, replicaId);
+    assertEquals(registrations.get(), 1);
   }
 
   @Test

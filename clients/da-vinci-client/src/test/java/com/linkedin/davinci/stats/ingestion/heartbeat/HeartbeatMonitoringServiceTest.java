@@ -723,6 +723,8 @@ public class HeartbeatMonitoringServiceTest {
   public void testUpdateLagMonitor() {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     doCallRealMethod().when(heartbeatMonitoringService).updateLagMonitor(anyString(), anyInt(), any(), anyString());
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .updateLagMonitor(anyString(), anyInt(), any(), anyString(), any());
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     doReturn(metadataRepo).when(heartbeatMonitoringService).getMetadataRepository();
     Store store = mock(Store.class);
@@ -823,6 +825,42 @@ public class HeartbeatMonitoringServiceTest {
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
     verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, times(3)).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
+
+    when(store.isWriteComputationEnabled()).thenReturn(true);
+    when(version.isChunkingEnabled()).thenReturn(true);
+    when(version.isActiveActiveReplicationEnabled()).thenReturn(true);
+    heartbeatMonitoringService.updateLagMonitor(
+        resourceName,
+        partition,
+        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+        replicaId,
+        update -> {
+          verify(metadataRepo, times(7)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+        });
+    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(
+        version,
+        partition,
+        replicaId,
+        VeniceStoreWriteType.WRITE_COMPUTE,
+        VeniceChunkingStatus.CHUNKED,
+        VeniceReplicationMode.ACTIVE_ACTIVE);
+
+    heartbeatMonitoringService.updateLagMonitor(
+        resourceName,
+        partition,
+        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+        replicaId,
+        update -> {
+          verify(metadataRepo, times(8)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+          update.run();
+        });
+    verify(heartbeatMonitoringService).addFollowerLagMonitor(
+        version,
+        partition,
+        replicaId,
+        VeniceStoreWriteType.WRITE_COMPUTE,
+        VeniceChunkingStatus.CHUNKED,
+        VeniceReplicationMode.ACTIVE_ACTIVE);
   }
 
   @Test
