@@ -376,6 +376,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  protected void removeAllHeartbeatMonitoring() {
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService != null) {
+      hbService.removeLagMonitors(version);
+    }
+  }
+
+  @Override
+  protected void removeHeartbeatMonitoring(int partition) {
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService != null) {
+      hbService.removeLagMonitor(version, partition, Utils.getReplicaId(kafkaVersionTopic, partition));
+    }
+  }
+
+  @Override
   public void closeVeniceWriters(boolean doFlush) {
     if (veniceWriter.isPresent()) {
       veniceWriter.get().close(doFlush);

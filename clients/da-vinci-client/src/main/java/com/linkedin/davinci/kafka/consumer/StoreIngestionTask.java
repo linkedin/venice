@@ -2417,6 +2417,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       getIsRunning().set(false);
     }
 
+    removeAllHeartbeatMonitoring();
     this.missingSOPCheckExecutor.shutdownNow();
 
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
@@ -2792,6 +2793,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         partitionConsumptionStateMap.remove(partition);
         if (consumerAction.isHelixTriggeredAction()) {
+          // Queued role transitions can register monitors after Helix starts teardown.
+          removeHeartbeatMonitoring(partition);
           LOGGER.info(
               "Removing tracking of replica: {} from storage utilization manager as this UNSUBSCRIBE is helix triggered action",
               topicPartition);
@@ -3559,6 +3562,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return pcs.isDeferredWrite()
         ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
+  }
+
+  protected void removeAllHeartbeatMonitoring() {
+    // No Op
+  }
+
+  protected void removeHeartbeatMonitoring(int partition) {
+    // No Op
   }
 
   protected void recordHeartbeatReceived(

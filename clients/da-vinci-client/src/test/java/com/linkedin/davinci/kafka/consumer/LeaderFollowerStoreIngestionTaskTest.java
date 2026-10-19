@@ -49,6 +49,7 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -476,6 +477,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockPartitionConsumptionState.getTopicSwitch()).thenReturn(topicSwitchWrapper);
     when(mockPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
 
+    // A queued demotion can re-register monitoring after Helix starts teardown.
+    HeartbeatMonitoringService service = leaderFollowerStoreIngestionTask.getHeartbeatMonitoringService();
+    service.updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.REMOVE_MONITOR, "test-topic_v1-0");
+
     // Process LEADER_TO_STANDBY transition
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
 
@@ -487,6 +492,40 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // mockStorageMetadataService is a Mockito mock (created by TestUtils.getStoreIngestionTaskBuilder).
     verify(mockStorageMetadataService)
         .put(eq(leaderFollowerStoreIngestionTask.kafkaVersionTopic), eq(0), eq(mockOffsetRecord));
+    InOrder heartbeatUpdates = inOrder(service);
+    heartbeatUpdates.verify(service)
+        .updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.REMOVE_MONITOR, "test-topic_v1-0");
+    heartbeatUpdates.verify(service)
+        .updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, "test-topic_v1-0");
+
+    when(mockConsumerAction.getType()).thenReturn(ConsumerActionType.UNSUBSCRIBE);
+    doNothing().when(leaderFollowerStoreIngestionTask).consumerUnSubscribeAllTopics(any());
+    doNothing().when(leaderFollowerStoreIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(any(), any());
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    verify(service, never()).removeLagMonitor(any(), anyInt(), anyString());
+
+    when(mockConsumerAction.isHelixTriggeredAction()).thenReturn(true);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    Version version = mockStore.getVersion(1);
+    String replicaId = Utils.getReplicaId(leaderFollowerStoreIngestionTask.getKafkaVersionTopic(), 0);
+    heartbeatUpdates.verify(service).removeLagMonitor(version, 0, replicaId);
+  }
+
+  @Test
+  public void testClosedIngestionTaskRemovesHeartbeatMonitoring() throws InterruptedException {
+    setUp(true);
+    HeartbeatMonitoringService service = leaderFollowerStoreIngestionTask.getHeartbeatMonitoringService();
+    Version version = mockStore.getVersion(1);
+    // Error-unsubscribed partitions have no PCS but still need task-wide cleanup.
+    leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().clear();
+    String threadName = Thread.currentThread().getName();
+    try {
+      leaderFollowerStoreIngestionTask.close();
+      leaderFollowerStoreIngestionTask.run();
+      verify(service).removeLagMonitors(version);
+    } finally {
+      Thread.currentThread().setName(threadName);
+    }
   }
 
   @Test
