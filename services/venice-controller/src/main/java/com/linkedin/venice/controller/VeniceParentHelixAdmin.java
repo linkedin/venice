@@ -2309,8 +2309,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
         if (parentVersion != null && parentVersion.getStatus() != KILLED && parentVersion.getStatus() != ERROR
-            && parentVersion.getStatus() != STARTED && StringUtils.isEmpty(parentVersion.getTargetSwapRegion())
-            && parentVersion.isVersionSwapDeferred() && futureVersion > parentStore.getCurrentVersion()
+            && parentVersion.getStatus() != STARTED && parentVersion.getStatus() != ROLLED_BACK
+            && StringUtils.isEmpty(parentVersion.getTargetSwapRegion()) && parentVersion.isVersionSwapDeferred()
+            && futureVersion > parentStore.getCurrentVersion()
             && parentStore.getVersions().stream().noneMatch(v -> v.getNumber() > futureVersion)) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);

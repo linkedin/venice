@@ -4430,7 +4430,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @DataProvider(name = "rollForwardParentVersionStatuses")
   public Object[][] rollForwardParentVersionStatuses() {
     return new Object[][] { { VersionStatus.PUSHED }, { VersionStatus.ONLINE }, { VersionStatus.KILLED },
-        { VersionStatus.ERROR }, { VersionStatus.STARTED } };
+        { VersionStatus.ERROR }, { VersionStatus.STARTED }, { VersionStatus.ROLLED_BACK } };
   }
 
   @Test(dataProvider = "rollForwardParentVersionStatuses")
@@ -4438,7 +4438,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
-    // A child may still advertise the future version before consuming a preceding kill.
+    // A child may still advertise the future version before consuming a preceding kill or rollback.
     doReturn(Collections.singletonMap("r1", "5")).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
     controllerClients.clear();
     mockRollForwardChild("r1");
@@ -4479,7 +4479,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
 
     verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    if (status == VersionStatus.KILLED || status == VersionStatus.ERROR || status == VersionStatus.STARTED) {
+    if (status == VersionStatus.KILLED || status == VersionStatus.ERROR || status == VersionStatus.STARTED
+        || status == VersionStatus.ROLLED_BACK) {
       assertEquals(parentStore.getVersion(5).getStatus(), status);
       assertEquals(parentStore.getCurrentVersion(), 4);
       verify(repository, never()).updateStore(any());
