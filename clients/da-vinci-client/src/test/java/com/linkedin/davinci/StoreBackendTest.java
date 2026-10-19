@@ -173,8 +173,11 @@ public class StoreBackendTest {
 
     // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
-    verify(backend.getIngestionService(), times(1))
-        .registerFollowerLagMonitor(eq(version1.kafkaTopicName()), eq(partition), anyString());
+    verify(heartbeatMonitoringService, times(1)).updateLagMonitor(
+        eq(version1.kafkaTopicName()),
+        eq(partition),
+        eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+        anyString());
     TimeUnit.MILLISECONDS.sleep(v1SubscribeDurationMs);
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
@@ -391,10 +394,16 @@ public class StoreBackendTest {
   void testSubscribeUnsubscribe() throws Exception {
     // Simulate concurrent unsubscribe while subscribe is pending.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0, 1));
-    verify(backend.getIngestionService(), times(1))
-        .registerFollowerLagMonitor(eq(version1.kafkaTopicName()), eq(0), anyString());
-    verify(backend.getIngestionService(), times(1))
-        .registerFollowerLagMonitor(eq(version1.kafkaTopicName()), eq(1), anyString());
+    verify(heartbeatMonitoringService, times(1)).updateLagMonitor(
+        eq(version1.kafkaTopicName()),
+        eq(0),
+        eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+        anyString());
+    verify(heartbeatMonitoringService, times(1)).updateLagMonitor(
+        eq(version1.kafkaTopicName()),
+        eq(1),
+        eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+        anyString());
     versionMap.get(version1.kafkaTopicName()).completePartition(0);
     assertFalse(subscribeResult.isDone());
     storeBackend.unsubscribe(ComplementSet.of(1));

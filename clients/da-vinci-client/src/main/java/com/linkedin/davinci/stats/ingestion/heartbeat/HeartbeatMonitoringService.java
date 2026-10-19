@@ -37,10 +37,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -331,37 +329,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   /**
-   * Removes all monitoring and cleanup counters for a closed ingestion task, including unsubscribed partitions.
+   * Removes all monitoring for a closed ingestion task, including partitions already unsubscribed due to errors.
    */
-  public void removeLagMonitors(Version version) {
+  public synchronized void removeLagMonitors(Version version) {
     Predicate<HeartbeatKey> matchesVersion =
         key -> key.storeName.equals(version.getStoreName()) && key.version == version.getNumber();
-    Map<String, Set<HeartbeatKey>> keysByReplica;
-    synchronized (this) {
-      keysByReplica =
-          Stream.concat(leaderHeartbeatTimeStamps.keySet().stream(), followerHeartbeatTimeStamps.keySet().stream())
-              .filter(matchesVersion)
-              .collect(Collectors.groupingBy(HeartbeatKey::getReplicaId, Collectors.toSet()));
-    }
-    String replicaIdPrefix = version.kafkaTopicName() + "-";
-    cleanupHeartbeatMap.keySet()
-        .stream()
-        .filter(
-            replicaId -> replicaId.startsWith(replicaIdPrefix)
-                && replicaId.lastIndexOf('-') == replicaIdPrefix.length() - 1)
-        .forEach(replicaId -> keysByReplica.computeIfAbsent(replicaId, k -> new HashSet<>()));
-    for (Map.Entry<String, Set<HeartbeatKey>> replica: keysByReplica.entrySet()) {
-      // Registration and view cleanup acquire the per-replica map lock before the service monitor.
-      cleanupHeartbeatMap.compute(replica.getKey(), (k, v) -> {
-        synchronized (this) {
-          for (HeartbeatKey key: replica.getValue()) {
-            leaderHeartbeatTimeStamps.remove(key);
-            followerHeartbeatTimeStamps.remove(key);
-          }
-        }
-        return null;
-      });
-    }
+    removeEntry(leaderHeartbeatTimeStamps, matchesVersion);
+    removeEntry(followerHeartbeatTimeStamps, matchesVersion);
     LOGGER.info("Removed heartbeat monitoring for version: {}", version.kafkaTopicName());
   }
 
@@ -475,19 +449,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       int partitionId,
       HeartbeatLagMonitorAction heartbeatLagMonitorAction,
       String replicaId) {
-    updateLagMonitor(resourceName, partitionId, heartbeatLagMonitorAction, replicaId, Runnable::run);
-  }
-
-  /**
-   * Resolves metadata before applying the lifecycle guard to monitor registration.
-   * The guard must run registration synchronously under its lifecycle lock, or reject it without retaining it.
-   */
-  public void updateLagMonitor(
-      String resourceName,
-      int partitionId,
-      HeartbeatLagMonitorAction heartbeatLagMonitorAction,
-      String replicaId,
-      Consumer<Runnable> registrationGuard) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
@@ -527,17 +488,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       VeniceReplicationMode replicationMode = version.isActiveActiveReplicationEnabled()
           ? VeniceReplicationMode.ACTIVE_ACTIVE
           : VeniceReplicationMode.NON_ACTIVE_ACTIVE;
-      registrationGuard.accept(() -> {
-        switch (heartbeatLagMonitorAction) {
-          case SET_LEADER_MONITOR:
-            addLeaderLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
-            break;
-          case SET_FOLLOWER_MONITOR:
-            addFollowerLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
-            break;
-          default:
-        }
-      });
+      switch (heartbeatLagMonitorAction) {
+        case SET_LEADER_MONITOR:
+          addLeaderLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
+          break;
+        case SET_FOLLOWER_MONITOR:
+          addFollowerLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
+          break;
+        default:
+      }
     } catch (Exception e) {
       LOGGER.error(
           "Failed to update lag monitor for replica: {} with trigger: {}",

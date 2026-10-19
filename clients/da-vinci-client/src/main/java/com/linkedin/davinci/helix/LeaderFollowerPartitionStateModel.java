@@ -139,11 +139,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         }
         throw e;
       }
-      getIngestionBackend().getStoreIngestionService()
-          .registerFollowerLagMonitor(
-              message.getResourceName(),
-              getPartition(),
-              Utils.getReplicaId(message.getResourceName(), getPartition()));
+      heartbeatMonitoringService.updateLagMonitor(
+          message.getResourceName(),
+          getPartition(),
+          HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+          Utils.getReplicaId(message.getResourceName(), getPartition()));
       if (isCurrentVersion || isFutureVersionReady) {
         waitConsumptionCompleted(resourceName, notifier);
       } else if (isFutureVersionInProgress && getStoreAndServerConfigs().isFutureVersionStandbyLagCheckEnabled()) {

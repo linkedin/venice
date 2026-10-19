@@ -723,8 +723,6 @@ public class HeartbeatMonitoringServiceTest {
   public void testUpdateLagMonitor() {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     doCallRealMethod().when(heartbeatMonitoringService).updateLagMonitor(anyString(), anyInt(), any(), anyString());
-    doCallRealMethod().when(heartbeatMonitoringService)
-        .updateLagMonitor(anyString(), anyInt(), any(), anyString(), any());
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     doReturn(metadataRepo).when(heartbeatMonitoringService).getMetadataRepository();
     Store store = mock(Store.class);
@@ -825,42 +823,6 @@ public class HeartbeatMonitoringServiceTest {
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
     verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, times(3)).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
-
-    when(store.isWriteComputationEnabled()).thenReturn(true);
-    when(version.isChunkingEnabled()).thenReturn(true);
-    when(version.isActiveActiveReplicationEnabled()).thenReturn(true);
-    heartbeatMonitoringService.updateLagMonitor(
-        resourceName,
-        partition,
-        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
-        replicaId,
-        update -> {
-          verify(metadataRepo, times(7)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-        });
-    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(
-        version,
-        partition,
-        replicaId,
-        VeniceStoreWriteType.WRITE_COMPUTE,
-        VeniceChunkingStatus.CHUNKED,
-        VeniceReplicationMode.ACTIVE_ACTIVE);
-
-    heartbeatMonitoringService.updateLagMonitor(
-        resourceName,
-        partition,
-        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
-        replicaId,
-        update -> {
-          verify(metadataRepo, times(8)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-          update.run();
-        });
-    verify(heartbeatMonitoringService).addFollowerLagMonitor(
-        version,
-        partition,
-        replicaId,
-        VeniceStoreWriteType.WRITE_COMPUTE,
-        VeniceChunkingStatus.CHUNKED,
-        VeniceReplicationMode.ACTIVE_ACTIVE);
   }
 
   @Test
@@ -1057,43 +1019,12 @@ public class HeartbeatMonitoringServiceTest {
     long currentFollowerCount =
         countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2);
     Assert.assertTrue(currentFollowerCount > 0);
-    heartbeatMonitoringService.removeLagMonitor(backupVersion, 2, Utils.getReplicaId(backupVersionTopic, 2));
-    Assert.assertTrue(
-        heartbeatMonitoringService.getCleanupHeartbeatMap().containsKey(Utils.getReplicaId(backupVersionTopic, 2)));
     heartbeatMonitoringService.removeLagMonitors(backupVersion);
     Assert.assertEquals(countPartitions(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1), 0);
     Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 0);
     Assert.assertEquals(
         countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2),
         currentFollowerCount);
-    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 2);
-    for (int partition = 0; partition < 3; partition++) {
-      Assert.assertFalse(
-          heartbeatMonitoringService.getCleanupHeartbeatMap()
-              .containsKey(Utils.getReplicaId(backupVersionTopic, partition)));
-    }
-    Assert.assertEquals(
-        heartbeatMonitoringService.getCleanupHeartbeatMap().get(Utils.getReplicaId(currentVersionTopic, 0)).intValue(),
-        1);
-    Assert.assertEquals(
-        heartbeatMonitoringService.getCleanupHeartbeatMap().get(Utils.getReplicaId(currentVersionTopic, 2)).intValue(),
-        1);
-    heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
-    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 2);
-    String otherStore = TEST_STORE + "_v1-archive";
-    String otherReplicaId = Utils.getReplicaId(otherStore + "_v2", 0);
-    HeartbeatKey otherKey = new HeartbeatKey(otherStore, 2, 0, LOCAL_FABRIC);
-    IngestionTimestampEntry otherTimestamp = new IngestionTimestampEntry(1000L, true, true);
-    heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().put(otherKey, otherTimestamp);
-    heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().put(otherKey, otherTimestamp);
-    heartbeatMonitoringService.getCleanupHeartbeatMap().put(otherReplicaId, 3);
-    String backupReplicaId = Utils.getReplicaId(backupVersionTopic, 0);
-    heartbeatMonitoringService.getCleanupHeartbeatMap().put(backupReplicaId, 2);
-    heartbeatMonitoringService.removeLagMonitors(backupVersion);
-    Assert.assertFalse(heartbeatMonitoringService.getCleanupHeartbeatMap().containsKey(backupReplicaId));
-    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().get(otherReplicaId).intValue(), 3);
-    Assert.assertSame(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(otherKey), otherTimestamp);
-    Assert.assertSame(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().get(otherKey), otherTimestamp);
   }
 
   @Test

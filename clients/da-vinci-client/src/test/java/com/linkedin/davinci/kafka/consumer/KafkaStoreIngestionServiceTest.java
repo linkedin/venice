@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMostOnce;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -21,9 +20,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.DaVinciBackend;
-import com.linkedin.davinci.StoreBackend;
-import com.linkedin.davinci.VersionBackendTestUtils;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -32,9 +28,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
-import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
-import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -56,7 +50,6 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
-import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -109,7 +102,6 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.ArgumentCaptor;
@@ -118,7 +110,6 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -464,13 +455,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.close();
   }
 
-  @DataProvider
-  public Object[][] closingTaskRegistration() {
-    return new Object[][] { { false }, { true } };
-  }
-
-  @Test(dataProvider = "closingTaskRegistration")
-  public void testCloseStoreIngestionTask(boolean closeAfterStartup) {
+  @Test
+  public void testCloseStoreIngestionTask() {
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -500,75 +486,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService
         .startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0, Optional.empty());
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    HeartbeatMonitoringService heartbeatService =
-        ((LeaderFollowerStoreIngestionTask) storeIngestionTask).getHeartbeatMonitoringService();
-    storeIngestionTask.close();
-    verify(heartbeatService).removeLagMonitors(mockStore.getVersion(1));
-    assertFalse(storeIngestionTask.isRunning());
-    VeniceServerConfig serverConfig = mockVeniceConfigLoader.getVeniceServerConfig();
-    DaVinciBackend backend = mock(DaVinciBackend.class);
-    SubscriptionBasedReadOnlyStoreRepository storeRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
-    doReturn(mockStore).when(storeRepository).getStoreOrThrow(storeName);
-    doReturn(storeRepository).when(backend).getStoreRepository();
-    doReturn(storageEngine1).when(mockStorageService).openStoreForNewPartition(any(), eq(0), any());
-    doReturn(mock(StoreBackend.class)).when(backend).getStoreOrThrow(storeName);
-    DefaultIngestionBackend ingestionBackend = spy(
-        new DefaultIngestionBackend(
-            storageMetadataService,
-            kafkaStoreIngestionService,
-            mockStorageService,
-            serverConfig));
-    doReturn(ingestionBackend).when(backend).getIngestionBackend();
-    if (closeAfterStartup) {
-      doAnswer(invocation -> {
-        invocation.callRealMethod();
-        kafkaStoreIngestionService.getStoreIngestionTask(topicName).close();
-        return null;
-      }).when(ingestionBackend).startConsumption(any(), eq(0), any(), anyString(), eq(false));
-    }
-    AtomicInteger registrations = new AtomicInteger();
-    doAnswer(invocation -> {
-      StoreIngestionTask task = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-      assertFalse(task != null && Thread.holdsLock(task), "Metadata resolution must not hold the task lifecycle lock");
-      Consumer<Runnable> guard = invocation.getArgument(4);
-      guard.accept(() -> {
-        assertTrue(Thread.holdsLock(task));
-        assertTrue(task.isRunning());
-        registrations.incrementAndGet();
-      });
-      return null;
-    }).when(heartbeatService)
-        .updateLagMonitor(
-            eq(topicName),
-            eq(0),
-            eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
-            eq(topicName + "-0"),
-            any());
-    VersionBackendTestUtils
-        .createSubscription(
-            backend,
-            mockStore.getVersion(1),
-            0,
-            new VeniceConfigLoader(veniceProperties),
-            mockStorageService,
-            heartbeatService,
-            kafkaStoreIngestionService)
-        .run();
-    assertEquals(registrations.get(), closeAfterStartup ? 0 : 1);
-
-    // The old task's delayed teardown cannot clean up a replacement's monitoring.
-    String threadName = Thread.currentThread().getName();
-    try {
-      storeIngestionTask.run();
-      verify(heartbeatService, Mockito.times(closeAfterStartup ? 2 : 1)).removeLagMonitors(mockStore.getVersion(1));
-    } finally {
-      Thread.currentThread().setName(threadName);
-    }
     kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     assertNull(closedStoreIngestionTask);
-    kafkaStoreIngestionService.registerFollowerLagMonitor(topicName, 0, topicName + "-0");
-    assertEquals(registrations.get(), closeAfterStartup ? 0 : 1);
 
     StorageEngine storageEngine2 = mock(DelegatingStorageEngine.class);
     doReturn(new ReferenceCounted<>(storageEngine2, se -> {})).when(mockStorageService)

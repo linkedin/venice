@@ -2411,6 +2411,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void internalClose(boolean doFlush) {
+    // Set isRunning to false to prevent messages being added after we've already looped through consumerActionsQueue.
     stopRunning();
     this.missingSOPCheckExecutor.shutdownNow();
 
@@ -3562,22 +3563,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
+  /**
+   * Removes heartbeat monitoring before publishing that the task stopped, so a replacement task cannot start and
+   * register monitors that this task's cleanup would then remove.
+   */
   private synchronized void stopRunning() {
     if (isRunning()) {
-      // Publish inactivity only after monitor cleanup, so a replacement cannot lose its registrations.
       try {
         removeAllHeartbeatMonitoring();
       } finally {
         getIsRunning().set(false);
       }
-    }
-  }
-
-  protected synchronized void updateHeartbeatMonitoring(Runnable update) {
-    if (isRunning()) {
-      update.run();
-    } else {
-      LOGGER.info("Skipping heartbeat monitor update for closing ingestion task: {}", kafkaVersionTopic);
     }
   }
 

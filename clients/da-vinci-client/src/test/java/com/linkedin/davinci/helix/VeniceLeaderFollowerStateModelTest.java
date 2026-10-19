@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Store;
@@ -250,8 +251,11 @@ public class VeniceLeaderFollowerStateModelTest extends
     try {
       TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
         // Make sure lag monitor happens before wait latch action completes.
-        verify(mockIngestionBackend.getStoreIngestionService())
-            .registerFollowerLagMonitor(any(), eq(testPartition), anyString());
+        verify(spyHeartbeatMonitoringService).updateLagMonitor(
+            any(),
+            eq(testPartition),
+            eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+            anyString());
         Assert.assertFalse(future.isDone());
       });
     } finally {

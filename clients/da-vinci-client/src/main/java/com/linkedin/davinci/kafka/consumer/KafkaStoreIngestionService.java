@@ -32,7 +32,6 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
-import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -939,26 +938,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         "Started Consuming{} - Replica: {}.",
         createPaused ? " (paused)" : "",
         Utils.getReplicaId(topic, partitionId));
-  }
-
-  /**
-   * Registers monitoring only while the current task owns the topic and has not started closing.
-   * Closing a task completes its monitor cleanup before a replacement can become active.
-   */
-  public void registerFollowerLagMonitor(String topic, int partition, String replicaId) {
-    heartbeatMonitoringService
-        .updateLagMonitor(topic, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId, registration -> {
-          try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-            StoreIngestionTask task = topicNameToIngestionTaskMap.get(topic);
-            if (task == null) {
-              LOGGER.info(
-                  "Skipping follower lag monitor registration for replica: {} because its task is absent",
-                  replicaId);
-              return;
-            }
-            task.updateHeartbeatMonitoring(registration);
-          }
-        });
   }
 
   /**

@@ -411,12 +411,18 @@ public class VersionBackend {
 
     for (int partition: partitionsToStartConsumption) {
       String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
+      // Start monitoring the heartbeat lag of the partition
+      backend.getHeartbeatMonitoringService()
+          .updateLagMonitor(
+              version.kafkaTopicName(),
+              partition,
+              HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+              replicaId);
       // AtomicReference of storage engine will be updated internally.
       Optional<PubSubPosition> pubSubPosition = (timestampsMap == null && positionMap == null)
           ? Optional.empty()
           : backend.getIngestionService().getPubSubPosition(config, partition, timestampsMap, positionMap);
       backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId, createPaused);
-      backend.getIngestionService().registerFollowerLagMonitor(version.kafkaTopicName(), partition, replicaId);
       tryStartHeartbeat();
     }
 
