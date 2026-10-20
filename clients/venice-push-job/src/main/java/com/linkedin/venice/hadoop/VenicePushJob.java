@@ -303,6 +303,15 @@ public class VenicePushJob implements AutoCloseable {
   private static final int VERSION_SWAP_BUFFER_TIME_MINUTES = 20;
 
   /**
+   * Temporary stopgap: extra rewind padding added on top of the user-provided epoch buffer when converting an
+   * epoch-rewind override to a relative duration. The conversion anchors "now" just before version creation, but the
+   * server applies the rewind backward from each partition's Start-Of-Push, so any remaining pre-serving work (e.g.
+   * serial SOP broadcast across partitions) can still open a small real-time replay gap. One hour of padding over-covers
+   * that residual gap. Remove this once the absolute-epoch rewind fix lands and carries the timestamp end-to-end.
+   */
+  private static final long STOPGAP_REWIND_SAFETY_PADDING_IN_SECONDS = 3600;
+
+  /**
    * @param jobId  id of the job
    * @param vanillaProps  Property bag for the job
    */
@@ -2442,12 +2451,13 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
     long nowInSeconds = System.currentTimeMillis() / 1000;
-    setting.rewindTimeInSecondsOverride =
-        (nowInSeconds - setting.rewindEpochTimeInSecondsOverride) + setting.rewindEpochTimeBufferInSecondsOverride;
+    setting.rewindTimeInSecondsOverride = (nowInSeconds - setting.rewindEpochTimeInSecondsOverride)
+        + setting.rewindEpochTimeBufferInSecondsOverride + STOPGAP_REWIND_SAFETY_PADDING_IN_SECONDS;
     LOGGER.info(
-        "Converted rewind epoch override {} (buffer {}s) to rewindTimeInSecondsOverride {}s at version-creation time",
+        "Converted rewind epoch override {} (buffer {}s, stopgap padding {}s) to rewindTimeInSecondsOverride {}s at version-creation time",
         setting.rewindEpochTimeInSecondsOverride,
         setting.rewindEpochTimeBufferInSecondsOverride,
+        STOPGAP_REWIND_SAFETY_PADDING_IN_SECONDS,
         setting.rewindTimeInSecondsOverride);
   }
 

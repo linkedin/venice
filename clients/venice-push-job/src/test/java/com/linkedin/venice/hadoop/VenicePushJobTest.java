@@ -132,7 +132,8 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
     try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
       PushJobSetting setting = vpj.getPushJobSetting();
       vpj.convertEpochRewindOverrideToRelativeDuration(setting);
-      long expected = epochSecondsAgo + bufferSeconds;
+      // Includes the temporary 1-hour stopgap safety padding (remove the +3600 when the stopgap is removed).
+      long expected = epochSecondsAgo + bufferSeconds + 3600;
       // Allow a few seconds of slack for wall-clock advance during the test.
       assertTrue(
           setting.rewindTimeInSecondsOverride >= expected && setting.rewindTimeInSecondsOverride <= expected + 5,
