@@ -2974,6 +2974,7 @@ public class VenicePushJob implements AutoCloseable {
             Optional.ofNullable(setting.sourceGridFabric),
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
+            setting.rewindEpochTimeInSecondsOverride,
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,

@@ -158,6 +158,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public long getRewindEpochTimeInSecondsOverride() {
+      return this.delegate.getRewindEpochTimeInSecondsOverride();
+    }
+
+    @Override
+    public void setRewindEpochTimeInSecondsOverride(long rewindEpochTimeInSecondsOverride) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public HybridStoreConfig clone() {
       return this.delegate.clone();
     }
