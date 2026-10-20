@@ -2,11 +2,12 @@ package com.linkedin.venice.fastclient.cache;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.linkedin.venice.compression.CompressionStrategy;
 import java.nio.ByteBuffer;
 
 
 /**
- * A memory-bounded cache of decompressed, still-serialized value bytes, keyed by serialized key bytes.
+ * A memory-bounded cache of value bytes exactly as they arrived from the server, keyed by serialized key bytes.
  *
  * <p>The cache is enabled only when a positive byte budget is configured on
  * {@link com.linkedin.venice.fastclient.ClientConfig}; otherwise it is never instantiated.
@@ -15,8 +16,13 @@ import java.nio.ByteBuffer;
  * metadata refresh interval. Because the Fast Client only observes a store version swap during a metadata refresh,
  * clearing on refresh also covers version swaps.
  *
- * <p>Values are retained in serialized form rather than as deserialized records so that the memory bound is
- * measured in real bytes, and so that concurrent callers never share a mutable record instance.
+ * <p>Values are retained compressed and serialized. Keeping them compressed fits more keys into the same budget for
+ * stores that enable compression, at the cost of decompressing on each hit. Keeping them serialized means the memory
+ * bound is measured in real bytes, and that concurrent callers never share a mutable record instance.
+ *
+ * <p>Compressed bytes are only decodable by the compressor of the version they were read from, since
+ * {@link CompressionStrategy#ZSTD_WITH_DICT} dictionaries are per version. Each entry therefore records its source
+ * version and strategy so the caller can reject an entry left behind by a superseded version.
  */
 public class FastClientRecordCache {
   /**
@@ -48,11 +54,16 @@ public class FastClientRecordCache {
     return cache.getIfPresent(serializedKey);
   }
 
-  public void put(ByteBuffer serializedKey, byte[] value, int schemaId) {
+  public void put(
+      ByteBuffer serializedKey,
+      byte[] value,
+      int schemaId,
+      CompressionStrategy compressionStrategy,
+      int version) {
     if (value == null) {
       return;
     }
-    cache.put(serializedKey, new CachedValue(value, schemaId));
+    cache.put(serializedKey, new CachedValue(value, schemaId, compressionStrategy, version));
   }
 
   /**
@@ -72,15 +83,20 @@ public class FastClientRecordCache {
   }
 
   /**
-   * An immutable decompressed value plus the schema id needed to deserialize it.
+   * An immutable compressed, serialized value plus everything needed to decode it: the schema id, and the
+   * compression strategy and store version it was read from.
    */
   public static final class CachedValue {
     private final byte[] value;
     private final int schemaId;
+    private final CompressionStrategy compressionStrategy;
+    private final int version;
 
-    CachedValue(byte[] value, int schemaId) {
+    CachedValue(byte[] value, int schemaId, CompressionStrategy compressionStrategy, int version) {
       this.value = value;
       this.schemaId = schemaId;
+      this.compressionStrategy = compressionStrategy;
+      this.version = version;
     }
 
     /**
@@ -93,6 +109,14 @@ public class FastClientRecordCache {
 
     public int getSchemaId() {
       return schemaId;
+    }
+
+    public CompressionStrategy getCompressionStrategy() {
+      return compressionStrategy;
+    }
+
+    public int getVersion() {
+      return version;
     }
 
     int size() {
