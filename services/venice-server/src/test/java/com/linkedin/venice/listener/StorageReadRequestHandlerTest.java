@@ -117,6 +117,7 @@ import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -126,6 +127,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -199,9 +201,11 @@ public class StorageReadRequestHandlerTest {
   private final PubSubTopicRepository topicRepository = new PubSubTopicRepository();
 
   private PubSubContext pubSubContext;
+  private MetricsRepository metricsRepository;
 
   @BeforeMethod
   public void setUp() {
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     doReturn(store).when(storeRepository).getStoreOrThrow(any());
     doReturn(version).when(store).getVersion(anyInt());
     doReturn(version).when(store).getVersionOrThrow(anyInt());
@@ -222,6 +226,7 @@ public class StorageReadRequestHandlerTest {
 
   @AfterMethod
   public void cleanUp() {
+    metricsRepository.close();
     reset(
         storageEngine,
         storageEngineRepository,
@@ -264,6 +269,11 @@ public class StorageReadRequestHandlerTest {
     return new Object[][] { { false, false }, { false, true }, { true, false }, { true, true } };
   }
 
+  @DataProvider(name = "readTransports")
+  public Object[][] readTransports() {
+    return new Object[][] { { false }, { true } };
+  }
+
   private StorageReadRequestHandler createStorageReadRequestHandler() {
     return createStorageReadRequestHandler(false, MultiGetResponseWrapper::new);
   }
@@ -275,6 +285,7 @@ public class StorageReadRequestHandlerTest {
         serverConfig,
         parallelBatchGetEnabled ? parallelExecutor : executor,
         parallelBatchGetEnabled ? parallelExecutor : executor,
+        metricsRepository,
         storageEngineRepository,
         storeRepository,
         schemaRepository,
@@ -287,8 +298,21 @@ public class StorageReadRequestHandlerTest {
         ComputeResponseWrapper::new);
   }
 
-  @Test
-  public void storageExecutionHandlerPassesRequestsAndGeneratesResponses() throws Exception {
+  private void assertActiveThreadSamples(String poolName, boolean sampled) {
+    String metricPrefix = "." + poolName + "--active_thread_count.";
+    double average = metricsRepository.getMetric(metricPrefix + "Avg").value();
+    double maximum = metricsRepository.getMetric(metricPrefix + "Max").value();
+    if (sampled) {
+      assertTrue(average >= 0, "Expected an active thread sample for " + poolName);
+      assertTrue(maximum >= 0, "Expected an active thread sample for " + poolName);
+    } else {
+      assertTrue(Double.isNaN(average), "Expected no active thread samples for " + poolName);
+      assertEquals(maximum, Double.NEGATIVE_INFINITY, "Expected no active thread samples for " + poolName);
+    }
+  }
+
+  @Test(dataProvider = "readTransports")
+  public void storageExecutionHandlerPassesRequestsAndGeneratesResponses(boolean grpc) throws Exception {
     String keyString = "test-key";
     String valueString = "test-value";
     int schemaId = 1;
@@ -303,10 +327,23 @@ public class StorageReadRequestHandlerTest {
         GetRouterRequest.parseGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
-    requestHandler.channelRead(context, request);
-
-    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
-    SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
+    SingleGetResponseWrapper responseObject;
+    if (grpc) {
+      GrpcRequestContext grpcContext =
+          new GrpcRequestContext(VeniceClientRequest.getDefaultInstance(), VeniceServerResponse.newBuilder(), null);
+      grpcContext.setRouterRequest(request);
+      GrpcStorageReadRequestHandler grpcHandler = new GrpcStorageReadRequestHandler(requestHandler);
+      grpcHandler.addNextHandler(mock(VeniceServerGrpcHandler.class));
+      grpcHandler.processRequest(grpcContext);
+      assertFalse(grpcContext.hasError());
+      responseObject = (SingleGetResponseWrapper) grpcContext.getReadResponse();
+    } else {
+      requestHandler.channelRead(context, request);
+      verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+      responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
+    }
+    assertActiveThreadSamples("storage_execution_thread_pool", true);
+    assertActiveThreadSamples("storage_compute_thread_pool", false);
     assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
     assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
   }
@@ -321,6 +358,8 @@ public class StorageReadRequestHandlerTest {
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) argumentCaptor.getValue();
     assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
+    assertActiveThreadSamples("storage_execution_thread_pool", false);
+    assertActiveThreadSamples("storage_compute_thread_pool", false);
   }
 
   @Test(dataProvider = "storageReadRequestHandlerParams")
@@ -419,6 +458,8 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     verify(context, timeout(10000)).writeAndFlush(argumentCaptor.capture());
 
+    assertActiveThreadSamples("storage_execution_thread_pool", true);
+    assertActiveThreadSamples("storage_compute_thread_pool", false);
     Object response = argumentCaptor.getValue();
     assertTrue(response instanceof AbstractReadResponse, "The response should be castable to AbstractReadResponse.");
     AbstractReadResponse multiGetResponseWrapper = (AbstractReadResponse) response;
@@ -720,6 +761,8 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
 
     verify(context, timeout(10000)).writeAndFlush(argumentCaptor.capture());
+    assertActiveThreadSamples("storage_compute_thread_pool", readComputationEnabled);
+    assertActiveThreadSamples("storage_execution_thread_pool", false);
     if (!readComputationEnabled) {
       HttpShortcutResponse errorResponse = (HttpShortcutResponse) argumentCaptor.getValue();
       assertEquals(errorResponse.getStatus(), HttpResponseStatus.METHOD_NOT_ALLOWED);

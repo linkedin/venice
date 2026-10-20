@@ -17,6 +17,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class ThreadPoolStats extends AbstractVeniceStats {
   private final ThreadPoolExecutor threadPoolExecutor;
 
+  private final MetricEntityStateBase activeThreadsCountMetric;
   private final MetricEntityStateBase queuedTasksCountMetric;
 
   public ThreadPoolStats(MetricsRepository metricsRepository, ThreadPoolExecutor threadPoolExecutor, String name) {
@@ -57,6 +58,15 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         otelData.getBaseAttributes(),
         () -> this.threadPoolExecutor.getQueue().size());
 
+    activeThreadsCountMetric = MetricEntityStateBase.create(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_DISTRIBUTION.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensor,
+        ThreadPoolTehutiMetricNameEnum.ACTIVE_THREAD_COUNT,
+        Arrays.asList(new Avg(), new Max()),
+        otelData.getBaseDimensionsMap(),
+        otelData.getBaseAttributes());
+
     /**
      * If only registered as Gauge, the metric would show the queue size at the time of the metric collection, which is not
      * very useful. It can provide a better view of the queue size if we record the average and max queue size within
@@ -67,7 +77,7 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     queuedTasksCountMetric = MetricEntityStateBase.create(
         ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_DISTRIBUTION.getMetricEntity(),
         otelData.getOtelRepository(),
-        (sensorName, stats) -> registerSensor(sensorName, stats),
+        this::registerSensor,
         ThreadPoolTehutiMetricNameEnum.QUEUED_TASK_COUNT,
         Arrays.asList(new Avg(), new Max()),
         otelData.getBaseDimensionsMap(),
@@ -83,7 +93,15 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     queuedTasksCountMetric.record(this.threadPoolExecutor.getQueue().size());
   }
 
+  /**
+   * Samples active threads on request arrival to capture avg/max usage between metric collections.
+   * The executor's active count is approximate and request-triggered samples may miss peaks.
+   */
+  public void recordActiveThreadsCount() {
+    activeThreadsCountMetric.record(this.threadPoolExecutor.getActiveCount());
+  }
+
   enum ThreadPoolTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    QUEUED_TASK_COUNT
+    ACTIVE_THREAD_COUNT, QUEUED_TASK_COUNT
   }
 }

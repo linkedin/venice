@@ -17,6 +17,10 @@ public enum ThreadPoolOtelMetricEntity implements ModuleMetricEntityInterface {
       "thread_pool.thread.active_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Active threads in the thread pool",
       Collections.singleton(VENICE_THREAD_POOL_NAME)
   ),
+  THREAD_POOL_THREAD_ACTIVE_DISTRIBUTION(
+      "thread_pool.thread.active_distribution", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Distribution of active thread count sampled on request arrival", Collections.singleton(VENICE_THREAD_POOL_NAME)
+  ),
   THREAD_POOL_THREAD_MAX_COUNT(
       "thread_pool.thread.max_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Maximum thread pool size",
       Collections.singleton(VENICE_THREAD_POOL_NAME)

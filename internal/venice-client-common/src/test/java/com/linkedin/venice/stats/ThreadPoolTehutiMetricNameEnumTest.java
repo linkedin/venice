@@ -9,6 +9,7 @@ import org.testng.annotations.Test;
 public class ThreadPoolTehutiMetricNameEnumTest {
   private static Map<ThreadPoolStats.ThreadPoolTehutiMetricNameEnum, String> expectedMetricNames() {
     Map<ThreadPoolStats.ThreadPoolTehutiMetricNameEnum, String> map = new HashMap<>();
+    map.put(ThreadPoolStats.ThreadPoolTehutiMetricNameEnum.ACTIVE_THREAD_COUNT, "active_thread_count");
     map.put(ThreadPoolStats.ThreadPoolTehutiMetricNameEnum.QUEUED_TASK_COUNT, "queued_task_count");
     return map;
   }

@@ -129,6 +129,25 @@ public class ThreadPoolStatsOtelTest {
   }
 
   @Test
+  public void testRecordActiveThreadsCount() {
+    stats.recordActiveThreadsCount();
+    Mockito.doReturn(10).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadsCount();
+    Mockito.doReturn(0).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadsCount();
+
+    validateHistogram(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_DISTRIBUTION.getMetricEntity().getMetricName(),
+        0.0,
+        10.0,
+        3,
+        15.0,
+        threadPoolAttributes());
+    validateTehutiMetric("active_thread_count", "Avg", 5.0);
+    validateTehutiMetric("active_thread_count", "Max", 10.0);
+  }
+
+  @Test
   public void testBlankThreadPoolNameSanitizedToUnknown() {
     verifyThreadPoolNameDimension("   ", "unknown");
   }
@@ -234,6 +253,9 @@ public class ThreadPoolStatsOtelTest {
     Mockito.doReturn(0).when(queue).size();
 
     ThreadPoolStats localStats = new ThreadPoolStats(repo, pool, poolName);
+    localStats.recordActiveThreadsCount();
+    assertEquals(repo.getMetric("." + poolName + "--active_thread_count.Avg").value(), 0.0);
+    assertEquals(repo.getMetric("." + poolName + "--active_thread_count.Max").value(), 0.0);
     localStats.recordQueuedTasksCount();
   }
 }
