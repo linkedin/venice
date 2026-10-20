@@ -31,6 +31,7 @@ import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
+import com.linkedin.venice.stats.dimensions.VenicePushJobSource;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -74,6 +75,9 @@ public class TestPushJobStatusStats {
 
     String pushId = (isRepush ? Version.VENICE_RE_PUSH_PUSH_ID_PREFIX : "") + "test-push";
     when(pushJobDetails.getPushId()).thenReturn(pushId);
+    // The repush prefix on the push id is what the production path classifies, so the expectation has to
+    // track it rather than assuming every push is user-originated.
+    VenicePushJobSource expectedPushSource = isRepush ? VenicePushJobSource.REPUSH : VenicePushJobSource.USER;
 
     when(pushJobDetails.getClusterName()).thenReturn(new Utf8("cluster1"));
     List<PushJobDetailsStatusTuple> statusTuples = new ArrayList<>();
@@ -119,19 +123,19 @@ public class TestPushJobStatusStats {
               numberUserErrors++;
               if (isIncrementalPush) {
                 verify(pushJobStatusStats, times(numberUserErrors))
-                    .recordIncrementalPushFailureDueToUserErrorSensor(storeName, status, UNDER_SLA);
+                    .recordIncrementalPushFailureDueToUserErrorSensor(storeName, expectedPushSource, status, UNDER_SLA);
               } else {
                 verify(pushJobStatusStats, times(numberUserErrors))
-                    .recordBatchPushFailureDueToUserErrorSensor(storeName, status, UNDER_SLA);
+                    .recordBatchPushFailureDueToUserErrorSensor(storeName, expectedPushSource, status, UNDER_SLA);
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
                 verify(pushJobStatusStats, times(numberSuccess))
-                    .recordIncrementalPushSuccessSensor(storeName, status, UNDER_SLA);
+                    .recordIncrementalPushSuccessSensor(storeName, expectedPushSource, status, UNDER_SLA);
               } else {
                 verify(pushJobStatusStats, times(numberSuccess))
-                    .recordBatchPushSuccessSensor(storeName, status, UNDER_SLA);
+                    .recordBatchPushSuccessSensor(storeName, expectedPushSource, status, UNDER_SLA);
               }
 
               if (isRepush) {
@@ -146,19 +150,23 @@ public class TestPushJobStatusStats {
               numberNonUserErrors++;
               if (isIncrementalPush) {
                 verify(pushJobStatusStats, times(numberNonUserErrors))
-                    .recordIncrementalPushFailureNotDueToUserErrorSensor(storeName, status, UNDER_SLA);
+                    .recordIncrementalPushFailureNotDueToUserErrorSensor(
+                        storeName,
+                        expectedPushSource,
+                        status,
+                        UNDER_SLA);
               } else {
                 verify(pushJobStatusStats, times(numberNonUserErrors))
-                    .recordBatchPushFailureNotDueToUserErrorSensor(storeName, status, UNDER_SLA);
+                    .recordBatchPushFailureNotDueToUserErrorSensor(storeName, expectedPushSource, status, UNDER_SLA);
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
                 verify(pushJobStatusStats, times(numberSuccess))
-                    .recordIncrementalPushSuccessSensor(storeName, status, UNDER_SLA);
+                    .recordIncrementalPushSuccessSensor(storeName, expectedPushSource, status, UNDER_SLA);
               } else {
                 verify(pushJobStatusStats, times(numberSuccess))
-                    .recordBatchPushSuccessSensor(storeName, status, UNDER_SLA);
+                    .recordBatchPushSuccessSensor(storeName, expectedPushSource, status, UNDER_SLA);
               }
 
               if (isRepush) {
@@ -193,8 +201,11 @@ public class TestPushJobStatusStats {
     when(fixture.pushJobDetails.getJobDurationInMs()).thenReturn(durationMs);
     fixture.emit(slaMs);
 
-    verify(fixture.pushJobStatusStats)
-        .recordBatchPushFailureNotDueToUserErrorSensor(STORE_NAME, PushJobDetailsStatus.KILLED, expectedDurationBucket);
+    verify(fixture.pushJobStatusStats).recordBatchPushFailureNotDueToUserErrorSensor(
+        STORE_NAME,
+        VenicePushJobSource.USER,
+        PushJobDetailsStatus.KILLED,
+        expectedDurationBucket);
   }
 
   /**
@@ -295,7 +306,7 @@ public class TestPushJobStatusStats {
         .recordDataWriterSinkWriteTime(STORE_NAME, Version.PushType.BATCH, VenicePushJobDataWriterSink.VENICE, 300L);
     // The push-status counters are intentionally left alone by the dedup.
     verify(fixture.pushJobStatusStats, times(3))
-        .recordBatchPushSuccessSensor(STORE_NAME, PushJobDetailsStatus.COMPLETED, UNDER_SLA);
+        .recordBatchPushSuccessSensor(STORE_NAME, VenicePushJobSource.USER, PushJobDetailsStatus.COMPLETED, UNDER_SLA);
   }
 
   @Test

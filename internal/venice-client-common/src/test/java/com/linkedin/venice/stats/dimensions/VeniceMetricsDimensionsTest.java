@@ -103,6 +103,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_PUSH_JOB_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.push_job.type");
           break;
+        case VENICE_PUSH_JOB_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.source");
+          break;
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.push_job.status");
           break;
@@ -309,6 +312,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_PUSH_JOB_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.pushJob.type");
           break;
+        case VENICE_PUSH_JOB_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.source");
+          break;
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.pushJob.status");
           break;
@@ -514,6 +520,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_PUSH_JOB_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Type");
+          break;
+        case VENICE_PUSH_JOB_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Source");
           break;
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Status");

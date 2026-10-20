@@ -101,6 +101,9 @@ public enum VeniceMetricsDimensions {
   /** Venice push job type (e.g. batch, incremental). See Version.PushType */
   VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
 
+  /** {@link VenicePushJobSource} */
+  VENICE_PUSH_JOB_SOURCE("venice.push_job.source"),
+
   /** {@link VenicePushJobStatus} */
   VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
 

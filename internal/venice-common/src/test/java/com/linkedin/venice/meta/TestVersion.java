@@ -11,6 +11,7 @@ import static org.testng.Assert.expectThrows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version.PushType;
+import com.linkedin.venice.stats.dimensions.VenicePushJobSource;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -438,6 +439,30 @@ public class TestVersion {
     VersionImpl version = new VersionImpl("store", 1, "pushId");
     version.setStorageMode(StorageMode.DUAL_WRITE);
     assertEquals(version.dataModel().storageMode, StorageMode.DUAL_WRITE.getValue());
+  }
+
+  @Test
+  public void testGetPushJobSourceClassifiesEachPrefix() {
+    assertEquals(Version.getPushJobSource(Version.generateRePushId("base")), VenicePushJobSource.REPUSH);
+    assertEquals(Version.getPushJobSource(Version.generateTTLRePushId("base")), VenicePushJobSource.TTL_REPUSH);
+    assertEquals(Version.getPushJobSource(Version.generateCompliancePushId("base")), VenicePushJobSource.COMPLIANCE);
+    assertEquals(Version.getPushJobSource("some-user-push-id"), VenicePushJobSource.USER);
+  }
+
+  @Test
+  public void testGetPushJobSourceTreatsRegularPushWithTtlRePushAsUser() {
+    // This prefix contains "re_push" but marks a regular batch push against a TTL-repush-enabled store, so its
+    // data did originate outside Venice. Misclassifying it would under-report real pushes.
+    String regularPushWithTtlRePushId = Version.generateRegularPushWithTTLRePushId("base");
+    assertEquals(Version.getPushJobSource(regularPushWithTtlRePushId), VenicePushJobSource.USER);
+    assertFalse(Version.isPushIdRePush(regularPushWithTtlRePushId));
+    assertFalse(Version.isPushIdTTLRePush(regularPushWithTtlRePushId));
+  }
+
+  @Test
+  public void testGetPushJobSourceHandlesMissingPushId() {
+    assertEquals(Version.getPushJobSource(null), VenicePushJobSource.USER);
+    assertEquals(Version.getPushJobSource(""), VenicePushJobSource.USER);
   }
 
 }
