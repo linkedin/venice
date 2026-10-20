@@ -195,6 +195,8 @@ public final class HelixUtils {
       attempt++;
       handleFailedHelixOperation(path, "create", attempt, maxAttempts);
     }
+    // With positive maxAttempts, handleFailedHelixOperation throws on the final failed attempt.
+    // This fallback only serves legacy create() calls with non-positive maxAttempts.
     return false;
   }
 
