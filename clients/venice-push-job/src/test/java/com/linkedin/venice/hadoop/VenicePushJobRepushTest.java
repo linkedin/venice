@@ -9,6 +9,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -16,16 +17,21 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -34,10 +40,14 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtilsTest.RecordingPubSu
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.status.PushJobDetailsStatus;
+import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Function;
@@ -337,6 +347,17 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     pushJobSetting.inputHasRecords = true;
     pushJobSetting.isIncrementalPush = true;
     venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    Assert.assertNull(venicePushJob.getPushJobDetails().pushJobLatestCheckpoint);
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.rmdField = "timestamp";
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, pushJobSetting);
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.allowRegularPushWithTTLRepush = true;
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, pushJobSetting);
     venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
     pushJobSetting = venicePushJob.getPushJobSetting();
     pushJobSetting.inputHasRecords = true;
@@ -353,5 +374,53 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     Assert.assertThrows(
         VeniceException.class,
         () -> failPushJob.checkRegularPushWithTTLRepush(mockControllerClient, failPushJob.getPushJobSetting()));
+    assertEquals(
+        failPushJob.getPushJobDetails().pushJobLatestCheckpoint.intValue(),
+        PushJobCheckpoints.TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED.getValue());
+  }
+
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testTTLRepushFailureClassification(boolean compliancePush, boolean storeFetchFailed) throws Exception {
+    ControllerClient client = getClient(store -> store.setTTLRepushEnabled(true));
+    if (storeFetchFailed) {
+      StoreResponse initialResponse = client.getStore(TEST_STORE);
+      StoreResponse errorResponse = new StoreResponse();
+      errorResponse.setError("Controller unavailable");
+      doReturn(initialResponse).doReturn(errorResponse).when(client).getStore(TEST_STORE);
+    }
+    Properties props = new Properties();
+    props.setProperty(COMPLIANCE_PUSH, Boolean.toString(compliancePush));
+    props.setProperty(KEY_FIELD_PROP, "id");
+    props.setProperty(VALUE_FIELD_PROP, "name");
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      InputDataInfoProvider provider = pushJob.getInputDataInfoProvider();
+      doReturn(new InputDataInfoProvider.InputDataInfo(10L, 1, true, System.currentTimeMillis())).when(provider)
+          .validateInputAndGetInfo(anyString());
+      doReturn(provider).when(pushJob).getInputDataInfoProvider();
+      SentPushJobDetailsTrackerImpl tracker = new SentPushJobDetailsTrackerImpl();
+      pushJob.setSentPushJobDetailsTracker(tracker);
+
+      VeniceException exception = Assert.expectThrows(VeniceException.class, pushJob::run);
+
+      Assert.assertTrue(
+          exception.getMessage()
+              .contains(
+                  storeFetchFailed ? "Unable to fetch store" : "regular batch push is not allowed with TTL re-push"));
+      List<PushJobDetails> reports = tracker.getRecordedPushJobDetails();
+      Assert.assertTrue(reports.size() >= 2);
+      PushJobDetails failed = reports.get(reports.size() - 1);
+      PushJobCheckpoints expectedCheckpoint = storeFetchFailed
+          ? PushJobCheckpoints.INITIALIZE_PUSH_JOB
+          : PushJobCheckpoints.TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED;
+      assertEquals(failed.pushJobLatestCheckpoint.intValue(), expectedCheckpoint.getValue());
+      assertEquals(
+          failed.overallStatus.get(failed.overallStatus.size() - 1).status,
+          PushJobDetailsStatus.ERROR.getValue());
+      assertEquals(failed.failureDetails.toString(), exception.toString());
+      assertEquals(tracker.getVersions().get(tracker.getVersions().size() - 1).intValue(), -1);
+      verify(pushJob, never()).createNewStoreVersion(any(), anyLong(), any(), anyString(), any(), any());
+      verify(pushJob, never()).runJobAndUpdateStatus();
+    }
   }
 }

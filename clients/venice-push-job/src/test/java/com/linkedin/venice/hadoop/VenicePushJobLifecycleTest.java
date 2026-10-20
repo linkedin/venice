@@ -13,6 +13,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
@@ -36,12 +37,16 @@ import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceStoreAclException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.StorageMode;
@@ -49,10 +54,15 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.status.PushJobDetailsStatus;
+import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.nio.file.Files;
 import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -73,6 +83,74 @@ import org.testng.annotations.Test;
  */
 
 public class VenicePushJobLifecycleTest extends VenicePushJobTestBase {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testMissingInputReportsUserErrorBeforeVersionCreation(boolean missingDirectory) throws Exception {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    String inputUri = new File(inputDir, missingDirectory ? "missing" : "").toURI().toString();
+    try (VenicePushJob pushJob = getSpyVenicePushJob(new Properties(), null)) {
+      pushJob.getPushJobSetting().inputURI = inputUri;
+      SentPushJobDetailsTrackerImpl tracker = new SentPushJobDetailsTrackerImpl();
+      pushJob.setSentPushJobDetailsTracker(tracker);
+
+      VeniceInvalidInputException exception = Assert.expectThrows(VeniceInvalidInputException.class, pushJob::run);
+
+      assertTrue(exception.getMessage().contains("No data found at source path"));
+      assertInitializationFailureReported(pushJob, tracker, PushJobCheckpoints.INVALID_INPUT_FILE, exception);
+    } finally {
+      Files.delete(inputDir.toPath());
+    }
+  }
+
+  @DataProvider
+  public Object[][] valueSchemaErrorTypes() {
+    return new Object[][] { { ErrorType.INVALID_SCHEMA, PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED },
+        { ErrorType.GENERAL_ERROR, PushJobCheckpoints.INITIALIZE_PUSH_JOB },
+        { ErrorType.CONNECTION_ERROR, PushJobCheckpoints.INITIALIZE_PUSH_JOB },
+        { null, PushJobCheckpoints.INITIALIZE_PUSH_JOB } };
+  }
+
+  @Test(dataProvider = "valueSchemaErrorTypes")
+  public void testValueSchemaFailureClassification(ErrorType errorType, PushJobCheckpoints expectedCheckpoint)
+      throws Exception {
+    ControllerClient client = getClient();
+    SchemaResponse response = new SchemaResponse();
+    response.setError(new InvalidVeniceSchemaException("No registered value schema matches the input"));
+    response.setErrorType(errorType);
+    doReturn(response).when(client).getValueSchemaID(anyString(), anyString());
+    Properties props = new Properties();
+    props.setProperty(KEY_FIELD_PROP, "id");
+    props.setProperty(VALUE_FIELD_PROP, "name");
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      doCallRealMethod().when(pushJob).validateAndRetrieveValueSchemas(any(), any(), anyBoolean());
+      SentPushJobDetailsTrackerImpl tracker = new SentPushJobDetailsTrackerImpl();
+      pushJob.setSentPushJobDetailsTracker(tracker);
+
+      VeniceException exception = Assert.expectThrows(VeniceException.class, pushJob::run);
+
+      assertTrue(exception.getMessage().contains("Failed to validate value schema for store"));
+      assertInitializationFailureReported(pushJob, tracker, expectedCheckpoint, exception);
+    }
+  }
+
+  private void assertInitializationFailureReported(
+      VenicePushJob pushJob,
+      SentPushJobDetailsTrackerImpl tracker,
+      PushJobCheckpoints checkpoint,
+      VeniceException exception) {
+    List<PushJobDetails> reports = tracker.getRecordedPushJobDetails();
+    assertTrue(reports.size() >= 2, "Both initial and terminal status should be reported");
+    PushJobDetails failed = reports.get(reports.size() - 1);
+    assertEquals(failed.pushJobLatestCheckpoint.intValue(), checkpoint.getValue());
+    assertEquals(
+        failed.overallStatus.get(failed.overallStatus.size() - 1).status,
+        PushJobDetailsStatus.ERROR.getValue());
+    assertEquals(failed.failureDetails.toString(), exception.toString());
+    assertEquals(tracker.getVersions().get(tracker.getVersions().size() - 1).intValue(), -1);
+    verify(pushJob, never()).createNewStoreVersion(any(), anyLong(), any(), anyString(), any(), any());
+    verify(pushJob, never()).runJobAndUpdateStatus();
+  }
+
   @Test
   public void testCheckLastModifiedTimestamp() throws Exception {
     File inputDir = TestWriteUtils.getTempDataDirectory();
