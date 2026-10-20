@@ -2,9 +2,16 @@ package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.schema.SchemaData.DUPLICATE_VALUE_SCHEMA_CODE;
 import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -13,18 +20,30 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.SchemaParseException;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -342,11 +361,154 @@ public class TestHelixReadWriteSchemaRepository {
     schemaRepo.addValueSchema(storeName, valueSchemaStr, valueSchemaId);
     SchemaEntry valueSchemaEntry = schemaRepo.getValueSchema(storeName, valueSchemaId);
     Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
+    Assert.assertEquals(schemaRepo.addValueSchema(storeName, valueSchemaStr, valueSchemaId).getId(), valueSchemaId);
+    Assert.assertEquals(schemaRepo.getValueSchemas(storeName).size(), 1);
     // Add the same schema with different schema id
     int newValueSchemaId = 11;
     schemaRepo.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
     valueSchemaEntry = schemaRepo.getValueSchema(storeName, newValueSchemaId);
     Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
+  }
+
+  @DataProvider
+  public Object[][] repositoryInstances() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "repositoryInstances", timeOut = 15_000)
+  public void testConcurrentValueSchemaRegistrationWithStaleIds(boolean separateRepositories) throws Exception {
+    String storeName = "concurrent_value_schema";
+    String schema = "\"string\"";
+    createStore(storeName);
+    HelixReadWriteSchemaRepository otherRepo =
+        separateRepositories ? new HelixReadWriteSchemaRepository(storeRepo, Optional.empty(), accessor) : schemaRepo;
+    int firstId =
+        schemaRepo.preCheckValueSchemaAndGetNextAvailableId(storeName, schema, DirectionalSchemaCompatibilityType.NONE);
+    int secondId =
+        otherRepo.preCheckValueSchemaAndGetNextAvailableId(storeName, schema, DirectionalSchemaCompatibilityType.NONE);
+    Assert.assertEquals(firstId, 1);
+    Assert.assertEquals(secondId, 1);
+    ValueSchemaCreatedListener listener = mock(ValueSchemaCreatedListener.class);
+    schemaRepo.registerValueSchemaCreatedListener(listener);
+    otherRepo.registerValueSchemaCreatedListener(listener);
+
+    List<SchemaEntry> results = registerConcurrently(
+        () -> schemaRepo.addValueSchema(storeName, schema, firstId),
+        () -> otherRepo.addValueSchema(storeName, schema, secondId));
+
+    results.forEach(result -> Assert.assertEquals(result.getId(), 1));
+    Assert.assertEquals(schemaRepo.getValueSchemas(storeName).size(), 1);
+    verify(listener, times(1)).handleValueSchemaCreated(any(Store.class), any(SchemaEntry.class));
+  }
+
+  @Test(dataProvider = "repositoryInstances", timeOut = 15_000)
+  public void testConcurrentDerivedSchemaRegistration(boolean separateRepositories) throws Exception {
+    String storeName = "concurrent_derived_schema";
+    String schema = "\"string\"";
+    createStore(storeName);
+    schemaRepo.addValueSchema(storeName, schema);
+    HelixReadWriteSchemaRepository first;
+    HelixReadWriteSchemaRepository second;
+    if (separateRepositories) {
+      CyclicBarrier reads = new CyclicBarrier(2);
+      HelixSchemaAccessor coordinatedAccessor = spy(accessor);
+      doAnswer(invocation -> {
+        Object snapshot = invocation.callRealMethod();
+        reads.await(5, TimeUnit.SECONDS);
+        return snapshot;
+      }).when(coordinatedAccessor).getAllDerivedSchemas(storeName);
+      first = new HelixReadWriteSchemaRepository(storeRepo, Optional.empty(), coordinatedAccessor);
+      second = new HelixReadWriteSchemaRepository(storeRepo, Optional.empty(), coordinatedAccessor);
+    } else {
+      first = schemaRepo;
+      second = schemaRepo;
+    }
+
+    List<DerivedSchemaEntry> results = registerConcurrently(
+        () -> first.addDerivedSchema(storeName, schema, 1),
+        () -> second.addDerivedSchema(storeName, schema, 1));
+
+    for (DerivedSchemaEntry result: results) {
+      Assert.assertEquals(result.getValueSchemaID(), 1);
+      Assert.assertTrue(result.getId() == 1 || result.getId() == DUPLICATE_VALUE_SCHEMA_CODE);
+      Assert.assertEquals(result.getSchema().toString(), schema);
+    }
+    Assert.assertEquals(schemaRepo.getDerivedSchemas(storeName).size(), 1);
+  }
+
+  @Test(timeOut = 15_000)
+  public void testConcurrentDifferentDerivedSchemasReceiveDistinctIds() throws Exception {
+    String storeName = "different_derived_schemas";
+    createStore(storeName);
+    schemaRepo.addValueSchema(storeName, "\"string\"");
+
+    List<DerivedSchemaEntry> results = registerConcurrently(
+        () -> schemaRepo.addDerivedSchema(storeName, "\"string\"", 1),
+        () -> schemaRepo.addDerivedSchema(storeName, "\"long\"", 1));
+
+    Assert.assertNotEquals(results.get(0).getId(), results.get(1).getId());
+    Assert.assertEquals(schemaRepo.getDerivedSchemas(storeName).size(), 2);
+  }
+
+  @DataProvider
+  public Object[][] schemaContent() {
+    String record =
+        "{\"type\":\"record\",\"name\":\"R\",\"doc\":\"old\",\"fields\":[{\"name\":\"f\",\"type\":\"string\"}]}";
+    String reorderedRecord =
+        "{\"fields\":[{\"type\":\"string\",\"name\":\"f\"}],\"doc\":\"old\",\"name\":\"R\",\"type\":\"record\"}";
+    String enumSchema = "{\"type\":\"enum\",\"name\":\"E\",\"symbols\":[\"A\",\"B\"],\"default\":\"A\"}";
+    String aliasedRecord = record.replace("\"doc\":\"old\"", "\"doc\":\"old\",\"aliases\":[\"OldR\"]");
+    return new Object[][] { { false, record, reorderedRecord, record.replace("old", "new") },
+        { true, record, reorderedRecord, record.replace("old", "new") },
+        { false, aliasedRecord, aliasedRecord, aliasedRecord.replace("OldR", "OtherR") },
+        { true, aliasedRecord, aliasedRecord, aliasedRecord.replace("OldR", "OtherR") },
+        { false, enumSchema, enumSchema, enumSchema.replace("\"default\":\"A\"", "\"default\":\"B\"") },
+        { true, enumSchema, enumSchema, enumSchema.replace("\"default\":\"A\"", "\"default\":\"B\"") } };
+  }
+
+  @Test(dataProvider = "schemaContent", timeOut = 15_000)
+  public void testIdempotentSchemaCreationPreservesContent(
+      boolean derived,
+      String original,
+      String equivalent,
+      String conflicting) {
+    String storeName = "schema_content";
+    createStore(storeName);
+    addSchema(derived, storeName, original);
+    addSchema(derived, storeName, equivalent);
+
+    Assert.assertThrows(VeniceException.class, () -> addSchema(derived, storeName, conflicting));
+
+    SchemaEntry stored =
+        derived ? accessor.getDerivedSchema(storeName, "1-1") : accessor.getValueSchema(storeName, "1");
+    Assert.assertEquals(stored.getSchema().toString(), new SchemaEntry(1, original).getSchema().toString());
+  }
+
+  private void addSchema(boolean derived, String storeName, String schema) {
+    if (derived) {
+      accessor.addDerivedSchema(storeName, new DerivedSchemaEntry(1, 1, schema));
+    } else {
+      accessor.addValueSchema(storeName, new SchemaEntry(1, schema));
+    }
+  }
+
+  private <T> List<T> registerConcurrently(Callable<T> first, Callable<T> second) throws Exception {
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CyclicBarrier start = new CyclicBarrier(2);
+    try {
+      Future<T> firstResult = executor.submit(() -> {
+        start.await(5, TimeUnit.SECONDS);
+        return first.call();
+      });
+      Future<T> secondResult = executor.submit(() -> {
+        start.await(5, TimeUnit.SECONDS);
+        return second.call();
+      });
+      return Arrays.asList(firstResult.get(5, TimeUnit.SECONDS), secondResult.get(5, TimeUnit.SECONDS));
+    } finally {
+      executor.shutdownNow();
+      Assert.assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+    }
   }
 
   @Test

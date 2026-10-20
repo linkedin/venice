@@ -71,8 +71,9 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
   void removeValueSchema(String storeName, int schemaID);
 
   /**
-   * Register a listener to be notified when a new value schema is durably persisted for any store.
-   * Listeners are not invoked for duplicate schemas. Mirrors the
+   * Register a listener to be notified when this repository call durably creates a new value schema
+   * for any store. Listeners are not invoked for idempotent re-registration, including explicit-ID
+   * registration when the schema already exists or a concurrent writer creates it first. Mirrors the
    * {@code registerStoreDataChangedListener} pattern on {@link ReadOnlyStoreRepository}.
    */
   void registerValueSchemaCreatedListener(ValueSchemaCreatedListener listener);

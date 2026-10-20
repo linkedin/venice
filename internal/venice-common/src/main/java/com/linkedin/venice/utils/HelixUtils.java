@@ -9,7 +9,9 @@ import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiPredicate;
 import org.apache.commons.lang.StringUtils;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
@@ -22,6 +24,8 @@ import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.MaintenanceSignal;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
+import org.apache.helix.zookeeper.zkclient.exception.ZkException;
+import org.apache.helix.zookeeper.zkclient.exception.ZkInterruptedException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -139,14 +143,61 @@ public final class HelixUtils {
   }
 
   public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int maxAttempts) {
+    create(dataAccessor, path, data, maxAttempts, null);
+  }
+
+  /**
+   * Creates immutable data, or verifies that a concurrent creator persisted matching data.
+   *
+   * @return true if this call created the node; false if matching data already existed
+   * @throws VeniceException if the node contains conflicting data
+   */
+  public static <T> boolean createIfAbsent(
+      ZkBaseDataAccessor<T> dataAccessor,
+      String path,
+      T data,
+      int maxAttempts,
+      BiPredicate<T, T> sameData) {
+    Objects.requireNonNull(sameData, "sameData");
+    if (maxAttempts < 1) {
+      throw new IllegalArgumentException("maxAttempts must be positive");
+    }
+    return create(dataAccessor, path, data, maxAttempts, sameData);
+  }
+
+  private static <T> boolean create(
+      ZkBaseDataAccessor<T> dataAccessor,
+      String path,
+      T data,
+      int maxAttempts,
+      BiPredicate<T, T> sameData) {
     int attempt = 0;
     while (attempt < maxAttempts) {
       if (dataAccessor.create(path, data, AccessOption.PERSISTENT)) {
-        return;
+        return true;
+      }
+      if (sameData != null) {
+        T existingData = null;
+        try {
+          existingData = dataAccessor.get(path, null, AccessOption.PERSISTENT);
+        } catch (ZkInterruptedException e) {
+          throw e;
+        } catch (ZkException e) {
+          LOGGER.warn("Failed to verify existing data at path: {} after unsuccessful create.", path, e);
+        }
+        if (existingData != null) {
+          if (!sameData.test(existingData, data)) {
+            throw new VeniceException("Conflicting data already exists at path: " + path);
+          }
+          return false;
+        }
       }
       attempt++;
       handleFailedHelixOperation(path, "create", attempt, maxAttempts);
     }
+    // With positive maxAttempts, handleFailedHelixOperation throws on the final failed attempt.
+    // This fallback only serves legacy create() calls with non-positive maxAttempts.
+    return false;
   }
 
   public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data) {
