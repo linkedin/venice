@@ -205,19 +205,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     // Serve from the cache before any routing failure check, so cached keys stay available during a routing outage.
     if (recordCache != null) {
-      FastClientRecordCache.CachedValue cached = recordCache.get(ByteBuffer.wrap(requestContext.getSerializedKey()));
+      FastClientRecordCache.CachedValue cached =
+          lookUpInCache(requestContext.getSerializedKey(), requestContext.getCurrentVersion());
       FastClientStats stats = config.getStats(RequestType.SINGLE_GET);
       if (cached != null) {
         if (stats != null) {
           stats.recordCacheHitKeyCount(1);
         }
         requestContext.successRequestKeyCount.incrementAndGet();
-        valueFuture.complete(
-            tryToDeserialize(
-                getDataRecordDeserializer(cached.getSchemaId()),
-                cached.getValue(),
-                cached.getSchemaId(),
-                key));
+        valueFuture.complete(deserializeCachedValue(cached, key));
         return valueFuture;
       }
       if (stats != null) {
@@ -280,6 +276,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           try {
             routeRequestFutureFinal.complete(SC_OK);
             CompressionStrategy compressionStrategy = response.getCompressionStrategy();
+            // Cache the bytes as received, before decompression, so a compressed store fits more keys in the budget.
+            if (recordCache != null) {
+              recordCache.put(
+                  ByteBuffer.wrap(requestContext.getSerializedKey()),
+                  response.getBody(),
+                  response.getSchemaId(),
+                  compressionStrategy,
+                  requestContext.currentVersion);
+            }
             long nanoTsBeforeDecompression = System.nanoTime();
             ByteBuffer data = decompressRecord(
                 compressionStrategy,
@@ -289,11 +294,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             requestContext.decompressionTime = LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDecompression);
             long nanoTsBeforeDeserialization = System.nanoTime();
             RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
-            // Snapshot the decompressed bytes before deserialization consumes the buffer.
-            if (recordCache != null) {
-              recordCache
-                  .put(ByteBuffer.wrap(requestContext.getSerializedKey()), copyRemaining(data), response.getSchemaId());
-            }
             V value = tryToDeserialize(deserializer, data, response.getSchemaId(), key);
             requestContext.responseDeserializationTime =
                 LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDeserialization);
@@ -378,22 +378,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
    * CPU cost in exchange for skipping the server round trip on a hit.
    */
   private Set<K> serveBatchGetFromCache(Set<K> keys, StreamingCallback<K, V> callback) {
+    int currentVersion = metadata.getCurrentStoreVersion();
     Set<K> missedKeys = new HashSet<>(keys.size());
     int hitCount = 0;
     for (K key: keys) {
-      FastClientRecordCache.CachedValue cached = recordCache.get(ByteBuffer.wrap(keySerializer.serialize(key)));
+      FastClientRecordCache.CachedValue cached = lookUpInCache(keySerializer.serialize(key), currentVersion);
       if (cached == null) {
         missedKeys.add(key);
         continue;
       }
       hitCount++;
-      callback.onRecordReceived(
-          key,
-          tryToDeserialize(
-              getDataRecordDeserializer(cached.getSchemaId()),
-              cached.getValue(),
-              cached.getSchemaId(),
-              key));
+      callback.onRecordReceived(key, deserializeCachedValue(cached, key));
     }
     FastClientStats stats = config.getStats(RequestType.MULTI_GET_STREAMING);
     if (stats != null) {
@@ -405,6 +400,29 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       }
     }
     return missedKeys;
+  }
+
+  /**
+   * Look up {@code serializedKey}, treating an entry from any other store version as a miss. Compressed bytes are
+   * only decodable by the compressor of the version they were read from, because
+   * {@link CompressionStrategy#ZSTD_WITH_DICT} dictionaries are per version.
+   */
+  private FastClientRecordCache.CachedValue lookUpInCache(byte[] serializedKey, int currentVersion) {
+    FastClientRecordCache.CachedValue cached = recordCache.get(ByteBuffer.wrap(serializedKey));
+    return cached != null && cached.getVersion() == currentVersion ? cached : null;
+  }
+
+  /**
+   * Decompress and deserialize a cache hit, reusing the same decompression and deserialization path as a server
+   * response so compression handling stays in one place.
+   */
+  private V deserializeCachedValue(FastClientRecordCache.CachedValue cached, K key) {
+    ByteBuffer data = decompressRecord(
+        cached.getCompressionStrategy(),
+        cached.getValue(),
+        cached.getVersion(),
+        metadata.getCompressor(cached.getCompressionStrategy(), cached.getVersion()));
+    return tryToDeserialize(getDataRecordDeserializer(cached.getSchemaId()), data, cached.getSchemaId(), key);
   }
 
   /**
@@ -596,6 +614,16 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     VeniceCompressor compressor =
         metadata.getCompressor(transportClientResponse.getCompressionStrategy(), requestContext.currentVersion);
     for (MultiGetResponseRecordV1 r: records) {
+      MultiKeyRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
+      // Cache the bytes as received, before decompression, so a compressed store fits more keys in the budget.
+      if (recordCache != null) {
+        recordCache.put(
+            ByteBuffer.wrap(k.getSerializedKey()),
+            copyRemaining(r.value),
+            r.getSchemaId(),
+            transportClientResponse.getCompressionStrategy(),
+            requestContext.currentVersion);
+      }
       long nanoTsBeforeDecompression = System.nanoTime();
 
       ByteBuffer decompressRecord = decompressRecord(
@@ -607,11 +635,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       long nanoTsBeforeDeserialization = System.nanoTime();
       totalDecompressionTimeForResponse += nanoTsBeforeDeserialization - nanoTsBeforeDecompression;
       RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(r.getSchemaId());
-      MultiKeyRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
-      // Snapshot the decompressed bytes before deserialization consumes the buffer.
-      if (recordCache != null) {
-        recordCache.put(ByteBuffer.wrap(k.getSerializedKey()), copyRemaining(decompressRecord), r.getSchemaId());
-      }
       V deserializedValue = dataRecordDeserializer.deserialize(decompressRecord);
       requestContext.recordRecordDeserializationTime(
           transportClientResponse.getRouteId(),
