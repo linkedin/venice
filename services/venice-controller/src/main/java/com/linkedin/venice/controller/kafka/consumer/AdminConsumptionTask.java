@@ -859,7 +859,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     if (kafkaKey.isControlMessage()) {
       LOGGER.debug("Received control message: {}", kafkaValue);
-      return UNASSIGNED_VALUE;
+      if (producerInfo == null && record.getPosition().equals(lastPersistedPosition)) {
+        // An inclusive checkpoint replay can start at a control record after a leadership handover.
+        updateProducerInfo(kafkaValue.producerMetadata);
+      }
+      // Position persistence still waits for all delegated admin operations to complete.
+      return lastDelegatedExecutionId;
     }
     // check message type
     if (MessageType.PUT != messageType) {

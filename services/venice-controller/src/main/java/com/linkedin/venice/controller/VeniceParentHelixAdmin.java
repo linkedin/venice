@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
@@ -2456,6 +2457,10 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (futureVersionBeforeRollForward <= 0) {
+        // Reconciliation needs successful discovery in every region, including regions outside the filter.
+        if (futureVersionsBeforeRollForward.containsValue(String.valueOf(IGNORED_CURRENT_VERSION))) {
+          throw new VeniceException("Roll forward failed without complete future version responses");
+        }
         Store parentStore = getStore(clusterName, storeName);
         Version deferredVersion = parentStore == null
             ? null
@@ -2561,11 +2566,13 @@ public class VeniceParentHelixAdmin implements Admin {
       MultiStoreStatusResponse response = entry.getValue().getFutureVersionsWithTimeout(storeName, timeoutMs);
       if (response == null || response.isError() || response.getStoreStatusMap() == null
           || response.getStoreStatusMap().get(storeName) == null) {
-        throw new VeniceException(
+        LOGGER.warn(
             "Could not query future version in region " + entry.getKey() + ": "
                 + (response == null ? "missing response" : response.getError()));
+        futureVersions.put(entry.getKey(), String.valueOf(IGNORED_CURRENT_VERSION));
+      } else {
+        futureVersions.put(entry.getKey(), response.getStoreStatusMap().get(storeName));
       }
-      futureVersions.put(entry.getKey(), response.getStoreStatusMap().get(storeName));
     }
     return futureVersions;
   }

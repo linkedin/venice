@@ -1013,6 +1013,132 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test
+  public void testTrailingControlRecordCheckpointSurvivesParentHandover() throws Exception {
+    PubSubPosition adminPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    veniceWriter.close();
+    InMemoryPubSubPosition endPosition =
+        inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    PubSubPosition controlPosition = InMemoryPubSubPosition.of(endPosition.getInternalOffset() - 1);
+    Assert.assertNotEquals(controlPosition, adminPosition);
+
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
+    Future<?> consumption = executor.submit(task);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(getLastPosition(clusterName), controlPosition);
+        Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+      });
+    } finally {
+      task.close();
+      consumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+
+    // A new writer can legitimately leave a gap after an abandoned execution-ID allocation.
+    veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
+    String nextStoreName = "test_store_after_handover";
+    PubSubPosition nextPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, nextStoreName, owner, keySchema, valueSchema, 3),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask replacement = getAdminConsumptionTask(new RandomPollStrategy(), true, stats, TIMEOUT);
+    Future<?> replacementConsumption = executor.submit(replacement);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(getLastPosition(clusterName), nextPosition);
+        Assert.assertEquals(getLastExecutionId(clusterName), 3L);
+      });
+    } finally {
+      replacement.close();
+      replacementConsumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+    verify(mockKafkaConsumer).subscribe(any(), eq(controlPosition));
+    verify(admin, times(1)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+    verify(admin, times(1)).createStore(clusterName, nextStoreName, owner, keySchema, valueSchema, false);
+    verify(stats, never()).recordAdminTopicDIVErrorReportCount();
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testTrailingControlRecordDoesNotCheckpointPendingOperation(boolean isParent) throws Exception {
+    PubSubPosition checkpoint = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, "test_store_before_pending", owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setPubSubPosition(checkpoint);
+    metadata.setExecutionId(1L);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+    PubSubPosition adminPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    veniceWriter.close();
+    doThrow(new VeniceException("Store creation is pending")).when(admin)
+        .createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), isParent);
+    Future<?> consumption = executor.submit(task);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(
+          TIMEOUT,
+          TimeUnit.MILLISECONDS,
+          () -> Assert.assertEquals(task.getFailingPosition(), adminPosition));
+    } finally {
+      task.close();
+      consumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+    Assert.assertEquals(getLastPosition(clusterName), checkpoint);
+    Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testTrailingControlRecordDoesNotBypassExecutionIdGap(boolean isParent) throws Exception {
+    PubSubPosition successfulPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    InMemoryPubSubPosition missingPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, "test_store_missing", owner, keySchema, valueSchema, 2),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    PubSubPosition failingPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, "test_store_with_gap", owner, keySchema, valueSchema, 3),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    veniceWriter.close();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(topicName),
+        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    PollStrategy pollStrategy = new FilteringPollStrategy(
+        new RandomPollStrategy(false),
+        Collections
+            .singleton(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition())));
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, isParent);
+    Future<?> consumption = executor.submit(task);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(task.getFailingPosition(), failingPosition);
+        Assert.assertEquals(getLastPosition(clusterName), successfulPosition);
+      });
+    } finally {
+      task.close();
+      consumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+    Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+    verify(admin, never()).createStore(clusterName, "test_store_missing", owner, keySchema, valueSchema, false);
+    verify(admin, never()).createStore(clusterName, "test_store_with_gap", owner, keySchema, valueSchema, false);
+  }
+
+  @Test
   public void testGetLastSucceedExecutionId() throws Exception {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
     executor.submit(task);

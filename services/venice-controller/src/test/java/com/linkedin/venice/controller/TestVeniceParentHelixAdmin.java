@@ -2552,7 +2552,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         { "child-rollback-pending", false }, { "missing-checkpoint", false }, { "checkpoint-error", false },
         { "missing-child-id", false }, { "missing-parent-checkpoint", false }, { "broker-error", false },
         { "missing-store", false }, { "store-error", false }, { "rolled-back", false }, { "deadline", false },
-        { "targeted", false }, { "newer-parent-version", false }, { "empty-regions", false } };
+        { "targeted", false }, { "newer-parent-version", false }, { "empty-regions", false }, { "future-error", false },
+        { "excluded-future-error", false }, { "missing-future-response", false }, { "missing-future-map", false },
+        { "missing-future-store", false } };
   }
 
   @Test(dataProvider = "explicitDeferredSwapRecovery")
@@ -2596,9 +2598,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
     AtomicLong clock = new AtomicLong();
     doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
-    for (ControllerClient client: clients.values()) {
+    boolean failedFutureDiscovery = state.contains("future");
+    for (Map.Entry<String, ControllerClient> entry: clients.entrySet()) {
+      ControllerClient client = entry.getValue();
       MultiStoreStatusResponse future = new MultiStoreStatusResponse();
       future.setStoreStatusMap(Collections.singletonMap(storeName, String.valueOf(Store.NON_EXISTING_VERSION)));
+      if (failedFutureDiscovery && "dc-1".equals(entry.getKey())) {
+        if (state.endsWith("future-error")) {
+          future.setError("Cannot read future version");
+        } else if ("missing-future-map".equals(state)) {
+          future.setStoreStatusMap(null);
+        } else if ("missing-future-store".equals(state)) {
+          future.setStoreStatusMap(Collections.emptyMap());
+        } else if ("missing-future-response".equals(state)) {
+          future = null;
+        }
+      }
       doReturn(future).when(client).getFutureVersionsWithTimeout(eq(storeName), anyInt());
       AdminTopicMetadataResponse checkpoint = new AdminTopicMetadataResponse();
       checkpoint.setExecutionId("child-rollback-pending".equals(state) ? 9 : 10);
@@ -2633,7 +2648,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       verify(store).updateVersionStatus(5, ONLINE);
       verify(store).setCurrentVersion(5);
     } else {
-      expectThrows(VeniceException.class, () -> admin.rollForwardToFutureVersion(clusterName, storeName, ""));
+      expectThrows(
+          VeniceException.class,
+          () -> admin
+              .rollForwardToFutureVersion(clusterName, storeName, "excluded-future-error".equals(state) ? "dc-0" : ""));
       verify(store, never()).updateVersionStatus(5, ONLINE);
       verify(store, never()).setCurrentVersion(5);
     }
@@ -2641,6 +2659,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(admin, never()).sendAdminMessageAndWaitForConsumed(anyString(), anyString(), any());
     for (ControllerClient client: clients.values()) {
       verify(client, never()).rollForwardToFutureVersion(anyString(), anyString(), anyInt());
+      if (failedFutureDiscovery) {
+        verify(client, never()).getAdminTopicMetadataWithTimeout(any(), anyInt());
+        verify(client, never()).getStoreWithTimeout(anyString(), anyInt());
+      }
     }
   }
 
@@ -4900,8 +4922,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "");
   }
 
-  @Test
-  public void testRollForwardSuccess() {
+  @DataProvider
+  public Object[][] rollForwardExcludedRegionResponses() {
+    return new Object[][] { { "success" }, { "error" }, { "missing-response" }, { "missing-map" },
+        { "missing-store" } };
+  }
+
+  @Test(dataProvider = "rollForwardExcludedRegionResponses")
+  public void testRollForwardSuccess(String excludedRegionResponse) {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
     doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
@@ -4909,29 +4937,67 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ExecutionIdAccessor executionIdAccessor = internalAdmin.getExecutionIdAccessor();
     doReturn(11L).when(executionIdAccessor).getLastGeneratedExecutionId(clusterName);
 
-    Map<String, String> future = Collections.singletonMap("r1", "5");
-    doReturn(future).when(adminSpy).getFutureVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
+    Map<String, ControllerClient> clients = new HashMap<>();
+    ControllerClient includedClient = mock(ControllerClient.class);
+    ControllerClient excludedClient = mock(ControllerClient.class);
+    clients.put("r1", includedClient);
+    clients.put("r2", excludedClient);
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    AtomicLong clock = new AtomicLong();
+    doAnswer(invocation -> clock.get()).when(adminSpy).deferredSwapRecoveryTimeNs();
+    MultiStoreStatusResponse includedFuture = new MultiStoreStatusResponse();
+    includedFuture.setStoreStatusMap(Collections.singletonMap(storeName, "5"));
+    doReturn(includedFuture).when(includedClient).getFutureVersionsWithTimeout(eq(storeName), anyInt());
+    MultiStoreStatusResponse excludedFuture = new MultiStoreStatusResponse();
+    excludedFuture.setStoreStatusMap(Collections.singletonMap(storeName, "5"));
+    switch (excludedRegionResponse) {
+      case "error":
+        excludedFuture.setError("Store does not exist in excluded region");
+        break;
+      case "missing-response":
+        excludedFuture = null;
+        break;
+      case "missing-map":
+        excludedFuture.setStoreStatusMap(null);
+        break;
+      case "missing-store":
+        excludedFuture.setStoreStatusMap(Collections.emptyMap());
+        break;
+      default:
+        break;
+    }
+    doReturn(excludedFuture).when(excludedClient).getFutureVersionsWithTimeout(eq(storeName), anyInt());
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
 
-    Map<String, Integer> after = Collections.singletonMap("r1", 5);
+    Map<String, Integer> after = new HashMap<>();
+    after.put("r1", 5);
+    after.put("r2", "success".equals(excludedRegionResponse) ? 5 : IGNORED_CURRENT_VERSION);
     doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
     Version version = mock(Version.class);
     doReturn(true).when(version).isVersionSwapDeferred();
     doReturn(version).when(store).getVersion(5);
     doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+    for (Map.Entry<String, ControllerClient> entry: clients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
       doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
-    verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
-    verify(store).setCurrentVersion(5);
-    for (ControllerClient client: controllerClients.values()) {
+    if ("success".equals(excludedRegionResponse)) {
+      verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
+      verify(store).setCurrentVersion(5);
+    } else {
+      verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
+      verify(store, never()).setCurrentVersion(anyInt());
+    }
+    for (ControllerClient client: clients.values()) {
+      verify(client).getFutureVersionsWithTimeout(storeName, 5000);
+      verify(client).rollForwardToFutureVersion(eq(storeName), eq("r1"), anyInt());
       verify(client, never()).getAdminTopicMetadata(any());
+      verify(client, never()).getAdminTopicMetadataWithTimeout(any(), anyInt());
     }
   }
 
