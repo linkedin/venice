@@ -18,8 +18,10 @@ import com.linkedin.venice.schema.SchemaEntry;
  */
 public interface ValueSchemaCreatedListener {
   /**
-   * Fired after a new value schema is durably persisted. Not fired for duplicate schemas (i.e. when
-   * the same schema was already registered).
+   * Fired after this repository call durably creates a new value schema. Not fired for idempotent
+   * re-registration, including explicit-ID registration when the same schema already exists or a
+   * concurrent writer creates it first. This is a local creation callback, not a notification for
+   * every {@code addValueSchema} invocation or a subscription to other writers' schema changes.
    *
    * @param store       read-only snapshot of the store the schema belongs to
    * @param schemaEntry the schema that was just persisted (id + schema body)

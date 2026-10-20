@@ -85,14 +85,16 @@ public class HelixReadWriteSchemaRepositoryTest {
   public void testValueSchemaCreatedListenerSkippedForDuplicateSchema() {
     String storeName = "testStore";
     SchemaEntry existing = new SchemaEntry(1, "\"string\"");
-    HelixReadWriteSchemaRepository repo = newRepoWithStore(storeName, Arrays.asList(existing));
+    HelixReadWriteSchemaRepository repo = newRepoWithStore(storeName, Arrays.asList(existing), false);
 
     ValueSchemaCreatedListener listener = mock(ValueSchemaCreatedListener.class);
     repo.registerValueSchemaCreatedListener(listener);
 
     // DUPLICATE_VALUE_SCHEMA_CODE → repo computes next id, finds duplicate, returns DUPLICATE_VALUE_SCHEMA_CODE
     repo.addValueSchema(storeName, "\"string\"", SchemaData.DUPLICATE_VALUE_SCHEMA_CODE);
+    SchemaEntry result = repo.addValueSchema(storeName, "\"string\"", existing.getId());
 
+    Assert.assertEquals(result.getId(), existing.getId());
     verify(listener, never()).handleValueSchemaCreated(any(), any());
   }
 
