@@ -40,6 +40,12 @@ push. Users may turn off this automation and perform validations and chain it wi
 push to achieve the same effect as full push in terms of data integrity, but the store versions across different regions
 might be not the same depending on the exact setup.
 
+With deferred version swap, a reachable child controller that has not created the new version yet is allowed to catch up
+until the store's bootstrap-to-online timeout, measured from the parent version's creation time (24 hours by default).
+Failed controller requests and missing versions that the child has already created retain a five-poll retry limit.
+Unresolved `PARTIALLY_ONLINE` versions remain visible in the stalled-swap metric until the remaining regions serve the
+new version; they still require manual roll forward or a subsequent push to recover.
+
 ## Usage
 
 The Push Job is designed to require as few configs as possible. The following mandatory configs should be unique to each

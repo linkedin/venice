@@ -8,8 +8,10 @@ import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
@@ -46,8 +48,10 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -315,6 +319,137 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         null,
         null,
         extraInfoUpdateTimestamp);
+  }
+
+  @DataProvider(name = "versionFetchScenarios")
+  public Object[][] versionFetchScenarios() {
+    List<Object[]> cases = new ArrayList<>();
+    for (boolean sequential: new boolean[] { true, false }) {
+      for (String scenario: Arrays.asList("lag", "timeout", "deleted", "unreachable", "ERROR", "KILLED", "partial")) {
+        cases.add(new Object[] { sequential, scenario });
+      }
+    }
+    cases.add(new Object[] { true, "first-region-timeout" });
+    return cases.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "versionFetchScenarios")
+  public void testVersionFetchRecoveryAndFailure(boolean sequential, String scenario) throws Exception {
+    Store store = mockStore(versionOne, versionTwo, "testStore");
+    Version targetVersion = store.getVersion(versionTwo);
+    boolean timeout = scenario.endsWith("timeout");
+    boolean firstRegion = scenario.equals("first-region-timeout");
+    doReturn(1).when(store).getBootstrapToOnlineTimeoutInHours();
+    doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(timeout ? 120 : 45)).when(targetVersion)
+        .getCreatedTime();
+    doReturn(store).when(repository).getStore("testStore");
+    controllerClientMap = new HashMap<>(veniceHelixAdmin.getControllerClientMap(clusterName));
+    controllerClientMap.remove(region3);
+    Map<String, Integer> currentVersions = new HashMap<>();
+    currentVersions.put(region1, firstRegion ? versionOne : versionTwo);
+    currentVersions.put(region2, versionOne);
+    doReturn(currentVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, "testStore");
+    long completionTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC) - TimeUnit.MINUTES.toSeconds(30);
+    doReturn(
+        getOfflinePushStatusInfo("COMPLETED", "COMPLETED", "COMPLETED", completionTime, completionTime, completionTime))
+            .when(admin)
+            .getOffLinePushStatus(clusterName, "testStore_v2");
+
+    StoreResponse response = new StoreResponse();
+    StoreInfo childStore = new StoreInfo();
+    childStore.setVersions(new ArrayList<>());
+    childStore.setCurrentVersion(versionOne);
+    childStore.setLargestUsedVersionNumber(scenario.equals("deleted") ? versionTwo : versionOne);
+    response.setStore(childStore);
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("Child controller is unavailable");
+    Version childVersion = new VersionImpl("testStore", versionTwo);
+    if (scenario.equals("ERROR") || scenario.equals("KILLED")) {
+      childVersion.setStatus(VersionStatus.valueOf(scenario));
+      childStore.setVersions(Arrays.asList(childVersion));
+    }
+    if (scenario.equals("partial")) {
+      doReturn(VersionStatus.PARTIALLY_ONLINE).when(targetVersion).getStatus();
+    }
+    ControllerClient child = controllerClientMap.get(firstRegion ? region1 : region2);
+    doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
+    doReturn(scenario.equals("unreachable") ? errorResponse : response).when(child)
+        .getStore("testStore", controllerTimeout);
+    DeferredVersionSwapService service =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    Runnable poll = () -> {
+      if (sequential) {
+        service.performSequentialRollForward(
+            clusterName,
+            store,
+            controllerClientMap,
+            Arrays.asList(region1, region2),
+            targetVersion);
+      } else {
+        service.performParallelRollForward(clusterName, store, controllerClientMap, targetVersion);
+      }
+    };
+    try {
+      if (scenario.equals("lag")) {
+        doReturn(errorResponse).when(child).getStore("testStore", controllerTimeout);
+        for (int i = 0; i < 4; i++) {
+          poll.run();
+        }
+        doReturn(response).when(child).getStore("testStore", controllerTimeout);
+        for (int i = 0; i < 6; i++) {
+          poll.run();
+        }
+        doReturn(errorResponse).when(child).getStore("testStore", controllerTimeout);
+        for (int i = 0; i < 4; i++) {
+          poll.run();
+        }
+        doReturn(response).when(child).getStore("testStore", controllerTimeout);
+        childStore.setVersions(Arrays.asList(childVersion));
+        childStore.setLargestUsedVersionNumber(versionTwo);
+        childVersion.setStatus(VersionStatus.STARTED);
+        for (int i = 0; i < 6; i++) {
+          poll.run();
+        }
+        verify(store, never()).updateVersionStatus(anyInt(), any());
+        verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+        childVersion.setStatus(VersionStatus.PUSHED);
+        poll.run();
+        verify(admin).rollForwardToFutureVersion(clusterName, "testStore", region2);
+        verify(store).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      } else if (scenario.equals("partial")) {
+        poll.run();
+        poll.run();
+        verify(stats, times(1)).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
+        childStore.setVersions(Arrays.asList(childVersion));
+        for (VersionStatus status: Arrays.asList(VersionStatus.PUSHED, VersionStatus.ERROR, VersionStatus.ONLINE)) {
+          childVersion.setStatus(status);
+          poll.run();
+        }
+        verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
+        childStore.setCurrentVersion(versionTwo);
+        poll.run();
+      } else {
+        if (scenario.equals("deleted") || scenario.equals("unreachable")) {
+          for (int i = 0; i < 4; i++) {
+            poll.run();
+          }
+          verify(store, never()).updateVersionStatus(anyInt(), any());
+        }
+        poll.run();
+        verify(store)
+            .updateVersionStatus(versionTwo, firstRegion ? VersionStatus.ERROR : VersionStatus.PARTIALLY_ONLINE);
+      }
+      if (!scenario.equals("lag")) {
+        verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+      }
+      if ((scenario.equals("lag") && sequential) || scenario.equals("partial")) {
+        InOrder metricOrder = inOrder(stats);
+        metricOrder.verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
+        metricOrder.verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
+      }
+    } finally {
+      service.stopInner();
+    }
   }
 
   /**

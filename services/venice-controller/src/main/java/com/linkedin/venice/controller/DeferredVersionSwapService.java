@@ -367,16 +367,20 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String targetRegion) {
     // The version could've been manually rolled forward in non target regions. If that is the case, we should check if
     // we emitted any stalled metric for it and remove it if so
-    if (stalledVersionSwapSet.contains(storeName)) {
+    boolean partiallyOnline = targetVersion.getStatus() == PARTIALLY_ONLINE;
+    if (stalledVersionSwapSet.contains(storeName) || partiallyOnline) {
       boolean didPushCompleteInNonTargetRegions = doesRegionsHaveVersionStatus(
           nonTargetRegions,
           clusterName,
           storeName,
           targetVersion.getNumber(),
-          VERSION_SWAP_COMPLETION_STATUSES);
+          partiallyOnline ? TERMINAL_PUSH_VERSION_STATUSES : VERSION_SWAP_COMPLETION_STATUSES);
       if (didPushCompleteInNonTargetRegions) {
-        stalledVersionSwapSet.remove(storeName);
-        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
+        if (stalledVersionSwapSet.remove(storeName)) {
+          deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
+        }
+      } else if (partiallyOnline) {
+        recordStalledVersionSwap(storeName);
       }
     }
 
@@ -526,16 +530,21 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed in target region "
           + targetRegion;
       logMessageIfNotRedundant(message);
-      stalledVersionSwapSet.add(store.getName());
+      recordStalledVersionSwap(store.getName());
+    }
+  }
+
+  private void recordStalledVersionSwap(String storeName) {
+    if (stalledVersionSwapSet.add(storeName)) {
       deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
     }
   }
 
-  private void emitMetricIfVersionSwapIfStalledForSequentialRollout(
+  private void emitMetricIfSequentialVersionSwapIsStalled(
       String region,
       Store parentStore,
       int targetVersionNum,
-      String clusterName) {
+      StoreResponse storeResponse) {
     VersionStatus status = parentStore.getVersion(targetVersionNum).getStatus();
     if (status.equals(ONLINE) || status.equals(ERROR) || status.equals(PARTIALLY_ONLINE)) {
       return;
@@ -546,7 +555,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return;
     }
 
-    StoreResponse storeResponse = getStoreForRegion(clusterName, region, parentStore.getName());
     if (storeResponse == null) {
       return;
     }
@@ -568,9 +576,33 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String message = "Store: " + parentStore.getName() + " has not swapped to the target version: " + targetVersionNum
           + " and the wait time: " + parentStore.getTargetSwapRegionWaitTime() + " has passed in region " + region;
       logMessageIfNotRedundant(message);
-      stalledVersionSwapSet.add(parentStore.getName());
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
+      recordStalledVersionSwap(parentStore.getName());
     }
+  }
+
+  private boolean shouldStopWaitingForVersion(
+      StoreResponse storeResponse,
+      Store parentStore,
+      int targetVersionNum,
+      String regionKafkaTopicName) {
+    // A missing version at or below the child's largest-used version may have been deleted.
+    if (storeResponse == null || storeResponse.getStore().getLargestUsedVersionNumber() >= targetVersionNum) {
+      return didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName);
+    }
+
+    // A child whose largest-used version is behind may still be consuming the ADD_VERSION admin message.
+    fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
+    long bootstrapDeadlineMs = parentStore.getVersion(targetVersionNum).getCreatedTime()
+        + TimeUnit.HOURS.toMillis(parentStore.getBootstrapToOnlineTimeoutInHours());
+    if (System.currentTimeMillis() > bootstrapDeadlineMs) {
+      LOGGER.warn(
+          "Version {} is still missing after its bootstrap deadline {}",
+          regionKafkaTopicName,
+          bootstrapDeadlineMs);
+      return true;
+    }
+    logMessageIfNotRedundant("Waiting for child controller to create version " + regionKafkaTopicName);
+    return false;
   }
 
   private boolean didMaxRetriesExceedForStoreFetchInRegion(String regionKafkaTopicName) {
@@ -617,15 +649,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         getVersionFromStoreInRegion(nextEligibleRegion, parentStore.getName(), targetVersionNum, storeResponse);
     String regionKafkaTopicName = nextEligibleRegion + "_" + kafkaTopicName;
     if (version == null) {
-      boolean maxRetriesExceeded = didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName);
-      if (maxRetriesExceeded) {
+      emitMetricIfSequentialVersionSwapIsStalled(nextEligibleRegion, parentStore, targetVersionNum, storeResponse);
+      if (shouldStopWaitingForVersion(storeResponse, parentStore, targetVersionNum, regionKafkaTopicName)) {
         VersionStatus finalVersionStatus = rolloutOrder.indexOf(nextEligibleRegion) == 0 ? ERROR : PARTIALLY_ONLINE;
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
-            + targetVersionNum + "as the version is not available in region " + nextEligibleRegion
-            + " after 5 tries. Marking parent version as " + finalVersionStatus;
+            + targetVersionNum + " as the version could not be fetched in region " + nextEligibleRegion
+            + " within its retry or bootstrap limit. Marking parent version as " + finalVersionStatus;
         logMessageIfNotRedundant(message);
         updateStore(clusterName, parentStore.getName(), finalVersionStatus, targetVersionNum);
-        fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
       }
 
       LOGGER.warn(
@@ -731,13 +762,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Version version =
           getVersionFromStoreInRegion(nonTargetRegion, parentStore.getName(), targetVersionNum, storeResponse);
 
-      // When a push is killed or errored out, the topic may have been cleaned up or controller is temporarily
-      // unreachable so we will allow upto 5 retries before marking it as failed
       String regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
       if (version == null) {
-        if (didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName)) {
+        if (shouldStopWaitingForVersion(storeResponse, parentStore, targetVersionNum, regionKafkaTopicName)) {
           failedNonTargetRegions.add(nonTargetRegion);
-          fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
         }
 
         continue;
@@ -1032,7 +1060,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     };
   }
 
-  private void performSequentialRollForward(
+  void performSequentialRollForward(
       String cluster,
       Store parentStore,
       Map<String, ControllerClient> childControllerClientMap,
@@ -1103,11 +1131,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         return;
       }
 
-      emitMetricIfVersionSwapIfStalledForSequentialRollout(
+      emitMetricIfSequentialVersionSwapIsStalled(
           nextRegionToRollForward,
           parentStore,
           targetVersionNum,
-          cluster);
+          getStoreForRegion(cluster, nextRegionToRollForward, storeName));
 
       if (!didPostVersionSwapValidationsPass(
           parentStore,
@@ -1139,8 +1167,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           targetVersionNum,
           nextRegionToRollForward);
 
-      if (stalledVersionSwapSet.contains(parentStore.getName())) {
-        stalledVersionSwapSet.remove(parentStore.getName());
+      if (stalledVersionSwapSet.remove(parentStore.getName())) {
+        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
       }
 
       if (rolloutOrder.get(rolloutOrder.size() - 1).equals(nextRegionToRollForward)) {
@@ -1158,7 +1186,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     logLatency(startTime, storeName, targetVersionNum);
   }
 
-  private void performParallelRollForward(
+  void performParallelRollForward(
       String cluster,
       Store parentStore,
       Map<String, ControllerClient> childControllerClientMap,
