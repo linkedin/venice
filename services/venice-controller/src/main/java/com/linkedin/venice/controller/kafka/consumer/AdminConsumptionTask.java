@@ -18,10 +18,12 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
@@ -97,6 +99,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     private GUID producerGUID;
     private int segmentNumber;
     private int sequenceNumber;
+    private boolean segmentEnded;
 
     ProducerInfo(ProducerMetadata producerMetadata) {
       updateProducerMetadata(producerMetadata);
@@ -121,10 +124,22 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return incomingProducerMetadata.messageSequenceNumber <= sequenceNumber;
     }
 
+    boolean isIncomingControlMessageValid(ProducerMetadata incomingProducerMetadata, ControlMessageType controlType) {
+      if (incomingProducerMetadata.producerGUID.equals(producerGUID)
+          && incomingProducerMetadata.segmentNumber != segmentNumber) {
+        // A segment reset is continuous only after its predecessor's end was consumed.
+        return segmentEnded && controlType == ControlMessageType.START_OF_SEGMENT
+            && incomingProducerMetadata.segmentNumber == segmentNumber + 1
+            && incomingProducerMetadata.messageSequenceNumber == 0;
+      }
+      return isIncomingMessageValid(incomingProducerMetadata);
+    }
+
     void updateProducerMetadata(ProducerMetadata producerMetadata) {
       this.producerGUID = producerMetadata.producerGUID;
       this.segmentNumber = producerMetadata.segmentNumber;
       this.sequenceNumber = producerMetadata.messageSequenceNumber;
+      this.segmentEnded = false;
     }
 
     @Override
@@ -859,10 +874,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     if (kafkaKey.isControlMessage()) {
       LOGGER.debug("Received control message: {}", kafkaValue);
-      if (producerInfo == null && record.getPosition().equals(lastPersistedPosition)) {
-        // An inclusive checkpoint replay can start at a control record after a leadership handover.
-        updateProducerInfo(kafkaValue.producerMetadata);
+      ControlMessageType controlType = ControlMessageType.valueOf((ControlMessage) kafkaValue.payloadUnion);
+      if (!checkOffsetToSkipDIV(record.getPosition()) && producerInfo != null
+          && !producerInfo.isIncomingControlMessageValid(kafkaValue.producerMetadata, controlType)) {
+        throw new MissingDataException(
+            "Cannot checkpoint control message with discontinuous producer metadata. Previous producer info: "
+                + producerInfo + " Incoming message producer info: " + kafkaValue.producerMetadata);
       }
+      // This also initializes continuity when an inclusive checkpoint replay starts at a control record.
+      updateProducerInfo(kafkaValue.producerMetadata);
+      producerInfo.segmentEnded = controlType == ControlMessageType.END_OF_SEGMENT;
       // Position persistence still waits for all delegated admin operations to complete.
       return lastDelegatedExecutionId;
     }
