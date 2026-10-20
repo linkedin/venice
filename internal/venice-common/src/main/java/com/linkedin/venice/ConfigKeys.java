@@ -1058,9 +1058,21 @@ public class ConfigKeys {
    *
    * To mitigate this issue, we will add a delay in state transition: 'OFFLINE' -> 'DROPPED' to drain all the incoming
    * requests to the to-drop partition, and we will enable error-retry on Router as well.
+   * The delay applies to the current version and the newest ONLINE version below it (the backup version), since
+   * routers may still query the backup until they observe a version swap. Time already spent OFFLINE counts toward
+   * this delay; older and future versions are dropped without this delay. Backup-version draining can be disabled
+   * independently via {@link #SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED}.
    */
   public static final String SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS =
       "server.partition.graceful.drop.time.in.seconds";
+
+  /**
+   * Enables the graceful drop delay for the newest ONLINE version below current, regardless of when it last served.
+   * Defaults to true. Set to false to avoid backup drain waits occupying state-transition threads during cleanup;
+   * current-version draining is unaffected. Read at server startup, so changing this setting requires a restart.
+   */
+  public static final String SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED =
+      "server.backup.version.graceful.drop.enabled";
 
   /**
    * When a BDB partition is dropped, the disk space is not released immediately; a checkpoint is needed to release the disk space;

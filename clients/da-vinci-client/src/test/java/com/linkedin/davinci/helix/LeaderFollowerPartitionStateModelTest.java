@@ -6,12 +6,15 @@ import static com.linkedin.venice.helix.HelixState.OFFLINE_STATE;
 import static com.linkedin.venice.helix.HelixState.STANDBY_STATE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -38,11 +41,13 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -51,13 +56,18 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
+import org.mockito.MockedStatic;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -285,7 +295,7 @@ public class LeaderFollowerPartitionStateModelTest {
         "Case 2: Timestamp should be reset to -1 after transition");
 
     // Case 3: Multiple cycles maintain independent timestamps
-    when(store.getCurrentVersion()).thenReturn(storeVersion + 1); // Non-current to skip sleep
+    when(store.getCurrentVersion()).thenReturn(storeVersion + 1);
 
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
     long timestamp1 = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
@@ -396,44 +406,92 @@ public class LeaderFollowerPartitionStateModelTest {
         "Case 3: Timestamp should remain -1");
   }
 
-  /**
-   * Tests that non-current version skips graceful drop delay entirely.
-   */
-  @Test
-  public void testNonCurrentVersionSkipsGracefulDrop() {
+  @DataProvider
+  public Object[][] gracefulDropVersionRoles() {
+    return new Object[][] { { storeVersion, false, false, true, true }, { storeVersion + 2, false, false, true, true },
+        { storeVersion + 3, false, false, false, true }, { storeVersion - 2, false, false, false, true },
+        { Store.NON_EXISTING_VERSION, false, false, false, true }, { storeVersion + 2, true, false, true, true },
+        { storeVersion + 2, false, true, false, true }, { storeVersion, false, false, true, false },
+        { storeVersion + 2, false, false, false, false }, { storeVersion + 2, true, false, false, false } };
+  }
+
+  @Test(dataProvider = "gracefulDropVersionRoles")
+  public void testGracefulDropForCurrentAndBackupVersions(
+      int currentVersion,
+      boolean demoteBeforeDrop,
+      boolean versionRemovedFromMetadata,
+      boolean expectDelay,
+      boolean backupGracefulDropEnabled) {
     Message message = mock(Message.class);
     NotificationContext context = mock(NotificationContext.class);
     when(message.getResourceName()).thenReturn(resourceName);
-    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(10); // 10 seconds
+    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(30);
+    when(storeAndServerConfigs.isBackupVersionGracefulDropEnabled()).thenReturn(backupGracefulDropEnabled);
 
     Store store = mock(Store.class);
-    when(store.getCurrentVersion()).thenReturn(storeVersion + 1); // NOT current version
+    when(store.getCurrentVersion()).thenReturn(demoteBeforeDrop ? storeVersion : currentVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
-    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
+    Version failedVersion = new VersionImpl(storeName, storeVersion + 1, "test-push");
+    List<Version> versions = new ArrayList<>(
+        Arrays.asList(
+            new VersionImpl(storeName, storeVersion + 3, "test-push"),
+            new VersionImpl(storeName, storeVersion - 2, "test-push"),
+            new VersionImpl(storeName, storeVersion + 2, "test-push"),
+            failedVersion));
+    if (!versionRemovedFromMetadata) {
+      versions.add(new VersionImpl(storeName, storeVersion, "test-push"));
+    }
+    versions.forEach(version -> version.setStatus(VersionStatus.ONLINE));
+    failedVersion.setStatus(VersionStatus.ERROR);
+    when(store.getVersions()).thenReturn(versions);
 
-    // Transition to OFFLINE first to capture timestamp
-    Message offlineMessage = mock(Message.class);
-    when(offlineMessage.getResourceName()).thenReturn(resourceName);
-    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
+    if (demoteBeforeDrop) {
+      leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, context);
+      when(store.getCurrentVersion()).thenReturn(currentVersion);
+    }
 
-    long startTime = System.currentTimeMillis();
+    int expectedWaitCount = expectDelay ? 1 : 0;
+    long gracefulDropDelayMs = TimeUnit.SECONDS.toMillis(30);
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenAnswer(invocation -> {
+        long delayMs = invocation.getArgument(0);
+        assertTrue(delayMs > 0 && delayMs <= gracefulDropDelayMs);
+        if (!demoteBeforeDrop) {
+          assertEquals(delayMs, gracefulDropDelayMs);
+        }
+        verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+        return true;
+      });
 
-    // Execute OFFLINE->DROPPED transition
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, context);
+      leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, context);
 
-    long elapsedTime = System.currentTimeMillis() - startTime;
+      utils.verify(() -> Utils.sleep(anyLong()), times(expectedWaitCount));
+    }
 
-    // Should skip graceful drop entirely for non-current version
-    assertTrue(elapsedTime < 1000, "Should not wait for non-current version, waited: " + elapsedTime + "ms");
+    verify(stateTransitionStats, times(expectedWaitCount)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(stateTransitionStats, times(expectedWaitCount)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    assertEquals(leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(), -1L);
+  }
 
-    // Stats should not be incremented since no actual waiting occurs
-    // (graceful drop is skipped for non-current version, and partition removal future is already complete)
+  @Test
+  public void testDeletedStoreSkipsGracefulDropDelay() {
+    Message message = mock(Message.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(30);
+    doThrow(new VeniceNoStoreException(storeName)).when(metadataRepo).getStoreOrThrow(storeName);
+
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+
+      leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, mock(NotificationContext.class));
+
+      utils.verify(() -> Utils.sleep(anyLong()), never());
+    }
+
+    verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
     verify(stateTransitionStats, never()).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(stateTransitionStats, never()).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
-
-    // Verify timestamp is reset
-    long resetTimestamp = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
-    assertEquals(resetTimestamp, -1L, "Timestamp should be reset to -1 after transition");
   }
 
   /**

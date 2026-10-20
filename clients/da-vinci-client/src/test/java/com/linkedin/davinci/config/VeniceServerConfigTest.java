@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_S
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
@@ -100,6 +101,18 @@ public class VeniceServerConfigTest {
       VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
       assertEquals(config.getBlockedDrainerThresholdMs(), thresholdMs);
     }
+  }
+
+  @Test
+  public void testBackupVersionGracefulDropEnabledConfig() {
+    Properties props = populatedBasicProperties();
+    assertTrue(new VeniceServerConfig(new VeniceProperties(props)).isBackupVersionGracefulDropEnabled());
+
+    props.setProperty(SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED, "false");
+    assertFalse(new VeniceServerConfig(new VeniceProperties(props)).isBackupVersionGracefulDropEnabled());
+
+    props.setProperty(SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED, "true");
+    assertTrue(new VeniceServerConfig(new VeniceProperties(props)).isBackupVersionGracefulDropEnabled());
   }
 
   @Test
