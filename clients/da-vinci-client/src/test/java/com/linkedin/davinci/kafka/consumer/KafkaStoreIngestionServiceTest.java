@@ -512,6 +512,43 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
+  public void testReplacementWaitsForInactiveTaskShutdown() {
+    String topicName = "test-store_v1";
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    doReturn(new StoreVersionInfo(mockStore, mockStore.getVersion(1))).when(mockMetadataRepo)
+        .waitVersion(eq(storeName), eq(1), any());
+    VeniceServerConfig serverConfig = mockVeniceConfigLoader.getVeniceServerConfig();
+    doReturn(1).when(serverConfig).getShutdownSitWaitTimeSeconds();
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(
+        topicName,
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB));
+
+    kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
+    StoreIngestionTask oldTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    // Mimic an inactive task whose run() has not finished its cleanup yet.
+    oldTask.getGracefulShutdownLatch().get();
+    oldTask.close();
+
+    long startTimeMs = System.currentTimeMillis();
+    kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
+    assertTrue(System.currentTimeMillis() - startTimeMs >= TimeUnit.SECONDS.toMillis(1));
+    Assert.assertNotSame(kafkaStoreIngestionService.getStoreIngestionTask(topicName), oldTask);
+    kafkaStoreIngestionService.close();
+  }
+
+  @Test
   public void testStoreIngestionTaskShutdownLastPartition() {
     HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     /*

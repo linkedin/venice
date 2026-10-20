@@ -761,15 +761,15 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
-    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).removeLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(metadataRepo, times(2)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
 
     // 2. Test when store is not null and version is null
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(new StoreVersionInfo(store, null));
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
-    verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(
         any(Version.class),
         anyInt(),
@@ -780,7 +780,7 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
-    verify(metadataRepo, times(5)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(
         any(Version.class),
         anyInt(),
@@ -791,15 +791,15 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
-    verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService).removeLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, times(2)).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
 
     // 3. Test both store and version are not null
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(new StoreVersionInfo(store, version));
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
-    verify(metadataRepo, times(7)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(5)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService).addLeaderLagMonitor(
         version,
         partition,
@@ -810,7 +810,7 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
-    verify(metadataRepo, times(8)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService).addFollowerLagMonitor(
         version,
         partition,
@@ -821,8 +821,8 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
-    verify(metadataRepo, times(9)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, times(2)).removeLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, times(3)).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
   }
 
   @Test
@@ -1015,6 +1015,16 @@ public class HeartbeatMonitoringServiceTest {
               .intValue(),
           50);
     }
+
+    long currentFollowerCount =
+        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2);
+    Assert.assertTrue(currentFollowerCount > 0);
+    heartbeatMonitoringService.removeLagMonitors(backupVersion);
+    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1), 0);
+    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 0);
+    Assert.assertEquals(
+        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2),
+        currentFollowerCount);
   }
 
   @Test

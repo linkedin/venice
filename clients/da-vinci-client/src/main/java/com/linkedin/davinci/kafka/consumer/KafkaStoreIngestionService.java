@@ -883,6 +883,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
       StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
         if (v == null || !v.isIngestionTaskActive()) {
+          if (v != null) {
+            // The old task's cleanup is version-wide, so it must finish before the replacement adds state.
+            v.waitForShutdown(serverConfig.getShutdownSitWaitTimeSeconds());
+          }
           createNewStoreIngestionTask.set(true);
           return createStoreIngestionTask(veniceStore, partitionId, createPaused);
         }

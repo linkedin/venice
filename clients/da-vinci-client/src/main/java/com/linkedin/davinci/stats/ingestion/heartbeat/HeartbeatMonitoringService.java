@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -229,11 +230,18 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       String replicaId) {
     String storeName = version.getStoreName();
     int versionNum = version.getNumber();
-    boolean removed = heartbeatTimestamps.keySet()
-        .removeIf(key -> key.storeName.equals(storeName) && key.version == versionNum && key.partition == partition);
+    boolean removed = removeEntry(
+        heartbeatTimestamps,
+        key -> key.storeName.equals(storeName) && key.version == versionNum && key.partition == partition);
     if (removed) {
       LOGGER.info("Removed heartbeat entry for replica: {}", replicaId);
     }
+  }
+
+  private synchronized boolean removeEntry(
+      Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
+      Predicate<HeartbeatKey> matchesEntry) {
+    return heartbeatTimestamps.keySet().removeIf(matchesEntry);
   }
 
   /**
@@ -318,6 +326,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public void removeLagMonitor(Version version, int partition, String replicaId) {
     removeEntry(leaderHeartbeatTimeStamps, version, partition, replicaId);
     removeEntry(followerHeartbeatTimeStamps, version, partition, replicaId);
+  }
+
+  /**
+   * Removes all monitoring for a closed ingestion task, including partitions already unsubscribed due to errors.
+   */
+  public synchronized void removeLagMonitors(Version version) {
+    Predicate<HeartbeatKey> matchesVersion =
+        key -> key.storeName.equals(version.getStoreName()) && key.version == version.getNumber();
+    removeEntry(leaderHeartbeatTimeStamps, matchesVersion);
+    removeEntry(followerHeartbeatTimeStamps, matchesVersion);
+    LOGGER.info("Removed heartbeat monitoring for version: {}", version.kafkaTopicName());
   }
 
   public Map<String, ReplicaHeartbeatInfo> getHeartbeatInfo(
@@ -433,6 +452,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
+      if (heartbeatLagMonitorAction == HeartbeatLagMonitorAction.REMOVE_MONITOR) {
+        // Teardown must work even after store/version metadata has been deleted.
+        removeLagMonitor(new VersionImpl(storeName, storeVersion, ""), partitionId, replicaId);
+        return;
+      }
       StoreVersionInfo res =
           getMetadataRepository().waitVersion(storeName, storeVersion, getMaxWaitForVersionInfo(), 200);
       Store store = res.getStore();
@@ -445,16 +469,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         return;
       }
       if (version == null) {
-        if (!HeartbeatLagMonitorAction.REMOVE_MONITOR.equals(heartbeatLagMonitorAction)) {
-          LOGGER.error(
-              "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
-              replicaId,
-              heartbeatLagMonitorAction.getTrigger());
-          return;
-        }
-        // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
-        // It's valid to have null version when trying to remove lag monitor for the deleted resource.
-        version = new VersionImpl(storeName, storeVersion, "");
+        LOGGER.error(
+            "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
+            replicaId,
+            heartbeatLagMonitorAction.getTrigger());
+        return;
       }
       /*
        * Resolve SLO labels here, where we already hold the Store + Version that waitVersion just
@@ -475,9 +494,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           break;
         case SET_FOLLOWER_MONITOR:
           addFollowerLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus, replicationMode);
-          break;
-        case REMOVE_MONITOR:
-          removeLagMonitor(version, partitionId, replicaId);
           break;
         default:
       }
