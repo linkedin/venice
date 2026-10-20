@@ -330,6 +330,10 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       }
     }
     cases.add(new Object[] { true, "first-region-timeout" });
+    for (String scenario: Arrays
+        .asList("preceding-region-wait", "preceding-region-timeout", "preceding-region-deleted")) {
+      cases.add(new Object[] { true, scenario });
+    }
     return cases.toArray(new Object[0][]);
   }
 
@@ -339,6 +343,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     Version targetVersion = store.getVersion(versionTwo);
     boolean timeout = scenario.endsWith("timeout");
     boolean firstRegion = scenario.equals("first-region-timeout");
+    boolean precedingRegion = scenario.startsWith("preceding-region-");
     doReturn(1).when(store).getBootstrapToOnlineTimeoutInHours();
     doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(timeout ? 120 : 45)).when(targetVersion)
         .getCreatedTime();
@@ -359,7 +364,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     StoreInfo childStore = new StoreInfo();
     childStore.setVersions(new ArrayList<>());
     childStore.setCurrentVersion(versionOne);
-    childStore.setLargestUsedVersionNumber(scenario.equals("deleted") ? versionTwo : versionOne);
+    childStore.setLargestUsedVersionNumber(scenario.endsWith("deleted") ? versionTwo : versionOne);
     response.setStore(childStore);
     StoreResponse errorResponse = new StoreResponse();
     errorResponse.setError("Child controller is unavailable");
@@ -372,6 +377,12 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       doReturn(VersionStatus.PARTIALLY_ONLINE).when(targetVersion).getStatus();
     }
     ControllerClient child = controllerClientMap.get(firstRegion ? region1 : region2);
+    StoreInfo precedingStore = controllerClientMap.get(region1).getStore("testStore", controllerTimeout).getStore();
+    if (precedingRegion) {
+      childStore.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1));
+      precedingStore.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+      doReturn(1.0).when(veniceControllerMultiClusterConfig).getDeferredVersionSwapBufferTime();
+    }
     doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
     doReturn(scenario.equals("unreachable") ? errorResponse : response).when(child)
         .getStore("testStore", controllerTimeout);
@@ -416,6 +427,14 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         poll.run();
         verify(admin).rollForwardToFutureVersion(clusterName, "testStore", region2);
         verify(store).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      } else if (scenario.equals("preceding-region-wait")) {
+        for (int secondsAgo: new int[] { 0, 90, 180 }) {
+          precedingStore.setLatestVersionPromoteToCurrentTimestamp(
+              System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(secondsAgo));
+          poll.run();
+          verify(stats, times(secondsAgo == 180 ? 1 : 0)).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
+        }
+        verify(store, never()).updateVersionStatus(anyInt(), any());
       } else if (scenario.equals("partial")) {
         poll.run();
         poll.run();
@@ -429,7 +448,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         childStore.setCurrentVersion(versionTwo);
         poll.run();
       } else {
-        if (scenario.equals("deleted") || scenario.equals("unreachable")) {
+        if (scenario.endsWith("deleted") || scenario.equals("unreachable")) {
           for (int i = 0; i < 4; i++) {
             poll.run();
           }
@@ -438,6 +457,9 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         poll.run();
         verify(store)
             .updateVersionStatus(versionTwo, firstRegion ? VersionStatus.ERROR : VersionStatus.PARTIALLY_ONLINE);
+        if (precedingRegion) {
+          verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
+        }
       }
       if (!scenario.equals("lag")) {
         verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
@@ -993,6 +1015,46 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     });
 
     service.stopInner();
+  }
+
+  @Test
+  public void testSchedulerClearsStallAfterNonDeferredPush() throws Exception {
+    Store store = mockStore(versionOne, versionTwo, "testStore");
+    Version stalledVersion = store.getVersion(versionTwo);
+    doReturn(VersionStatus.PARTIALLY_ONLINE).when(stalledVersion).getStatus();
+    doReturn(Arrays.asList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+    DeferredVersionSwapService service =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    try {
+      service.startInner();
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0));
+
+      Version ordinaryVersion = new VersionImpl("testStore", 3);
+      ordinaryVersion.setStatus(VersionStatus.ONLINE);
+      StoreInfo recoveredStore = new StoreInfo();
+      recoveredStore.setCurrentVersion(3);
+      recoveredStore.setVersions(Arrays.asList(ordinaryVersion));
+      StoreResponse recoveredResponse = new StoreResponse();
+      recoveredResponse.setStore(recoveredStore);
+      for (ControllerClient client: veniceHelixAdmin.getControllerClientMap(clusterName).values()) {
+        doReturn(recoveredResponse).when(client).getStore("testStore", controllerTimeout);
+      }
+      doReturn(ordinaryVersion).when(store).getVersion(3);
+      doReturn(3).when(store).getLargestUsedVersionNumber();
+
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(0.0));
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+      verify(admin, never()).getOffLinePushStatus(anyString(), anyString());
+    } finally {
+      service.stopInner();
+    }
   }
 
   // Helper method to create offline push status info for sequential rollout tests
