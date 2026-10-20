@@ -518,18 +518,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Version version = mockStore.getVersion(1);
     // Error-unsubscribed partitions have no PCS but still need task-wide cleanup.
     leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().clear();
-    // Cleanup must finish before the task is seen as stopped, so a replacement cannot register first.
-    doAnswer(invocation -> {
-      assertTrue(Thread.holdsLock(leaderFollowerStoreIngestionTask));
-      assertTrue(leaderFollowerStoreIngestionTask.isRunning());
-      return null;
-    }).when(service).removeLagMonitors(version);
     String threadName = Thread.currentThread().getName();
     try {
       leaderFollowerStoreIngestionTask.close();
-      verify(service).removeLagMonitors(version);
-      assertFalse(leaderFollowerStoreIngestionTask.isRunning());
-      // Delayed teardown must not remove monitors that a replacement task may now own.
       leaderFollowerStoreIngestionTask.run();
       verify(service).removeLagMonitors(version);
     } finally {

@@ -2412,7 +2412,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void internalClose(boolean doFlush) {
     // Set isRunning to false to prevent messages being added after we've already looped through consumerActionsQueue.
-    stopRunning();
+    // Wrapping in synchronized to prevent a race condition on methods reading the value of isRunning.
+    synchronized (this) {
+      getIsRunning().set(false);
+    }
+
+    removeAllHeartbeatMonitoring();
     this.missingSOPCheckExecutor.shutdownNow();
 
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
@@ -3561,20 +3566,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void removeAllHeartbeatMonitoring() {
     // No Op
-  }
-
-  /**
-   * Removes heartbeat monitoring before publishing that the task stopped, so a replacement task cannot start and
-   * register monitors that this task's cleanup would then remove.
-   */
-  private synchronized void stopRunning() {
-    if (isRunning()) {
-      try {
-        removeAllHeartbeatMonitoring();
-      } finally {
-        getIsRunning().set(false);
-      }
-    }
   }
 
   protected void removeHeartbeatMonitoring(int partition) {
@@ -5836,7 +5827,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void close() {
     // Evict any pending repair tasks
-    stopRunning();
+    getIsRunning().set(false);
     // KafkaConsumer is closed at the end of the run method.
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the
