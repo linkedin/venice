@@ -260,6 +260,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * An in-memory DIV tracker used as a backup to execution id to verify the integrity of admin messages.
    */
   private ProducerInfo producerInfo = null;
+  private DefaultPubSubMessage unverifiedControlMessage;
 
   /**
    * During roll-out/roll-back phase of the remote consumption feature for admin topic, child controllers will consume
@@ -427,6 +428,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
           subscribe();
         }
+        if (unverifiedControlMessage != null && (unverifiedControlMessage.getPosition().equals(positionToSkip)
+            || unverifiedControlMessage.getPosition().equals(positionToSkipDIV))) {
+          // Retain the first unverified control so explicit skip commands can still act on it after polling advances.
+          DefaultPubSubMessage record = unverifiedControlMessage;
+          delegateMessage(record);
+          if (unverifiedControlMessage == null) {
+            updateLastPosition(record.getPosition());
+          }
+        }
         Iterator<DefaultPubSubMessage> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
@@ -458,7 +468,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           long executionId = UNASSIGNED_VALUE;
           try {
             executionId = delegateMessage(record);
-            if (executionId == lastDelegatedExecutionId) {
+            if (executionId == lastDelegatedExecutionId && unverifiedControlMessage == null) {
               updateLastPosition(record.getPosition());
             }
             undelegatedRecords.remove();
@@ -550,6 +560,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastDelegatedPosition = PubSubSymbolicPosition.EARLIEST;
       lastPersistedPosition = PubSubSymbolicPosition.EARLIEST;
       producerInfo = null;
+      unverifiedControlMessage = null;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
@@ -863,6 +874,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
       // what's the right execution id and producer info to set moving forward.
+      updateLastPosition(record.getPosition());
       return lastDelegatedExecutionId;
     }
     KafkaKey kafkaKey = record.getKey();
@@ -875,11 +887,21 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     if (kafkaKey.isControlMessage()) {
       LOGGER.debug("Received control message: {}", kafkaValue);
       ControlMessageType controlType = ControlMessageType.valueOf((ControlMessage) kafkaValue.payloadUnion);
-      if (!checkOffsetToSkipDIV(record.getPosition()) && producerInfo != null
-          && !producerInfo.isIncomingControlMessageValid(kafkaValue.producerMetadata, controlType)) {
-        throw new MissingDataException(
-            "Cannot checkpoint control message with discontinuous producer metadata. Previous producer info: "
-                + producerInfo + " Incoming message producer info: " + kafkaValue.producerMetadata);
+      if (!checkOffsetToSkipDIV(record.getPosition()) && (unverifiedControlMessage != null || (producerInfo != null
+          && !producerInfo.isIncomingControlMessageValid(kafkaValue.producerMetadata, controlType)))) {
+        if (unverifiedControlMessage == null) {
+          LOGGER.warn(
+              "Cannot checkpoint control message with discontinuous producer metadata. Previous producer info: {}"
+                  + " Incoming message producer info: {}. Waiting for an admin operation to establish continuity.",
+              producerInfo,
+              kafkaValue.producerMetadata);
+          failingPosition = record.getPosition();
+          stats.recordFailedAdminConsumption();
+          stats.recordAdminTopicDIVErrorReportCount();
+          unverifiedControlMessage = record;
+        }
+        // Controls cannot prove whether the producer gap contains a missing admin operation.
+        return lastDelegatedExecutionId;
       }
       // This also initializes continuity when an inclusive checkpoint replay starts at a control record.
       updateProducerInfo(kafkaValue.producerMetadata);
@@ -895,6 +917,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       // we have delegated this record and now skipping it as instructed, so update the last delegated execution id
       // this will also update the last position
       lastDelegatedExecutionId = executionId;
+      updateProducerInfo(kafkaValue.producerMetadata);
       return executionId;
     }
     try {
@@ -1046,7 +1069,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       LOGGER.info("Updated lastDelegatedExecutionId to {}", lastDelegatedExecutionId);
       updateProducerInfo(record.getValue().producerMetadata);
     } else if (incomingExecutionId <= lastDelegatedExecutionId) {
-      updateProducerInfo(record.getValue().producerMetadata);
+      if (unverifiedControlMessage == null) {
+        updateProducerInfo(record.getValue().producerMetadata);
+      }
       throw new DuplicateDataException(
           "Skipping message with execution id: " + incomingExecutionId + " because last delegated execution id was: "
               + lastDelegatedExecutionId);
@@ -1058,7 +1083,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       String producerInfoString =
           " Previous producer info: " + (producerInfo == null ? "null" : producerInfo.toString())
               + " Incoming message producer info: " + record.getValue().producerMetadata;
-      if (producerInfo != null) {
+      if (producerInfo != null && unverifiedControlMessage == null) {
         throwException = !producerInfo.isIncomingMessageValid(record.getValue().producerMetadata);
       }
       if (throwException) {
@@ -1078,6 +1103,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void updateProducerInfo(ProducerMetadata producerMetadata) {
+    unverifiedControlMessage = null;
     if (producerInfo != null) {
       producerInfo.updateProducerMetadata(producerMetadata);
     } else {
