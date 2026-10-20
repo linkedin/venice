@@ -5854,9 +5854,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return whether able to gracefully shut down within the waitTime
    */
   public boolean shutdownAndWait(int waitTime) {
+    close();
+    return waitForShutdown(waitTime);
+  }
+
+  /**
+   * Waits for {@link #run()} to finish its cleanup, if it has started.
+   */
+  public boolean waitForShutdown(int waitTime) {
     long startTimeInMs = System.currentTimeMillis();
     boolean timelyShutDown = true;
-    close();
     try {
       if (getGracefulShutdownLatch().isPresent() && !getGracefulShutdownLatch().get().await(waitTime, SECONDS)) {
         LOGGER.warn(
