@@ -32,6 +32,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * {@code VeniceVersionFinder} provides methods to find the version for a given store.
+ * Only versions with ready partition resources and any required decompressor may become the cached serving version.
  */
 public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
@@ -110,22 +111,30 @@ public class VeniceVersionFinder {
         store = metadataRepository.refreshOneStore(storeName);
         metadataCurrentVersionNumber = store.getCurrentVersion();
       }
-      // check if new store is ready to serve
-      lastCurrentVersionMap.putIfAbsent(storeName, metadataCurrentVersionNumber);
+      // Remember the metadata refresh without caching an uninitialized serving version.
+      lastCurrentVersionMap.putIfAbsent(storeName, Store.NON_EXISTING_VERSION);
       newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersionNumber);
       newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
       newVersionDecompressorReady =
           isDecompressorReady(store.getVersion(metadataCurrentVersionNumber), newVersionKafkaTopic);
       if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
         // new store ready to serve
+        lastCurrentVersionMap.put(storeName, metadataCurrentVersionNumber);
         existingVersionNumber = metadataCurrentVersionNumber;
       } else {
         // new store not ready to serve
+        if (!EXCEPTION_FILTER.isRedundantException(newVersionKafkaTopic)) {
+          LOGGER.warn(
+              "Unable to initialize serving version: {}. Partition resources ready? {}. Decompressor ready? {}.",
+              newVersionKafkaTopic,
+              newVersionPartitionResourcesReady,
+              newVersionDecompressorReady);
+        }
         return Store.NON_EXISTING_VERSION;
       }
     }
 
-    if (existingVersionNumber == metadataCurrentVersionNumber) {
+    if (existingVersionNumber == metadataCurrentVersionNumber && existingVersionNumber != Store.NON_EXISTING_VERSION) {
       // new store ready to serve or same store version (no version swap)
       stats.recordNotStale();
       return existingVersionNumber;
@@ -173,11 +182,11 @@ public class VeniceVersionFinder {
     }
 
     stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
-    if (existingVersionPartitionResourcesReady) {
+    if (existingVersionPartitionResourcesReady && existingVersionDecompressorReady) {
       lastCurrentVersionMap.put(storeName, existingVersionNumber);
       return existingVersionNumber;
     } else {
-      // Existing version's Helix resource has been deleted — cannot serve either version.
+      // Neither version has usable routing and decompression resources.
       // Reset to force re-evaluation on next request.
       lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
       return Store.NON_EXISTING_VERSION;
