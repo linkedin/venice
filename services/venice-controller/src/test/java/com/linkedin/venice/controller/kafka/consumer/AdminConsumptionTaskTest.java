@@ -875,8 +875,9 @@ public class AdminConsumptionTaskTest {
     adminMetadata.setPubSubPosition(pubSubProduceResult.getPubSubPosition());
     adminMetadata.setExecutionId(1L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
+    oldVeniceWriter.close();
 
-    // Write a message with a skipped execution id but a different producer metadata.
+    // A completed producer segment permits an execution-ID allocation gap at the next producer's initial segment.
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 3),
@@ -1160,9 +1161,11 @@ public class AdminConsumptionTaskTest {
         .createStore(clusterName, "test_store_after_gap", owner, keySchema, valueSchema, false);
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testMissingEndOfSegmentAllowsConsecutiveExecutionIdsButNotMissingPut(boolean isParent, boolean missingPut)
-      throws Exception {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testMissingEndOfSegmentAllowsConsecutiveExecutionIdsButNotMissingPut(
+      boolean isParent,
+      boolean missingPut,
+      boolean newProducer) throws Exception {
     PubSubPosition successfulPosition = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
@@ -1173,9 +1176,20 @@ public class AdminConsumptionTaskTest {
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, "test_store_before_segment_end", owner, keySchema, valueSchema, 2),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    veniceWriter.broadcastEndOfPush(Collections.emptyMap());
-    InMemoryPubSubPosition endOfSegmentPosition =
-        inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(topicName),
+        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Set<MockInMemoryPartitionPosition> positionsToFilter = new HashSet<>();
+    if (newProducer) {
+      veniceWriter.close(false);
+      veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
+    } else {
+      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+      InMemoryPubSubPosition endOfSegmentPosition =
+          inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
+      positionsToFilter
+          .add(new MockInMemoryPartitionPosition(topicPartition, endOfSegmentPosition.getPreviousPosition()));
+    }
     PubSubPosition nextPosition = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
@@ -1184,12 +1198,6 @@ public class AdminConsumptionTaskTest {
     veniceWriter.close();
     PubSubPosition tailPosition =
         inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
-        pubSubTopicRepository.getTopic(topicName),
-        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    Set<MockInMemoryPartitionPosition> positionsToFilter = new HashSet<>();
-    positionsToFilter
-        .add(new MockInMemoryPartitionPosition(topicPartition, endOfSegmentPosition.getPreviousPosition()));
     if (missingPut) {
       positionsToFilter.add(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition()));
     }
@@ -1216,6 +1224,163 @@ public class AdminConsumptionTaskTest {
         .createStore(clusterName, "test_store_before_segment_end", owner, keySchema, valueSchema, false);
     verify(admin, times(missingPut ? 0 : 1))
         .createStore(clusterName, "test_store_after_segment_end", owner, keySchema, valueSchema, false);
+  }
+
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testNewProducerControlsDoNotCheckpointMissingOperationsBeforeHandover(
+      boolean isParent,
+      boolean missingNewProducerStart) throws Exception {
+    PubSubPosition successfulPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(topicName),
+        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Set<MockInMemoryPartitionPosition> positionsToFilter = new HashSet<>();
+    if (missingNewProducerStart) {
+      veniceWriter.close();
+      successfulPosition =
+          inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
+    } else {
+      InMemoryPubSubPosition missingPosition = getPosition(
+          veniceWriter.put(
+              emptyKeyBytes,
+              getStoreCreationMessage(clusterName, "test_store_missing", owner, keySchema, valueSchema, 2),
+              AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+      positionsToFilter.add(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition()));
+      veniceWriter.close(false);
+    }
+    veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
+    InMemoryPubSubPosition producerStartPosition =
+        inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    if (missingNewProducerStart) {
+      InMemoryPubSubPosition missingPosition = getPosition(
+          veniceWriter.put(
+              emptyKeyBytes,
+              getStoreCreationMessage(clusterName, "test_store_missing", owner, keySchema, valueSchema, 2),
+              AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+      positionsToFilter
+          .add(new MockInMemoryPartitionPosition(topicPartition, producerStartPosition.getPreviousPosition()));
+      positionsToFilter.add(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition()));
+      veniceWriter.close();
+    } else {
+      veniceWriter.broadcastStartOfPush(Collections.emptyMap());
+    }
+    PubSubPosition controlPosition = missingNewProducerStart
+        ? inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition()
+        : producerStartPosition;
+    PubSubPosition checkpoint = successfulPosition;
+    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), positionsToFilter);
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, isParent);
+    Future<?> consumption = executor.submit(task);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(task.getFailingPosition(), controlPosition);
+        Assert.assertEquals(getLastPosition(clusterName), checkpoint);
+        Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+      });
+    } finally {
+      task.close();
+      consumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+    Assert.assertEquals(getLastPosition(clusterName), checkpoint, "Unproven controls must not reach the checkpoint");
+    Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+    Assert.assertNotEquals(
+        getLastPosition(clusterName),
+        inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition(),
+        "Checkpoint must remain behind broker tail");
+    verify(admin, never()).createStore(clusterName, "test_store_missing", owner, keySchema, valueSchema, false);
+
+    if (missingNewProducerStart) {
+      veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
+    }
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, "test_store_after_handover", owner, keySchema, valueSchema, 3),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.close();
+    PubSubPosition tailPosition =
+        inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
+    AdminConsumptionTask replacement = getAdminConsumptionTask(new RandomPollStrategy(), isParent);
+    Future<?> replacementConsumption = executor.submit(replacement);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(getLastPosition(clusterName), tailPosition);
+        Assert.assertEquals(getLastExecutionId(clusterName), 3L);
+      });
+    } finally {
+      replacement.close();
+      replacementConsumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+    verify(mockKafkaConsumer).subscribe(any(), eq(checkpoint));
+    verify(admin, times(1)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+    verify(admin, times(1)).createStore(clusterName, "test_store_missing", owner, keySchema, valueSchema, false);
+    verify(admin, times(1)).createStore(clusterName, "test_store_after_handover", owner, keySchema, valueSchema, false);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testPositionSkipClearsRetainedControlWithoutChangingProducerMetadata(boolean isParent) throws Exception {
+    PubSubPosition successfulPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    InMemoryPubSubPosition missingPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, "test_store_missing", owner, keySchema, valueSchema, 2),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    veniceWriter.broadcastStartOfPush(Collections.emptyMap());
+    PubSubPosition skippedControlPosition =
+        inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(topicName),
+        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    PollStrategy pollStrategy = new FilteringPollStrategy(
+        new RandomPollStrategy(false),
+        Collections
+            .singleton(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition())));
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, isParent);
+    Future<?> consumption = executor.submit(task);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(task.getFailingPosition(), skippedControlPosition);
+        Assert.assertEquals(getLastPosition(clusterName), successfulPosition);
+      });
+      task.skipMessageWithPosition(skippedControlPosition);
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(getLastPosition(clusterName), skippedControlPosition);
+        Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+      });
+      veniceWriter.broadcastStartOfPush(Collections.emptyMap());
+      PubSubPosition nextControlPosition =
+          inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(task.getFailingPosition(), nextControlPosition);
+        Assert.assertEquals(
+            getLastPosition(clusterName),
+            skippedControlPosition,
+            "An ordinary skip must not establish producer continuity");
+      });
+      task.skipMessageDIVWithPosition(nextControlPosition);
+      TestUtils.waitForNonDeterministicAssertion(
+          TIMEOUT,
+          TimeUnit.MILLISECONDS,
+          () -> Assert.assertEquals(getLastPosition(clusterName), nextControlPosition));
+      veniceWriter.broadcastStartOfPush(Collections.emptyMap());
+      PubSubPosition finalControlPosition =
+          inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getPreviousPosition();
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(getLastPosition(clusterName), finalControlPosition);
+        Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+      });
+    } finally {
+      task.close();
+      consumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+    verify(admin, never()).createStore(clusterName, "test_store_missing", owner, keySchema, valueSchema, false);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -1252,8 +1417,9 @@ public class AdminConsumptionTaskTest {
     Assert.assertEquals(getLastExecutionId(clusterName), 1L);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testTrailingControlRecordDoesNotBypassExecutionIdGap(boolean isParent) throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testTrailingControlRecordDoesNotBypassExecutionIdGap(boolean isParent, boolean newProducer)
+      throws Exception {
     PubSubPosition successfulPosition = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
@@ -1264,19 +1430,27 @@ public class AdminConsumptionTaskTest {
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, "test_store_missing", owner, keySchema, valueSchema, 2),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(topicName),
+        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Set<MockInMemoryPartitionPosition> positionsToFilter = new HashSet<>();
+    positionsToFilter.add(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition()));
+    if (newProducer) {
+      veniceWriter.close(false);
+      veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
+      positionsToFilter.add(
+          new MockInMemoryPartitionPosition(
+              topicPartition,
+              inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID)
+                  .getPreviousPosition()));
+    }
     PubSubPosition failingPosition = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, "test_store_with_gap", owner, keySchema, valueSchema, 3),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     veniceWriter.close();
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
-        pubSubTopicRepository.getTopic(topicName),
-        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    PollStrategy pollStrategy = new FilteringPollStrategy(
-        new RandomPollStrategy(false),
-        Collections
-            .singleton(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition())));
+    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), positionsToFilter);
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, isParent);
     Future<?> consumption = executor.submit(task);
     try {

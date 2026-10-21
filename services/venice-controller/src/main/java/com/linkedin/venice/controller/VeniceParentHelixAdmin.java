@@ -2444,7 +2444,7 @@ public class VeniceParentHelixAdmin implements Admin {
       long deadlineNs = deferredSwapRecoveryTimeNs() + TimeUnit.MILLISECONDS.toNanos(DEFERRED_SWAP_RECOVERY_TIMEOUT_MS);
       // get the future version from the interested regions which will be used to compare after roll forward
       Map<String, String> futureVersionsBeforeRollForward =
-          getFutureVersionsForDeferredSwapRecovery(clusterName, storeName, deadlineNs);
+          getFutureVersionsForDeferredSwapRecovery(clusterName, storeName, regionFilter, deadlineNs);
       int futureVersionBeforeRollForward = 0;
       for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
         if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
@@ -2555,13 +2555,26 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @VisibleForTesting
-  Map<String, String> getFutureVersionsForDeferredSwapRecovery(String clusterName, String storeName, long deadlineNs) {
+  Map<String, String> getFutureVersionsForDeferredSwapRecovery(
+      String clusterName,
+      String storeName,
+      String regionFilter,
+      long deadlineNs) {
     Map<String, String> futureVersions = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
-        .entrySet()) {
+    List<Map.Entry<String, ControllerClient>> controllerClients =
+        new ArrayList<>(getVeniceHelixAdmin().getControllerClientMap(clusterName).entrySet());
+    // Included regions determine ordinary roll-forward; reconciliation requires successful responses from every region.
+    controllerClients
+        .sort(Comparator.comparing(entry -> !isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)));
+    for (Map.Entry<String, ControllerClient> entry: controllerClients) {
       int timeoutMs = remainingDeferredSwapRecoveryTimeMs(deadlineNs);
       if (timeoutMs <= 0) {
-        throw new VeniceException("Deferred version swap recovery deadline exhausted");
+        LOGGER.warn(
+            "Deferred version swap recovery deadline exhausted while reading future version in region {} for store {}",
+            entry.getKey(),
+            storeName);
+        futureVersions.put(entry.getKey(), String.valueOf(IGNORED_CURRENT_VERSION));
+        continue;
       }
       MultiStoreStatusResponse response = entry.getValue().getFutureVersionsWithTimeout(storeName, timeoutMs);
       if (response == null || response.isError() || response.getStoreStatusMap() == null

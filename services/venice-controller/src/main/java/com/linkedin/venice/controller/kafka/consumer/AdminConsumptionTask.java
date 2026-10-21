@@ -107,11 +107,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     boolean isIncomingMessageValid(ProducerMetadata incomingProducerMetadata) {
       if (!incomingProducerMetadata.producerGUID.equals(producerGUID)) {
-        // We will assume a new producer is always valid regardless of its state (starts with segment 0 and etc.).
-        // Since we don't have sufficient information here to make any informative decisions and it's rare for both the
-        // execution id and producer id edge case to occur at the same time.
-        updateProducerMetadata(incomingProducerMetadata);
-        return true;
+        return false;
       }
       if (incomingProducerMetadata.segmentNumber != segmentNumber) {
         return false;
@@ -125,8 +121,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
 
     boolean isIncomingControlMessageValid(ProducerMetadata incomingProducerMetadata, ControlMessageType controlType) {
-      if (incomingProducerMetadata.producerGUID.equals(producerGUID)
-          && incomingProducerMetadata.segmentNumber != segmentNumber) {
+      if (!incomingProducerMetadata.producerGUID.equals(producerGUID)) {
+        // Neither producer may have an unseen operation on either side of the transition.
+        return segmentEnded && controlType == ControlMessageType.START_OF_SEGMENT
+            && incomingProducerMetadata.segmentNumber == 0 && incomingProducerMetadata.messageSequenceNumber == 0;
+      }
+      if (incomingProducerMetadata.segmentNumber != segmentNumber) {
         // A segment reset is continuous only after its predecessor's end was consumed.
         return segmentEnded && controlType == ControlMessageType.START_OF_SEGMENT
             && incomingProducerMetadata.segmentNumber == segmentNumber + 1
@@ -869,11 +869,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(DefaultPubSubMessage record) {
-    if (checkPositionToSkip(record.getPosition(), true) || !shouldProcessRecord(record)) {
+    boolean skipPosition = checkPositionToSkip(record.getPosition(), true);
+    if (skipPosition || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
       // what's the right execution id and producer info to set moving forward.
+      if (skipPosition && unverifiedControlMessage != null
+          && unverifiedControlMessage.getPosition().equals(record.getPosition())) {
+        unverifiedControlMessage = null;
+      }
       updateLastPosition(record.getPosition());
       return lastDelegatedExecutionId;
     }
