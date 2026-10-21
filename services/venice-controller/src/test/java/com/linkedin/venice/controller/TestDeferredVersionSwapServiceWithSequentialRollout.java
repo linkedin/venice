@@ -325,7 +325,16 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
   public Object[][] versionFetchScenarios() {
     List<Object[]> cases = new ArrayList<>();
     for (boolean sequential: new boolean[] { true, false }) {
-      for (String scenario: Arrays.asList("lag", "timeout", "deleted", "unreachable", "ERROR", "KILLED", "partial")) {
+      for (String scenario: Arrays.asList(
+          "lag",
+          "timeout",
+          "deleted",
+          "unreachable",
+          "ERROR",
+          "KILLED",
+          "partial",
+          "degraded-excluded",
+          "degraded-lag")) {
         cases.add(new Object[] { sequential, scenario });
       }
     }
@@ -344,6 +353,11 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     boolean timeout = scenario.endsWith("timeout");
     boolean firstRegion = scenario.equals("first-region-timeout");
     boolean precedingRegion = scenario.startsWith("preceding-region-");
+    if (scenario.startsWith("degraded-")) {
+      doReturn(true).when(targetVersion).isDegradedPush();
+      doReturn(scenario.equals("degraded-excluded") ? region1 : region1 + "," + region2).when(targetVersion)
+          .getTargetSwapRegion();
+    }
     doReturn(1).when(store).getBootstrapToOnlineTimeoutInHours();
     doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(timeout ? 120 : 45)).when(targetVersion)
         .getCreatedTime();
@@ -401,7 +415,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       }
     };
     try {
-      if (scenario.equals("lag")) {
+      if (scenario.endsWith("lag")) {
         doReturn(errorResponse).when(child).getStore("testStore", controllerTimeout);
         for (int i = 0; i < 4; i++) {
           poll.run();
@@ -448,7 +462,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         childStore.setCurrentVersion(versionTwo);
         poll.run();
       } else {
-        if (scenario.endsWith("deleted") || scenario.equals("unreachable")) {
+        if (scenario.endsWith("deleted") || scenario.equals("unreachable") || scenario.equals("degraded-excluded")) {
           for (int i = 0; i < 4; i++) {
             poll.run();
           }
@@ -461,10 +475,10 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
           verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
         }
       }
-      if (!scenario.equals("lag")) {
+      if (!scenario.endsWith("lag")) {
         verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
       }
-      if ((scenario.equals("lag") && sequential) || scenario.equals("partial")) {
+      if ((scenario.endsWith("lag") && sequential) || scenario.equals("partial")) {
         InOrder metricOrder = inOrder(stats);
         metricOrder.verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
         metricOrder.verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);

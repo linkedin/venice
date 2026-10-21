@@ -586,16 +586,22 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       StoreResponse storeResponse,
       Store parentStore,
       int targetVersionNum,
+      String region,
       String regionKafkaTopicName) {
+    Version parentVersion = parentStore.getVersion(targetVersionNum);
+    // Degraded pushes intentionally omit ADD_VERSION in excluded regions; those children are not lagging.
+    boolean excludedFromDegradedPush = parentVersion.isDegradedPush()
+        && !RegionUtils.parseRegionsFilterList(parentVersion.getTargetSwapRegion()).contains(region);
     // A missing version at or below the child's largest-used version may have been deleted.
-    if (storeResponse == null || storeResponse.getStore().getLargestUsedVersionNumber() >= targetVersionNum) {
+    if (excludedFromDegradedPush || storeResponse == null
+        || storeResponse.getStore().getLargestUsedVersionNumber() >= targetVersionNum) {
       return didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName);
     }
 
     // A child whose largest-used version is behind may still be consuming the ADD_VERSION admin message.
     fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
-    long bootstrapDeadlineMs = parentStore.getVersion(targetVersionNum).getCreatedTime()
-        + TimeUnit.HOURS.toMillis(parentStore.getBootstrapToOnlineTimeoutInHours());
+    long bootstrapDeadlineMs =
+        parentVersion.getCreatedTime() + TimeUnit.HOURS.toMillis(parentStore.getBootstrapToOnlineTimeoutInHours());
     if (System.currentTimeMillis() > bootstrapDeadlineMs) {
       LOGGER.warn(
           "Version {} is still missing after its bootstrap deadline {}",
@@ -663,7 +669,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             storeResponse,
             precedingRegionResponse.getStore().getLatestVersionPromoteToCurrentTimestamp());
       }
-      if (shouldStopWaitingForVersion(storeResponse, parentStore, targetVersionNum, regionKafkaTopicName)) {
+      if (shouldStopWaitingForVersion(
+          storeResponse,
+          parentStore,
+          targetVersionNum,
+          nextEligibleRegion,
+          regionKafkaTopicName)) {
         VersionStatus finalVersionStatus = rolloutOrder.indexOf(nextEligibleRegion) == 0 ? ERROR : PARTIALLY_ONLINE;
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
             + targetVersionNum + " as the version could not be fetched in region " + nextEligibleRegion
@@ -777,7 +788,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
       String regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
       if (version == null) {
-        if (shouldStopWaitingForVersion(storeResponse, parentStore, targetVersionNum, regionKafkaTopicName)) {
+        if (shouldStopWaitingForVersion(
+            storeResponse,
+            parentStore,
+            targetVersionNum,
+            nonTargetRegion,
+            regionKafkaTopicName)) {
           failedNonTargetRegions.add(nonTargetRegion);
         }
 
