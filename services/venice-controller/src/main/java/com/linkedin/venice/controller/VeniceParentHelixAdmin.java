@@ -2083,16 +2083,8 @@ public class VeniceParentHelixAdmin implements Admin {
     addVersion.repushSourceVersion = repushSourceVersion;
     addVersion.currentRTVersionNumber = largestUsedRTVersion;
     addVersion.repushTtlSeconds = version.getRepushTtlSeconds();
-    // Snapshot the degraded DC set into the admin message so child controllers can enforce
-    // skipConsumption for degraded DCs in AdminExecutionTask, independent of cross-region
-    // state propagation. Gated on isDegradedModeEnabled to avoid the defensive-copy allocation
-    // on every push when the feature is off; the field's schema default is an empty list.
-    if (isDegradedModeEnabled(clusterName)) {
-      Map<String, DegradedDcInfo> degradedDcs = getDegradedDatacenters(clusterName);
-      if (!degradedDcs.isEmpty()) {
-        addVersion.degradedDatacenters = new ArrayList<>(degradedDcs.keySet());
-      }
-    }
+    // Use the persisted creation-time decision so polling and child consumption agree after config changes.
+    addVersion.degradedDatacenters = new ArrayList<>(version.getSkippedRegions());
     return addVersion;
   }
 

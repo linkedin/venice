@@ -494,6 +494,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public List<String> getSkippedRegions() {
+      return Collections.unmodifiableList(this.delegate.getSkippedRegions());
+    }
+
+    @Override
+    public void setSkippedRegions(List<String> skippedRegions) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public int getReplicationFactor() {
       return this.delegate.getReplicationFactor();
     }
@@ -2131,6 +2141,8 @@ public class ReadOnlyStore implements Store {
     storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
     storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
+    storeVersion
+        .setSkippedRegions(version.getSkippedRegions().stream().map(String::toString).collect(Collectors.toList()));
     storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
     storeVersion.setTargetRegionPromoted(version.isTargetRegionPromoted());
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());

@@ -78,7 +78,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new ConcurrentHashMap<>();
-  private Set<String> stalledVersionSwapSet = new ConcurrentHashMap<>().newKeySet();
+  // The stalled version is the recovery floor, independent of subsequent push attempts.
+  private final Map<String, Integer> stalledVersionSwapMap = new ConcurrentHashMap<>();
   private Map<String, Integer> failedRollforwardRetryCountMap = new ConcurrentHashMap<>();
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
   private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
@@ -286,9 +287,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         targetVersionNum);
     veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
 
-    if (stalledVersionSwapSet.contains(storeName)) {
-      stalledVersionSwapSet.remove(storeName);
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
+    if (stalledVersionSwapMap.remove(storeName) != null) {
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapMap.size());
     }
 
     // Update parent version status after roll forward, so we don't check this store version again
@@ -368,7 +368,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // The version could've been manually rolled forward in non target regions. If that is the case, we should check if
     // we emitted any stalled metric for it and remove it if so
     boolean partiallyOnline = targetVersion.getStatus() == PARTIALLY_ONLINE;
-    if (stalledVersionSwapSet.contains(storeName) || partiallyOnline) {
+    if (stalledVersionSwapMap.containsKey(storeName) || partiallyOnline) {
       boolean didPushCompleteInNonTargetRegions = doesRegionsHaveVersionStatus(
           nonTargetRegions,
           clusterName,
@@ -376,11 +376,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           targetVersion.getNumber(),
           partiallyOnline ? TERMINAL_PUSH_VERSION_STATUSES : VERSION_SWAP_COMPLETION_STATUSES);
       if (didPushCompleteInNonTargetRegions) {
-        if (stalledVersionSwapSet.remove(storeName)) {
-          deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
+        if (stalledVersionSwapMap.remove(storeName) != null) {
+          deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapMap.size());
         }
       } else if (partiallyOnline) {
-        recordStalledVersionSwap(storeName);
+        recordStalledVersionSwap(storeName, targetVersionNum);
       }
     }
 
@@ -511,7 +511,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     // If we already emitted a metric for this store already, do not emit it again
-    if (stalledVersionSwapSet.contains(store.getName())) {
+    if (stalledVersionSwapMap.containsKey(store.getName())) {
       return;
     }
 
@@ -530,13 +530,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed in target region "
           + targetRegion;
       logMessageIfNotRedundant(message);
-      recordStalledVersionSwap(store.getName());
+      recordStalledVersionSwap(store.getName(), targetVersionNum);
     }
   }
 
-  private void recordStalledVersionSwap(String storeName) {
-    if (stalledVersionSwapSet.add(storeName)) {
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
+  private void recordStalledVersionSwap(String storeName, int versionNumber) {
+    if (stalledVersionSwapMap.putIfAbsent(storeName, versionNumber) == null) {
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapMap.size());
     }
   }
 
@@ -552,7 +552,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     // If we already emitted a metric for this store already, do not emit it again
-    if (stalledVersionSwapSet.contains(parentStore.getName())) {
+    if (stalledVersionSwapMap.containsKey(parentStore.getName())) {
       return;
     }
 
@@ -578,7 +578,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String message = "Store: " + parentStore.getName() + " has not swapped to the target version: " + targetVersionNum
           + " and the wait time: " + parentStore.getTargetSwapRegionWaitTime() + " has passed in region " + region;
       logMessageIfNotRedundant(message);
-      recordStalledVersionSwap(parentStore.getName());
+      recordStalledVersionSwap(parentStore.getName(), targetVersionNum);
     }
   }
 
@@ -589,11 +589,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String region,
       String regionKafkaTopicName) {
     Version parentVersion = parentStore.getVersion(targetVersionNum);
-    // Degraded pushes intentionally omit ADD_VERSION in excluded regions; those children are not lagging.
-    boolean excludedFromDegradedPush = parentVersion.isDegradedPush()
-        && !RegionUtils.parseRegionsFilterList(parentVersion.getTargetSwapRegion()).contains(region);
+    // Children that intentionally skip ADD_VERSION cannot recover by consuming a delayed message.
+    boolean skippedRegion = parentVersion.getSkippedRegions().contains(region);
     // A missing version at or below the child's largest-used version may have been deleted.
-    if (excludedFromDegradedPush || storeResponse == null
+    if (skippedRegion || storeResponse == null
         || storeResponse.getStore().getLargestUsedVersionNumber() >= targetVersionNum) {
       return didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName);
     }
@@ -1005,6 +1004,30 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     storesBeingProcessed.remove(kafkaTopicName);
   }
 
+  private void reconcileStalledVersionSwap(Set<String> regions, String clusterName, String storeName) {
+    Integer stalledVersion = stalledVersionSwapMap.get(storeName);
+    if (stalledVersion == null || regions.isEmpty()) {
+      return;
+    }
+    for (String region: regions) {
+      StoreResponse response = getStoreForRegion(clusterName, region, storeName);
+      if (response == null || response.isError() || response.getStore() == null) {
+        return;
+      }
+      int currentVersion = response.getStore().getCurrentVersion();
+      if (currentVersion < stalledVersion) {
+        return;
+      }
+      Version servingVersion = getVersionFromStoreInRegion(region, storeName, currentVersion, response);
+      if (servingVersion == null || servingVersion.getStatus() != ONLINE) {
+        return;
+      }
+    }
+    if (stalledVersionSwapMap.remove(storeName, stalledVersion)) {
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapMap.size());
+    }
+  }
+
   private Runnable getRunnableForDeferredVersionSwap() {
     return () -> {
       LogContext.setLogContext(veniceControllerMultiClusterConfig.getLogContext());
@@ -1040,7 +1063,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           List<Store> eligibleStoresToProcess = new ArrayList<>();
           for (Store parentStore: parentStores) {
             if (!isTargetRegionPushWithDeferredSwapEnabled(parentStore)
-                && !stalledVersionSwapSet.contains(parentStore.getName())) {
+                && !stalledVersionSwapMap.containsKey(parentStore.getName())) {
               continue;
             }
             eligibleStoresToProcess.add(parentStore);
@@ -1063,15 +1086,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             clusterExecutorService.submit(() -> {
               try {
                 if (!isTargetRegionPushWithDeferredSwapEnabled(parentStore)) {
-                  if (doesRegionsHaveVersionStatus(
-                      childControllerClientMap.keySet(),
-                      cluster,
-                      parentStore.getName(),
-                      parentStore.getLargestUsedVersionNumber(),
-                      TERMINAL_PUSH_VERSION_STATUSES) && stalledVersionSwapSet.remove(parentStore.getName())) {
-                    deferredVersionSwapStats
-                        .recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
-                  }
+                  reconcileStalledVersionSwap(childControllerClientMap.keySet(), cluster, parentStore.getName());
                   return;
                 }
                 if (sequentialRollForward) {
@@ -1210,8 +1225,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           targetVersionNum,
           nextRegionToRollForward);
 
-      if (stalledVersionSwapSet.remove(parentStore.getName())) {
-        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
+      if (stalledVersionSwapMap.remove(parentStore.getName()) != null) {
+        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapMap.size());
       }
 
       if (rolloutOrder.get(rolloutOrder.size() - 1).equals(nextRegionToRollForward)) {

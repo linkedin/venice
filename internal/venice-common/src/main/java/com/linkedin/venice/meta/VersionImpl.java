@@ -246,6 +246,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public List<String> getSkippedRegions() {
+    return this.storeVersion.skippedRegions.stream().map(Object::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public void setSkippedRegions(List<String> skippedRegions) {
+    this.storeVersion.skippedRegions = skippedRegions.stream().map(Objects::toString).collect(Collectors.toList());
+  }
+
+  @Override
   public int getReplicationFactor() {
     return this.storeVersion.replicationFactor;
   }
@@ -608,6 +618,7 @@ public class VersionImpl implements Version {
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
     clonedVersion.setDegradedPush(isDegradedPush());
+    clonedVersion.setSkippedRegions(getSkippedRegions());
     clonedVersion.setRepushSourceVersion(getRepushSourceVersion());
     clonedVersion.setViewConfigs(getViewConfigs());
     clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());

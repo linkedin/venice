@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -46,6 +47,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.mockito.InOrder;
@@ -333,8 +335,8 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
           "ERROR",
           "KILLED",
           "partial",
-          "degraded-excluded",
-          "degraded-lag")) {
+          "degraded-subset-excluded",
+          "degraded-subset-lag")) {
         cases.add(new Object[] { sequential, scenario });
       }
     }
@@ -354,9 +356,10 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     boolean firstRegion = scenario.equals("first-region-timeout");
     boolean precedingRegion = scenario.startsWith("preceding-region-");
     if (scenario.startsWith("degraded-")) {
-      doReturn(true).when(targetVersion).isDegradedPush();
-      doReturn(scenario.equals("degraded-excluded") ? region1 : region1 + "," + region2).when(targetVersion)
-          .getTargetSwapRegion();
+      boolean excluded = scenario.endsWith("excluded");
+      doReturn(!excluded).when(targetVersion).isDegradedPush();
+      doReturn(region1).when(targetVersion).getTargetSwapRegion();
+      doReturn(Arrays.asList(excluded ? region2 : region3)).when(targetVersion).getSkippedRegions();
     }
     doReturn(1).when(store).getBootstrapToOnlineTimeoutInHours();
     doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(timeout ? 120 : 45)).when(targetVersion)
@@ -462,7 +465,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         childStore.setCurrentVersion(versionTwo);
         poll.run();
       } else {
-        if (scenario.endsWith("deleted") || scenario.equals("unreachable") || scenario.equals("degraded-excluded")) {
+        if (scenario.endsWith("deleted") || scenario.equals("unreachable") || scenario.endsWith("excluded")) {
           for (int i = 0; i < 4; i++) {
             poll.run();
           }
@@ -1031,8 +1034,21 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     service.stopInner();
   }
 
-  @Test
-  public void testSchedulerClearsStallAfterNonDeferredPush() throws Exception {
+  @DataProvider
+  public Object[][] ordinaryPushRecoveryScenarios() {
+    return new Object[][] { { 3, VersionStatus.ONLINE, 3, VersionStatus.ONLINE, true },
+        { 4, VersionStatus.ERROR, 3, VersionStatus.ONLINE, true }, { 4, null, 3, VersionStatus.ONLINE, true },
+        { 4, VersionStatus.ERROR, 1, VersionStatus.ONLINE, false },
+        { 4, VersionStatus.ERROR, 3, VersionStatus.PUSHED, false }, { 4, VersionStatus.ERROR, 3, null, false } };
+  }
+
+  @Test(dataProvider = "ordinaryPushRecoveryScenarios")
+  public void testSchedulerClearsStallAfterNonDeferredPush(
+      int latestVersion,
+      VersionStatus latestStatus,
+      int servingVersion,
+      VersionStatus servingStatus,
+      boolean recovered) throws Exception {
     Store store = mockStore(versionOne, versionTwo, "testStore");
     Version stalledVersion = store.getVersion(versionTwo);
     doReturn(VersionStatus.PARTIALLY_ONLINE).when(stalledVersion).getStatus();
@@ -1047,28 +1063,43 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
           TimeUnit.SECONDS,
           () -> verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0));
 
-      Version ordinaryVersion = new VersionImpl("testStore", 3);
-      ordinaryVersion.setStatus(VersionStatus.ONLINE);
+      Store recoveredParentStore = mockStore(3, latestVersion, "testStore");
+      Version latestAttempt = latestStatus == null ? null : new VersionImpl("testStore", latestVersion);
+      if (latestAttempt != null) {
+        latestAttempt.setStatus(latestStatus);
+      }
+      doReturn(latestAttempt).when(recoveredParentStore).getVersion(latestVersion);
+      doReturn(Arrays.asList(recoveredParentStore)).when(admin).getAllStores(clusterName);
+
+      Version ordinaryVersion = new VersionImpl("testStore", servingVersion);
+      if (servingStatus != null) {
+        ordinaryVersion.setStatus(servingStatus);
+      }
       StoreInfo recoveredStore = new StoreInfo();
-      recoveredStore.setCurrentVersion(3);
-      recoveredStore.setVersions(Arrays.asList(ordinaryVersion));
+      recoveredStore.setCurrentVersion(servingVersion);
+      recoveredStore.setVersions(servingStatus == null ? new ArrayList<>() : Arrays.asList(ordinaryVersion));
       StoreResponse recoveredResponse = new StoreResponse();
       recoveredResponse.setStore(recoveredStore);
+      CountDownLatch reconciliations = new CountDownLatch(2);
       for (ControllerClient client: veniceHelixAdmin.getControllerClientMap(clusterName).values()) {
-        doReturn(recoveredResponse).when(client).getStore("testStore", controllerTimeout);
+        doAnswer(invocation -> {
+          reconciliations.countDown();
+          return recoveredResponse;
+        }).when(client).getStore("testStore", controllerTimeout);
       }
-      doReturn(ordinaryVersion).when(store).getVersion(3);
-      doReturn(3).when(store).getLargestUsedVersionNumber();
-
-      TestUtils.waitForNonDeterministicAssertion(
-          5,
-          TimeUnit.SECONDS,
-          () -> verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(0.0));
-      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
-      verify(admin, never()).getOffLinePushStatus(anyString(), anyString());
+      Assert.assertTrue(reconciliations.await(5, TimeUnit.SECONDS));
+      if (recovered) {
+        TestUtils.waitForNonDeterministicAssertion(
+            5,
+            TimeUnit.SECONDS,
+            () -> verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(0.0));
+      }
     } finally {
       service.stopInner();
     }
+    verify(stats, recovered ? times(1) : never()).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
+    verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    verify(admin, never()).getOffLinePushStatus(anyString(), anyString());
   }
 
   // Helper method to create offline push status info for sequential rollout tests
