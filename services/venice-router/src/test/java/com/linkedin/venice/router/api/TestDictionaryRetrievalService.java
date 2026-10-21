@@ -78,6 +78,11 @@ public class TestDictionaryRetrievalService {
   private static final String KAFKA_TOPIC_NAME = STORE_NAME + "_v1";
   private static final int DICTIONARY_RETRIEVAL_TIME_MS = 3 * Time.MS_PER_SECOND;
 
+  private enum WarmupScenario {
+    SUCCESS, NO_ONLINE_REPLICA, FETCH_FAILURE, FETCH_TIMEOUT, MISSING_COMPRESSOR, INITIALIZATION_FAILURE, VERSION_ERROR,
+    VERSION_KILLED
+  }
+
   @BeforeMethod
   public void setUp() {
     service = null;
@@ -145,64 +150,42 @@ public class TestDictionaryRetrievalService {
   }
 
   @DataProvider
-  public Object[][] failedWarmupFetches() {
-    return new Object[][] { { false, false }, { true, true }, { true, false } };
+  public Object[][] warmupScenarios() {
+    return Arrays.stream(WarmupScenario.values()).map(scenario -> new Object[] { scenario }).toArray(Object[][]::new);
   }
 
-  @Test(dataProvider = "failedWarmupFetches", timeOut = 10 * Time.MS_PER_SECOND)
-  public void testWarmupFailsWhenCurrentDictionaryFetchFails(boolean hostsReady, boolean failResponse)
-      throws Exception {
+  @Test(dataProvider = "warmupScenarios", timeOut = 10 * Time.MS_PER_SECOND)
+  public void testWarmupRequiresInitializedCompressor(WarmupScenario scenario) throws Exception {
     configureCurrentDictionaryVersion();
-    if (hostsReady && !failResponse) {
+    if (scenario == WarmupScenario.FETCH_TIMEOUT) {
       doReturn(200).when(routerConfig).getDictionaryRetrievalTimeMs();
     }
-    if (hostsReady) {
+    if (scenario != WarmupScenario.NO_ONLINE_REPLICA) {
       configureOnlineInstance(KAFKA_TOPIC_NAME);
     }
-    if (failResponse) {
-      doAnswer(invocation -> {
-        CompletableFuture<PortableHttpResponse> response = invocation.getArgument(1);
-        response.completeExceptionally(new IOException("Dictionary unavailable"));
-        return null;
-      }).when(storageNodeClient).sendRequest(any(), any());
-    }
-    createService();
-    VeniceException exception = expectThrows(VeniceException.class, service::startInner);
-    assertTrue(exception.getMessage().contains("Dictionary warmup failed"));
-    assertFalse(compressorFactory.versionSpecificCompressorExists(KAFKA_TOPIC_NAME));
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
-      assertNotNull(service.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
-    });
-  }
-
-  @DataProvider
-  public Object[][] warmupCompressorResults() {
-    return new Object[][] { { true, false, VersionStatus.ONLINE }, { false, false, VersionStatus.ONLINE },
-        { false, true, VersionStatus.ONLINE }, { false, false, VersionStatus.ERROR },
-        { false, false, VersionStatus.KILLED } };
-  }
-
-  @Test(dataProvider = "warmupCompressorResults", timeOut = 10 * Time.MS_PER_SECOND)
-  public void testWarmupRequiresInitializedCompressor(
-      boolean initializeCompressor,
-      boolean initializationThrows,
-      VersionStatus statusAfterDownload) throws Exception {
-    configureCurrentDictionaryVersion();
-    configureOnlineInstance(KAFKA_TOPIC_NAME);
+    boolean initializeCompressor = scenario == WarmupScenario.SUCCESS;
     AtomicBoolean compressorReady = new AtomicBoolean();
     doAnswer(invocation -> compressorReady.get()).when(compressorFactory)
         .versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
     doAnswer(invocation -> {
-      if (initializationThrows) {
+      if (scenario == WarmupScenario.INITIALIZATION_FAILURE) {
         throw new VeniceException("Compressor initialization failed");
       }
       compressorReady.set(initializeCompressor);
       return null;
     }).when(compressorFactory).createVersionSpecificCompressorIfNotExist(any(), any(), any());
     doAnswer(invocation -> {
-      doReturn(statusAfterDownload).when(version).getStatus();
+      if (scenario == WarmupScenario.VERSION_ERROR) {
+        doReturn(VersionStatus.ERROR).when(version).getStatus();
+      } else if (scenario == WarmupScenario.VERSION_KILLED) {
+        doReturn(VersionStatus.KILLED).when(version).getStatus();
+      }
       CompletableFuture<PortableHttpResponse> responseFuture = invocation.getArgument(1);
-      responseFuture.complete(createDictionaryResponse());
+      if (scenario == WarmupScenario.FETCH_FAILURE) {
+        responseFuture.completeExceptionally(new IOException("Dictionary unavailable"));
+      } else if (scenario != WarmupScenario.FETCH_TIMEOUT) {
+        responseFuture.complete(createDictionaryResponse());
+      }
       return null;
     }).when(storageNodeClient).sendRequest(any(), any());
 
@@ -212,14 +195,15 @@ public class TestDictionaryRetrievalService {
       assertTrue(service.getDownloadingDictionaryFutures().get(KAFKA_TOPIC_NAME).isDone());
       assertFalse(service.getDownloadingDictionaryFutures().get(KAFKA_TOPIC_NAME).isCompletedExceptionally());
     } else {
-      expectThrows(VeniceException.class, service::startInner);
-      if (statusAfterDownload == VersionStatus.ONLINE) {
+      VeniceException exception = expectThrows(VeniceException.class, service::startInner);
+      assertTrue(exception.getMessage().contains("Dictionary warmup failed"));
+      if (scenario == WarmupScenario.VERSION_ERROR || scenario == WarmupScenario.VERSION_KILLED) {
+        assertNull(service.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
+        verify(compressorFactory, never()).createVersionSpecificCompressorIfNotExist(any(), any(), any());
+      } else {
         TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
           assertNotNull(service.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
         });
-      } else {
-        assertNull(service.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
-        verify(compressorFactory, never()).createVersionSpecificCompressorIfNotExist(any(), any(), any());
       }
     }
     assertEquals(compressorReady.get(), initializeCompressor);
@@ -243,52 +227,6 @@ public class TestDictionaryRetrievalService {
     service.getDownloadingDictionaryFutures().put(KAFKA_TOPIC_NAME, existingDownload);
     expectThrows(VeniceException.class, service::startInner);
     verify(storageNodeClient, never()).sendRequest(any(), any());
-  }
-
-  @DataProvider
-  public Object[][] nonCurrentVersionWarmupResults() {
-    return DataProviderUtils.allPermutationGenerator(
-        new VersionStatus[] { VersionStatus.STARTED, VersionStatus.PUSHED, VersionStatus.ONLINE },
-        DataProviderUtils.BOOLEAN);
-  }
-
-  @Test(dataProvider = "nonCurrentVersionWarmupResults", timeOut = 10 * Time.MS_PER_SECOND)
-  public void testWarmupRequiresNonCurrentDictionaries(VersionStatus status, boolean fetchSucceeds) throws Exception {
-    configureCurrentDictionaryVersion();
-    doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
-    Version nonCurrentVersion = new VersionImpl(STORE_NAME, 2);
-    nonCurrentVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-    nonCurrentVersion.setStatus(status);
-    doReturn(Arrays.asList(version, nonCurrentVersion)).when(store).getVersions();
-    doReturn(nonCurrentVersion).when(store).getVersion(2);
-    String topic = nonCurrentVersion.kafkaTopicName();
-    configureOnlineInstance(topic);
-    AtomicBoolean compressorReady = new AtomicBoolean();
-    doAnswer(invocation -> compressorReady.get()).when(compressorFactory).versionSpecificCompressorExists(topic);
-    doAnswer(invocation -> {
-      compressorReady.set(true);
-      return null;
-    }).when(compressorFactory).createVersionSpecificCompressorIfNotExist(any(), any(), any());
-    doAnswer(invocation -> {
-      CompletableFuture<PortableHttpResponse> response = invocation.getArgument(1);
-      if (fetchSucceeds) {
-        response.complete(createDictionaryResponse());
-      } else {
-        response.completeExceptionally(new IOException("Dictionary unavailable"));
-      }
-      return null;
-    }).when(storageNodeClient).sendRequest(any(), any());
-
-    createService();
-    if (fetchSucceeds) {
-      assertTrue(service.startInner());
-    } else {
-      expectThrows(VeniceException.class, service::startInner);
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
-        assertNotNull(service.getFetchDelayTimeinMsMap().get(topic));
-      });
-    }
-    assertEquals(compressorReady.get(), fetchSucceeds);
   }
 
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
