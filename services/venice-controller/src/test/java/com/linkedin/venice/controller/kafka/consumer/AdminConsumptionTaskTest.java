@@ -79,6 +79,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -123,6 +124,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -1088,25 +1090,47 @@ public class AdminConsumptionTaskTest {
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, "test_store_missing", owner, keySchema, valueSchema, 2),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    PubSubPosition firstControlPosition =
+        inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     veniceWriter.close();
     InMemoryPubSubPosition endPosition =
         inMemoryPubSubBroker.endPosition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    PubSubPosition controlPosition = endPosition.getPreviousPosition();
+    InMemoryPubSubPosition controlPosition = endPosition.getPreviousPosition();
     Assert.assertNotEquals(controlPosition, missingPosition);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(topicName),
         AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    PollStrategy pollStrategy = new FilteringPollStrategy(
+    PollStrategy filteredPollStrategy = new FilteringPollStrategy(
         new RandomPollStrategy(false),
         Collections
             .singleton(new MockInMemoryPartitionPosition(topicPartition, missingPosition.getPreviousPosition())));
+    CompletableFuture<Void> trailingControlsPolled = new CompletableFuture<>();
+    CompletableFuture<Void> trailingControlsProcessed = new CompletableFuture<>();
+    PollStrategy pollStrategy = (broker, positions, timeout) -> {
+      if (trailingControlsPolled.isDone()) {
+        trailingControlsProcessed.complete(null);
+      }
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages =
+          filteredPollStrategy.poll(broker, positions, timeout);
+      if (messages.values()
+          .stream()
+          .flatMap(List::stream)
+          .anyMatch(record -> controlPosition.equals(record.getPosition()))) {
+        trailingControlsPolled.complete(null);
+      }
+      if (trailingControlsPolled.isDone()) {
+        positions.put(topicPartition, controlPosition);
+      }
+      return messages;
+    };
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, isParent, stats, TIMEOUT);
     Future<?> consumption = executor.submit(task);
     PubSubPosition recoveryPosition;
     try {
       TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Assert.assertEquals(task.getFailingPosition(), controlPosition);
+        Assert.assertEquals(task.getFailingPosition(), firstControlPosition);
         Assert.assertEquals(getLastPosition(clusterName), successfulPosition);
         Assert.assertEquals(getLastExecutionId(clusterName), 1L);
         Assert.assertNotEquals(
@@ -1114,8 +1138,9 @@ public class AdminConsumptionTaskTest {
             controlPosition,
             "Checkpoint must remain behind broker tail");
       });
+      trailingControlsProcessed.get(TIMEOUT, TimeUnit.MILLISECONDS);
       if (skipControlDIV) {
-        task.skipMessageDIVWithPosition(controlPosition);
+        task.skipMessageDIVWithPosition(firstControlPosition);
         recoveryPosition = controlPosition;
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           Assert.assertEquals(getLastPosition(clusterName), controlPosition);
@@ -1153,12 +1178,91 @@ public class AdminConsumptionTaskTest {
       replacement.close();
       replacementConsumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
     }
-    verify(mockKafkaConsumer).subscribe(any(), eq(skipControlDIV ? controlPosition : successfulPosition));
+    verify(mockKafkaConsumer, times(skipControlDIV ? 2 : 1))
+        .subscribe(any(), eq(skipControlDIV ? controlPosition : successfulPosition));
     verify(admin, times(1)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     verify(admin, times(skipControlDIV ? 0 : 1))
         .createStore(clusterName, "test_store_missing", owner, keySchema, valueSchema, false);
     verify(admin, times(skipControlDIV ? 0 : 1))
         .createStore(clusterName, "test_store_after_gap", owner, keySchema, valueSchema, false);
+  }
+
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAbruptProducerHandoverWithAbandonedExecutionId(
+      boolean isParent,
+      boolean restartConsumer,
+      boolean hiddenControl) throws Exception {
+    InMemoryPubSubPosition successfulPosition = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(topicName),
+        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    PollStrategy pollStrategy = hiddenControl
+        ? new FilteringPollStrategy(
+            new RandomPollStrategy(false),
+            Collections.singleton(new MockInMemoryPartitionPosition(topicPartition, successfulPosition)))
+        : new RandomPollStrategy(false);
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, isParent);
+    Future<?> consumption = executor.submit(task);
+    try {
+      TestUtils.waitForNonDeterministicAssertion(
+          TIMEOUT,
+          TimeUnit.MILLISECONDS,
+          () -> Assert.assertEquals(getLastPosition(clusterName), successfulPosition));
+      if (restartConsumer) {
+        task.close();
+        consumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+      }
+      // The old producer never emits END_OF_SEGMENT, and allocation 2 was never published.
+      if (hiddenControl) {
+        veniceWriter.broadcastStartOfPush(Collections.emptyMap());
+      }
+      veniceWriter.close(false);
+      veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
+      veniceWriter.broadcastStartOfPush(Collections.emptyMap());
+      PubSubPosition nextPosition = getPosition(
+          veniceWriter.put(
+              emptyKeyBytes,
+              getStoreCreationMessage(clusterName, "test_store_after_handover", owner, keySchema, valueSchema, 3),
+              AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+      if (restartConsumer) {
+        task = getAdminConsumptionTask(pollStrategy, isParent);
+        consumption = executor.submit(task);
+      }
+      if (hiddenControl) {
+        AdminConsumptionTask activeTask = task;
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          Assert.assertEquals(activeTask.getFailingPosition(), nextPosition);
+          Assert.assertEquals(getLastPosition(clusterName), successfulPosition);
+          Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+        });
+        // A noncontiguous broker position is not proof, even if the unseen record happens to be a control.
+        task.skipMessageDIVWithExecutionId(3L);
+      }
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(getLastPosition(clusterName), nextPosition);
+        Assert.assertEquals(getLastExecutionId(clusterName), 3L);
+      });
+      PubSubPosition followingPosition = getPosition(
+          veniceWriter.put(
+              emptyKeyBytes,
+              getStoreCreationMessage(clusterName, "test_store_following_handover", owner, keySchema, valueSchema, 4),
+              AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertEquals(getLastPosition(clusterName), followingPosition);
+        Assert.assertEquals(getLastExecutionId(clusterName), 4L);
+      });
+    } finally {
+      task.close();
+      consumption.get(TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+    verify(admin, times(1)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+    verify(admin, times(1)).createStore(clusterName, "test_store_after_handover", owner, keySchema, valueSchema, false);
+    verify(admin, times(1))
+        .createStore(clusterName, "test_store_following_handover", owner, keySchema, valueSchema, false);
   }
 
   @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
