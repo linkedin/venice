@@ -28,6 +28,18 @@ jstack <PID> > threaddump.txt
 Thread dumps show what every thread is doing at that moment. Look for threads in `BLOCKED` or `WAITING` state, and for
 lock contention between threads.
 
+### Server Netty Request Threads
+
+The server records the OpenTelemetry distribution `thread_pool.thread.active_request_distribution` with
+`venice.thread_pool.name=netty_worker_thread_pool` whenever a complete HTTP request enters the request pipeline. It
+counts workers concurrently executing the synchronous request pipeline across HTTP/1.1 connections and HTTP/2 streams.
+This metric has no Tehuti equivalent.
+
+Use the request-sampled average and maximum to understand request-processing concurrency within the reporting window.
+They are not time-weighted utilization or an in-flight request count: asynchronous storage work, response-only writes,
+TLS handshakes, and socket I/O outside the request pipeline are excluded. Idle periods produce no samples, and even a
+single request contributes a count of one.
+
 ## JFR (Java Flight Recorder) Profile
 
 Use when: latency spikes, CPU contention, thread contention, or when you need to understand where time is being spent.
