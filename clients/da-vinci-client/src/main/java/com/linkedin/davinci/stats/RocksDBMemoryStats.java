@@ -25,6 +25,7 @@ import java.util.function.LongSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.Cache;
+import org.rocksdb.Env;
 
 
 /**
@@ -64,6 +65,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
 
   private final Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new VeniceConcurrentHashMap<>();
   private final AtomicBoolean rmdBlockCacheRegistered = new AtomicBoolean(false);
+  private final String clusterName;
+  private volatile RocksDBBackgroundStats backgroundStats;
 
   /** OTel repository; null when OTel is disabled or when using a plain {@link MetricsRepository}. */
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -157,6 +160,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       boolean plainTableEnabled,
       String clusterName) {
     super(metricsRepository, name);
+    this.clusterName = clusterName;
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
@@ -178,6 +182,15 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
 
   public void registerPartition(String partitionName, RocksDBStoragePartition rocksDBPartition) {
     hostedRocksDBPartitions.put(partitionName, rocksDBPartition);
+  }
+
+  public synchronized RocksDBBackgroundStats getOrCreateBackgroundStats(Env env) {
+    if (backgroundStats == null) {
+      backgroundStats = new RocksDBBackgroundStats(getMetricsRepository(), getName().substring(1), clusterName, env);
+    } else if (!backgroundStats.usesEnv(env)) {
+      throw new IllegalArgumentException("Background metrics already registered for a different RocksDB environment");
+    }
+    return backgroundStats;
   }
 
   public void deregisterPartition(String partitionName) {
@@ -258,18 +271,28 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
    */
   private long getAggregatedPropertyValue(String metric) {
     long total = 0L;
+    boolean complete = true;
     synchronized (hostedRocksDBPartitions) {
       for (RocksDBStoragePartition dbPartition: hostedRocksDBPartitions.values()) {
         try {
           total += dbPartition.getRocksDBStatValue(metric);
         } catch (VeniceException e) {
           LOGGER.warn("Could not get rocksDB metric {} with error:", metric, e);
+          complete = false;
           continue;
         }
         if (INSTANCE_METRIC_DOMAINS.contains(metric)) {
           // Collect this metric once from any available partition and move on
           break;
         }
+      }
+    }
+    RocksDBBackgroundStats stats = backgroundStats;
+    if (complete && stats != null) {
+      if (metric.equals(RocksDBMemoryOtelMetricEntity.NUM_RUNNING_FLUSHES.getRocksDBProperty())) {
+        stats.sampleRunningJobs(true, total);
+      } else if (metric.equals(RocksDBMemoryOtelMetricEntity.NUM_RUNNING_COMPACTIONS.getRocksDBProperty())) {
+        stats.sampleRunningJobs(false, total);
       }
     }
     return total;

@@ -22,21 +22,25 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.AbstractEventListener;
 import org.rocksdb.Cache;
 import org.rocksdb.ClockCache;
 import org.rocksdb.Env;
 import org.rocksdb.HistogramType;
 import org.rocksdb.LRUCache;
+import org.rocksdb.Options;
 import org.rocksdb.Priority;
 import org.rocksdb.RateLimiter;
 import org.rocksdb.RocksDB;
@@ -84,6 +88,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   private final SstFileManager sstFileManager;
 
   private final RocksDBMemoryStats rocksDBMemoryStats;
+  private final RocksDBBackgroundEventListener backgroundEventListener;
 
   /**
    * Throttler for RocksDB open operations.
@@ -221,6 +226,23 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
         && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       rocksDBMemoryStats.setRMDBlockCache(sharedRMDCache, rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes());
     }
+    backgroundEventListener = rocksDBMemoryStats == null
+        ? null
+        : new RocksDBBackgroundEventListener(rocksDBMemoryStats.getOrCreateBackgroundStats(env));
+  }
+
+  void addBackgroundEventListener(Options options) {
+    if (backgroundEventListener != null) {
+      List<AbstractEventListener> listeners = new ArrayList<>(options.listeners());
+      listeners.add(backgroundEventListener);
+      options.setListeners(listeners);
+    }
+  }
+
+  void databaseClosed(long databaseHandle) {
+    if (backgroundEventListener != null) {
+      backgroundEventListener.databaseClosed(databaseHandle);
+    }
   }
 
   public long getMemtableSize() {
@@ -303,6 +325,9 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       storageEngine.close();
     });
     storageEngineMap.clear();
+    if (backgroundEventListener != null) {
+      backgroundEventListener.close();
+    }
     // Null out the RMD cache reference in metrics BEFORE closing the native object.
     // This prevents OTel/Tehuti async gauge callbacks from dereferencing a freed JNI handle.
     if (rocksDBMemoryStats != null) {
@@ -314,7 +339,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     }
     writeBufferManager.close();
     rateLimiter.close();
-    this.env.close();
     if (sstFileManager != null) {
       sstFileManager.close();
     }

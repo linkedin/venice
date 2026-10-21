@@ -457,6 +457,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     Options options = new Options();
 
     options.setEnv(factory.getEnv());
+    factory.addBackgroundEventListener(options);
     options.setRateLimiter(factory.getRateLimiter());
     options.setSstFileManager(factory.getSstFileManager());
     options.setWriteBufferManager(factory.getWriteBufferManager());
@@ -973,7 +974,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.writeLock().lock();
     try {
       if (rocksDB != null) {
+        long databaseHandle = rocksDB.getNativeHandle();
         rocksDB.close();
+        factory.databaseClosed(databaseHandle);
       }
     } finally {
       isClosed = true;
@@ -1003,7 +1006,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.writeLock().lock();
     try {
       long startTimeInMs = System.currentTimeMillis();
+      long databaseHandle = rocksDB.getNativeHandle();
       rocksDB.close();
+      factory.databaseClosed(databaseHandle);
       LOGGER.info(
           "RocksDB close for replica: {} took {} ms.",
           replicaId,

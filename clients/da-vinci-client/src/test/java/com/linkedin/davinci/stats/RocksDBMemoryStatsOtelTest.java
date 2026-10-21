@@ -15,6 +15,7 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import org.rocksdb.Cache;
+import org.rocksdb.Env;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -150,6 +151,12 @@ public class RocksDBMemoryStatsOtelTest {
   private static void exerciseAllRecordingPaths(MetricsRepository repo) {
     RocksDBMemoryStats stats = new RocksDBMemoryStats(repo, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
     stats.setRMDBlockCache(createMockCache(256L, 128L), 512L);
+    RocksDBBackgroundStats background = stats.getOrCreateBackgroundStats(mock(Env.class));
+    background.recordFlushCompleted();
+    background.recordFlushDuration(1_000_000);
+    background.recordFlushBytes(10);
+    background.recordCompactionCompleted();
+    background.recordCompactionStats(1_000, 20, 10);
   }
 
   private void validateGauge(String metricName, long expectedValue) {

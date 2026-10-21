@@ -79,6 +79,7 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.StoreVersionStateUtils;
+import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -290,6 +291,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
     this.computeThreadPoolStats =
         new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
+    ThreadPoolFactory.instrumentCallerRunsPolicy(executor, storageExecutionThreadPoolStats);
+    ThreadPoolFactory.instrumentCallerRunsPolicy(computeExecutor, computeThreadPoolStats);
     this.storageEngineRepository = storageEngineRepository;
     this.metadataRepository = metadataStoreRepository;
     this.schemaRepository = schemaRepository;
@@ -540,6 +543,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleSingleGetRequest(GetRouterRequest request) {
     storageExecutionThreadPoolStats.recordActiveThreadsCount();
+    storageExecutionThreadPoolStats.recordQueuedTasksCount();
     final int queueLen = this.executor.getQueue().size();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
@@ -594,6 +598,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         ParallelMultiKeyResponseWrapper::multiGet,
         this.multiGetResponseProvider,
         this.executor,
+        this.storageExecutionThreadPoolStats,
         requestContext,
         this::processMultiGet);
   }
@@ -613,6 +618,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       ParallelResponseProvider<R> parallelResponseProvider,
       IntFunction<R> individualResponseProvider,
       ThreadPoolExecutor threadPoolExecutor,
+      ThreadPoolStats threadPoolStats,
       C requestContext,
       SingleBatchProcessor<K, C, R> batchProcessor) {
     int totalKeyNum = keys.size();
@@ -627,6 +633,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     final long preSubmissionTimeNs = System.nanoTime();
     for (int cur = 0; cur < chunkCount; ++cur) {
       final int finalCur = cur;
+      threadPoolStats.recordQueuedTasksCount();
       chunkFutures[cur] = CompletableFuture.runAsync(() -> {
         double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
 
@@ -702,6 +709,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     storageExecutionThreadPoolStats.recordActiveThreadsCount();
+    storageExecutionThreadPoolStats.recordQueuedTasksCount();
     final int queueLen = this.executor.getQueue().size();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
@@ -734,6 +742,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     computeThreadPoolStats.recordActiveThreadsCount();
+    computeThreadPoolStats.recordQueuedTasksCount();
     final int queueLen = this.computeExecutor.getQueue().size();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
@@ -775,6 +784,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         ParallelMultiKeyResponseWrapper::compute,
         this.computeResponseProvider,
         this.computeExecutor,
+        this.computeThreadPoolStats,
         requestContext,
         this::processCompute);
   }
