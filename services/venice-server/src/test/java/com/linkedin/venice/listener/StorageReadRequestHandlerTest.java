@@ -107,19 +107,13 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
-import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
-import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
-import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
@@ -133,8 +127,6 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.nio.ByteBuffer;
@@ -306,18 +298,16 @@ public class StorageReadRequestHandlerTest {
         ComputeResponseWrapper::new);
   }
 
-  private void assertThreadPoolSamples(String poolName, boolean sampled) {
-    for (String sensor: Arrays.asList("active_thread_count", "queued_task_count")) {
-      String metricPrefix = "." + poolName + "--" + sensor + ".";
-      double average = metricsRepository.getMetric(metricPrefix + "Avg").value();
-      double maximum = metricsRepository.getMetric(metricPrefix + "Max").value();
-      if (sampled) {
-        assertTrue(average >= 0, "Expected a sample for " + metricPrefix);
-        assertTrue(maximum >= 0, "Expected a sample for " + metricPrefix);
-      } else {
-        assertTrue(Double.isNaN(average), "Expected no samples for " + metricPrefix);
-        assertEquals(maximum, Double.NEGATIVE_INFINITY, "Expected no samples for " + metricPrefix);
-      }
+  private void assertActiveThreadSamples(String poolName, boolean sampled) {
+    String metricPrefix = "." + poolName + "--active_thread_count.";
+    double average = metricsRepository.getMetric(metricPrefix + "Avg").value();
+    double maximum = metricsRepository.getMetric(metricPrefix + "Max").value();
+    if (sampled) {
+      assertTrue(average >= 0, "Expected an active thread sample for " + poolName);
+      assertTrue(maximum >= 0, "Expected an active thread sample for " + poolName);
+    } else {
+      assertTrue(Double.isNaN(average), "Expected no active thread samples for " + poolName);
+      assertEquals(maximum, Double.NEGATIVE_INFINITY, "Expected no active thread samples for " + poolName);
     }
   }
 
@@ -352,8 +342,8 @@ public class StorageReadRequestHandlerTest {
       verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
       responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     }
-    assertThreadPoolSamples("storage_execution_thread_pool", true);
-    assertThreadPoolSamples("storage_compute_thread_pool", false);
+    assertActiveThreadSamples("storage_execution_thread_pool", true);
+    assertActiveThreadSamples("storage_compute_thread_pool", false);
     assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
     assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
   }
@@ -368,83 +358,8 @@ public class StorageReadRequestHandlerTest {
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) argumentCaptor.getValue();
     assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
-    assertThreadPoolSamples("storage_execution_thread_pool", false);
-    assertThreadPoolSamples("storage_compute_thread_pool", false);
-  }
-
-  @Test
-  public void testParallelMultiGetSamplesQueueBeforeEachChunk() throws Exception {
-    InMemoryMetricReader reader = InMemoryMetricReader.create();
-    VeniceMetricsRepository repository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix("server")
-            .setMetricEntities(
-                ModuleMetricEntityInterface
-                    .getUniqueMetricEntities(Collections.singletonList(ThreadPoolOtelMetricEntity.class)))
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(reader)
-            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
-            .build());
-    try {
-      ThreadPoolExecutor pool = mock(ThreadPoolExecutor.class);
-      LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(3);
-      doReturn(queue).when(pool).getQueue();
-      doReturn(new ThreadPoolExecutor.AbortPolicy()).when(pool).getRejectedExecutionHandler();
-      doAnswer(invocation -> {
-        queue.add(invocation.getArgument(0));
-        return null;
-      }).when(pool).execute(any());
-      doReturn(true).when(serverConfig).isEnableParallelBatchGet();
-      doReturn(1).when(serverConfig).getParallelBatchGetChunkSize();
-      StorageReadRequestHandler handler = new StorageReadRequestHandler(
-          serverConfig,
-          pool,
-          executor,
-          repository,
-          storageEngineRepository,
-          storeRepository,
-          schemaRepository,
-          ingestionMetadataRetriever,
-          readMetadataRetriever,
-          healthCheckService,
-          compressorFactory,
-          Optional.empty());
-      List<MultiGetRouterRequestKeyV1> keys = new ArrayList<>();
-      for (int i = 0; i < 3; i++) {
-        MultiGetRouterRequestKeyV1 key = new MultiGetRouterRequestKeyV1();
-        key.keyBytes = ByteBuffer.wrap(new byte[] { (byte) i });
-        key.keyIndex = i;
-        key.partitionId = 0;
-        keys.add(key);
-      }
-      MultiGetRouterRequestWrapper request = mock(MultiGetRouterRequestWrapper.class);
-      doReturn(RequestType.MULTI_GET).when(request).getRequestType();
-      doReturn(version.kafkaTopicName()).when(request).getResourceName();
-      doReturn(keys).when(request).getKeys();
-      doReturn(keys.size()).when(request).getKeyCount();
-
-      handler.channelRead(context, request);
-      assertEquals(queue.size(), 3);
-      Attributes attributes = Attributes.builder()
-          .put(
-              VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME.getDimensionNameInDefaultFormat(),
-              "storage_execution_thread_pool")
-          .build();
-      OpenTelemetryDataTestUtils.validateHistogramPointData(
-          reader,
-          0,
-          2,
-          3,
-          3,
-          attributes,
-          ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_DISTRIBUTION.getMetricEntity().getMetricName(),
-          "server");
-      while (!queue.isEmpty()) {
-        queue.remove().run();
-      }
-      verify(context).writeAndFlush(any());
-    } finally {
-      repository.close();
-    }
+    assertActiveThreadSamples("storage_execution_thread_pool", false);
+    assertActiveThreadSamples("storage_compute_thread_pool", false);
   }
 
   @Test(dataProvider = "storageReadRequestHandlerParams")
@@ -543,8 +458,8 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     verify(context, timeout(10000)).writeAndFlush(argumentCaptor.capture());
 
-    assertThreadPoolSamples("storage_execution_thread_pool", true);
-    assertThreadPoolSamples("storage_compute_thread_pool", false);
+    assertActiveThreadSamples("storage_execution_thread_pool", true);
+    assertActiveThreadSamples("storage_compute_thread_pool", false);
     Object response = argumentCaptor.getValue();
     assertTrue(response instanceof AbstractReadResponse, "The response should be castable to AbstractReadResponse.");
     AbstractReadResponse multiGetResponseWrapper = (AbstractReadResponse) response;
@@ -846,8 +761,8 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
 
     verify(context, timeout(10000)).writeAndFlush(argumentCaptor.capture());
-    assertThreadPoolSamples("storage_compute_thread_pool", readComputationEnabled);
-    assertThreadPoolSamples("storage_execution_thread_pool", false);
+    assertActiveThreadSamples("storage_compute_thread_pool", readComputationEnabled);
+    assertActiveThreadSamples("storage_execution_thread_pool", false);
     if (!readComputationEnabled) {
       HttpShortcutResponse errorResponse = (HttpShortcutResponse) argumentCaptor.getValue();
       assertEquals(errorResponse.getStatus(), HttpResponseStatus.METHOD_NOT_ALLOWED);

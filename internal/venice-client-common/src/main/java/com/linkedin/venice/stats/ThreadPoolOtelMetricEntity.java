@@ -32,25 +32,6 @@ public enum ThreadPoolOtelMetricEntity implements ModuleMetricEntityInterface {
   THREAD_POOL_QUEUE_TASK_DISTRIBUTION(
       "thread_pool.queue.task_distribution", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Distribution of queued task count over time", Collections.singleton(VENICE_THREAD_POOL_NAME)
-  ),
-  THREAD_POOL_QUEUE_CAPACITY(
-      "thread_pool.queue.capacity", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
-      "Approximate queue capacity from queued tasks and remaining capacity",
-      Collections.singleton(VENICE_THREAD_POOL_NAME)
-  ),
-  THREAD_POOL_TASK_REJECTED_COUNT(
-      "thread_pool.task.rejected_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Tasks rejected from worker execution, including caller-run and shutdown rejections",
-      Collections.singleton(VENICE_THREAD_POOL_NAME)
-  ),
-  THREAD_POOL_TASK_CALLER_RUN_COUNT(
-      "thread_pool.task.caller_run_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Tasks executed on the submitting thread by the caller-runs policy",
-      Collections.singleton(VENICE_THREAD_POOL_NAME)
-  ),
-  THREAD_POOL_TASK_CALLER_RUN_TIME(
-      "thread_pool.task.caller_run_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "Time spent executing tasks on the submitting thread", Collections.singleton(VENICE_THREAD_POOL_NAME)
   );
 
   private final MetricEntity metricEntity;

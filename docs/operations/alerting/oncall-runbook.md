@@ -305,55 +305,6 @@ samples can reveal activity between collections, but may still miss peaks and ar
 The OpenTelemetry equivalent is `thread_pool.thread.active_distribution`, with min/max/count/sum aggregations and the
 `venice.thread_pool.name` dimension set to `storage_execution_thread_pool` or `storage_compute_thread_pool`.
 
-For either pool, `queued_task_count.Avg` / `.Max` sample backlog before each task submission, including each parallel
-chunk. `queue_capacity.LambdaStat` reports the approximate queue capacity from its size and remaining capacity; these
-two readings are not atomic under concurrent submissions.
-
-`rejected_task_count.Count` counts tasks that could not enter worker execution. With the standard caller-runs policy,
-`caller_run_count.Count` counts tasks executed on the submitting thread, and `caller_run_time.Avg` / `.Max` measure
-their execution time in milliseconds, including failed executions. Caller-run work is backpressure, not necessarily
-failed work. Shutdown rejections are counted but retain the policy's existing discard behavior; custom rejection
-policies are left unchanged and are not included in these counters.
-
-OpenTelemetry exposes these as `thread_pool.queue.task_distribution`, `thread_pool.queue.capacity`,
-`thread_pool.task.rejected_count`, `thread_pool.task.caller_run_count`, and `thread_pool.task.caller_run_time`, using
-the same thread-pool dimension. Caller-run time is a histogram; the count metrics are counters.
-
-### RocksDB Flush and Compaction Pool Usage
-
-RocksDB shares a native environment across databases. Flush work normally uses its HIGH-priority pool; compaction work
-uses LOW priority. These are native pools, separate from the Java storage-read and compute executors.
-
-| OpenTelemetry metric                                | Meaning                                                       |
-| --------------------------------------------------- | ------------------------------------------------------------- |
-| `rocksdb.{flush,compaction}.pool.capacity`          | Configured threads in the shared HIGH/LOW pool                |
-| `rocksdb.{flush,compaction}.pool.queue_depth`       | Native tasks queued in that priority pool                     |
-| `rocksdb.{flush,compaction}.running_jobs`           | Distribution of sampled running jobs across hosted partitions |
-| `rocksdb.{flush,compaction}.completed_count`        | Background-job completion notifications                       |
-| `rocksdb.{flush,compaction}.time`                   | Flush/compaction elapsed-time histogram in milliseconds       |
-| `rocksdb.flush.completed_raw_bytes`                 | Raw key/value bytes in completed flush tables                 |
-| `rocksdb.compaction.completed_{input,output}_bytes` | Input/output bytes reported by completed compactions          |
-
-Metric names above omit the service prefix (`venice.server.`). Metrics have the `venice.cluster.name` dimension. These
-metrics follow the existing database-memory-stats enablement setting, which is enabled by default. Tehuti uses the same
-metric names under the RocksDB stats namespace, with `AsyncGauge` for capacity/queue depth, `Avg`/`Max` for
-distributions, `Count`/`OccurrenceRate` for completions, and `Total`/`Rate` for bytes.
-
-Pool gauges are registered once per environment in the RocksDB stats owner, not once per partition. Running-job
-distributions reuse the existing `rocksdb.flush.running_count` and `rocksdb.compaction.running_count` property reads,
-with at most one sample per second per kind. They depend on the existing metric-collection cadence and can still miss
-short-lived activity; no scheduler or request-path partition scan is added. Running jobs are not occupied threads, and
-these samples are not time-weighted utilization. Partial property reads do not produce distribution samples.
-
-Flush duration measures matched begin/completion callback intervals, including commit wait. Completions without a
-matching begin are counted, but their duration is omitted with a warning. Compaction duration uses native elapsed wall
-time and excludes scheduling queue wait; compaction completion counts include unsuccessful jobs. Rates of the byte
-counters describe completed work: flush bytes are logical raw payload, not physical disk bandwidth.
-
-Correlate native queue depth and configured capacity with the existing flush-pending, immutable-memtable,
-compaction-pending, and estimated-pending-compaction-byte gauges. This distinguishes queued background work from a pool
-that is active but making slow progress.
-
 ### JVM Heap Usage
 
 **Metric:** `VeniceJVMStats--HeapUsage`

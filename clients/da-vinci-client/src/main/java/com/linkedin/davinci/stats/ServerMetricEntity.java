@@ -39,7 +39,6 @@ public final class ServerMetricEntity {
         BlobTransferOtelMetricEntity.class,
         KafkaConsumerServiceOtelMetricEntity.class,
         RocksDBMemoryOtelMetricEntity.class,
-        RocksDBBackgroundOtelMetricEntity.class,
         DIVOtelMetricEntity.class,
         ServerReadQuotaOtelMetricEntity.class,
         ServerConnectionOtelMetricEntity.class,

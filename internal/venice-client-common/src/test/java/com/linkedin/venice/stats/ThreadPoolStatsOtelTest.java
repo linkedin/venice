@@ -50,7 +50,6 @@ public class ThreadPoolStatsOtelTest {
     Mockito.doReturn(5).when(mockThreadPool).getActiveCount();
     Mockito.doReturn(10).when(mockThreadPool).getMaximumPoolSize();
     Mockito.doReturn(3).when(mockQueue).size();
-    Mockito.doReturn(17).when(mockQueue).remainingCapacity();
 
     stats = new ThreadPoolStats(metricsRepository, mockThreadPool, TEST_POOL_NAME);
   }
@@ -73,49 +72,6 @@ public class ThreadPoolStatsOtelTest {
   public void testAsyncGaugeQueueTaskCount() {
     validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity().getMetricName(), 3);
     validateTehutiMetric("queued_task_count_gauge", "LambdaStat", 3.0);
-  }
-
-  @Test
-  public void testQueueCapacity() {
-    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_CAPACITY.getMetricEntity().getMetricName(), 20);
-    validateTehutiMetric("queue_capacity", "LambdaStat", 20.0);
-  }
-
-  @Test
-  public void testCallerRunsMetrics() {
-    stats.recordRejectedTask();
-    stats.recordCallerRun();
-    stats.recordCallerRunTime(2.0);
-    stats.recordRejectedTask();
-    stats.recordCallerRun();
-    stats.recordCallerRunTime(6.0);
-    stats.recordRejectedTask();
-
-    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
-        inMemoryMetricReader,
-        3,
-        threadPoolAttributes(),
-        ThreadPoolOtelMetricEntity.THREAD_POOL_TASK_REJECTED_COUNT.getMetricEntity().getMetricName(),
-        TEST_METRIC_PREFIX);
-    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
-        inMemoryMetricReader,
-        2,
-        threadPoolAttributes(),
-        ThreadPoolOtelMetricEntity.THREAD_POOL_TASK_CALLER_RUN_COUNT.getMetricEntity().getMetricName(),
-        TEST_METRIC_PREFIX);
-    OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
-        inMemoryMetricReader,
-        2.0,
-        6.0,
-        2,
-        8.0,
-        threadPoolAttributes(),
-        ThreadPoolOtelMetricEntity.THREAD_POOL_TASK_CALLER_RUN_TIME.getMetricEntity().getMetricName(),
-        TEST_METRIC_PREFIX);
-    validateTehutiMetric("rejected_task_count", "Count", 3.0);
-    validateTehutiMetric("caller_run_count", "Count", 2.0);
-    validateTehutiMetric("caller_run_time", "Avg", 4.0);
-    validateTehutiMetric("caller_run_time", "Max", 6.0);
   }
 
   @Test
@@ -301,11 +257,5 @@ public class ThreadPoolStatsOtelTest {
     assertEquals(repo.getMetric("." + poolName + "--active_thread_count.Avg").value(), 0.0);
     assertEquals(repo.getMetric("." + poolName + "--active_thread_count.Max").value(), 0.0);
     localStats.recordQueuedTasksCount();
-    localStats.recordRejectedTask();
-    localStats.recordCallerRun();
-    localStats.recordCallerRunTime(1.0);
-    assertEquals(repo.getMetric("." + poolName + "--rejected_task_count.Count").value(), 1.0);
-    assertEquals(repo.getMetric("." + poolName + "--caller_run_count.Count").value(), 1.0);
-    assertEquals(repo.getMetric("." + poolName + "--caller_run_time.Avg").value(), 1.0);
   }
 }

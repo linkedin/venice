@@ -3,9 +3,7 @@ package com.linkedin.venice.utils.concurrent;
 import static com.linkedin.venice.utils.concurrent.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -17,28 +15,6 @@ import javax.annotation.Nullable;
 
 public final class ThreadPoolFactory {
   private ThreadPoolFactory() {
-  }
-
-  /**
-   * Instruments the standard caller-runs policy without replacing custom rejection policies.
-   * Shutdown rejections are counted but retain the standard policy's discard behavior.
-   */
-  public static void instrumentCallerRunsPolicy(ThreadPoolExecutor executor, ThreadPoolStats stats) {
-    if (executor.getRejectedExecutionHandler().getClass() != ThreadPoolExecutor.CallerRunsPolicy.class) {
-      return;
-    }
-    executor.setRejectedExecutionHandler((task, pool) -> {
-      stats.recordRejectedTask();
-      if (!pool.isShutdown()) {
-        stats.recordCallerRun();
-        long startTimeNs = System.nanoTime();
-        try {
-          task.run();
-        } finally {
-          stats.recordCallerRunTime(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs));
-        }
-      }
-    });
   }
 
   public static ThreadPoolExecutor createThreadPool(
