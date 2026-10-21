@@ -34,8 +34,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
-import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
-import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
@@ -56,7 +54,6 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
-import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -183,65 +180,6 @@ public class TestVeniceHelixAdmin {
     testStore.addVersion(new VersionImpl(storeName, 1, "push-id"));
     addVersion.get();
     verify(repository, never()).updateStore(testStore);
-  }
-
-  @Test
-  public void testVersionSkippedRegionsSnapshot() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    doReturn(true).when(admin).isParent();
-    doReturn(true).when(admin).isDegradedModeEnabled(clusterName);
-    doReturn(Collections.singletonMap("region-b", mock(DegradedDcInfo.class))).when(admin)
-        .getDegradedDatacenters(clusterName);
-    Map<String, String> regions = new HashMap<>();
-    for (String region: Arrays.asList("region-a", "region-b", "region-c")) {
-      regions.put(region, "controller-url");
-    }
-    doReturn(regions).when(admin).getChildDataCenterControllerUrlMap(clusterName);
-    doCallRealMethod().when(admin).setVersionSkippedRegions(anyString(), any(), any());
-    Version version = new VersionImpl(storeName, 1, "push-id");
-    version.setVersionSwapDeferred(true);
-    for (boolean autoConverted: new boolean[] { false, true }) {
-      version.setDegradedPush(autoConverted);
-      admin.setVersionSkippedRegions(clusterName, version, "region-a");
-      assertEquals(version.getSkippedRegions(), Arrays.asList("region-b"));
-    }
-    VeniceParentHelixAdmin parent = mock(VeniceParentHelixAdmin.class);
-    doCallRealMethod().when(parent)
-        .sendAddVersionAdminMessage(
-            anyString(),
-            anyString(),
-            anyString(),
-            any(),
-            anyInt(),
-            any(),
-            any(),
-            anyInt(),
-            anyInt());
-    doReturn(false).when(admin).isDegradedModeEnabled(clusterName);
-    doReturn(Collections.emptyMap()).when(admin).getDegradedDatacenters(clusterName);
-    parent.sendAddVersionAdminMessage(
-        clusterName,
-        storeName,
-        "push-id",
-        version.cloneVersion(),
-        1,
-        PushType.BATCH,
-        "region-a",
-        -1,
-        Version.DEFAULT_RT_VERSION_NUMBER);
-    ArgumentCaptor<AdminOperation> message = ArgumentCaptor.forClass(AdminOperation.class);
-    verify(parent).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), message.capture());
-    assertEquals(((AddVersion) message.getValue().payloadUnion).degradedDatacenters, Arrays.asList("region-b"));
-    admin.setVersionSkippedRegions(clusterName, version, "region-a");
-    assertTrue(version.getSkippedRegions().isEmpty());
-    doReturn(true).when(admin).isDegradedModeEnabled(clusterName);
-    doReturn(Collections.singletonMap("region-b", mock(DegradedDcInfo.class))).when(admin)
-        .getDegradedDatacenters(clusterName);
-    admin.setVersionSkippedRegions(clusterName, version, "region-a,region-b");
-    assertTrue(version.getSkippedRegions().isEmpty());
-    version.setVersionSwapDeferred(false);
-    admin.setVersionSkippedRegions(clusterName, version, "region-a");
-    assertEquals(new HashSet<>(version.getSkippedRegions()), new HashSet<>(Arrays.asList("region-b", "region-c")));
   }
 
   @Test

@@ -11,15 +11,9 @@ import static org.testng.Assert.expectThrows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version.PushType;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -67,49 +61,6 @@ public class TestVersion {
     Version version = new VersionImpl(storeName, versionNumber);
     String serialized = OBJECT_MAPPER.writeValueAsString(version);
     assertTrue(serialized.contains(storeName));
-  }
-
-  @Test
-  public void testSkippedRegionsMetadata() throws IOException {
-    Version version = new VersionImpl("store", 1, "push");
-    assertTrue(version.getSkippedRegions().isEmpty());
-    assertTrue(OBJECT_MAPPER.readValue(OLD_SERIALIZED, Version.class).getSkippedRegions().isEmpty());
-    ArrayList<String> skippedRegions = new ArrayList<>(Arrays.asList("region-b"));
-    version.setSkippedRegions(skippedRegions);
-    skippedRegions.clear();
-    Version clone = version.cloneVersion();
-    version.setSkippedRegions(Arrays.asList("region-c"));
-    assertEquals(clone.getSkippedRegions(), Arrays.asList("region-b"));
-    Version parsed = OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsString(clone), Version.class);
-    assertEquals(parsed.getSkippedRegions(), clone.getSkippedRegions());
-    ReadOnlyStore.ReadOnlyVersion readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(parsed);
-    assertEquals(readOnlyVersion.getSkippedRegions(), clone.getSkippedRegions());
-    expectThrows(UnsupportedOperationException.class, () -> readOnlyVersion.getSkippedRegions().clear());
-    expectThrows(
-        UnsupportedOperationException.class,
-        () -> readOnlyVersion.setSkippedRegions(Arrays.asList("region-c")));
-    ZKStore store = (ZKStore) TestUtils.createTestStore("store", "owner", 1);
-    store.addVersion(clone);
-    assertEquals(
-        new ZKStore(new ReadOnlyStore(store).cloneStoreProperties()).getVersion(1).getSkippedRegions(),
-        clone.getSkippedRegions());
-    byte[] bytes =
-        SerializerDeserializerFactory.getAvroGenericSerializer(StoreVersion.SCHEMA$).serialize(clone.dataModel());
-    StoreVersion restored =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(StoreVersion.class).deserialize(bytes);
-    assertEquals(new VersionImpl(restored).getSkippedRegions(), clone.getSkippedRegions());
-    Schema oldSchema = Utils.getSchemaFromResource("avro/StoreMetaValue/v50/StoreMetaValue.avsc")
-        .getField("storeProperties")
-        .schema()
-        .getTypes()
-        .get(1)
-        .getField("versions")
-        .schema()
-        .getElementType();
-    byte[] oldBytes = SerializerDeserializerFactory.getAvroGenericSerializer(oldSchema).serialize(clone.dataModel());
-    StoreVersion upgraded =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(oldSchema, StoreVersion.class).deserialize(oldBytes);
-    assertTrue(new VersionImpl(upgraded).getSkippedRegions().isEmpty());
   }
 
   /**

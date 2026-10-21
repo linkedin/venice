@@ -2721,19 +2721,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  void setVersionSkippedRegions(String clusterName, Version version, String targetedRegions) {
-    if (isParent() && StringUtils.isNotEmpty(targetedRegions)) {
-      Set<String> skippedRegions = new HashSet<>();
-      if (!version.isVersionSwapDeferred()) {
-        skippedRegions.addAll(getChildDataCenterControllerUrlMap(clusterName).keySet());
-      } else if (isDegradedModeEnabled(clusterName)) {
-        skippedRegions.addAll(getDegradedDatacenters(clusterName).keySet());
-      }
-      skippedRegions.removeAll(parseRegionsFilterList(targetedRegions));
-      version.setSkippedRegions(new ArrayList<>(skippedRegions));
-    }
-  }
-
   /**
    * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
    * without starting ingestion.
@@ -3487,8 +3474,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             version.setVersionSwapDeferred(versionSwapDeferred);
 
             version.setDegradedPush(isDegradedPush);
-
-            setVersionSkippedRegions(clusterName, version, targetedRegions);
 
             version.setViewConfigs(store.getViewConfigs());
 

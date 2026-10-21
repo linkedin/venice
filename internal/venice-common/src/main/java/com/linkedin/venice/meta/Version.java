@@ -218,13 +218,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setDegradedPush(boolean isDegradedPush);
 
-  /**
-   * Regions that intentionally skip this version's ADD_VERSION message. Empty for legacy versions.
-   */
-  List<String> getSkippedRegions();
-
-  void setSkippedRegions(List<String> skippedRegions);
-
   int getReplicationFactor();
 
   void setReplicationFactor(int replicationFactor);

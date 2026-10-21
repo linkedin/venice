@@ -885,8 +885,9 @@ public class AdminExecutionTask implements Callable<Void> {
       boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
       boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
-      // The legacy degradedDatacenters field carries the creation-time skipped-region snapshot.
-      // Reading it from the message keeps the decision local and atomic with the AddVersion parameters.
+      // Degraded state is carried in the admin message itself (populated by the parent at version
+      // creation time). Reading it from the message keeps the decision local — no cross-region
+      // state propagation needed — and atomic with the rest of the AddVersion parameters.
       boolean isDegradedDC = message.degradedDatacenters != null
           && message.degradedDatacenters.stream().map(Object::toString).anyMatch(regionName::equals);
       String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
@@ -899,7 +900,7 @@ public class AdminExecutionTask implements Callable<Void> {
             storeName,
             regionName,
             message.targetedRegions,
-            isDegradedDC ? "Region explicitly excluded at version creation." : "");
+            isDegradedDC ? "Region is degraded." : "");
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(
