@@ -71,6 +71,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.tehuti.MetricsUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -158,7 +159,7 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         // Verify router has discovered the version BEFORE producing partial updates.
         // waitVersion calls refreshAllRouterMetaData() but that's async — the router may not
         // have processed it yet. Reading a key forces the router to resolve the store version.
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
           assertNotNull(readValue(storeReader, "1"), "Router should have version metadata by now");
         });
 
@@ -742,7 +743,8 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
    * for the same key in a single ingestion batch.
    *
    * Scenario:
-   * 1. Build a chunked value via 30 flushed updates (timestamps 1..291). Record manifests M_prev.
+   * 1. Seed all fields with a full PUT at timestamp 2, then build a chunked value with 29 flushed
+   *    collection additions (timestamps 11..291). Record manifests M_prev.
    * 2. Send two UPDATEs WITHOUT flush:
    *    - Record A: logical timestamp 1 (older than all field timestamps → ignored by DCR)
    *    - Record B: logical timestamp 10000 (wins DCR)
@@ -796,8 +798,19 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
 
-      // Step 1: Build a chunked value via flushed updates (timestamps 1, 11, 21, ..., 291).
-      for (int i = 0; i < initialUpdateCount; i++) {
+      // A full PUT establishes timestamps for every field, including the collection's top-level timestamp.
+      // Collection additions alone leave that timestamp at 0, allowing older updates to add unseen elements.
+      GenericRecord initialValue = AvroSchemaUtils.createGenericRecord(valueSchema);
+      initialValue.put(primitiveFieldName, "Tottenham");
+      List<Float> initialEntries = new ArrayList<>();
+      for (int j = 0; j < singleUpdateEntryCount; j++) {
+        initialEntries.add((float) j);
+      }
+      initialValue.put(listFieldName, initialEntries);
+      sendStreamingRecord(veniceProducer, storeName, key, initialValue, 2L);
+
+      // Step 1: Build a chunked value and RMD via flushed updates (timestamps 11, 21, ..., 291).
+      for (int i = 1; i < initialUpdateCount; i++) {
         producePartialUpdateToArray(
             storeName,
             veniceProducer,
