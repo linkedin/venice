@@ -57,7 +57,7 @@ public class TimeoutProcessor implements Executor {
     }
   };
 
-  /** ResourceRegistry iff none specified at construction */
+  /** Internally owned registry, or null for an externally supplied registry or managed executor. */
   private final ResourceRegistry _registry;
 
   /** ExecutorService for this timeout processor */
@@ -334,13 +334,42 @@ public class TimeoutProcessor implements Executor {
   }
 
   TimeoutProcessor(ResourceRegistry registry, long tickingInterval, EventStore eventStore, int executorThreadCount) {
-    _registry = registry == null ? (registry = new ResourceRegistry()) : null; // SUPPRESS CHECKSTYLE InnerAssignment
-    _executor = registry.factory(ShutdownableExecutors.class)
-        .newScheduledThreadPool(executorThreadCount, new NamedThreadFactory("timeout-processor"));
+    this(registry, tickingInterval, eventStore, executorThreadCount, false);
+  }
+
+  private TimeoutProcessor(
+      ResourceRegistry registry,
+      long tickingInterval,
+      EventStore eventStore,
+      int executorThreadCount,
+      boolean managed) {
+    if (managed) {
+      _registry = null;
+      _executor = Executors.newScheduledThreadPool(executorThreadCount, new NamedThreadFactory("timeout-processor"));
+    } else {
+      _registry = registry == null ? (registry = new ResourceRegistry()) : null; // SUPPRESS CHECKSTYLE InnerAssignment
+      _executor = registry.factory(ShutdownableExecutors.class)
+          .newScheduledThreadPool(executorThreadCount, new NamedThreadFactory("timeout-processor"));
+    }
 
     _eventStore = Objects.requireNonNull(eventStore);
     _eventsMap = _eventStore.buildCorrespondentMap();
     _executor.scheduleAtFixedRate(_tick, 0, tickingInterval, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Creates a processor whose executor is owned exclusively by its caller, rather than a ResourceRegistry.
+   * It is not affected by {@link ResourceRegistry#globalShutdown()}. The owner must stop producers, call
+   * {@link #shutdownNow()}, and then {@link #awaitTermination(int, TimeUnit)} after its dependents have stopped.
+   * Existing constructors retain their registry/global cleanup behavior.
+   */
+  public static TimeoutProcessor createManaged(boolean useTreeMap, int executorThreadCount) {
+    return new TimeoutProcessor(
+        null,
+        TICKING_INTERVAL_MILLISECONDS,
+        useTreeMap ? EventStore.TreeMap : EventStore.SkipList,
+        executorThreadCount,
+        true);
   }
 
   /**
@@ -424,6 +453,7 @@ public class TimeoutProcessor implements Executor {
         _registry.waitForShutdown();
       } catch (InterruptedException e) {
         LOG.warn("Interrupted", e);
+        Thread.currentThread().interrupt();
       }
     } else {
       _executor.shutdownNow();
