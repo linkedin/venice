@@ -53,7 +53,6 @@ public class ListenerService extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private EventLoopGroup bossGroup;
   private EventLoopGroup workerGroup;
-  private final ServerNettyEventLoopMonitor nettyEventLoopMonitor;
   private ChannelFuture serverFuture;
   private final int port;
   private final int grpcPort;
@@ -157,8 +156,6 @@ public class ListenerService extends AbstractVeniceService {
           new DefaultThreadFactory("Venice-Rest-Listener-Nio-Worker"));
       serverSocketChannelClass = NioServerSocketChannel.class;
     }
-    nettyEventLoopMonitor =
-        new ServerNettyEventLoopMonitor(workerGroup, metricsRepository, serverConfig.getLogContext());
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup)
         .channel(serverSocketChannelClass)
@@ -208,13 +205,12 @@ public class ListenerService extends AbstractVeniceService {
       LOGGER.info("gRPC service started on port: {}", grpcPort);
     }
 
-    nettyEventLoopMonitor.start();
+    // There is no async process in this function, so we are completely finished with the start up process.
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
-    nettyEventLoopMonitor.close();
     ChannelFuture shutdown = serverFuture.channel().closeFuture();
     /**
      * Netty shutdown gracefully is NOT working well for us since it will close all the connections right away.

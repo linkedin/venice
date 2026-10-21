@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
@@ -123,21 +124,35 @@ public class ServerNettyThreadStatsHandlerTest {
   }
 
   @Test
-  public void testNestedRequestFailureReleasesThreadAndPreservesFailure() throws Exception {
+  public void testNestedRequestsOnOneThreadAreCountedOnce() throws Exception {
     ChannelHandlerContext outerContext = mock(ChannelHandlerContext.class);
     ChannelHandlerContext innerContext = mock(ChannelHandlerContext.class);
     HttpRequest outerRequest = request();
     HttpRequest innerRequest = request();
     doAnswer(invocation -> {
       handler.channelRead(innerContext, innerRequest);
-      throw new IllegalStateException("request failed");
+      return outerContext;
     }).when(outerContext).fireChannelRead(outerRequest);
 
-    assertThrows(IllegalStateException.class, () -> handler.channelRead(outerContext, outerRequest));
+    handler.channelRead(outerContext, outerRequest);
     handler.channelRead(mock(ChannelHandlerContext.class), request());
     requestOnAnotherWorker();
 
     verify(innerContext).fireChannelRead(innerRequest);
+    assertEquals(metric("Avg"), 1.0);
+    assertEquals(metric("Max"), 1.0);
+  }
+
+  @Test
+  public void testExceptionReleasesThreadAndPreservesFailure() throws Exception {
+    ChannelHandlerContext context = mock(ChannelHandlerContext.class);
+    HttpRequest request = request();
+    doThrow(new IllegalStateException("request failed")).when(context).fireChannelRead(request);
+
+    assertThrows(IllegalStateException.class, () -> handler.channelRead(context, request));
+    requestOnAnotherWorker();
+    handler.channelRead(mock(ChannelHandlerContext.class), request());
+
     assertEquals(metric("Avg"), 1.0);
     assertEquals(metric("Max"), 1.0);
   }

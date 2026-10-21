@@ -2,7 +2,6 @@ package com.linkedin.venice.listener;
 
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -95,6 +94,5 @@ public class ListenerServiceTest {
         Optional.empty());
     // dummy method call
     listenerService.getName();
-    assertEquals(metricsRepository.getMetric(".netty_worker_thread_pool--max_thread_number.LambdaStat").value(), 10.0);
   }
 }

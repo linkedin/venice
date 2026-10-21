@@ -9,7 +9,7 @@ import java.util.Arrays;
 
 
 public class ServerNettyThreadStats extends AbstractVeniceStats {
-  static final String THREAD_POOL_NAME = "netty_worker_thread_pool";
+  private static final String THREAD_POOL_NAME = "netty_worker_thread_pool";
 
   private final MetricEntityStateBase activeRequestThreadCount;
 
