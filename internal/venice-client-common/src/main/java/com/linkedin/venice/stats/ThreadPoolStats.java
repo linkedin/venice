@@ -61,9 +61,6 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     activeThreadsCountMetric = MetricEntityStateBase.create(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_DISTRIBUTION.getMetricEntity(),
         otelData.getOtelRepository(),
-        this::registerSensor,
-        ThreadPoolTehutiMetricNameEnum.ACTIVE_THREAD_COUNT,
-        Arrays.asList(new Avg(), new Max()),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes());
 
@@ -102,6 +99,6 @@ public class ThreadPoolStats extends AbstractVeniceStats {
   }
 
   enum ThreadPoolTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    ACTIVE_THREAD_COUNT, QUEUED_TASK_COUNT
+    QUEUED_TASK_COUNT
   }
 }

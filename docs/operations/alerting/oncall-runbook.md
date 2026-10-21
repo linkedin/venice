@@ -290,20 +290,21 @@ non-zero value means the detection is failing.
 
 ### Storage Read and Compute Thread Pool Usage
 
-**Metrics:** `storage_execution_thread_pool--active_thread_count.Avg` / `.Max` and
-`storage_compute_thread_pool--active_thread_count.Avg` / `.Max`
+**Metric:** `thread_pool.thread.active_distribution` (OpenTelemetry), with min/max/count/sum aggregations and the
+`venice.thread_pool.name` dimension set to `storage_execution_thread_pool` or `storage_compute_thread_pool`.
 
 These metrics sample the approximate active thread count once before dispatching each eligible read request. Single-get
 and multi-get requests sample the storage execution pool; compute requests sample the compute pool. Parallel requests
 contribute one sample per request, not per chunk. Health checks, requests terminated early at ingress, and requests for
-stores with read compute disabled do not contribute samples.
+stores with read compute disabled do not contribute samples. Sampling occurs before submission, so a request does not
+count itself as an active task. Without eligible traffic, there are no distribution samples; dashboards and alerts
+should handle no data rather than assume zero activity.
 
 Compare average and maximum sampled counts with each pool's `max_thread_number.LambdaStat` when tuning pool sizes. The
 existing `active_thread_number.LambdaStat` gauges remain available for collection-time snapshots. Request-triggered
 samples can reveal activity between collections, but may still miss peaks and are request-weighted, not time-weighted.
 
-The OpenTelemetry equivalent is `thread_pool.thread.active_distribution`, with min/max/count/sum aggregations and the
-`venice.thread_pool.name` dimension set to `storage_execution_thread_pool` or `storage_compute_thread_pool`.
+The sampled distribution is OpenTelemetry-only. Existing Tehuti gauges and queue metrics are unchanged.
 
 ### JVM Heap Usage
 

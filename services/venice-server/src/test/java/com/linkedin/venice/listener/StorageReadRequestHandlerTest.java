@@ -107,9 +107,14 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -127,6 +132,8 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.nio.ByteBuffer;
@@ -202,10 +209,20 @@ public class StorageReadRequestHandlerTest {
 
   private PubSubContext pubSubContext;
   private MetricsRepository metricsRepository;
+  private InMemoryMetricReader metricReader;
 
   @BeforeMethod
   public void setUp() {
-    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    metricReader = InMemoryMetricReader.create();
+    metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix("server")
+            .setMetricEntities(
+                ModuleMetricEntityInterface
+                    .getUniqueMetricEntities(Collections.singletonList(ThreadPoolOtelMetricEntity.class)))
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(metricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
     doReturn(store).when(storeRepository).getStoreOrThrow(any());
     doReturn(version).when(store).getVersion(anyInt());
     doReturn(version).when(store).getVersionOrThrow(anyInt());
@@ -299,16 +316,19 @@ public class StorageReadRequestHandlerTest {
   }
 
   private void assertActiveThreadSamples(String poolName, boolean sampled) {
-    String metricPrefix = "." + poolName + "--active_thread_count.";
-    double average = metricsRepository.getMetric(metricPrefix + "Avg").value();
-    double maximum = metricsRepository.getMetric(metricPrefix + "Max").value();
-    if (sampled) {
-      assertTrue(average >= 0, "Expected an active thread sample for " + poolName);
-      assertTrue(maximum >= 0, "Expected an active thread sample for " + poolName);
-    } else {
-      assertTrue(Double.isNaN(average), "Expected no active thread samples for " + poolName);
-      assertEquals(maximum, Double.NEGATIVE_INFINITY, "Expected no active thread samples for " + poolName);
-    }
+    long count = metricReader.collectAllMetrics()
+        .stream()
+        .filter(metric -> metric.getName().equals("venice.server.thread_pool.thread.active_distribution"))
+        .flatMap(metric -> metric.getHistogramData().getPoints().stream())
+        .filter(
+            point -> poolName.equals(
+                point.getAttributes()
+                    .get(
+                        AttributeKey.stringKey(
+                            VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME.getDimensionNameInDefaultFormat()))))
+        .mapToLong(point -> point.getCount())
+        .sum();
+    assertEquals(count, sampled ? 1L : 0L, "Unexpected active thread sample count for " + poolName);
   }
 
   @Test(dataProvider = "readTransports")

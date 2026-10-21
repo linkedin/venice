@@ -46,8 +46,9 @@ public class ThreadPoolStatsTest {
       stats.recordActiveThreadsCount();
       Mockito.doReturn(0).when(threadPool).getActiveCount();
       stats.recordActiveThreadsCount();
-      Assert.assertEquals(reporter.query("." + name + "--active_thread_count.Avg").value(), 2.0);
-      Assert.assertEquals(reporter.query("." + name + "--active_thread_count.Max").value(), 5.0);
+      Assert.assertNull(metricsRepository.getMetric("." + name + "--active_thread_count.Avg"));
+      Assert.assertNull(metricsRepository.getMetric("." + name + "--active_thread_count.Max"));
+      Assert.assertEquals(reporter.query("." + name + "--active_thread_number.LambdaStat").value(), 0.0);
     } finally {
       metricsRepository.close();
     }
