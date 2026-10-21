@@ -79,6 +79,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private final String storeName;
   private final int versionNumber;
   private VeniceStoreType storeVersionType;
+  private CompletableFuture<Void> stopConsumptionFuture;
+  private CompletableFuture<Void> startupFinishedFuture;
 
   public AbstractPartitionStateModel(
       IngestionBackend ingestionBackend,
@@ -313,7 +315,18 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
-      ingestionBackend.startConsumption(storeAndServerConfigs, partition, Optional.empty(), storePartitionDescription);
+      CompletableFuture<Void> startupFinished = new CompletableFuture<>();
+      synchronized (this) {
+        stopConsumptionFuture = null;
+        startupFinishedFuture = startupFinished;
+      }
+      try {
+        ingestionBackend
+            .startConsumption(storeAndServerConfigs, partition, Optional.empty(), storePartitionDescription);
+      } finally {
+        // A stop racing with startup must also clean up a partially started replica if startup fails.
+        startupFinished.complete(null);
+      }
     }
   }
 
@@ -521,24 +534,43 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
   }
 
-  protected void stopConsumption(boolean dropCVState) {
-    CompletableFuture<Void> future =
-        ingestionBackend.stopConsumption(storeAndServerConfigs, partition, storePartitionDescription);
-    if (dropCVState) {
-      future.whenComplete((ignored, throwable) -> {
-        if (throwable != null) {
-          logger.warn(
-              "Failed to stop consumption for resource: {}, partition: {}",
-              storeAndServerConfigs.getStoreVersionName(),
-              partition,
-              throwable);
-        }
-        /**
-         * Drop CV state anyway, and it may not work well in error condition, but it is fine since it is still a best effort.
-         */
-        removeCustomizedState();
-      });
+  protected CompletableFuture<Void> stopConsumption(boolean dropCVState) {
+    CompletableFuture<Void> future = getOrStopConsumption();
+    if (!dropCVState) {
+      return future;
     }
+    return future.whenComplete((ignored, throwable) -> {
+      if (throwable != null) {
+        logger.warn(
+            "Failed to stop consumption for resource: {}, partition: {}",
+            storeAndServerConfigs.getStoreVersionName(),
+            partition,
+            throwable);
+      }
+      // Attempt routing withdrawal even if ingestion stop failed; preserve either failure.
+      removeCustomizedState();
+    });
+  }
+
+  private synchronized CompletableFuture<Void> getOrStopConsumption() {
+    if (stopConsumptionFuture != null) {
+      return stopConsumptionFuture;
+    }
+    // A duplicate backend stop can complete before the original unsubscribe finishes, including on failure.
+    if (startupFinishedFuture != null && !startupFinishedFuture.isDone()) {
+      stopConsumptionFuture = startupFinishedFuture.thenCompose(
+          ignored -> ingestionBackend.stopConsumption(storeAndServerConfigs, partition, storePartitionDescription));
+    } else {
+      try {
+        stopConsumptionFuture =
+            ingestionBackend.stopConsumption(storeAndServerConfigs, partition, storePartitionDescription);
+      } catch (RuntimeException e) {
+        stopConsumptionFuture = new CompletableFuture<>();
+        stopConsumptionFuture.completeExceptionally(e);
+        throw e;
+      }
+    }
+    return stopConsumptionFuture;
   }
 
   protected IngestionBackend getIngestionBackend() {

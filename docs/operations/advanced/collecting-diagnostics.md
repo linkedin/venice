@@ -67,3 +67,25 @@ identify the caller's routing snapshot or establish whether a client retry succe
 Each failed parallel chunk emits its own warning; these warnings are not unique failed-request counts. Successful reads
 and early rejections do not emit this diagnostic. Read-response exceptions, HTTP statuses, and client retry behavior are
 unchanged.
+
+### Graceful-Drop Ordering
+
+For replicas covered by graceful drop (the current version, plus the selected backup when backup graceful drop is
+enabled), the drain interval starts after unsubscribe completes and Customized State removal succeeds. Look for
+`Removed customized state` and the subsequent graceful-drop log containing the routing-withdrawal timestamp. If the
+participant did not observe STANDBY-to-OFFLINE, it stops ingestion and removes Customized State before waiting the full
+interval. If reset already initiated unsubscribe, withdrawal awaits that same stop future, including returned failures
+and synchronous backend exceptions, rather than treating a duplicate stop as completion. A new ingestion lifecycle uses
+a fresh stop future.
+Stops registered during startup wait for startup to exit before unsubscribing, including cleanup after partial startup
+failure. If ingestion-task shutdown overtakes queued unsubscribe actions or stop is requested after shutdown begins,
+the stop futures complete after shutdown cleanup or fail with the cleanup error.
+
+OFFLINE remains asynchronous. DROPPED waits for pending routing withdrawal, bounded by the existing 60-minute partition
+drop timeout. A failed unsubscribe, failed or timed-out withdrawal, or an interruption during withdrawal or draining
+fails the transition before physical deletion. Customized State removal is still attempted if unsubscribe fails, but
+normal graceful drop does not delete storage on that failure.
+
+Customized State removal acknowledges the server's routing-state write, not propagation through every controller,
+metadata server, or client cache. Routing convergence or queued reads exceeding the configured interval can still
+produce post-drop failures. Use the failure timings above to investigate those remaining cases.

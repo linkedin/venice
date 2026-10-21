@@ -18,6 +18,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -74,6 +75,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -97,7 +99,9 @@ import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -546,6 +550,41 @@ public abstract class KafkaStoreIngestionServiceTest {
     assertTrue(System.currentTimeMillis() - startTimeMs >= TimeUnit.SECONDS.toMillis(1));
     Assert.assertNotSame(kafkaStoreIngestionService.getStoreIngestionTask(topicName), oldTask);
     kafkaStoreIngestionService.close();
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStopConsumptionRetainsClosedTaskCleanupOutcome(boolean cleanupFails) throws Exception {
+    String topicName = "test-store_v1";
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(
+        topicName,
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    CompletableFuture<Void> cleanupFuture = new CompletableFuture<>();
+    doReturn(cleanupFuture).when(task).unSubscribePartition(topicPartition);
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topicName, task);
+    task.close();
+
+    assertSame(kafkaStoreIngestionService.stopConsumption(config, 0), cleanupFuture);
+    assertSame(kafkaStoreIngestionService.stopConsumption(config, 0), cleanupFuture);
+    assertFalse(cleanupFuture.isDone());
+
+    VeniceException cleanupFailure = new VeniceException("Test shutdown cleanup failure");
+    if (cleanupFails) {
+      cleanupFuture.completeExceptionally(cleanupFailure);
+    } else {
+      cleanupFuture.complete(null);
+    }
+    CompletableFuture<Void> repeatedStop = kafkaStoreIngestionService.stopConsumption(config, 0);
+    assertSame(repeatedStop, cleanupFuture);
+    if (cleanupFails) {
+      ExecutionException exception =
+          Assert.expectThrows(ExecutionException.class, () -> repeatedStop.get(5, TimeUnit.SECONDS));
+      assertSame(exception.getCause(), cleanupFailure);
+    } else {
+      repeatedStop.get(5, TimeUnit.SECONDS);
+    }
+    verify(task, never()).isRunning();
   }
 
   @Test

@@ -486,6 +486,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
+  private final CompletableFuture<Void> shutdownCleanupFuture = new CompletableFuture<>();
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
@@ -990,12 +991,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Adds an asynchronous partition unsubscription request for the task.
+   * Adds an asynchronous partition unsubscription request for the task, or awaits shutdown cleanup if it is stopping.
    */
   public synchronized CompletableFuture<Void> unSubscribePartition(
       PubSubTopicPartition topicPartition,
       boolean isHelixTriggeredAction) {
-    throwIfNotRunning();
+    if (!isRunning()) {
+      return shutdownCleanupFuture;
+    }
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
@@ -2424,11 +2427,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       getIsRunning().set(false);
     }
 
+    List<CompletableFuture<Void>> pendingUnsubscribeFutures = new ArrayList<>();
+    pendingUnsubscribeFutures.add(shutdownCleanupFuture);
+    for (ConsumerAction action: consumerActionsQueue) {
+      if (action.getType() == UNSUBSCRIBE) {
+        pendingUnsubscribeFutures.add(action.getFuture());
+      }
+    }
+    try {
+      Exception cleanupFailure = internalCloseResources(doFlush);
+      if (cleanupFailure != null) {
+        pendingUnsubscribeFutures.forEach(future -> future.completeExceptionally(cleanupFailure));
+        return;
+      }
+    } catch (Throwable t) {
+      pendingUnsubscribeFutures.forEach(future -> future.completeExceptionally(t));
+      throw t;
+    }
+    pendingUnsubscribeFutures.forEach(future -> future.complete(null));
+  }
+
+  private Exception internalCloseResources(boolean doFlush) {
+    Exception cleanupFailure = null;
     removeAllHeartbeatMonitoring();
     this.missingSOPCheckExecutor.shutdownNow();
 
-    // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
-    // on the restart by Helix Controller notifications on the new StoreIngestionTask.
+    // Reset offset and drop partition actions still need processing. Queued unsubscribe futures await
+    // shutdown cleanup; subscriptions will be restored by Helix notifications on the new task.
     this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
     // Remove all the actions out of the queue in order
     while (!consumerActionsQueue.isEmpty()) {
@@ -2474,18 +2499,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionStateMap.clear();
     } catch (Exception e) {
       LOGGER.error("{} Error while unsubscribing topic.", ingestionTaskName, e);
+      cleanupFailure = e;
     }
 
     try {
       closeVeniceViewWriters(doFlush);
     } catch (Exception e) {
       LOGGER.error("Error while closing venice view writer", e);
+      if (cleanupFailure == null) {
+        cleanupFailure = e;
+      }
     }
 
     try {
       closeVeniceWriters(doFlush);
     } catch (Exception e) {
       LOGGER.error("Error while closing venice writers", e);
+      if (cleanupFailure == null) {
+        cleanupFailure = e;
+      }
     }
 
     if (topicManagerRepository != null) {
@@ -2503,6 +2535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
+    return cleanupFailure;
   }
 
   public void closeVeniceWriters(boolean doFlush) {

@@ -11,12 +11,15 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,7 +27,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -41,6 +46,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.PersistenceType;
@@ -50,6 +56,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -61,10 +68,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.io.FileUtils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
+import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -276,13 +288,13 @@ public class LeaderFollowerPartitionStateModelTest {
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
     when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
 
-    // Case 1: Timestamp captured during STANDBY->OFFLINE transition
+    // Case 1: Synchronous routing withdrawal captures the timestamp during STANDBY->OFFLINE
     when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(0); // No sleep for speed
     long beforeTransition = System.currentTimeMillis();
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
     long afterTransition = System.currentTimeMillis();
 
-    long capturedTimestamp = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
+    long capturedTimestamp = leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs();
     assertTrue(capturedTimestamp >= beforeTransition, "Case 1: Timestamp should be >= beforeTransition");
     assertTrue(capturedTimestamp <= afterTransition, "Case 1: Timestamp should be <= afterTransition");
     assertTrue(capturedTimestamp > 0, "Case 1: Timestamp should be positive");
@@ -290,7 +302,7 @@ public class LeaderFollowerPartitionStateModelTest {
     // Case 2: Timestamp reset after OFFLINE->DROPPED transition
     leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(droppedMessage, context);
     assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
+        leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(),
         -1L,
         "Case 2: Timestamp should be reset to -1 after transition");
 
@@ -298,24 +310,277 @@ public class LeaderFollowerPartitionStateModelTest {
     when(store.getCurrentVersion()).thenReturn(storeVersion + 1);
 
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
-    long timestamp1 = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
+    long timestamp1 = leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs();
     assertTrue(timestamp1 > 0, "Case 3: First cycle timestamp should be positive");
 
     leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(droppedMessage, context);
     assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
+        leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(),
         -1L,
         "Case 3: First cycle timestamp should be reset");
     Utils.sleep(5); // Minimal sleep to ensure different timestamps
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
-    long timestamp2 = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
+    long timestamp2 = leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs();
     assertTrue(timestamp2 > timestamp1, "Case 3: Second cycle timestamp should be later than first");
 
     leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(droppedMessage, context);
     assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
+        leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(),
         -1L,
         "Case 3: Second cycle timestamp should be reset");
+  }
+
+  private Message prepareGracefulDrop() {
+    when(storeAndServerConfigs.getStoreVersionName()).thenReturn(resourceName);
+    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(120);
+    when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(storeVersion);
+    Message message = mock(Message.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    return message;
+  }
+
+  private VeniceException assertDropAborted(
+      LeaderFollowerPartitionStateModel model,
+      Message message,
+      int blockedWaits) {
+    when(message.getFromState()).thenReturn(OFFLINE_STATE);
+    when(message.getToState()).thenReturn(DROPPED_STATE);
+    VeniceException failure =
+        expectThrows(VeniceException.class, () -> model.onBecomeDroppedFromOffline(message, null));
+    verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    verify(stateTransitionStats).trackStateTransitionFailed(OFFLINE_STATE, DROPPED_STATE);
+    verify(stateTransitionStats, never()).trackStateTransitionCompleted(OFFLINE_STATE, DROPPED_STATE);
+    verify(stateTransitionStats, times(blockedWaits)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(stateTransitionStats, times(blockedWaits)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    return failure;
+  }
+
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGracefulDropWaitsForRoutingWithdrawal(boolean offlineObserved, boolean resetBeforeDrop)
+      throws Exception {
+    Message message = prepareGracefulDrop();
+    CompletableFuture<Void> stopConsumption = new CompletableFuture<>();
+    doReturn(stopConsumption, CompletableFuture.completedFuture(null)).when(ingestionBackend)
+        .stopConsumption(any(), anyInt(), anyString());
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    InOrder order = inOrder(accessor, ingestionBackend);
+    if (resetBeforeDrop) {
+      leaderFollowerPartitionStateModel.reset();
+    }
+    if (offlineObserved) {
+      leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, null);
+    }
+    assertEquals(leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(), -1L);
+    verify(accessor, never()).deleteReplicaStatus(resourceName, partition);
+
+    CompletableFuture<Void> drop = CompletableFuture.runAsync(() -> {
+      try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+        utils.when(() -> Utils.sleep(anyLong())).thenAnswer(invocation -> {
+          assertTrue(stopConsumption.isDone());
+          assertTrue(leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs() > 0);
+          long delayMs = invocation.getArgument(0);
+          assertTrue(delayMs > 0 && delayMs <= TimeUnit.SECONDS.toMillis(120));
+          if (!offlineObserved) {
+            assertEquals(delayMs, TimeUnit.SECONDS.toMillis(120));
+          }
+          order.verify(accessor).deleteReplicaStatus(resourceName, partition);
+          verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+          return true;
+        });
+        leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, null);
+        utils.verify(() -> Utils.sleep(anyLong()), times(1));
+      }
+    });
+    try {
+      verify(stateTransitionStats, timeout(5000)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+      assertFalse(drop.isDone());
+      verify(accessor, never()).deleteReplicaStatus(resourceName, partition);
+      verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    } finally {
+      stopConsumption.complete(null);
+      drop.get(5, TimeUnit.SECONDS);
+    }
+    order.verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    order.verify(accessor).deleteReplicaStatus(resourceName, partition);
+    verify(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+    assertEquals(leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(), -1L);
+    verify(stateTransitionStats, times(2)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(stateTransitionStats, times(2)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+  }
+
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGracefulDropAbortsWhenRoutingWithdrawalFails(
+      boolean stopConsumptionFails,
+      boolean offlineObserved,
+      boolean resetBeforeDrop) {
+    Message message = prepareGracefulDrop();
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    if (stopConsumptionFails) {
+      CompletableFuture<Void> failedStop = new CompletableFuture<>();
+      failedStop.completeExceptionally(new VeniceException("Synthetic unsubscribe failure"));
+      doReturn(failedStop, CompletableFuture.completedFuture(null)).when(ingestionBackend)
+          .stopConsumption(any(), anyInt(), anyString());
+    } else {
+      doThrow(new VeniceException("Synthetic routing-withdrawal failure")).when(accessor)
+          .deleteReplicaStatus(resourceName, partition);
+    }
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+      if (resetBeforeDrop) {
+        leaderFollowerPartitionStateModel.reset();
+      }
+      if (offlineObserved) {
+        leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, null);
+      }
+      VeniceException failure = assertDropAborted(leaderFollowerPartitionStateModel, message, 0);
+      assertTrue(failure.getMessage().contains("Failed to withdraw routing"));
+      assertTrue(failure.getCause() instanceof ExecutionException);
+      if (stopConsumptionFails) {
+        assertEquals(failure.getCause().getCause().getMessage(), "Synthetic unsubscribe failure");
+      }
+      verify(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+      verify(accessor, times(stopConsumptionFails ? 1 : 6)).deleteReplicaStatus(resourceName, partition);
+      utils.verify(() -> Utils.sleep(1000), times(stopConsumptionFails ? 0 : 5));
+      utils.verify(() -> Utils.sleep(TimeUnit.SECONDS.toMillis(120)), never());
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGracefulDropRetainsSynchronousStopFailure(boolean offlineObserved) {
+    Message message = prepareGracefulDrop();
+    VeniceException stopFailure = new VeniceException("Synthetic synchronous unsubscribe failure");
+    doThrow(stopFailure).doReturn(CompletableFuture.completedFuture(null))
+        .when(ingestionBackend)
+        .stopConsumption(any(), anyInt(), anyString());
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+      leaderFollowerPartitionStateModel.reset();
+      if (offlineObserved) {
+        leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, null);
+      }
+      VeniceException failure = assertDropAborted(leaderFollowerPartitionStateModel, message, 0);
+      assertTrue(failure.getCause() instanceof ExecutionException);
+      assertSame(failure.getCause().getCause(), stopFailure);
+      verify(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+      verify(partitionPushStatusAccessorFuture.join()).deleteReplicaStatus(resourceName, partition);
+      utils.verify(() -> Utils.sleep(anyLong()), never());
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGracefulDropUsesNewStopFutureAfterRestart(boolean previousStopFailed) {
+    Message message = prepareGracefulDrop();
+    CompletableFuture<Void> previousStop = new CompletableFuture<>();
+    if (previousStopFailed) {
+      previousStop.completeExceptionally(new VeniceException("Synthetic previous unsubscribe failure"));
+    } else {
+      previousStop.complete(null);
+    }
+    CompletableFuture<Void> nextStop = new CompletableFuture<>();
+    doReturn(previousStop, nextStop).when(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+    leaderFollowerPartitionStateModel.reset();
+    assertSame(leaderFollowerPartitionStateModel.stopConsumption(false), previousStop);
+
+    leaderFollowerPartitionStateModel.onBecomeStandbyFromOffline(message, null);
+    assertSame(leaderFollowerPartitionStateModel.stopConsumption(false), nextStop);
+    verify(ingestionBackend, times(2)).stopConsumption(any(), anyInt(), anyString());
+    nextStop.complete(null);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testResetDuringStartupWaitsForNewLifecycleBeforeStopping(boolean startupFails) throws Exception {
+    Message message = prepareGracefulDrop();
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    CountDownLatch startupEntered = new CountDownLatch(1);
+    CountDownLatch releaseStartup = new CountDownLatch(1);
+    AtomicBoolean consuming = new AtomicBoolean(false);
+    CompletableFuture<Void> unsubscribe = new CompletableFuture<>();
+    VeniceException startupFailure = new VeniceException("Synthetic partially completed startup failure");
+    when(ingestionBackend.stopConsumption(any(), anyInt(), anyString()))
+        .thenAnswer(invocation -> consuming.get() ? unsubscribe : CompletableFuture.completedFuture(null));
+    doAnswer(invocation -> {
+      assertFalse(Thread.holdsLock(leaderFollowerPartitionStateModel));
+      startupEntered.countDown();
+      assertTrue(releaseStartup.await(5, TimeUnit.SECONDS), "Startup was not released");
+      consuming.set(true);
+      if (startupFails) {
+        throw startupFailure;
+      }
+      return null;
+    }).when(ingestionBackend).startConsumption(any(), anyInt(), any(), anyString());
+    leaderFollowerPartitionStateModel.reset();
+
+    CompletableFuture<Void> startup =
+        CompletableFuture.runAsync(leaderFollowerPartitionStateModel::setupNewStorePartition);
+    try {
+      assertTrue(startupEntered.await(5, TimeUnit.SECONDS), "Startup did not reach the backend");
+      CompletableFuture.runAsync(leaderFollowerPartitionStateModel::reset).get(5, TimeUnit.SECONDS);
+      CompletableFuture<Void> stopped = leaderFollowerPartitionStateModel.stopConsumption(false);
+      assertFalse(stopped.isDone(), "Reset must not cache a no-op stop while startup is pending");
+      verify(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+      leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, null);
+      verify(accessor, never()).deleteReplicaStatus(resourceName, partition);
+      assertEquals(leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(), -1L);
+
+      releaseStartup.countDown();
+      if (startupFails) {
+        assertEquals(
+            expectThrows(ExecutionException.class, () -> startup.get(5, TimeUnit.SECONDS)).getCause(),
+            startupFailure);
+      } else {
+        startup.get(5, TimeUnit.SECONDS);
+      }
+      verify(ingestionBackend, times(2)).stopConsumption(any(), anyInt(), anyString());
+      assertSame(leaderFollowerPartitionStateModel.stopConsumption(false), stopped);
+      assertFalse(stopped.isDone(), "Routing withdrawal must wait for the new lifecycle's unsubscribe");
+      verify(accessor, never()).deleteReplicaStatus(resourceName, partition);
+      assertEquals(leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(), -1L);
+
+      unsubscribe.complete(null);
+      stopped.get(5, TimeUnit.SECONDS);
+      verify(accessor).deleteReplicaStatus(resourceName, partition);
+      assertTrue(leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs() > 0);
+    } finally {
+      releaseStartup.countDown();
+      startup.handle((ignored, failure) -> null).get(5, TimeUnit.SECONDS);
+      unsubscribe.complete(null);
+    }
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testGracefulDropAbortsWhenRoutingWithdrawalTimesOut() throws Exception {
+    Message message = prepareGracefulDrop();
+    LeaderFollowerPartitionStateModel model = spy(leaderFollowerPartitionStateModel);
+    CompletableFuture<Void> stopped = mock(CompletableFuture.class);
+    CompletableFuture<Long> withdrawal = mock(CompletableFuture.class);
+    doReturn(stopped).when(model).stopConsumption(true);
+    doReturn(withdrawal).when(stopped).thenApply(any());
+    TimeoutException timeout = new TimeoutException("Synthetic routing-withdrawal timeout");
+    when(withdrawal.get(AbstractPartitionStateModel.WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS))
+        .thenThrow(timeout);
+    model.onBecomeOfflineFromStandby(message, null);
+
+    assertEquals(assertDropAborted(model, message, 1).getCause(), timeout);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGracefulDropAbortsOnInterruption(boolean withdrawalPending) {
+    Message message = prepareGracefulDrop();
+    CompletableFuture<Void> stopConsumption =
+        withdrawalPending ? new CompletableFuture<>() : CompletableFuture.completedFuture(null);
+    doReturn(stopConsumption).when(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, null);
+
+    Thread.currentThread().interrupt();
+    try {
+      VeniceException failure = assertDropAborted(leaderFollowerPartitionStateModel, message, 1);
+      assertTrue(failure.getMessage().contains("Interrupted"));
+      assertTrue(Thread.currentThread().isInterrupted());
+    } finally {
+      Thread.interrupted();
+      stopConsumption.complete(null);
+    }
   }
 
   /**
@@ -352,7 +617,7 @@ public class LeaderFollowerPartitionStateModelTest {
     verify(stateTransitionStats, times(1)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(stateTransitionStats, times(1)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
     assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
+        leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(),
         -1L,
         "Case 1: Timestamp should be reset");
 
@@ -376,7 +641,7 @@ public class LeaderFollowerPartitionStateModelTest {
     verify(stateTransitionStats, times(1)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(stateTransitionStats, times(1)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
     assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
+        leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(),
         -1L,
         "Case 2: Timestamp should be reset");
 
@@ -385,7 +650,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(message3.getResourceName()).thenReturn(resourceName);
 
     assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
+        leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(),
         -1L,
         "Case 3: Timestamp should be -1 initially");
 
@@ -401,7 +666,7 @@ public class LeaderFollowerPartitionStateModelTest {
     verify(stateTransitionStats, times(2)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(stateTransitionStats, times(2)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
     assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
+        leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(),
         -1L,
         "Case 3: Timestamp should remain -1");
   }
@@ -425,6 +690,7 @@ public class LeaderFollowerPartitionStateModelTest {
     Message message = mock(Message.class);
     NotificationContext context = mock(NotificationContext.class);
     when(message.getResourceName()).thenReturn(resourceName);
+    when(storeAndServerConfigs.getStoreVersionName()).thenReturn(resourceName);
     when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(30);
     when(storeAndServerConfigs.isBackupVersionGracefulDropEnabled()).thenReturn(backupGracefulDropEnabled);
 
@@ -459,6 +725,7 @@ public class LeaderFollowerPartitionStateModelTest {
         if (!demoteBeforeDrop) {
           assertEquals(delayMs, gracefulDropDelayMs);
         }
+        verify(partitionPushStatusAccessorFuture.join()).deleteReplicaStatus(resourceName, partition);
         verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
         return true;
       });
@@ -471,7 +738,7 @@ public class LeaderFollowerPartitionStateModelTest {
     verify(stateTransitionStats, times(expectedWaitCount)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(stateTransitionStats, times(expectedWaitCount)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
-    assertEquals(leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(), -1L);
+    assertEquals(leaderFollowerPartitionStateModel.getRoutingWithdrawalTimestampMs(), -1L);
   }
 
   @Test

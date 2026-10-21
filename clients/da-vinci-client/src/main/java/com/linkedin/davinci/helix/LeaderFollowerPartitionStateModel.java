@@ -18,7 +18,9 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -60,11 +62,10 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
   /**
-   * Tracks the timestamp (in milliseconds) when this partition last transitioned to OFFLINE state.
-   * This is used to calculate the actual time the partition has been offline for graceful drop delay.
-   * Value of -1 indicates the partition has not yet transitioned to OFFLINE state.
+   * Completes with the routing-withdrawal timestamp after unsubscribe and Customized State removal.
+   * A null future means this lifecycle has not observed a STANDBY->OFFLINE transition.
    */
-  private volatile long lastOfflineTransitionTimestampMs = -1L;
+  private volatile CompletableFuture<Long> routingWithdrawalFuture;
 
   private final LeaderFollowerIngestionProgressNotifier notifier;
   private final ParticipantStateTransitionStats stateTransitionStats;
@@ -98,7 +99,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
-    lastOfflineTransitionTimestampMs = -1L;
+    routingWithdrawalFuture = null;
     executeStateTransition(message, context, () -> {
       String resourceName = message.getResourceName();
       Store store = getStoreRepo().getStoreOrThrow(getStoreName());
@@ -190,11 +191,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         HeartbeatLagMonitorAction.REMOVE_MONITOR,
         Utils.getReplicaId(message.getResourceName(), getPartition()));
 
-    executeStateTransition(message, context, () -> {
-      stopConsumption(true);
-      // Capture the timestamp when partition becomes OFFLINE for graceful drop delay calculation
-      lastOfflineTransitionTimestampMs = System.currentTimeMillis();
-    });
+    executeStateTransition(message, context, () -> routingWithdrawalFuture = stopConsumptionAndWithdrawRouting());
   }
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
@@ -250,8 +247,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         if (waitForDropPartition) {
           this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
-        // Reset the offline timestamp after transition completes
-        lastOfflineTransitionTimestampMs = -1L;
+        routingWithdrawalFuture = null;
       }
     });
   }
@@ -269,45 +265,73 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   }
 
   /**
-   * Returns the timestamp (in milliseconds) when this partition last transitioned to OFFLINE state.
-   * This method is primarily intended for testing to verify graceful drop timing behavior.
-   *
-   * @return timestamp in milliseconds when partition became OFFLINE, or -1 if not yet transitioned to OFFLINE
+   * Returns the routing-withdrawal timestamp in milliseconds, or -1 if withdrawal has not completed.
    */
   @VisibleForTesting
-  long getOfflineTransitionTimestampMs() {
-    return lastOfflineTransitionTimestampMs;
+  long getRoutingWithdrawalTimestampMs() {
+    CompletableFuture<Long> future = routingWithdrawalFuture;
+    return future == null ? -1L : future.getNow(-1L);
   }
 
   /**
-   * Executes the graceful drop delay to allow in-flight requests to drain before dropping partition.
-   * Calculates the remaining wait time based on how long the partition has already been offline.
+   * Allows the full graceful interval after routing withdrawal for cached routes and queued reads to drain.
    *
    * @param replicaId The replica identifier for logging
    */
   private void executeGracefulDropDelayForReplica(String replicaId) {
     long gracefulDropDelayMs =
         TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
-    long remainingWaitMs = gracefulDropDelayMs;
-
-    if (lastOfflineTransitionTimestampMs > 0) {
-      long currentTimeMs = System.currentTimeMillis();
-      long elapsedSinceOfflineMs = currentTimeMs - lastOfflineTransitionTimestampMs;
-      remainingWaitMs = Math.max(0, gracefulDropDelayMs - elapsedSinceOfflineMs);
-    }
+    boolean hasWithdrawalTimestamp = routingWithdrawalFuture != null;
+    long routingWithdrawalTimestampMs = waitForRoutingWithdrawal(replicaId);
+    long elapsedSinceWithdrawalMs =
+        hasWithdrawalTimestamp ? System.currentTimeMillis() - routingWithdrawalTimestampMs : 0;
+    long remainingWaitMs = Math.max(0, gracefulDropDelayMs - elapsedSinceWithdrawalMs);
     if (remainingWaitMs <= 0) {
       return;
     }
     try {
       this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
       logger.info(
-          "Replica: {} sleeping for remaining graceful drop delay of {}ms to drain in-flight requests",
+          "Replica: {} sleeping for remaining graceful drop delay of {}ms after routing withdrawal at {}",
           replicaId,
-          remainingWaitMs);
-      Utils.sleep(remainingWaitMs);
+          remainingWaitMs,
+          routingWithdrawalTimestampMs);
+      if (!Utils.sleep(remainingWaitMs)) {
+        throw new VeniceException("Interrupted during graceful drop delay for replica: " + replicaId);
+      }
     } finally {
       this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
     }
+  }
+
+  private long waitForRoutingWithdrawal(String replicaId) {
+    CompletableFuture<Long> future = routingWithdrawalFuture;
+    if (future == null) {
+      // A participant restart can bypass STANDBY->OFFLINE while routing still advertises this replica.
+      future = stopConsumptionAndWithdrawRouting();
+      routingWithdrawalFuture = future;
+    }
+    boolean waitForWithdrawal = !future.isDone();
+    try {
+      if (waitForWithdrawal) {
+        this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+      }
+      return future.get(WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while waiting for routing withdrawal for replica: " + replicaId, e);
+    } catch (ExecutionException | TimeoutException e) {
+      logger.error("Failed to withdraw routing before dropping replica: {}", replicaId, e);
+      throw new VeniceException("Failed to withdraw routing before dropping replica: " + replicaId, e);
+    } finally {
+      if (waitForWithdrawal) {
+        this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+      }
+    }
+  }
+
+  private CompletableFuture<Long> stopConsumptionAndWithdrawRouting() {
+    return stopConsumption(true).thenApply(ignored -> System.currentTimeMillis());
   }
 
   /**
