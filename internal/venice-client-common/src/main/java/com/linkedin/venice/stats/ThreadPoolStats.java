@@ -91,11 +91,13 @@ public class ThreadPoolStats extends AbstractVeniceStats {
   }
 
   /**
-   * Samples active threads on request arrival to capture avg/max usage between metric collections.
+   * Samples active threads on request arrival when OTel is enabled to capture avg/max usage between metric collections.
    * The executor's active count is approximate and request-triggered samples may miss peaks.
    */
   public void recordActiveThreadsCount() {
-    activeThreadsCountMetric.record(this.threadPoolExecutor.getActiveCount());
+    if (activeThreadsCountMetric.getOtelMetric() != null) {
+      activeThreadsCountMetric.record(this.threadPoolExecutor.getActiveCount());
+    }
   }
 
   enum ThreadPoolTehutiMetricNameEnum implements TehutiMetricNameEnum {

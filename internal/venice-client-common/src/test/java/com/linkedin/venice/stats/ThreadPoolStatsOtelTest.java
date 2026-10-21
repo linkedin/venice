@@ -262,6 +262,7 @@ public class ThreadPoolStatsOtelTest {
 
     ThreadPoolStats localStats = new ThreadPoolStats(repo, pool, poolName);
     localStats.recordActiveThreadsCount();
+    Mockito.verify(pool, Mockito.never()).getActiveCount();
     assertNull(repo.getMetric("." + poolName + "--active_thread_count.Avg"));
     assertNull(repo.getMetric("." + poolName + "--active_thread_count.Max"));
     localStats.recordQueuedTasksCount();
