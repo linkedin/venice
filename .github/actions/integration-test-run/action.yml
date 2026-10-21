@@ -32,7 +32,12 @@ runs:
     - uses: ./.github/actions/gradle-test-setup
     - name: Run Integration Tests
       shell: bash
-      run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_${{ inputs.shard }}
+      run: |
+        mkdir -p "$GITHUB_WORKSPACE/.ci-tmp"
+        ./gradlew --continue --no-daemon \
+          -DforkEvery=1 -DmaxParallelForks=1 \
+          "-DjvmArgs=-Djava.io.tmpdir=$GITHUB_WORKSPACE/.ci-tmp" \
+          integrationTests_${{ inputs.shard }}
     - name: Package Build Artifacts
       if: always()
       shell: bash
