@@ -46,10 +46,12 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -340,36 +342,25 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
     StoreInfo mockStoreInfo = mock(StoreInfo.class);
     doReturn(mockStoreInfo).when(mockStoreResponse).getStore();
     doReturn(true).when(mockStoreInfo).isTTLRepushEnabled();
-    // Re-push, incremental and empty pushes should be allowed
     Properties props = getVpjRequiredProperties();
-    VenicePushJob venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
-    PushJobSetting pushJobSetting = venicePushJob.getPushJobSetting();
-    pushJobSetting.inputHasRecords = true;
-    pushJobSetting.isIncrementalPush = true;
-    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
-    Assert.assertNull(venicePushJob.getPushJobDetails().pushJobLatestCheckpoint);
-    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
-    pushJobSetting = venicePushJob.getPushJobSetting();
-    pushJobSetting.inputHasRecords = true;
-    pushJobSetting.rmdField = "timestamp";
-    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, pushJobSetting);
-    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
-    pushJobSetting = venicePushJob.getPushJobSetting();
-    pushJobSetting.inputHasRecords = true;
-    pushJobSetting.allowRegularPushWithTTLRepush = true;
-    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, pushJobSetting);
-    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
-    pushJobSetting = venicePushJob.getPushJobSetting();
-    pushJobSetting.inputHasRecords = true;
-    pushJobSetting.isSourceKafka = true;
-    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
-    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
-    pushJobSetting = venicePushJob.getPushJobSetting();
-    pushJobSetting.inputHasRecords = false;
-    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    List<Consumer<PushJobSetting>> allowedPushSettings = Arrays.asList(
+        setting -> setting.isIncrementalPush = true,
+        setting -> setting.rmdField = "timestamp",
+        setting -> setting.allowRegularPushWithTTLRepush = true,
+        setting -> setting.isSourceKafka = true,
+        setting -> setting.inputHasRecords = false);
+    for (Consumer<PushJobSetting> configure: allowedPushSettings) {
+      try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+        PushJobSetting setting = pushJob.getPushJobSetting();
+        setting.inputHasRecords = true;
+        configure.accept(setting);
+        pushJob.checkRegularPushWithTTLRepush(mockControllerClient, setting);
+        Assert.assertNull(pushJob.getPushJobDetails().pushJobLatestCheckpoint);
+      }
+    }
     // Regular batch push should be rejected
     final VenicePushJob failPushJob = new VenicePushJob(PUSH_JOB_ID, props);
-    pushJobSetting = failPushJob.getPushJobSetting();
+    PushJobSetting pushJobSetting = failPushJob.getPushJobSetting();
     pushJobSetting.inputHasRecords = true;
     Assert.assertThrows(
         VeniceException.class,
@@ -403,13 +394,13 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
 
       VeniceException exception = Assert.expectThrows(VeniceException.class, pushJob::run);
 
-      Assert.assertTrue(
-          exception.getMessage()
-              .contains(
-                  storeFetchFailed ? "Unable to fetch store" : "regular batch push is not allowed with TTL re-push"));
+      String expectedError =
+          storeFetchFailed ? "Unable to fetch store" : "regular batch push is not allowed with TTL re-push";
+      Assert.assertTrue(exception.getMessage().contains(expectedError));
       List<PushJobDetails> reports = tracker.getRecordedPushJobDetails();
       Assert.assertTrue(reports.size() >= 2);
-      PushJobDetails failed = reports.get(reports.size() - 1);
+      int lastReportIndex = reports.size() - 1;
+      PushJobDetails failed = reports.get(lastReportIndex);
       PushJobCheckpoints expectedCheckpoint = storeFetchFailed
           ? PushJobCheckpoints.INITIALIZE_PUSH_JOB
           : PushJobCheckpoints.TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED;
@@ -418,7 +409,7 @@ public class VenicePushJobRepushTest extends VenicePushJobTestBase {
           failed.overallStatus.get(failed.overallStatus.size() - 1).status,
           PushJobDetailsStatus.ERROR.getValue());
       assertEquals(failed.failureDetails.toString(), exception.toString());
-      assertEquals(tracker.getVersions().get(tracker.getVersions().size() - 1).intValue(), -1);
+      assertEquals(tracker.getVersions().get(lastReportIndex).intValue(), -1);
       verify(pushJob, never()).createNewStoreVersion(any(), anyLong(), any(), anyString(), any(), any());
       verify(pushJob, never()).runJobAndUpdateStatus();
     }

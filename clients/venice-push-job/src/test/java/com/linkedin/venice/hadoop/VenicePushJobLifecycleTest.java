@@ -43,7 +43,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceStoreAclException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
@@ -114,7 +113,7 @@ public class VenicePushJobLifecycleTest extends VenicePushJobTestBase {
       throws Exception {
     ControllerClient client = getClient();
     SchemaResponse response = new SchemaResponse();
-    response.setError(new InvalidVeniceSchemaException("No registered value schema matches the input"));
+    response.setError("No registered value schema matches the input");
     response.setErrorType(errorType);
     doReturn(response).when(client).getValueSchemaID(anyString(), anyString());
     Properties props = new Properties();
@@ -140,13 +139,14 @@ public class VenicePushJobLifecycleTest extends VenicePushJobTestBase {
       VeniceException exception) {
     List<PushJobDetails> reports = tracker.getRecordedPushJobDetails();
     assertTrue(reports.size() >= 2, "Both initial and terminal status should be reported");
-    PushJobDetails failed = reports.get(reports.size() - 1);
+    int lastReportIndex = reports.size() - 1;
+    PushJobDetails failed = reports.get(lastReportIndex);
     assertEquals(failed.pushJobLatestCheckpoint.intValue(), checkpoint.getValue());
     assertEquals(
         failed.overallStatus.get(failed.overallStatus.size() - 1).status,
         PushJobDetailsStatus.ERROR.getValue());
     assertEquals(failed.failureDetails.toString(), exception.toString());
-    assertEquals(tracker.getVersions().get(tracker.getVersions().size() - 1).intValue(), -1);
+    assertEquals(tracker.getVersions().get(lastReportIndex).intValue(), -1);
     verify(pushJob, never()).createNewStoreVersion(any(), anyLong(), any(), anyString(), any(), any());
     verify(pushJob, never()).runJobAndUpdateStatus();
   }
