@@ -362,6 +362,11 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         }
         try {
           partitionPushStatusAccessor.deleteReplicaStatus(storeName, partition);
+          logger.info(
+              "Removed customized state for store: {}, partition: {}, on instance: {}",
+              storeName,
+              partition,
+              instanceName);
           isSuccess = true;
         } catch (Exception e) {
           logger.error(
@@ -525,7 +530,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
           logger.warn(
               "Failed to stop consumption for resource: {}, partition: {}",
               storeAndServerConfigs.getStoreVersionName(),
-              partition);
+              partition,
+              throwable);
         }
         /**
          * Drop CV state anyway, and it may not work well in error condition, but it is fine since it is still a best effort.

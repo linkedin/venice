@@ -398,10 +398,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.METHOD_NOT_ALLOWED));
         } else {
           LOGGER.error(
-              "Exception thrown for {} request from: {} {}",
+              "Exception thrown for {} request from: {} {}, requestIdentity={}",
               request.getResourceName(),
               context.channel(),
               extractClientPrincipal(context),
+              System.identityHashCode(request),
               throwable);
           HttpShortcutResponse shortcutResponse =
               new HttpShortcutResponse(throwable.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
@@ -531,45 +532,79 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleSingleGetRequest(GetRouterRequest request) {
     final int queueLen = this.executor.getQueue().size();
-    final long preSubmissionTimeNs = System.nanoTime();
+    final long submittedAtMs = System.currentTimeMillis();
+    final long submittedAtNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
 
-      double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+      double queueWaitMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs);
 
-      String topic = request.getResourceName();
-      PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
-      byte[] key = request.getKeyBytes();
-      // Explicit null check, no Optional / lambda capture — keeps the inactive hot path at a
-      // single volatile-boolean read with no allocation. A lambda here would allocate a fresh
-      // Consumer on every single-get even when no profiling is active.
-      KeyPartitionProfiler profilerOrNull = resolveProfilerForRecord(request.getStoreName());
-      if (profilerOrNull != null) {
-        addProfilerRecord(profilerOrNull, key, request.getPartition());
+      try {
+        String topic = request.getResourceName();
+        PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
+        byte[] key = request.getKeyBytes();
+        // Explicit null check, no Optional / lambda capture — keeps the inactive hot path at a
+        // single volatile-boolean read with no allocation. A lambda here would allocate a fresh
+        // Consumer on every single-get even when no profiling is active.
+        KeyPartitionProfiler profilerOrNull = resolveProfilerForRecord(request.getStoreName());
+        if (profilerOrNull != null) {
+          addProfilerRecord(profilerOrNull, key, request.getPartition());
+        }
+
+        StorageEngine storageEngine = perStoreVersionState.storageEngine;
+        StoreVersionState svs = perStoreVersionState.storageEngine.getStoreVersionState();
+        boolean isChunked = StoreVersionStateUtils.isChunked(svs);
+        SingleGetResponseWrapper response = new SingleGetResponseWrapper();
+        response.setCompressionStrategy(StoreVersionStateUtils.getCompressionStrategy(svs));
+
+        ValueRecord valueRecord =
+            SingleGetChunkingAdapter.get(storageEngine, request.getPartition(), key, isChunked, response.getStats());
+        response.setValueRecord(valueRecord);
+
+        if (valueRecord == null) {
+          response.getStats().incrementKeyNotFoundCount();
+        }
+
+        response.getStats().addKeySize(key.length);
+        response.getStats().setStorageExecutionSubmissionWaitTime(queueWaitMs);
+        response.getStats().setStorageExecutionQueueLen(queueLen);
+
+        return response;
+      } catch (RuntimeException e) {
+        logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, -1, e);
+        throw e;
       }
-
-      StorageEngine storageEngine = perStoreVersionState.storageEngine;
-      StoreVersionState svs = perStoreVersionState.storageEngine.getStoreVersionState();
-      boolean isChunked = StoreVersionStateUtils.isChunked(svs);
-      SingleGetResponseWrapper response = new SingleGetResponseWrapper();
-      response.setCompressionStrategy(StoreVersionStateUtils.getCompressionStrategy(svs));
-
-      ValueRecord valueRecord =
-          SingleGetChunkingAdapter.get(storageEngine, request.getPartition(), key, isChunked, response.getStats());
-      response.setValueRecord(valueRecord);
-
-      if (valueRecord == null) {
-        response.getStats().incrementKeyNotFoundCount();
-      }
-
-      response.getStats().addKeySize(key.length);
-      response.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
-      response.getStats().setStorageExecutionQueueLen(queueLen);
-
-      return response;
     }, executor);
+  }
+
+  private void logStorageExecutionFailure(
+      RouterRequest request,
+      int queueLen,
+      long submittedAtMs,
+      long submittedAtNs,
+      double queueWaitMs,
+      int chunkIndex,
+      RuntimeException exception) {
+    double executionTimeMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs) - queueWaitMs;
+    // Failed lookups do not return response stats, so preserve their timing separately from the response path.
+    LOGGER.warn(
+        "Storage read execution failed: resource={}, requestType={}, retry={}, streaming={}, requestIdentity={}, "
+            + "submittedAtEpochMs={}, queueWaitMs={}, executionMs={}, queueLengthAtSubmission={}, "
+            + "requestKeyCount={}, chunkIndex={}, exceptionType={}",
+        request.getResourceName(),
+        request.getRequestType(),
+        request.isRetryRequest(),
+        request.isStreamingRequest(),
+        System.identityHashCode(request),
+        submittedAtMs,
+        queueWaitMs,
+        executionTimeMs,
+        queueLen,
+        request.getKeyCount(),
+        chunkIndex,
+        exception.getClass().getName());
   }
 
   private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(MultiGetRouterRequestWrapper request) {
@@ -613,22 +648,28 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture<Void>[] chunkFutures = new CompletableFuture[chunkCount];
 
     final int queueLen = threadPoolExecutor.getQueue().size();
-    final long preSubmissionTimeNs = System.nanoTime();
+    final long submittedAtMs = System.currentTimeMillis();
+    final long submittedAtNs = System.nanoTime();
     for (int cur = 0; cur < chunkCount; ++cur) {
       final int finalCur = cur;
       chunkFutures[cur] = CompletableFuture.runAsync(() -> {
-        double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+        double queueWaitMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs);
 
         if (request.shouldRequestBeTerminatedEarly()) {
           throw new VeniceRequestEarlyTerminationException(request.getStoreName());
         }
 
-        int startPos = finalCur * this.parallelBatchGetChunkSize;
-        int endPos = Math.min((finalCur + 1) * this.parallelBatchGetChunkSize, totalKeyNum);
-        R chunkOfResponse = responseWrapper.getChunk(finalCur);
-        batchProcessor.process(startPos, endPos, keys, requestContext, chunkOfResponse);
+        try {
+          int startPos = finalCur * this.parallelBatchGetChunkSize;
+          int endPos = Math.min((finalCur + 1) * this.parallelBatchGetChunkSize, totalKeyNum);
+          R chunkOfResponse = responseWrapper.getChunk(finalCur);
+          batchProcessor.process(startPos, endPos, keys, requestContext, chunkOfResponse);
 
-        chunkOfResponse.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+          chunkOfResponse.getStats().setStorageExecutionSubmissionWaitTime(queueWaitMs);
+        } catch (RuntimeException e) {
+          logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, finalCur, e);
+          throw e;
+        }
       }, threadPoolExecutor);
     }
 
@@ -691,24 +732,30 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     final int queueLen = this.executor.getQueue().size();
-    final long preSubmissionTimeNs = System.nanoTime();
+    final long submittedAtMs = System.currentTimeMillis();
+    final long submittedAtNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
-      double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+      double queueWaitMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs);
 
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
 
-      List<MultiGetRouterRequestKeyV1> keys = request.getKeys();
-      MultiGetResponseWrapper responseWrapper = this.multiGetResponseProvider.apply(request.getKeyCount());
-      RequestContext requestContext = new RequestContext(request, this);
-      responseWrapper.setCompressionStrategy(requestContext.compressionStrategy);
+      try {
+        List<MultiGetRouterRequestKeyV1> keys = request.getKeys();
+        MultiGetResponseWrapper responseWrapper = this.multiGetResponseProvider.apply(request.getKeyCount());
+        RequestContext requestContext = new RequestContext(request, this);
+        responseWrapper.setCompressionStrategy(requestContext.compressionStrategy);
 
-      processMultiGet(0, request.getKeyCount(), keys, requestContext, responseWrapper);
+        processMultiGet(0, request.getKeyCount(), keys, requestContext, responseWrapper);
 
-      responseWrapper.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
-      responseWrapper.getStats().setStorageExecutionQueueLen(queueLen);
-      return responseWrapper;
+        responseWrapper.getStats().setStorageExecutionSubmissionWaitTime(queueWaitMs);
+        responseWrapper.getStats().setStorageExecutionQueueLen(queueLen);
+        return responseWrapper;
+      } catch (RuntimeException e) {
+        logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, -1, e);
+        throw e;
+      }
     }, executor);
   }
 
@@ -722,23 +769,29 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     final int queueLen = this.computeExecutor.getQueue().size();
-    final long preSubmissionTimeNs = System.nanoTime();
+    final long submittedAtMs = System.currentTimeMillis();
+    final long submittedAtNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
 
-      double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+      double queueWaitMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs);
 
-      ComputeRequestContext computeRequestContext = new ComputeRequestContext(request, this);
-      int keyCount = request.getKeyCount();
-      ComputeResponseWrapper response = this.computeResponseProvider.apply(keyCount);
+      try {
+        ComputeRequestContext computeRequestContext = new ComputeRequestContext(request, this);
+        int keyCount = request.getKeyCount();
+        ComputeResponseWrapper response = this.computeResponseProvider.apply(keyCount);
 
-      processCompute(0, keyCount, request.getKeys(), computeRequestContext, response);
+        processCompute(0, keyCount, request.getKeys(), computeRequestContext, response);
 
-      response.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
-      response.getStats().setStorageExecutionQueueLen(queueLen);
-      return response;
+        response.getStats().setStorageExecutionSubmissionWaitTime(queueWaitMs);
+        response.getStats().setStorageExecutionQueueLen(queueLen);
+        return response;
+      } catch (RuntimeException e) {
+        logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, -1, e);
+        throw e;
+      }
     }, computeExecutor);
   }
 
