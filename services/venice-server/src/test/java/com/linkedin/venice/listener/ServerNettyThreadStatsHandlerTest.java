@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -11,6 +12,11 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -25,7 +31,10 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.concurrent.Future;
-import io.tehuti.metrics.MetricsRepository;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.HistogramPointData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterMethod;
@@ -34,12 +43,22 @@ import org.testng.annotations.Test;
 
 
 public class ServerNettyThreadStatsHandlerTest {
-  private MetricsRepository metricsRepository;
+  private VeniceMetricsRepository metricsRepository;
+  private InMemoryMetricReader reader;
   private ServerNettyThreadStatsHandler handler;
 
   @BeforeMethod
   public void setUp() {
-    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    reader = InMemoryMetricReader.create();
+    metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix("server")
+            .setMetricEntities(
+                ModuleMetricEntityInterface
+                    .getUniqueMetricEntities(Collections.singletonList(ThreadPoolOtelMetricEntity.class)))
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
     handler = new ServerNettyThreadStatsHandler(metricsRepository);
   }
 
@@ -56,7 +75,7 @@ public class ServerNettyThreadStatsHandlerTest {
       Object nonRequest = new Object();
       assertTrue(first.writeInbound(nonRequest));
       assertSame(first.readInbound(), nonRequest);
-      assertTrue(Double.isNaN(metric("Avg")), "Non-request messages must not contribute samples");
+      assertTrue(reader.collectAllMetrics().isEmpty(), "Non-request messages must not contribute samples");
 
       HttpRequest firstRequest = request();
       HttpRequest secondRequest = request();
@@ -107,7 +126,7 @@ public class ServerNettyThreadStatsHandlerTest {
     try {
       assertFalse(channel.writeInbound(request()));
       assertFalse(channel.writeInbound(new DefaultHttpContent(Unpooled.wrappedBuffer(new byte[] { 1, 2 }))));
-      assertTrue(Double.isNaN(metric("Avg")));
+      assertTrue(reader.collectAllMetrics().isEmpty());
 
       assertTrue(channel.writeInbound(LastHttpContent.EMPTY_LAST_CONTENT));
       FullHttpRequest aggregatedRequest = channel.readInbound();
@@ -179,7 +198,21 @@ public class ServerNettyThreadStatsHandlerTest {
   }
 
   private double metric(String stat) {
-    return metricsRepository.getMetric(".netty_worker_thread_pool--active_request_thread_count." + stat).value();
+    HistogramPointData point = OpenTelemetryDataTestUtils.getHistogramPointData(
+        reader.collectAllMetrics(),
+        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_REQUEST_DISTRIBUTION.getMetricEntity().getMetricName(),
+        "server",
+        Attributes.builder()
+            .put(VENICE_THREAD_POOL_NAME.getDimensionNameInDefaultFormat(), "netty_worker_thread_pool")
+            .build());
+    switch (stat) {
+      case "Avg":
+        return point.getSum() / point.getCount();
+      case "Max":
+        return point.getMax();
+      default:
+        throw new IllegalArgumentException("Unsupported histogram statistic: " + stat);
+    }
   }
 
   private HttpRequest request() {

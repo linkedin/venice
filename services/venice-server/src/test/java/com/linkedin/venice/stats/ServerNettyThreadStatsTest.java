@@ -1,7 +1,7 @@
 package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME;
-import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 
 public class ServerNettyThreadStatsTest {
   @Test
-  public void testRequestThreadDistributionEmitsTehutiAndOpenTelemetryMetrics() {
+  public void testRequestThreadDistributionEmitsOnlyOpenTelemetryMetrics() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     VeniceMetricsRepository repository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix("server")
@@ -30,8 +30,8 @@ public class ServerNettyThreadStatsTest {
       stats.recordActiveRequestThreadCount(1);
       stats.recordActiveRequestThreadCount(3);
 
-      assertEquals(repository.getMetric(".netty_worker_thread_pool--active_request_thread_count.Avg").value(), 2.0);
-      assertEquals(repository.getMetric(".netty_worker_thread_pool--active_request_thread_count.Max").value(), 3.0);
+      assertNull(repository.getMetric(".netty_worker_thread_pool--active_request_thread_count.Avg"));
+      assertNull(repository.getMetric(".netty_worker_thread_pool--active_request_thread_count.Max"));
       OpenTelemetryDataTestUtils.validateHistogramPointData(
           reader,
           1,

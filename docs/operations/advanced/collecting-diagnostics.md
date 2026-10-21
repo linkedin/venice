@@ -30,11 +30,10 @@ lock contention between threads.
 
 ### Server Netty Request Threads
 
-The server records `.netty_worker_thread_pool--active_request_thread_count.Avg` and
-`.netty_worker_thread_pool--active_request_thread_count.Max` whenever a complete HTTP request enters the request
-pipeline. These metrics count workers concurrently executing the synchronous request pipeline across HTTP/1.1
-connections and HTTP/2 streams. The equivalent OpenTelemetry distribution is
-`thread_pool.thread.active_request_distribution`, with `venice.thread_pool.name=netty_worker_thread_pool`.
+The server records the OpenTelemetry distribution `thread_pool.thread.active_request_distribution` with
+`venice.thread_pool.name=netty_worker_thread_pool` whenever a complete HTTP request enters the request pipeline. It
+counts workers concurrently executing the synchronous request pipeline across HTTP/1.1 connections and HTTP/2 streams.
+This metric has no Tehuti equivalent.
 
 Use the request-sampled average and maximum to understand request-processing concurrency within the reporting window.
 They are not time-weighted utilization or an in-flight request count: asynchronous storage work, response-only writes,
