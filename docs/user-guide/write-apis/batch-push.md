@@ -43,11 +43,14 @@ might be not the same depending on the exact setup.
 With deferred version swap, a reachable child controller that has not created the new version yet is allowed to catch up
 until the store's bootstrap-to-online timeout, measured from the parent version's creation time (24 hours by default).
 Failed controller requests and missing versions that the child has already created retain a five-poll retry limit.
-Regions recorded as intentionally skipping a version's ADD_VERSION message also retain that limit; their missing versions
-are not treated as delayed version creation. This snapshot is available for versions created by upgraded parent
-controllers; legacy versions without it receive the bootstrap grace period. Unresolved `PARTIALLY_ONLINE` versions remain
-visible in the stalled-swap metric until the remaining regions serve that version or a newer version online, even if a
-later push fails or is deleted. They still require manual roll forward or a subsequent push to recover.
+Exhausted retries remain failed across polls until the version is fetched successfully or the push becomes terminal, so
+parallel regions do not need to exhaust their retries on the same poll. Regions recorded as intentionally skipping a
+version's ADD_VERSION message also retain that limit; their missing versions are not treated as delayed version
+creation. This snapshot is available for versions created by upgraded parent controllers; legacy versions without it
+receive the bootstrap grace period. Unresolved `PARTIALLY_ONLINE` versions remain visible in the stalled-swap metric
+until the remaining regions serve that version or a newer version online, even if a later push fails or is deleted. A
+later detected stall raises this recovery requirement to the newer stalled version; failed push attempts or progress in
+only some regions do not clear it. Recovery still requires manual roll forward or a subsequent push.
 
 ## Usage
 

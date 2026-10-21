@@ -331,11 +331,14 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
           "lag",
           "timeout",
           "deleted",
+          "deleted-timeout",
           "unreachable",
+          "unreachable-timeout",
           "ERROR",
           "KILLED",
           "partial",
           "degraded-subset-excluded",
+          "degraded-subset-excluded-timeout",
           "degraded-subset-lag")) {
         cases.add(new Object[] { sequential, scenario });
       }
@@ -356,7 +359,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     boolean firstRegion = scenario.equals("first-region-timeout");
     boolean precedingRegion = scenario.startsWith("preceding-region-");
     if (scenario.startsWith("degraded-")) {
-      boolean excluded = scenario.endsWith("excluded");
+      boolean excluded = scenario.contains("excluded");
       doReturn(!excluded).when(targetVersion).isDegradedPush();
       doReturn(region1).when(targetVersion).getTargetSwapRegion();
       doReturn(Arrays.asList(excluded ? region2 : region3)).when(targetVersion).getSkippedRegions();
@@ -381,7 +384,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     StoreInfo childStore = new StoreInfo();
     childStore.setVersions(new ArrayList<>());
     childStore.setCurrentVersion(versionOne);
-    childStore.setLargestUsedVersionNumber(scenario.endsWith("deleted") ? versionTwo : versionOne);
+    childStore.setLargestUsedVersionNumber(scenario.contains("deleted") ? versionTwo : versionOne);
     response.setStore(childStore);
     StoreResponse errorResponse = new StoreResponse();
     errorResponse.setError("Child controller is unavailable");
@@ -401,7 +404,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       doReturn(1.0).when(veniceControllerMultiClusterConfig).getDeferredVersionSwapBufferTime();
     }
     doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
-    doReturn(scenario.equals("unreachable") ? errorResponse : response).when(child)
+    doReturn(scenario.startsWith("unreachable") ? errorResponse : response).when(child)
         .getStore("testStore", controllerTimeout);
     DeferredVersionSwapService service =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
@@ -465,7 +468,8 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         childStore.setCurrentVersion(versionTwo);
         poll.run();
       } else {
-        if (scenario.endsWith("deleted") || scenario.equals("unreachable") || scenario.endsWith("excluded")) {
+        if (!timeout
+            && (scenario.endsWith("deleted") || scenario.equals("unreachable") || scenario.endsWith("excluded"))) {
           for (int i = 0; i < 4; i++) {
             poll.run();
           }
@@ -482,10 +486,85 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
       }
       if ((scenario.endsWith("lag") && sequential) || scenario.equals("partial")) {
+        childVersion.setStatus(VersionStatus.ONLINE);
+        for (ControllerClient client: controllerClientMap.values()) {
+          StoreInfo regionalStore = client.getStore("testStore", controllerTimeout).getStore();
+          regionalStore.setVersions(Arrays.asList(childVersion));
+          regionalStore.setCurrentVersion(versionTwo);
+        }
+        doReturn(VersionStatus.ONLINE).when(targetVersion).getStatus();
+        poll.run();
         InOrder metricOrder = inOrder(stats);
         metricOrder.verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
         metricOrder.verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
       }
+    } finally {
+      service.stopInner();
+    }
+  }
+
+  @DataProvider(name = "staggeredVersionFetchScenarios")
+  public Object[][] staggeredVersionFetchScenarios() {
+    return new Object[][] { { "staggered" }, { "successful-fetch-reset" }, { "terminal-cleanup" } };
+  }
+
+  @Test(dataProvider = "staggeredVersionFetchScenarios")
+  public void testParallelVersionFetchRetries(String scenario) throws Exception {
+    Store store = mockStore(versionOne, versionTwo, "testStore");
+    Version targetVersion = store.getVersion(versionTwo);
+    doReturn(region1).when(targetVersion).getTargetSwapRegion();
+    doReturn(Arrays.asList(region2)).when(targetVersion).getSkippedRegions();
+    doReturn(System.currentTimeMillis()).when(targetVersion).getCreatedTime();
+    doReturn(1).when(store).getBootstrapToOnlineTimeoutInHours();
+    doReturn(store).when(repository).getStore("testStore");
+    Map<String, ControllerClient> clients = veniceHelixAdmin.getControllerClientMap(clusterName);
+    StoreInfo excludedStore = clients.get(region2).getStore("testStore", controllerTimeout).getStore();
+    StoreInfo laggingStore = clients.get(region3).getStore("testStore", controllerTimeout).getStore();
+    for (StoreInfo childStore: Arrays.asList(excludedStore, laggingStore)) {
+      childStore.setVersions(new ArrayList<>());
+      childStore.setLargestUsedVersionNumber(versionOne);
+    }
+    long completionTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC) - TimeUnit.MINUTES.toSeconds(30);
+    doReturn(
+        getOfflinePushStatusInfo("COMPLETED", "COMPLETED", "COMPLETED", completionTime, completionTime, completionTime))
+            .when(admin)
+            .getOffLinePushStatus(clusterName, "testStore_v2");
+    DeferredVersionSwapService service =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    Runnable poll = () -> service.performParallelRollForward(clusterName, store, clients, targetVersion);
+    try {
+      for (int i = 0; i < 3; i++) {
+        poll.run();
+      }
+      if (scenario.equals("staggered")) {
+        laggingStore.setLargestUsedVersionNumber(versionTwo);
+      }
+      poll.run();
+      poll.run();
+      verify(store, never()).updateVersionStatus(anyInt(), any());
+      if (scenario.equals("staggered")) {
+        poll.run();
+        poll.run();
+      } else {
+        Version childVersion = new VersionImpl("testStore", versionTwo);
+        if (scenario.equals("successful-fetch-reset")) {
+          childVersion.setStatus(VersionStatus.STARTED);
+          excludedStore.setVersions(Arrays.asList(childVersion));
+          poll.run();
+          excludedStore.setVersions(new ArrayList<>());
+        } else {
+          service.updateStore(clusterName, "testStore", VersionStatus.ERROR, versionTwo);
+        }
+        childVersion.setStatus(VersionStatus.ERROR);
+        laggingStore.setVersions(Arrays.asList(childVersion));
+        for (int i = 0; i < 4; i++) {
+          poll.run();
+        }
+      }
+      verify(store, never()).updateVersionStatus(versionTwo, VersionStatus.PARTIALLY_ONLINE);
+      poll.run();
+      verify(store).updateVersionStatus(versionTwo, VersionStatus.PARTIALLY_ONLINE);
+      verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
     } finally {
       service.stopInner();
     }
@@ -1035,15 +1114,119 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
   }
 
   @DataProvider
+  public Object[][] deferredSuccessorScenarios() {
+    return new Object[][] { { true, true }, { true, false }, { false, true }, { false, false } };
+  }
+
+  @Test(dataProvider = "deferredSuccessorScenarios")
+  public void testDeferredSuccessorRetainsStallUntilServingRecovery(boolean sequential, boolean failed)
+      throws Exception {
+    Store store = mockStore(versionOne, versionTwo, "testStore");
+    Version stalledVersion = store.getVersion(versionTwo);
+    doReturn(VersionStatus.PARTIALLY_ONLINE).when(stalledVersion).getStatus();
+    Map<String, ControllerClient> clients = veniceHelixAdmin.getControllerClientMap(clusterName);
+    DeferredVersionSwapService service =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    try {
+      service.performSequentialRollForward(
+          clusterName,
+          store,
+          clients,
+          Arrays.asList(region1, region2, region3),
+          stalledVersion);
+      verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
+
+      Store successor = mockStore(versionTwo, 3, "testStore");
+      Version successorVersion = successor.getVersion(3);
+      doReturn(failed ? VersionStatus.ERROR : VersionStatus.PUSHED).when(successorVersion).getStatus();
+      doReturn(successor).when(repository).getStore("testStore");
+      Map<String, Integer> currentVersions = new HashMap<>();
+      for (String region: Arrays.asList(region1, region2, region3)) {
+        Version serving = new VersionImpl("testStore", versionOne);
+        serving.setStatus(VersionStatus.ONLINE);
+        Version attempted = new VersionImpl("testStore", 3);
+        attempted.setStatus(
+            region.equals(region1)
+                ? VersionStatus.ONLINE
+                : failed || (!sequential && region.equals(region3))
+                    ? VersionStatus.ERROR
+                    : region.equals(region2) ? VersionStatus.PUSHED : VersionStatus.STARTED);
+        StoreInfo child = clients.get(region).getStore("testStore", controllerTimeout).getStore();
+        child.setVersions(Arrays.asList(serving, attempted));
+        child.setCurrentVersion(region.equals(region1) ? 3 : versionOne);
+        child.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10));
+        currentVersions.put(region, child.getCurrentVersion());
+      }
+      doReturn(currentVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, "testStore");
+      long completionTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC) - TimeUnit.MINUTES.toSeconds(10);
+      doReturn(
+          getOfflinePushStatusInfo(
+              "COMPLETED",
+              "COMPLETED",
+              "COMPLETED",
+              completionTime,
+              completionTime,
+              completionTime)).when(admin).getOffLinePushStatus(clusterName, "testStore_v3");
+      Runnable poll = sequential
+          ? () -> service.performSequentialRollForward(
+              clusterName,
+              successor,
+              clients,
+              Arrays.asList(region1, region2, region3),
+              successorVersion)
+          : () -> service.performParallelRollForward(clusterName, successor, clients, successorVersion);
+      poll.run();
+      if (!failed) {
+        verify(admin).rollForwardToFutureVersion(clusterName, "testStore", region2);
+      }
+      verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
+
+      if (!failed) {
+        doReturn(VersionStatus.ERROR).when(successorVersion).getStatus();
+        for (ControllerClient client: clients.values()) {
+          StoreInfo child = client.getStore("testStore", controllerTimeout).getStore();
+          Version previous = new VersionImpl("testStore", versionTwo);
+          previous.setStatus(VersionStatus.ONLINE);
+          child.setVersions(Arrays.asList(previous, child.getVersion(3).get()));
+          child.setCurrentVersion(versionTwo);
+        }
+        poll.run();
+        verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
+      }
+
+      int recoveredVersion = failed ? versionTwo : 3;
+      for (ControllerClient client: clients.values()) {
+        StoreInfo child = client.getStore("testStore", controllerTimeout).getStore();
+        Version recovered = new VersionImpl("testStore", recoveredVersion);
+        recovered.setStatus(VersionStatus.ONLINE);
+        child.setVersions(Arrays.asList(recovered));
+        child.setCurrentVersion(recoveredVersion);
+      }
+      StoreInfo targetChild = clients.get(region1).getStore("testStore", controllerTimeout).getStore();
+      targetChild.setCurrentVersion(versionOne);
+      poll.run();
+      verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
+      targetChild.setCurrentVersion(recoveredVersion);
+      poll.run();
+      verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
+    } finally {
+      service.stopInner();
+    }
+  }
+
+  @DataProvider
   public Object[][] ordinaryPushRecoveryScenarios() {
-    return new Object[][] { { 3, VersionStatus.ONLINE, 3, VersionStatus.ONLINE, true },
-        { 4, VersionStatus.ERROR, 3, VersionStatus.ONLINE, true }, { 4, null, 3, VersionStatus.ONLINE, true },
-        { 4, VersionStatus.ERROR, 1, VersionStatus.ONLINE, false },
-        { 4, VersionStatus.ERROR, 3, VersionStatus.PUSHED, false }, { 4, VersionStatus.ERROR, 3, null, false } };
+    return new Object[][] { { 2, 3, VersionStatus.ONLINE, 3, VersionStatus.ONLINE, true },
+        { 2, 4, VersionStatus.ERROR, 3, VersionStatus.ONLINE, true }, { 2, 4, null, 3, VersionStatus.ONLINE, true },
+        { 2, 4, VersionStatus.ERROR, 1, VersionStatus.ONLINE, false },
+        { 2, 4, VersionStatus.ERROR, 3, VersionStatus.PUSHED, false }, { 2, 4, VersionStatus.ERROR, 3, null, false },
+        { 3, 4, VersionStatus.ERROR, 2, VersionStatus.ONLINE, false },
+        { 3, 4, VersionStatus.ERROR, 3, VersionStatus.ONLINE, true } };
   }
 
   @Test(dataProvider = "ordinaryPushRecoveryScenarios")
   public void testSchedulerClearsStallAfterNonDeferredPush(
+      int recoveryFloor,
       int latestVersion,
       VersionStatus latestStatus,
       int servingVersion,
@@ -1057,11 +1240,25 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     DeferredVersionSwapService service =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     try {
-      service.startInner();
-      TestUtils.waitForNonDeterministicAssertion(
-          5,
-          TimeUnit.SECONDS,
-          () -> verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0));
+      Map<String, ControllerClient> clients = veniceHelixAdmin.getControllerClientMap(clusterName);
+      service.performSequentialRollForward(
+          clusterName,
+          store,
+          clients,
+          Arrays.asList(region1, region2, region3),
+          stalledVersion);
+      if (recoveryFloor > versionTwo) {
+        Store nextStall = mockStore(versionTwo, recoveryFloor, "testStore");
+        Version nextStalledVersion = nextStall.getVersion(recoveryFloor);
+        doReturn(VersionStatus.PARTIALLY_ONLINE).when(nextStalledVersion).getStatus();
+        service.performSequentialRollForward(
+            clusterName,
+            nextStall,
+            clients,
+            Arrays.asList(region1, region2, region3),
+            nextStalledVersion);
+      }
+      verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
 
       Store recoveredParentStore = mockStore(3, latestVersion, "testStore");
       Version latestAttempt = latestStatus == null ? null : new VersionImpl("testStore", latestVersion);
@@ -1087,6 +1284,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
           return recoveredResponse;
         }).when(client).getStore("testStore", controllerTimeout);
       }
+      service.startInner();
       Assert.assertTrue(reconciliations.await(5, TimeUnit.SECONDS));
       if (recovered) {
         TestUtils.waitForNonDeterministicAssertion(
