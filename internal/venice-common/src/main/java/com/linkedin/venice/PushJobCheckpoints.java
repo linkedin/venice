@@ -25,13 +25,15 @@ public enum PushJobCheckpoints implements VeniceEnumValue {
   DATASET_CHANGED(-8), INVALID_INPUT_FILE(-9), @Deprecated
   ZSTD_DICTIONARY_CREATION_FAILED(-10), DVC_INGESTION_ERROR_DISK_FULL(-11),
   DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(-12), DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES(-13),
-  DVC_INGESTION_ERROR_OTHER(-14);
+  DVC_INGESTION_ERROR_OTHER(-14), TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED(-15);
 
   private final int value;
 
   /**
    * Default set checkpoints to define push job failures are user errors which can be overridden via controller config
-   * {@link ConfigKeys#PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR}
+   * {@link ConfigKeys#PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR}.
+   * Known input, schema, and TTL configuration failures use explicit error checkpoints; initialization itself
+   * is not a user error because it can also fail due to platform errors.
    */
   public static final Set<PushJobCheckpoints> DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS = Collections.unmodifiableSet(
       new HashSet<>(
@@ -46,7 +48,8 @@ public enum PushJobCheckpoints implements VeniceEnumValue {
               DATASET_CHANGED,
               INVALID_INPUT_FILE,
               DVC_INGESTION_ERROR_DISK_FULL,
-              DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED)));
+              DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+              TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED)));
 
   private static final Map<Integer, PushJobCheckpoints> TYPES =
       EnumUtils.getEnumValuesSparseList(PushJobCheckpoints.class);

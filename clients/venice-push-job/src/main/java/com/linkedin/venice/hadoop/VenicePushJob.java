@@ -2589,6 +2589,9 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
+      if (getValueSchemaIdResponse.getErrorType() == ErrorType.INVALID_SCHEMA) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
+      }
       MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
       if (response.isError()) {
         LOGGER.error("Failed to fetch all value schemas, so they will not be printed. " + response.getError());
@@ -2759,6 +2762,7 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("Unable to fetch store to validate if regular push is allowed with TTL re-push");
     }
     if (storeResponse.getStore().isTTLRepushEnabled()) {
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED);
       String errorMessage = "Store: %s is TTL re-push enabled and regular batch push is not allowed with TTL re-push";
       throw new VeniceException(String.format(errorMessage, storeResponse.getName()));
     }
