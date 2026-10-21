@@ -23,7 +23,9 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
+import com.linkedin.venice.fastclient.cache.FastClientRecordCache;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
@@ -82,6 +84,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   // Key serializer
   private RecordSerializer<K> keySerializer;
   protected StoreDeserializerCache<V> storeDeserializerCache;
+  /** Null unless a positive cache budget is configured. */
+  private final FastClientRecordCache recordCache;
 
   private static final RecordSerializer<MultiGetRouterRequestKeyV1> MULTI_GET_REQUEST_SERIALIZER =
       FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
@@ -127,6 +131,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           new AvroStoreDeserializerCache<>(metadata::getValueSchema, factory::createDeserializer);
     } else {
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
+    }
+
+    // The configured byte budget is the sole enabler: without it the cache is never created.
+    if (config.isCacheEnabled()) {
+      this.recordCache = new FastClientRecordCache(config.getMaxCacheSizeInBytes());
+      metadata.registerRefreshListener(this.recordCache::clear);
+      LOGGER.info("Record cache enabled for store {} with budget {} bytes", storeName, config.getMaxCacheSizeInBytes());
+    } else {
+      this.recordCache = null;
     }
   }
 
@@ -189,6 +202,25 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     long nanoTsBeforeSendingRequest = System.nanoTime();
 
     metadata.routeRequest(requestContext, keySerializer);
+
+    // Serve from the cache before any routing failure check, so cached keys stay available during a routing outage.
+    if (recordCache != null) {
+      FastClientRecordCache.CachedValue cached =
+          lookUpInCache(requestContext.getSerializedKey(), requestContext.getCurrentVersion());
+      FastClientStats stats = config.getStats(RequestType.SINGLE_GET);
+      if (cached != null) {
+        if (stats != null) {
+          stats.recordCacheHitKeyCount(1);
+        }
+        requestContext.successRequestKeyCount.incrementAndGet();
+        valueFuture.complete(deserializeCachedValue(cached, key));
+        return valueFuture;
+      }
+      if (stats != null) {
+        stats.recordCacheMissKeyCount(1);
+      }
+    }
+
     if (requestContext.hasNonAvailablePartition()) {
       valueFuture.completeExceptionally(
           new VeniceClientException(
@@ -244,6 +276,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           try {
             routeRequestFutureFinal.complete(SC_OK);
             CompressionStrategy compressionStrategy = response.getCompressionStrategy();
+            // Cache the bytes as received, before decompression, so a compressed store fits more keys in the budget.
+            if (recordCache != null) {
+              recordCache.put(
+                  ByteBuffer.wrap(requestContext.getSerializedKey()),
+                  response.getBody(),
+                  response.getSchemaId(),
+                  compressionStrategy,
+                  requestContext.currentVersion);
+            }
             long nanoTsBeforeDecompression = System.nanoTime();
             ByteBuffer data = decompressRecord(
                 compressionStrategy,
@@ -297,18 +338,100 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
+    Set<K> keysToFetch = keys;
+    if (recordCache != null) {
+      verifyMetadataInitialized();
+      // Enforce the batch-get limit against the caller's key count, before the cache removes any of them.
+      if (keys.size() > metadata.getBatchGetLimit()) {
+        callback.onCompletion(
+            Optional.of(
+                new VeniceKeyCountLimitException(
+                    getStoreName(),
+                    RequestType.MULTI_GET_STREAMING,
+                    keys.size(),
+                    metadata.getBatchGetLimit())));
+        return;
+      }
+      keysToFetch = serveBatchGetFromCache(keys, callback);
+      if (keysToFetch.isEmpty()) {
+        callback.onCompletion(Optional.empty());
+        return;
+      }
+    }
     multiKeyStreamingRequest(
         requestContext,
         RequestType.MULTI_GET_STREAMING,
-        keys,
+        keysToFetch,
         callback,
         requestContext,
-        RequestHeadersProvider.getStreamingBatchGetHeaders(keys.size()),
+        RequestHeadersProvider.getStreamingBatchGetHeaders(keysToFetch.size()),
         this::serializeMultiGetRequest,
         (MultiKeyStreamingRouteResponseHandler<K>) (
             keysForRoutes,
             response,
             throwable) -> batchGetTransportRequestCompletionHandler(requestContext, response, throwable, callback));
+  }
+
+  /**
+   * Deliver every cached key to {@code callback} and return the keys that still need to be fetched. Keys are
+   * serialized here for the lookup; the ones that miss are serialized again by the routing layer, which is a small
+   * CPU cost in exchange for skipping the server round trip on a hit.
+   */
+  private Set<K> serveBatchGetFromCache(Set<K> keys, StreamingCallback<K, V> callback) {
+    int currentVersion = metadata.getCurrentStoreVersion();
+    Set<K> missedKeys = new HashSet<>(keys.size());
+    int hitCount = 0;
+    for (K key: keys) {
+      FastClientRecordCache.CachedValue cached = lookUpInCache(keySerializer.serialize(key), currentVersion);
+      if (cached == null) {
+        missedKeys.add(key);
+        continue;
+      }
+      hitCount++;
+      callback.onRecordReceived(key, deserializeCachedValue(cached, key));
+    }
+    FastClientStats stats = config.getStats(RequestType.MULTI_GET_STREAMING);
+    if (stats != null) {
+      if (hitCount > 0) {
+        stats.recordCacheHitKeyCount(hitCount);
+      }
+      if (!missedKeys.isEmpty()) {
+        stats.recordCacheMissKeyCount(missedKeys.size());
+      }
+    }
+    return missedKeys;
+  }
+
+  /**
+   * Look up {@code serializedKey}, treating an entry from any other store version as a miss. Compressed bytes are
+   * only decodable by the compressor of the version they were read from, because
+   * {@link CompressionStrategy#ZSTD_WITH_DICT} dictionaries are per version.
+   */
+  private FastClientRecordCache.CachedValue lookUpInCache(byte[] serializedKey, int currentVersion) {
+    FastClientRecordCache.CachedValue cached = recordCache.get(ByteBuffer.wrap(serializedKey));
+    return cached != null && cached.getVersion() == currentVersion ? cached : null;
+  }
+
+  /**
+   * Decompress and deserialize a cache hit, reusing the same decompression and deserialization path as a server
+   * response so compression handling stays in one place.
+   */
+  private V deserializeCachedValue(FastClientRecordCache.CachedValue cached, K key) {
+    ByteBuffer data = decompressRecord(
+        cached.getCompressionStrategy(),
+        cached.getValue(),
+        cached.getVersion(),
+        metadata.getCompressor(cached.getCompressionStrategy(), cached.getVersion()));
+    return tryToDeserialize(getDataRecordDeserializer(cached.getSchemaId()), data, cached.getSchemaId(), key);
+  }
+
+  /**
+   * Copy the readable bytes of {@code buffer} without disturbing its position.
+   */
+  private static byte[] copyRemaining(ByteBuffer buffer) {
+    byte[] copy = new byte[buffer.remaining()];
+    buffer.duplicate().get(copy);
+    return copy;
   }
 
   private interface MultiKeyStreamingRouteResponseHandler<K> {
@@ -491,6 +614,16 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     VeniceCompressor compressor =
         metadata.getCompressor(transportClientResponse.getCompressionStrategy(), requestContext.currentVersion);
     for (MultiGetResponseRecordV1 r: records) {
+      MultiKeyRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
+      // Cache the bytes as received, before decompression, so a compressed store fits more keys in the budget.
+      if (recordCache != null) {
+        recordCache.put(
+            ByteBuffer.wrap(k.getSerializedKey()),
+            copyRemaining(r.value),
+            r.getSchemaId(),
+            transportClientResponse.getCompressionStrategy(),
+            requestContext.currentVersion);
+      }
       long nanoTsBeforeDecompression = System.nanoTime();
 
       ByteBuffer decompressRecord = decompressRecord(
@@ -506,7 +639,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.recordRecordDeserializationTime(
           transportClientResponse.getRouteId(),
           getLatencyInNS(nanoTsBeforeDeserialization));
-      MultiKeyRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
       keysSeen.add(r.keyIndex);
       callback.onRecordReceived(k.getKey(), deserializedValue);
     }

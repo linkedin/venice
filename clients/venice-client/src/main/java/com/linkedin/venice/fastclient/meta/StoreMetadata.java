@@ -110,6 +110,21 @@ public interface StoreMetadata extends SchemaReader {
   }
 
   /**
+   * Register a callback that fires after every successful metadata refresh, regardless of whether anything changed.
+   * Used by the client-side record cache to bound entry staleness by the refresh interval. Because a store version
+   * swap is only ever observed during a refresh, this also covers version swaps.
+   *
+   * <p>Threading and exception semantics match {@link #registerVersionSwitchListener}.
+   *
+   * @throws IllegalArgumentException if {@code listener} is {@code null}
+   */
+  default void registerRefreshListener(Runnable listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("Refresh listener must not be null");
+    }
+  }
+
+  /**
    * Register a callback that fires when the metadata refresh loop observes a change to the store-level config
    * snapshot (e.g. operator-driven {@link com.linkedin.venice.meta.ExternalStorageReadMode} flip). The callback is invoked
    * after the new snapshot has been committed to the local cache. See {@link StoreConfigChangeListener} for
