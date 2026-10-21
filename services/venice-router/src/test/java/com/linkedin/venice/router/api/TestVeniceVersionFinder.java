@@ -312,38 +312,36 @@ public class TestVeniceVersionFinder {
 
   @DataProvider
   public Object[][] bootstrapReadiness() {
-    return new Object[][] { { CompressionStrategy.NO_OP, false, false },
-        { CompressionStrategy.ZSTD_WITH_DICT, true, false }, { CompressionStrategy.ZSTD_WITH_DICT, false, true },
-        { CompressionStrategy.ZSTD_WITH_DICT, false, false } };
+    return new Object[][] { { CompressionStrategy.NO_OP, false, false, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, true, false, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, false, true, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, false, false, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, true, false, true } };
   }
 
   @Test(dataProvider = "bootstrapReadiness")
   public void returnsNoVersionWhenNewStoreNewVersionNotReadyToServe(
       CompressionStrategy compressionStrategy,
       boolean routingReady,
-      boolean dictionaryReady) {
+      boolean dictionaryReady,
+      boolean promoteDuringBootstrap) {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     String storeName = Utils.getUniqueString("version-finder-test-store");
-    int firstVersion = 1;
+    int currentVersion = 1;
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
     store.setCompressionStrategy(compressionStrategy);
-    store.addVersion(new VersionImpl(storeName, firstVersion));
-    store.setCurrentVersion(firstVersion);
-    store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+    store.addVersion(new VersionImpl(storeName, currentVersion));
+    store.setCurrentVersion(currentVersion);
+    store.updateVersionStatus(currentVersion, VersionStatus.ONLINE);
 
     doReturn(store).when(storeRepository).getStore(storeName);
-
-    List<Instance> instances = new LinkedList<>();
-    instances.add(new Instance("id1", "host", 1234));
 
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
 
-    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
-    doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
-    doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = getCVBasedMockedRoutingRepo();
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
@@ -358,59 +356,33 @@ public class TestVeniceVersionFinder {
           compressorFactory,
           metricsRepository);
 
-      String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
-      doReturn(routingReady).when(routingDataRepo).containsKafkaTopic(firstVersionKafkaTopic);
-      doReturn(dictionaryReady).when(compressorFactory).versionSpecificCompressorExists(firstVersionKafkaTopic);
+      String currentVersionKafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
+      doReturn(routingReady).when(routingDataRepo).containsKafkaTopic(currentVersionKafkaTopic);
+      doReturn(dictionaryReady).when(compressorFactory).versionSpecificCompressorExists(currentVersionKafkaTopic);
 
       for (int i = 0; i < 3; i++) {
         Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
       }
       verify(stats, Mockito.never()).recordNotStale();
 
-      doReturn(true).when(routingDataRepo).containsKafkaTopic(firstVersionKafkaTopic);
+      if (promoteDuringBootstrap) {
+        currentVersion = 2;
+        store.addVersion(new VersionImpl(storeName, currentVersion));
+        store.setCurrentVersion(currentVersion);
+        currentVersionKafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
+        doReturn(true).when(routingDataRepo).containsKafkaTopic(currentVersionKafkaTopic);
+        for (int i = 0; i < 3; i++) {
+          Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
+        }
+      }
+      doReturn(true).when(routingDataRepo).containsKafkaTopic(currentVersionKafkaTopic);
       if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !dictionaryReady) {
         Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
       }
 
-      doReturn(true).when(compressorFactory).versionSpecificCompressorExists(firstVersionKafkaTopic);
-      Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
-      Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
-    }
-  }
-
-  @Test
-  public void testPromotionDuringBootstrapDoesNotFallbackToUninitializedVersion() {
-    String storeName = Utils.getUniqueString("version-finder-test-store");
-    Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
-    store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-    store.addVersion(new VersionImpl(storeName, 1));
-    store.setCurrentVersion(1);
-    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    doReturn(store).when(storeRepository).getStore(storeName);
-    HelixCustomizedViewOfflinePushRepository routingDataRepo = getCVBasedMockedRoutingRepo();
-    doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
-    CompressorFactory compressorFactory = mock(CompressorFactory.class);
-
-    try (VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository()) {
-      VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-          storeRepository,
-          routingDataRepo,
-          mock(StaleVersionStats.class),
-          mock(HelixReadOnlyStoreConfigRepository.class),
-          clusterToD2Map,
-          CLUSTER,
-          compressorFactory,
-          metricsRepository);
-
-      Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
-      store.addVersion(new VersionImpl(storeName, 2));
-      store.setCurrentVersion(2);
-      for (int i = 0; i < 3; i++) {
-        Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
-      }
-
-      doReturn(true).when(compressorFactory).versionSpecificCompressorExists(Version.composeKafkaTopic(storeName, 2));
-      Assert.assertEquals(versionFinder.getVersion(storeName, request), 2);
+      doReturn(true).when(compressorFactory).versionSpecificCompressorExists(currentVersionKafkaTopic);
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), currentVersion);
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), currentVersion);
     }
   }
 

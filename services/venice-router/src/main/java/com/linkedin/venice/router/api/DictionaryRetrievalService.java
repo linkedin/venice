@@ -24,13 +24,11 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.Time;
 import java.io.IOException;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -45,6 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -62,8 +61,9 @@ import org.apache.logging.log4j.Logger;
  *  1) Store metadata changed ZK listener.
  *  2) Each failed dictionary fetch request is retried infinitely (till the version is retired).
  *
- * At Router startup, the dictionaries are pre-fetched for currently active versions that require a dictionary. This
- * process is fail-fast and will prevent router start up if any dictionary fetch request fails.
+ * At Router startup, dictionaries for the current versions in the metadata snapshot are required before serving.
+ * This bounded warmup fails if a required fetch or compressor initialization fails. Other eligible versions are
+ * downloaded in the background and do not block startup.
  *
  * When a dictionary is downloaded for a version, it's corresponding version specific compressor is initialized and is
  * maintained by CompressorFactory.
@@ -139,38 +139,36 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         }
       }
     }
-
-    // download dictionary of future & current store versions
-    private void queueDictionaryDownloadOfFutureAndCurrentVersions(Store store) {
-      List<String> queued = new ArrayList<>();
-      for (Version version: store.getVersions()) {
-        String topic = version.kafkaTopicName();
-        if (!shouldDownloadDictionaryForVersion(version)) {
-          if (version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
-            LOGGER.info(
-                "Skipping dictionary download for {} because version status is {} (requires ONLINE, STARTED, or PUSHED)",
-                topic,
-                version.getStatus());
-            stats.recordVersionSkippedByStatus();
-          }
-          continue;
-        }
-        if (downloadingDictionaryFutures.containsKey(topic)) {
-          LOGGER.debug(
-              "Skipping dictionary download for {} because it is already in downloadingDictionaryFutures",
-              topic);
-          stats.recordVersionSkippedByExistingFuture();
-          continue;
-        }
-        dictionaryDownloadCandidates.add(topic);
-        queued.add(topic);
-        stats.recordVersionQueued();
-      }
-      if (!queued.isEmpty()) {
-        LOGGER.info("Queued dictionary download for {} topic(s): {}", queued.size(), String.join(",", queued));
-      }
-    }
   };
+
+  private void queueDictionaryDownloadOfFutureAndCurrentVersions(Store store) {
+    List<String> queued = new ArrayList<>();
+    for (Version version: store.getVersions()) {
+      String topic = version.kafkaTopicName();
+      if (!shouldDownloadDictionaryForVersion(version)) {
+        if (version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
+          LOGGER.info(
+              "Skipping dictionary download for {} because version status is {} (requires ONLINE, STARTED, or PUSHED)",
+              topic,
+              version.getStatus());
+          stats.recordVersionSkippedByStatus();
+        }
+        continue;
+      }
+      if (downloadingDictionaryFutures.containsKey(topic)) {
+        LOGGER
+            .debug("Skipping dictionary download for {} because it is already in downloadingDictionaryFutures", topic);
+        stats.recordVersionSkippedByExistingFuture();
+        continue;
+      }
+      dictionaryDownloadCandidates.add(topic);
+      queued.add(topic);
+      stats.recordVersionQueued();
+    }
+    if (!queued.isEmpty()) {
+      LOGGER.info("Queued dictionary download for {} topic(s): {}", queued.size(), String.join(",", queued));
+    }
+  }
 
   private final RedundantExceptionFilter redundantExceptionFilter = new RedundantExceptionFilter();
 
@@ -359,29 +357,37 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   }
 
   /**
-   * At Router start up, we want dictionaries for all active versions to be downloaded. This call is a blocking call and
-   * fails fast if there is a failure in fetching the dictionary for any version.
-   * @return false if the dictionary download timed out, true otherwise.
+   * Warm up the current versions from one metadata snapshot within the configured timeout.
+   * Non-current versions remain background download candidates.
+   * @return true only if every required current-version compressor is initialized.
    */
-  private boolean getAllDictionaries() {
+  private boolean warmupCurrentVersionDictionaries() {
     metadataRepository.refresh();
-    List<String> dictionaryDownloadCandidates = metadataRepository.getAllStores()
-        .stream()
-        .flatMap(store -> store.getVersions().stream())
-        .filter(
-            version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                && shouldDownloadDictionaryForVersion(version))
-        .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
+    List<Store> stores = metadataRepository.getAllStores();
+    List<String> currentVersionTopics = stores.stream()
+        .map(store -> store.getVersion(store.getCurrentVersion()))
+        .filter(Objects::nonNull)
+        .filter(version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT)
         .map(Version::kafkaTopicName)
         .collect(Collectors.toList());
 
-    return downloadDictionaries(dictionaryDownloadCandidates);
+    if (!downloadDictionaries(currentVersionTopics)) {
+      return false;
+    }
+    for (String topic: currentVersionTopics) {
+      if (!compressorFactory.versionSpecificCompressorExists(topic)) {
+        LOGGER.warn("Dictionary warmup completed without an initialized compressor for resource: {}", topic);
+        return false;
+      }
+    }
+    stores.forEach(this::queueDictionaryDownloadOfFutureAndCurrentVersions);
+    return true;
   }
 
   /**
    * This function downloads the dictionaries for the specified resources in a blocking manner.
    * @param dictionaryDownloadTopics A Collection of topics (representing store and version) to download the dictionaries for.
-   * @return false if the dictionary download timed out, true otherwise.
+   * @return false if a dictionary download or compressor initialization failed or timed out, true otherwise.
    */
   private boolean downloadDictionaries(Collection<String> dictionaryDownloadTopics) {
     String storeTopics = String.join(",", dictionaryDownloadTopics);
@@ -391,24 +397,23 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     logWithRedundantFilter(Level.INFO, "Beginning dictionary fetch for " + storeTopics);
 
-    List<Version> filteredTopics = dictionaryDownloadTopics.stream()
-        .map(
-            topic -> new AbstractMap.SimpleEntry<>(
-                topic,
-                metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(topic))))
-        .filter(entry -> entry.getValue() != null)
-        .map(entry -> entry.getValue().getVersion(Version.parseVersionFromKafkaTopicName(entry.getKey())))
+    List<Version> versionsToDownload = dictionaryDownloadTopics.stream().map(topic -> {
+      Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(topic));
+      return store == null ? null : store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
+    })
         .filter(Objects::nonNull)
+        .filter(version -> !compressorFactory.versionSpecificCompressorExists(version.kafkaTopicName()))
         .collect(Collectors.toList());
 
-    CompletableFuture[] dictionaryDownloadFutureArray = filteredTopics.stream()
-        .map(this::fetchCompressionDictionary)
-        .filter(Objects::nonNull)
-        .toArray(CompletableFuture[]::new);
+    CompletableFuture<?>[] downloadFutures =
+        versionsToDownload.stream().map(this::fetchCompressionDictionary).toArray(CompletableFuture<?>[]::new);
 
     try {
-      CompletableFuture.allOf(dictionaryDownloadFutureArray).get(dictionaryRetrievalTimeMs, TimeUnit.MILLISECONDS);
-    } catch (Exception e) {
+      CompletableFuture.allOf(downloadFutures).get(dictionaryRetrievalTimeMs, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
       logWithRedundantFilter(
           Level.WARN,
           "Dictionary fetch failed. Store topics were: " + storeTopics + ". " + e.getMessage());
@@ -419,46 +424,50 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   private CompletableFuture<Void> fetchCompressionDictionary(Version version) {
     String kafkaTopic = version.kafkaTopicName();
-
-    CompletableFuture<Void> dictionaryFuture;
-    if (downloadingDictionaryFutures.containsKey(kafkaTopic)) {
+    CompletableFuture<Void> dictionaryFuture = new CompletableFuture<>();
+    CompletableFuture<Void> existingFuture = downloadingDictionaryFutures.putIfAbsent(kafkaTopic, dictionaryFuture);
+    if (existingFuture != null) {
       LOGGER.debug("Reusing existing download future for {}", kafkaTopic);
-      dictionaryFuture = downloadingDictionaryFutures.get(kafkaTopic);
-    } else {
-      dictionaryFuture =
-          getDictionary(version.getStoreName(), version.getNumber()).handleAsync((dictionary, exception) -> {
-            if (exception != null) {
-              if (exception instanceof InterruptedException) {
-                LOGGER.warn("{}. Will not retry dictionary download.", exception.getMessage());
-              } else {
-                logWithRedundantFilter(
-                    Level.WARN,
-                    "Exception encountered when asynchronously downloading dictionary for resource: " + kafkaTopic
-                        + ". " + exception.getMessage());
-
-                // Wait for future to be added before removing it
-                while (downloadingDictionaryFutures.remove(kafkaTopic) == null) {
-                  if (!Utils.sleep(MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS)) {
-                    LOGGER.warn("Got InterruptedException. Will not retry dictionary download.");
-                    return null;
-                  }
-                }
-
-                scheduleRetryWithBackoff(kafkaTopic);
-              }
-            } else {
-              initCompressorFromDictionary(version, dictionary);
-              stats.recordDownloadSuccess();
-              LOGGER.info(
-                  "Dictionary downloaded and compressor is ready for resource: {} (version status: {})",
-                  kafkaTopic,
-                  version.getStatus());
-            }
-            return null;
-          }, executor);
-      downloadingDictionaryFutures.put(kafkaTopic, dictionaryFuture);
+      return existingFuture;
     }
 
+    CompletableFuture<byte[]> downloadFuture;
+    try {
+      downloadFuture = getDictionary(version.getStoreName(), version.getNumber());
+    } catch (RejectedExecutionException e) {
+      downloadingDictionaryFutures.remove(kafkaTopic, dictionaryFuture);
+      dictionaryFuture.completeExceptionally(e);
+      LOGGER.warn("Dictionary download rejected for resource: {}", kafkaTopic, e);
+      return dictionaryFuture;
+    }
+    downloadFuture.thenAcceptAsync(dictionary -> {
+      initCompressorFromDictionary(version, dictionary);
+      if (!compressorFactory.versionSpecificCompressorExists(kafkaTopic)) {
+        throw new VeniceException("Compressor was not initialized for resource: " + kafkaTopic);
+      }
+      stats.recordDownloadSuccess();
+      LOGGER.info(
+          "Dictionary downloaded and compressor is ready for resource: {} (version status: {})",
+          kafkaTopic,
+          version.getStatus());
+    }, executor).whenComplete((ignored, exception) -> {
+      if (exception == null) {
+        dictionaryFuture.complete(null);
+        return;
+      }
+      logWithRedundantFilter(
+          Level.WARN,
+          "Exception encountered when asynchronously downloading dictionary for resource: " + kafkaTopic + ". "
+              + exception.getMessage());
+      try {
+        if (downloadingDictionaryFutures.remove(kafkaTopic, dictionaryFuture) && !executor.isShutdown()
+            && shouldDownloadDictionaryForVersion(version)) {
+          scheduleRetryWithBackoff(kafkaTopic);
+        }
+      } finally {
+        dictionaryFuture.completeExceptionally(exception);
+      }
+    });
     return dictionaryFuture;
   }
 
@@ -549,10 +558,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   @Override
   public boolean startInner() {
     metadataRepository.registerStoreDataChangedListener(storeChangeListener);
-    // Dictionary warmup
-    boolean success = getAllDictionaries();
-    // If dictionary warm up failed, stop router from starting up
-    if (!success) {
+    if (!warmupCurrentVersionDictionaries()) {
       throw new VeniceException("Dictionary warmup failed! Preventing router start up.");
     }
     dictionaryRetrieverThread.start();

@@ -117,12 +117,7 @@ public class VeniceVersionFinder {
       newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
       newVersionDecompressorReady =
           isDecompressorReady(store.getVersion(metadataCurrentVersionNumber), newVersionKafkaTopic);
-      if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
-        // new store ready to serve
-        lastCurrentVersionMap.put(storeName, metadataCurrentVersionNumber);
-        existingVersionNumber = metadataCurrentVersionNumber;
-      } else {
-        // new store not ready to serve
+      if (!newVersionPartitionResourcesReady || !newVersionDecompressorReady) {
         if (!EXCEPTION_FILTER.isRedundantException(newVersionKafkaTopic)) {
           LOGGER.warn(
               "Unable to initialize serving version: {}. Partition resources ready? {}. Decompressor ready? {}.",
@@ -132,6 +127,8 @@ public class VeniceVersionFinder {
         }
         return Store.NON_EXISTING_VERSION;
       }
+      lastCurrentVersionMap.put(storeName, metadataCurrentVersionNumber);
+      existingVersionNumber = metadataCurrentVersionNumber;
     }
 
     if (existingVersionNumber == metadataCurrentVersionNumber && existingVersionNumber != Store.NON_EXISTING_VERSION) {
@@ -185,12 +182,11 @@ public class VeniceVersionFinder {
     if (existingVersionPartitionResourcesReady && existingVersionDecompressorReady) {
       lastCurrentVersionMap.put(storeName, existingVersionNumber);
       return existingVersionNumber;
-    } else {
-      // Neither version has usable routing and decompression resources.
-      // Reset to force re-evaluation on next request.
-      lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
-      return Store.NON_EXISTING_VERSION;
     }
+    // Neither version has usable routing and decompression resources.
+    // Reset to force re-evaluation on next request.
+    lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
+    return Store.NON_EXISTING_VERSION;
   }
 
   protected boolean isPartitionResourcesReady(String kafkaTopic) {
