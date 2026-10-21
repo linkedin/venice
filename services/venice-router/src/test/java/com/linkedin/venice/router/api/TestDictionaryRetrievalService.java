@@ -228,9 +228,12 @@ public class TestDictionaryRetrievalService {
         initializeCompressor ? 1.0 : 0.0);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10 * Time.MS_PER_SECOND)
-  public void testWarmupValidatesExistingCurrentDownload(boolean completedNormally) throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10
+      * Time.MS_PER_SECOND)
+  public void testWarmupValidatesExistingDownload(boolean completedNormally, boolean isCurrentVersion)
+      throws Exception {
     configureCurrentDictionaryVersion();
+    doReturn(isCurrentVersion ? VERSION_NUMBER : Store.NON_EXISTING_VERSION).when(store).getCurrentVersion();
     doReturn(200).when(routerConfig).getDictionaryRetrievalTimeMs();
     createService();
     CompletableFuture<Void> existingDownload = new CompletableFuture<>();
@@ -243,42 +246,49 @@ public class TestDictionaryRetrievalService {
   }
 
   @DataProvider
-  public Object[][] backgroundVersions() {
-    return new Object[][] { { CompressionStrategy.NO_OP, VersionStatus.STARTED },
-        { CompressionStrategy.NO_OP, VersionStatus.PUSHED }, { CompressionStrategy.NO_OP, VersionStatus.ONLINE },
-        { CompressionStrategy.ZSTD_WITH_DICT, VersionStatus.STARTED },
-        { CompressionStrategy.ZSTD_WITH_DICT, VersionStatus.PUSHED },
-        { CompressionStrategy.ZSTD_WITH_DICT, VersionStatus.ONLINE } };
+  public Object[][] nonCurrentVersionWarmupResults() {
+    return DataProviderUtils.allPermutationGenerator(
+        new VersionStatus[] { VersionStatus.STARTED, VersionStatus.PUSHED, VersionStatus.ONLINE },
+        DataProviderUtils.BOOLEAN);
   }
 
-  @Test(dataProvider = "backgroundVersions", timeOut = 10 * Time.MS_PER_SECOND)
-  public void testWarmupDoesNotWaitForNonCurrentVersions(
-      CompressionStrategy currentCompression,
-      VersionStatus backgroundStatus) throws Exception {
+  @Test(dataProvider = "nonCurrentVersionWarmupResults", timeOut = 10 * Time.MS_PER_SECOND)
+  public void testWarmupRequiresNonCurrentDictionaries(VersionStatus status, boolean fetchSucceeds) throws Exception {
     configureCurrentDictionaryVersion();
-    doReturn(currentCompression).when(version).getCompressionStrategy();
-    doReturn(true).when(compressorFactory).versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
-    Version backgroundVersion = new VersionImpl(STORE_NAME, 2);
-    backgroundVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-    backgroundVersion.setStatus(backgroundStatus);
-    doReturn(Arrays.asList(version, backgroundVersion)).when(store).getVersions();
-    doReturn(backgroundVersion).when(store).getVersion(2);
-    configureOnlineInstance(backgroundVersion.kafkaTopicName());
-    BlockingQueue<CompletableFuture<PortableHttpResponse>> responses = new LinkedBlockingQueue<>();
+    doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+    Version nonCurrentVersion = new VersionImpl(STORE_NAME, 2);
+    nonCurrentVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+    nonCurrentVersion.setStatus(status);
+    doReturn(Arrays.asList(version, nonCurrentVersion)).when(store).getVersions();
+    doReturn(nonCurrentVersion).when(store).getVersion(2);
+    String topic = nonCurrentVersion.kafkaTopicName();
+    configureOnlineInstance(topic);
+    AtomicBoolean compressorReady = new AtomicBoolean();
+    doAnswer(invocation -> compressorReady.get()).when(compressorFactory).versionSpecificCompressorExists(topic);
     doAnswer(invocation -> {
-      responses.add(invocation.getArgument(1));
+      compressorReady.set(true);
+      return null;
+    }).when(compressorFactory).createVersionSpecificCompressorIfNotExist(any(), any(), any());
+    doAnswer(invocation -> {
+      CompletableFuture<PortableHttpResponse> response = invocation.getArgument(1);
+      if (fetchSucceeds) {
+        response.complete(createDictionaryResponse());
+      } else {
+        response.completeExceptionally(new IOException("Dictionary unavailable"));
+      }
       return null;
     }).when(storageNodeClient).sendRequest(any(), any());
 
     createService();
-    assertTrue(service.startInner());
-    CompletableFuture<PortableHttpResponse> response = responses.poll(2, TimeUnit.SECONDS);
-    assertNotNull(response, "Non-current dictionaries must still be fetched in the background");
-    assertFalse(compressorFactory.versionSpecificCompressorExists(backgroundVersion.kafkaTopicName()));
-    response.completeExceptionally(new IOException("Future dictionary unavailable"));
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
-      assertNotNull(service.getFetchDelayTimeinMsMap().get(backgroundVersion.kafkaTopicName()));
-    });
+    if (fetchSucceeds) {
+      assertTrue(service.startInner());
+    } else {
+      expectThrows(VeniceException.class, service::startInner);
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
+        assertNotNull(service.getFetchDelayTimeinMsMap().get(topic));
+      });
+    }
+    assertEquals(compressorReady.get(), fetchSucceeds);
   }
 
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
