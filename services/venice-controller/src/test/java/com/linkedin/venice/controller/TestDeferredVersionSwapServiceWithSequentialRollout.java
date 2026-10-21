@@ -479,7 +479,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
         verify(store)
             .updateVersionStatus(versionTwo, firstRegion ? VersionStatus.ERROR : VersionStatus.PARTIALLY_ONLINE);
         if (precedingRegion) {
-          verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
+          verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
         }
       }
       if (!scenario.endsWith("lag")) {
@@ -1232,31 +1232,24 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       int servingVersion,
       VersionStatus servingStatus,
       boolean recovered) throws Exception {
-    Store store = mockStore(versionOne, versionTwo, "testStore");
-    Version stalledVersion = store.getVersion(versionTwo);
-    doReturn(VersionStatus.PARTIALLY_ONLINE).when(stalledVersion).getStatus();
-    doReturn(Arrays.asList(store)).when(admin).getAllStores(clusterName);
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
     DeferredVersionSwapService service =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
     try {
       Map<String, ControllerClient> clients = veniceHelixAdmin.getControllerClientMap(clusterName);
-      service.performSequentialRollForward(
-          clusterName,
-          store,
-          clients,
-          Arrays.asList(region1, region2, region3),
-          stalledVersion);
-      if (recoveryFloor > versionTwo) {
-        Store nextStall = mockStore(versionTwo, recoveryFloor, "testStore");
-        Version nextStalledVersion = nextStall.getVersion(recoveryFloor);
-        doReturn(VersionStatus.PARTIALLY_ONLINE).when(nextStalledVersion).getStatus();
-        service.performSequentialRollForward(
-            clusterName,
-            nextStall,
-            clients,
-            Arrays.asList(region1, region2, region3),
-            nextStalledVersion);
+      for (int stalled = versionTwo; stalled <= recoveryFloor; stalled++) {
+        Store store = mockStore(stalled - 1, stalled, "testStore");
+        doReturn(store).when(repository).getStore("testStore");
+        for (String region: Arrays.asList(region2, region3)) {
+          Version failed = new VersionImpl("testStore", stalled);
+          failed.setStatus(VersionStatus.ERROR);
+          clients.get(region).getStore("testStore", controllerTimeout).getStore().setVersions(Arrays.asList(failed));
+        }
+        doReturn(getOfflinePushStatusInfo("COMPLETED", "ERROR", "ERROR", 0L, 0L, 0L)).when(admin)
+            .getOffLinePushStatus(clusterName, Version.composeKafkaTopic("testStore", stalled));
+        service.performParallelRollForward(clusterName, store, clients, store.getVersion(stalled));
+        verify(store).updateVersionStatus(stalled, VersionStatus.PARTIALLY_ONLINE);
+        verify(repository).updateStore(store);
       }
       verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
 
@@ -1297,7 +1290,24 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     }
     verify(stats, recovered ? times(1) : never()).recordDeferredVersionSwapStalledVersionSwapMetric(0.0);
     verify(admin, never()).rollForwardToFutureVersion(anyString(), anyString(), anyString());
-    verify(admin, never()).getOffLinePushStatus(anyString(), anyString());
+    verify(admin, times(recoveryFloor - 1)).getOffLinePushStatus(anyString(), anyString());
+  }
+
+  @Test
+  public void testFailedPartiallyOnlinePersistenceDoesNotRecordStall() throws Exception {
+    Store store = mockStore(versionOne, versionTwo, "testStore");
+    doReturn(store).when(repository).getStore("testStore");
+    doThrow(new VeniceException("Persistence failed")).doNothing().when(repository).updateStore(store);
+    DeferredVersionSwapService service =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    try {
+      service.updateStore(clusterName, "testStore", VersionStatus.PARTIALLY_ONLINE, versionTwo);
+      verify(stats, never()).recordDeferredVersionSwapStalledVersionSwapMetric(anyDouble());
+      service.updateStore(clusterName, "testStore", VersionStatus.PARTIALLY_ONLINE, versionTwo);
+      verify(stats).recordDeferredVersionSwapStalledVersionSwapMetric(1.0);
+    } finally {
+      service.stopInner();
+    }
   }
 
   // Helper method to create offline push status info for sequential rollout tests
