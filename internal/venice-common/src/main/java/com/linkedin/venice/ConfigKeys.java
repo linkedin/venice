@@ -680,11 +680,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_PROVIDER = "controller.helix.cloud.provider";
 
   /**
-   * Specific id in cloud environment that belongs to this cluster. Default is empty string.
-   */
-  public static final String CONTROLLER_HELIX_CLOUD_ID = "controller.helix.cloud.id";
-
-  /**
    * Sources for retrieving the cloud information. Default is empty list.
    */
   public static final String CONTROLLER_HELIX_CLOUD_INFO_SOURCES = "controller.helix.cloud.info.sources";

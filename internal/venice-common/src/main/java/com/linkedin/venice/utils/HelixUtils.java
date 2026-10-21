@@ -454,16 +454,11 @@ public final class HelixUtils {
 
   public static CloudConfig getCloudConfig(
       CloudProvider cloudProvider,
-      String cloudId,
       List<String> cloudInfoSources,
       String cloudInfoProcessorPackage,
       String cloudInfoProcessorName) {
     CloudConfig.Builder cloudConfigBuilder =
         new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(cloudProvider);
-
-    if (!StringUtils.isEmpty(cloudId)) {
-      cloudConfigBuilder.setCloudID(cloudId);
-    }
 
     if (cloudInfoSources != null && !cloudInfoSources.isEmpty()) {
       cloudConfigBuilder.setCloudInfoSources(cloudInfoSources);
