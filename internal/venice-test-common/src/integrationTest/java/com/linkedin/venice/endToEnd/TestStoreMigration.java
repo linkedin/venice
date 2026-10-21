@@ -1261,7 +1261,7 @@ public class TestStoreMigration {
 
     try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
       // Pre-migration: store reads succeed against the source cluster.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> readFromStore(client));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> readFromStore(client));
 
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil

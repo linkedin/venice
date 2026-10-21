@@ -796,8 +796,24 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
 
-      // Step 1: Build a chunked value via flushed updates (timestamps 1, 11, 21, ..., 291).
-      for (int i = 0; i < initialUpdateCount; i++) {
+      // Initialize every field above the stale timestamp, including whole-collection timestamps.
+      // Additions alone only advance element timestamps.
+      List<Float> initialEntries = new ArrayList<>();
+      for (int i = 0; i < singleUpdateEntryCount; i++) {
+        initialEntries.add((float) i);
+      }
+      sendStreamingRecord(
+          veniceProducer,
+          storeName,
+          key,
+          new UpdateBuilderImpl(partialUpdateSchema).setNewFieldValue(primitiveFieldName, "Tottenham")
+              .setNewFieldValue(listFieldName, initialEntries)
+              .setNewFieldValue("stringMap", Collections.emptyMap())
+              .build(),
+          2L);
+
+      // Step 1: Build a chunked value via flushed additions (timestamps 11, 21, ..., 291).
+      for (int i = 1; i < initialUpdateCount; i++) {
         producePartialUpdateToArray(
             storeName,
             veniceProducer,
@@ -832,6 +848,20 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
           .getVeniceServers()
           .get(0);
       StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
+      ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+      when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+      when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1))
+          .thenReturn(new RmdSchemaEntry(1, 1, RmdSchemaGenerator.generateMetadataSchema(valueSchema)));
+      RmdSerDe rmdSerDe = new RmdSerDe(new StringAnnotatedStoreSchemaCache(storeName, schemaRepo), 1);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
+        validateRmdData(multiRegionMultiClusterWrapper, CLUSTER_NAME, rmdSerDe, kafkaTopic_v1, key, rmd -> {
+          GenericRecord timestampRecord = (GenericRecord) rmd.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+          GenericRecord listTimestamp = (GenericRecord) timestampRecord.get(listFieldName);
+          assertEquals((long) listTimestamp.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+          GenericRecord mapTimestamp = (GenericRecord) timestampRecord.get("stringMap");
+          assertEquals((long) mapTimestamp.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+        });
+      });
       ChunkedValueManifest oldValueManifest = getChunkValueManifest(storageEngine, 0, key, false);
       ChunkedValueManifest oldRmdManifest = getChunkValueManifest(storageEngine, 0, key, true);
       assertNotNull(oldValueManifest, "Value should be chunked after initial updates exceed chunk threshold");
@@ -860,7 +890,7 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       }
 
       // Step 4: Send 2 updates WITHOUT flush — they buffer in the Samza producer.
-      // Record A: timestamp 1 — lower than all field timestamps from the 30 initial updates,
+      // Record A: timestamp 1 — lower than all initialized field timestamps,
       // so this will be ignored by DCR (ignoreNewUpdate returns true).
       // Record B: timestamp 10000 — higher than all field timestamps, so this wins DCR.
       UpdateBuilderImpl ignoredUpdateBuilder = new UpdateBuilderImpl(partialUpdateSchema);

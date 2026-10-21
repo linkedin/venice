@@ -12,6 +12,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -269,6 +270,100 @@ public class ParticipantStoreTest {
     parentControllerClient
         .deleteOldVersion(storeName, Version.parseVersionFromKafkaTopicName(topicNameForOnlineVersion));
     verifyKillMessageInParticipantStore(topicNameForOnlineVersion, true);
+  }
+
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  public void testKillPushedVersionWritesParticipantMessage() {
+    String storeName = Utils.getUniqueString("kill_pushed_version");
+    assertFalse(parentControllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"").isError());
+    VersionCreationResponse version = parentControllerClient.requestTopicForWrites(
+        storeName,
+        1024,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1,
+        true);
+    assertFalse(version.isError(), version.getError());
+    VeniceHelixAdmin admin = veniceLocalCluster.getLeaderVeniceController().getVeniceHelixAdmin();
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> assertNotNull(admin.getStore(clusterName, storeName).getVersion(version.getVersion())));
+    // Manual deferred swap alone leaves a child ONLINE; disabled writes leave the completed push PUSHED.
+    admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+      store.setEnableWrites(false);
+      return store;
+    });
+    assertFalse(parentControllerClient.writeEndOfPush(storeName, version.getVersion()).isError());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      assertEquals(admin.getStore(clusterName, storeName).getVersionStatus(version.getVersion()), VersionStatus.PUSHED);
+      assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+    });
+
+    admin.killOfflinePush(clusterName, version.getKafkaTopic(), false);
+
+    assertEquals(admin.getStore(clusterName, storeName).getVersionStatus(version.getVersion()), VersionStatus.KILLED);
+    verifyKillMessageInParticipantStore(version.getKafkaTopic(), true);
+    assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 0);
+  }
+
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  public void testRollForwardAdminMessageThenKillProtectsServingVersion() {
+    String storeName = Utils.getUniqueString("roll_forward_then_kill");
+    assertFalse(parentControllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"").isError());
+    VersionCreationResponse version = parentControllerClient.requestTopicForWrites(
+        storeName,
+        1024,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1,
+        true);
+    assertFalse(version.isError(), version.getError());
+    assertFalse(parentControllerClient.writeEndOfPush(storeName, version.getVersion()).isError());
+    TestUtils
+        .waitForNonDeterministicPushCompletion(version.getKafkaTopic(), parentControllerClient, 30, TimeUnit.SECONDS);
+    VeniceHelixAdmin admin = veniceLocalCluster.getLeaderVeniceController().getVeniceHelixAdmin();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertEquals(admin.getStore(clusterName, storeName).getVersionStatus(version.getVersion()), VersionStatus.ONLINE);
+      assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+    });
+    long beforeRollForward = controllerClient.getAdminTopicMetadata(Optional.of(storeName)).getExecutionId();
+
+    ControllerResponse rollForward = parentControllerClient.rollForwardToFutureVersion(storeName, null);
+
+    assertFalse(rollForward.isError(), rollForward.getError());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertTrue(
+          controllerClient.getAdminTopicMetadata(Optional.of(storeName)).getExecutionId() > beforeRollForward,
+          "Roll-forward must be consumed from the child admin topic");
+      assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), version.getVersion());
+    });
+    long afterRollForward = controllerClient.getAdminTopicMetadata(Optional.of(storeName)).getExecutionId();
+
+    ControllerResponse kill = parentControllerClient.killOfflinePushJob(version.getKafkaTopic());
+    assertFalse(kill.isError(), kill.getError());
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> assertTrue(
+            controllerClient.getAdminTopicMetadata(Optional.of(storeName)).getExecutionId() > afterRollForward));
+    assertEquals(admin.getStore(clusterName, storeName).getVersionStatus(version.getVersion()), VersionStatus.ONLINE);
+    assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), version.getVersion());
+    verifyKillMessageInParticipantStore(version.getKafkaTopic(), false);
   }
 
   private void verifyKillMessageInParticipantStore(String topic, boolean shouldPresent) {

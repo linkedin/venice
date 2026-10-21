@@ -302,6 +302,36 @@ public class TestZKStore {
     }
   }
 
+  @DataProvider(name = "supersededPushRetention")
+  public Object[][] supersededPushRetention() {
+    return new Object[][] { { VersionStatus.STARTED, false }, { VersionStatus.STARTED, true },
+        { VersionStatus.PUSHED, false }, { VersionStatus.PUSHED, true } };
+  }
+
+  @Test(dataProvider = "supersededPushRetention")
+  public void testRetrieveSupersededPushesToDelete(VersionStatus status, boolean migrating) {
+    Store store = TestUtils.createTestStore("superseded_pushes", "owner", 1L);
+    for (int number = 1; number <= 6; number++) {
+      Version version = new VersionImpl(store.getName(), number);
+      version.setStatus(number == 1 || number == 3 ? VersionStatus.ONLINE : status);
+      store.addVersion(version);
+    }
+    store.setCurrentVersion(3);
+    store.setMigrating(migrating);
+
+    List<Version> superseded =
+        migrating ? Arrays.asList() : Arrays.asList(store.getVersion(2), store.getVersion(4), store.getVersion(5));
+    assertVersionsEquals(store, 2, superseded, "Retain latest push and ONLINE backups, including after rollback");
+    store.setNumVersionsToPreserve(2);
+    assertVersionsEquals(store, 1, superseded, "Store-level ONLINE preservation still applies");
+
+    store.setCurrentVersion(4);
+    List<Version> withCurrentPush = migrating
+        ? Arrays.asList(store.getVersion(1))
+        : Arrays.asList(store.getVersion(1), store.getVersion(2), store.getVersion(5));
+    assertVersionsEquals(store, 2, withCurrentPush, "Preserve a current push even if its status is not ONLINE");
+  }
+
   @Test
   public void testDisableStoreWrite() {
     String storeName = "testDisableStoreWrite";
