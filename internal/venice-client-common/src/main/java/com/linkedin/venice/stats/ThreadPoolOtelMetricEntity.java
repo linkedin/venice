@@ -30,6 +30,15 @@ public enum ThreadPoolOtelMetricEntity implements ModuleMetricEntityInterface {
       "thread_pool.queue.task_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Tasks currently queued in the thread pool", Collections.singleton(VENICE_THREAD_POOL_NAME)
   ),
+  THREAD_POOL_QUEUE_MAX_TASK_COUNT(
+      "thread_pool.queue.max_task_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+      "Maximum queued task count across event loops in the thread pool", Collections.singleton(VENICE_THREAD_POOL_NAME)
+  ),
+  THREAD_POOL_EVENT_LOOP_SCHEDULING_DELAY(
+      "thread_pool.event_loop.scheduling_delay", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Delay between submitting a probe and its execution on an event loop",
+      Collections.singleton(VENICE_THREAD_POOL_NAME)
+  ),
   THREAD_POOL_QUEUE_TASK_DISTRIBUTION(
       "thread_pool.queue.task_distribution", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Distribution of queued task count over time", Collections.singleton(VENICE_THREAD_POOL_NAME)
