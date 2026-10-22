@@ -1661,6 +1661,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (pushJobDetailsValue.getPushJobConfigs().containsKey(incPushKey)) {
           isIncrementalPush = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(incPushKey).toString());
         }
+        // An ETL repush gets no push id prefix, so the push job's source.etl config is the only thing that
+        // identifies it. The config key is read by name because the controller does not depend on the push job
+        // module that declares it.
+        Utf8 sourceEtlKey = new Utf8("source.etl");
+        boolean isSourceEtl = false;
+        if (pushJobDetailsValue.getPushJobConfigs().containsKey(sourceEtlKey)) {
+          isSourceEtl = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(sourceEtlKey).toString());
+        }
         StringBuilder logMessage = new StringBuilder();
         CharSequence storeName = pushJobDetailsKey.getStoreName();
         long jobDurationInMs = pushJobDetailsValue.getJobDurationInMs();
@@ -1670,7 +1678,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // What originated the push. PushType reports a repush as BATCH, so only the push id separates a push
         // that brought in fresh data from one that re-ingested data Venice already held.
         CharSequence pushId = pushJobDetailsValue.getPushId();
-        VenicePushJobSource pushSource = Version.getPushJobSource(pushId == null ? null : pushId.toString());
+        VenicePushJobSource pushSource =
+            Version.getPushJobSource(pushId == null ? null : pushId.toString(), isSourceEtl);
         logMessage.append("Push job status for store name: ")
             .append(storeName)
             .append(", version: ")

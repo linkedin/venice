@@ -443,10 +443,12 @@ public class TestVersion {
 
   @Test
   public void testGetPushJobSourceClassifiesEachPrefix() {
-    assertEquals(Version.getPushJobSource(Version.generateRePushId("base")), VenicePushJobSource.REPUSH);
-    assertEquals(Version.getPushJobSource(Version.generateTTLRePushId("base")), VenicePushJobSource.TTL_REPUSH);
-    assertEquals(Version.getPushJobSource(Version.generateCompliancePushId("base")), VenicePushJobSource.COMPLIANCE);
-    assertEquals(Version.getPushJobSource("some-user-push-id"), VenicePushJobSource.USER);
+    assertEquals(Version.getPushJobSource(Version.generateRePushId("base"), false), VenicePushJobSource.REPUSH);
+    assertEquals(Version.getPushJobSource(Version.generateTTLRePushId("base"), false), VenicePushJobSource.TTL_REPUSH);
+    assertEquals(
+        Version.getPushJobSource(Version.generateCompliancePushId("base"), false),
+        VenicePushJobSource.COMPLIANCE);
+    assertEquals(Version.getPushJobSource("some-user-push-id", false), VenicePushJobSource.USER);
   }
 
   @Test
@@ -454,15 +456,32 @@ public class TestVersion {
     // This prefix contains "re_push" but marks a regular batch push against a TTL-repush-enabled store, so its
     // data did originate outside Venice. Misclassifying it would under-report real pushes.
     String regularPushWithTtlRePushId = Version.generateRegularPushWithTTLRePushId("base");
-    assertEquals(Version.getPushJobSource(regularPushWithTtlRePushId), VenicePushJobSource.USER);
+    assertEquals(Version.getPushJobSource(regularPushWithTtlRePushId, false), VenicePushJobSource.USER);
     assertFalse(Version.isPushIdRePush(regularPushWithTtlRePushId));
     assertFalse(Version.isPushIdTTLRePush(regularPushWithTtlRePushId));
   }
 
   @Test
+  public void testGetPushJobSourceClassifiesEtlRepushWithoutAPrefix() {
+    // An ETL repush is given no push id prefix by VenicePushJob, so without the source.etl signal it would be
+    // indistinguishable from a push that brought in fresh data.
+    assertEquals(Version.getPushJobSource("some-user-push-id", true), VenicePushJobSource.ETL_REPUSH);
+    assertEquals(Version.getPushJobSource(null, true), VenicePushJobSource.ETL_REPUSH);
+  }
+
+  @Test
+  public void testGetPushJobSourcePrefersPrefixOverEtlFlag() {
+    // A prefixed push keeps what its prefix declares even when it also read ETL data.
+    assertEquals(
+        Version.getPushJobSource(Version.generateCompliancePushId("base"), true),
+        VenicePushJobSource.COMPLIANCE);
+    assertEquals(Version.getPushJobSource(Version.generateTTLRePushId("base"), true), VenicePushJobSource.TTL_REPUSH);
+  }
+
+  @Test
   public void testGetPushJobSourceHandlesMissingPushId() {
-    assertEquals(Version.getPushJobSource(null), VenicePushJobSource.USER);
-    assertEquals(Version.getPushJobSource(""), VenicePushJobSource.USER);
+    assertEquals(Version.getPushJobSource(null, false), VenicePushJobSource.USER);
+    assertEquals(Version.getPushJobSource("", false), VenicePushJobSource.USER);
   }
 
 }

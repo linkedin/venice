@@ -12,6 +12,7 @@ public class VenicePushJobSourceTest {
         .put(VenicePushJobSource.USER, "user")
         .put(VenicePushJobSource.REPUSH, "repush")
         .put(VenicePushJobSource.TTL_REPUSH, "ttl_repush")
+        .put(VenicePushJobSource.ETL_REPUSH, "etl_repush")
         .put(VenicePushJobSource.COMPLIANCE, "compliance")
         .build();
     new VeniceDimensionTestFixture<>(

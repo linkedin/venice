@@ -24,6 +24,12 @@ public enum VenicePushJobSource implements VeniceDimensionInterface {
   /** Repush that re-ingests an existing version topic while filtering out records past their TTL. */
   TTL_REPUSH,
 
+  /**
+   * Repush sourced from the store's ETL output rather than from a version topic. Unlike the other repush
+   * kinds this one carries no push id prefix, so it is identified by the push job's {@code source.etl} config.
+   */
+  ETL_REPUSH,
+
   /** System-initiated push performed to satisfy a compliance or privacy deletion. */
   COMPLIANCE;
 

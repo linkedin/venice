@@ -652,10 +652,17 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    * a TTL-repush-enabled store, so its data did originate outside Venice. The prefixes are mutually exclusive,
    * but it is checked first so that intent survives any future prefix change.
    *
+   * <p>An ETL repush carries no push id prefix at all, so it cannot be recognised from {@code pushId} alone and
+   * is instead signalled by {@code isSourceEtl}. It is evaluated after the prefixes so that an explicitly
+   * marked push, such as a compliance push that happens to read ETL data, keeps the classification its prefix
+   * declares.
+   *
    * @param pushId the push job id; null or empty is treated as {@link VenicePushJobSource#USER}
+   * @param isSourceEtl whether the push read from the store's ETL output, from the push job's
+   *                    {@code source.etl} config
    * @return the originating source of the push
    */
-  static VenicePushJobSource getPushJobSource(String pushId) {
+  static VenicePushJobSource getPushJobSource(String pushId, boolean isSourceEtl) {
     if (isPushIdRegularPushWithTTLRePush(pushId)) {
       return VenicePushJobSource.USER;
     }
@@ -667,6 +674,9 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     }
     if (isPushIdCompliancePush(pushId)) {
       return VenicePushJobSource.COMPLIANCE;
+    }
+    if (isSourceEtl) {
+      return VenicePushJobSource.ETL_REPUSH;
     }
     return VenicePushJobSource.USER;
   }
