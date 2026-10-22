@@ -715,6 +715,7 @@ public class TestVeniceVersionFinder {
     String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
     int secondVersion = 2;
+    int thirdVersion = 3;
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
@@ -733,14 +734,8 @@ public class TestVeniceVersionFinder {
     doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
     doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
 
-    VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
-    final Sensor mockSensor = mock(Sensor.class);
-    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
-    VeniceMetricsConfig mocksMetricsConfig = mock(VeniceMetricsConfig.class);
-    doReturn(mocksMetricsConfig).when(mockMetricsRepository).getVeniceMetricsConfig();
-    doReturn(true).when(mocksMetricsConfig).emitTehutiMetrics();
-
-    try (CompressorFactory compressorFactory = new CompressorFactory()) {
+    try (VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository();
+        CompressorFactory compressorFactory = new CompressorFactory()) {
       VeniceVersionFinder versionFinder = new VeniceVersionFinder(
           storeRepository,
           routingDataRepo,
@@ -749,33 +744,42 @@ public class TestVeniceVersionFinder {
           clusterToD2Map,
           CLUSTER,
           compressorFactory,
-          mockMetricsRepository);
+          metricsRepository);
 
       // Establish v1
       Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
-      // Push v2 with ZSTD_WITH_DICT, decompressor not ready yet
-      store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      // Establish a version swap and its current version metric.
       store.addVersion(new VersionImpl(storeName, secondVersion));
       store.setCurrentVersion(secondVersion);
       store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), secondVersion);
+      String currentVersionMetric = "." + storeName + "--current_version.Gauge";
+      Assert.assertEquals(metricsRepository.getMetric(currentVersionMetric).value(), (double) secondVersion);
 
-      // Retire v1 Helix resource
-      String v1KafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
-      doReturn(false).when(routingDataRepo).containsKafkaTopic(v1KafkaTopic);
+      // Push v3 with ZSTD_WITH_DICT, decompressor not ready yet.
+      store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      store.addVersion(new VersionImpl(storeName, thirdVersion));
+      store.setCurrentVersion(thirdVersion);
+      store.updateVersionStatus(thirdVersion, VersionStatus.ONLINE);
+
+      // Retire v2 Helix resource.
+      String v2KafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
+      doReturn(false).when(routingDataRepo).containsKafkaTopic(v2KafkaTopic);
 
       // Should return NON_EXISTING_VERSION
       Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
 
-      // Now dictionary arrives for v2
-      String v2KafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
+      // Now dictionary arrives for v3.
+      String v3KafkaTopic = Version.composeKafkaTopic(storeName, thirdVersion);
       compressorFactory.createVersionSpecificCompressorIfNotExist(
           CompressionStrategy.ZSTD_WITH_DICT,
-          v2KafkaTopic,
+          v3KafkaTopic,
           ByteBuffer.allocate(1).array());
 
-      // Next call should pick up v2 since lastCurrentVersionMap was reset to NON_EXISTING_VERSION
-      Assert.assertEquals(versionFinder.getVersion(storeName, request), secondVersion);
+      // Recovery must update both the serving version and its metric.
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), thirdVersion);
+      Assert.assertEquals(metricsRepository.getMetric(currentVersionMetric).value(), (double) thirdVersion);
     }
   }
 

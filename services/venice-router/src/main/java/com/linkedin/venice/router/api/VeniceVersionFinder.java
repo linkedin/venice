@@ -118,6 +118,10 @@ public class VeniceVersionFinder {
           isDecompressorReady(store.getVersion(metadataCurrentVersionNumber), newVersionKafkaTopic);
       if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
         // new store ready to serve
+        RouterCurrentVersionStats currentVersionStats = storeStats.get(storeName);
+        if (currentVersionStats != null) {
+          currentVersionStats.updateCurrentVersion(metadataCurrentVersionNumber);
+        }
         lastCurrentVersionMap.put(storeName, metadataCurrentVersionNumber);
         existingVersionNumber = metadataCurrentVersionNumber;
       } else {
