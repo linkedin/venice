@@ -104,8 +104,8 @@ public class VeniceVersionFinder {
     boolean newVersionDecompressorReady;
 
     Integer existingVersionNumber = lastCurrentVersionMap.get(storeName);
-    if (existingVersionNumber == null) {
-      if (metadataCurrentVersionNumber == Store.NON_EXISTING_VERSION) {
+    if (existingVersionNumber == null || existingVersionNumber == Store.NON_EXISTING_VERSION) {
+      if (existingVersionNumber == null && metadataCurrentVersionNumber == Store.NON_EXISTING_VERSION) {
         /** new store push has completed but the routers are not up-to-date on the latest metadata yet
          * This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
         store = metadataRepository.refreshOneStore(storeName);
@@ -131,7 +131,7 @@ public class VeniceVersionFinder {
       existingVersionNumber = metadataCurrentVersionNumber;
     }
 
-    if (existingVersionNumber == metadataCurrentVersionNumber && existingVersionNumber != Store.NON_EXISTING_VERSION) {
+    if (existingVersionNumber == metadataCurrentVersionNumber) {
       // new store ready to serve or same store version (no version swap)
       stats.recordNotStale();
       return existingVersionNumber;

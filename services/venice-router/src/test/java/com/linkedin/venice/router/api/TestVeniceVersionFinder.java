@@ -383,6 +383,11 @@ public class TestVeniceVersionFinder {
       doReturn(true).when(compressorFactory).versionSpecificCompressorExists(currentVersionKafkaTopic);
       Assert.assertEquals(versionFinder.getVersion(storeName, request), currentVersion);
       Assert.assertEquals(versionFinder.getVersion(storeName, request), currentVersion);
+      verify(stats, times(2)).recordNotStale();
+      verify(stats, Mockito.never()).recordStale(anyInt(), anyInt());
+      verify(stats, Mockito.never()).recordStalenessReason(any());
+      verify(routingDataRepo, Mockito.never())
+          .containsKafkaTopic(Version.composeKafkaTopic(storeName, Store.NON_EXISTING_VERSION));
     }
   }
 
@@ -552,9 +557,6 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
 
-    // Verify refreshOneStore is called only once
-    verify(storeRepository, times(1)).refreshOneStore(storeName);
-
     // Update the store's version to 1
     store.setCurrentVersion(firstVersion);
     doReturn(true).when(versionFinder).isDecompressorReady(any(), anyString());
@@ -562,6 +564,8 @@ public class TestVeniceVersionFinder {
 
     // Call getVersion() again and verify it returns the updated version
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
+    verify(storeRepository, times(1)).refreshOneStore(storeName);
+    verify(stats, Mockito.never()).recordStale(anyInt(), anyInt());
   }
 
   @Test
