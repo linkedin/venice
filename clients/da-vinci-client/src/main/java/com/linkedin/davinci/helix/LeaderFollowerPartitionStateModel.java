@@ -6,7 +6,6 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
-import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -18,7 +17,9 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -59,13 +60,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    */
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
-  /**
-   * Tracks the timestamp (in milliseconds) when this partition last transitioned to OFFLINE state.
-   * This is used to calculate the actual time the partition has been offline for graceful drop delay.
-   * Value of -1 indicates the partition has not yet transitioned to OFFLINE state.
-   */
-  private volatile long lastOfflineTransitionTimestampMs = -1L;
-
   private final LeaderFollowerIngestionProgressNotifier notifier;
   private final ParticipantStateTransitionStats stateTransitionStats;
 
@@ -98,7 +92,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
-    lastOfflineTransitionTimestampMs = -1L;
     executeStateTransition(message, context, () -> {
       String resourceName = message.getResourceName();
       Store store = getStoreRepo().getStoreOrThrow(getStoreName());
@@ -190,11 +183,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         HeartbeatLagMonitorAction.REMOVE_MONITOR,
         Utils.getReplicaId(message.getResourceName(), getPartition()));
 
-    executeStateTransition(message, context, () -> {
-      stopConsumption(true);
-      // Capture the timestamp when partition becomes OFFLINE for graceful drop delay calculation
-      lastOfflineTransitionTimestampMs = System.currentTimeMillis();
-    });
+    executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
@@ -227,10 +216,10 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       }
       if (isCurrentOrBackupVersion) {
         // Routers may still query the backup version until they observe the version swap.
-        executeGracefulDropDelayForReplica(replicaId);
+        withdrawRoutingAndDrain(replicaId);
       }
 
-      CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully();
+      CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully(isCurrentOrBackupVersion);
       boolean waitForDropPartition = !dropPartitionFuture.isDone();
       try {
         if (waitForDropPartition) {
@@ -250,8 +239,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         if (waitForDropPartition) {
           this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
-        // Reset the offline timestamp after transition completes
-        lastOfflineTransitionTimestampMs = -1L;
       }
     });
   }
@@ -268,43 +255,33 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     logger.warn("unexpected state transition from ERROR to OFFLINE");
   }
 
-  /**
-   * Returns the timestamp (in milliseconds) when this partition last transitioned to OFFLINE state.
-   * This method is primarily intended for testing to verify graceful drop timing behavior.
-   *
-   * @return timestamp in milliseconds when partition became OFFLINE, or -1 if not yet transitioned to OFFLINE
-   */
-  @VisibleForTesting
-  long getOfflineTransitionTimestampMs() {
-    return lastOfflineTransitionTimestampMs;
-  }
-
-  /**
-   * Executes the graceful drop delay to allow in-flight requests to drain before dropping partition.
-   * Calculates the remaining wait time based on how long the partition has already been offline.
-   *
-   * @param replicaId The replica identifier for logging
-   */
-  private void executeGracefulDropDelayForReplica(String replicaId) {
-    long gracefulDropDelayMs =
-        TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
-    long remainingWaitMs = gracefulDropDelayMs;
-
-    if (lastOfflineTransitionTimestampMs > 0) {
-      long currentTimeMs = System.currentTimeMillis();
-      long elapsedSinceOfflineMs = currentTimeMs - lastOfflineTransitionTimestampMs;
-      remainingWaitMs = Math.max(0, gracefulDropDelayMs - elapsedSinceOfflineMs);
-    }
-    if (remainingWaitMs <= 0) {
-      return;
-    }
+  private void withdrawRoutingAndDrain(String replicaId) {
+    this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     try {
-      this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+      // The backend may return a no-op future for a repeated stop; ask the service for an unsubscribe acknowledgement.
+      getStoreIngestionService().stopConsumption(getStoreAndServerConfigs(), getPartition())
+          .get(getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds(), TimeUnit.SECONDS);
+      removeCustomizedState();
+      if (Thread.currentThread().isInterrupted()) {
+        throw new VeniceException("Interrupted during routing withdrawal for replica: " + replicaId);
+      }
+      long gracefulDropDelayMs =
+          TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
+      if (gracefulDropDelayMs <= 0) {
+        return;
+      }
       logger.info(
-          "Replica: {} sleeping for remaining graceful drop delay of {}ms to drain in-flight requests",
+          "Replica: {} sleeping for full graceful drop delay of {}ms after routing withdrawal",
           replicaId,
-          remainingWaitMs);
-      Utils.sleep(remainingWaitMs);
+          gracefulDropDelayMs);
+      if (!Utils.sleep(gracefulDropDelayMs)) {
+        throw new VeniceException("Interrupted during graceful drop delay for replica: " + replicaId);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while stopping consumption before dropping replica: " + replicaId, e);
+    } catch (ExecutionException | TimeoutException e) {
+      throw new VeniceException("Failed to stop consumption before dropping replica: " + replicaId, e);
     } finally {
       this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
     }
