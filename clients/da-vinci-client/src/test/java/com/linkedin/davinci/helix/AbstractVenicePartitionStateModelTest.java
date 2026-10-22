@@ -71,10 +71,10 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     this.instanceName = "testInstance";
 
     mockStoreIngestionService = Mockito.mock(KafkaStoreIngestionService.class);
+    when(mockStoreIngestionService.stopConsumption(Mockito.any(), Mockito.anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
     mockIngestionBackend = Mockito.mock(IngestionBackend.class);
     when(mockIngestionBackend.getStoreIngestionService()).thenReturn(mockStoreIngestionService);
-    when(mockIngestionBackend.stopConsumption(Mockito.any(), Mockito.anyInt(), Mockito.anyString()))
-        .thenReturn(CompletableFuture.completedFuture(null));
     when(
         mockIngestionBackend
             .dropStoragePartitionGracefully(Mockito.any(), Mockito.anyInt(), Mockito.anyInt(), Mockito.anyString()))

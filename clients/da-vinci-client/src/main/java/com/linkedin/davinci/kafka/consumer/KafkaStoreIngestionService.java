@@ -898,7 +898,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           LOGGER.info(
               "Ignore start consumption for replica: {} as service is stopping.",
               Utils.getReplicaId(topic, partitionId));
-          storeIngestionTask.close();
           return;
         }
         ingestionExecutorService.submit(storeIngestionTask);
@@ -1142,7 +1141,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
-      if (ingestionTask != null) {
+      if (ingestionTask != null && ingestionTask.isRunning()) {
         return ingestionTask
             .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {

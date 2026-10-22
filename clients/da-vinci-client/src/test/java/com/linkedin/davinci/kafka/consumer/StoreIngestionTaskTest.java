@@ -82,7 +82,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -5478,10 +5477,7 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     AtomicBoolean result = new AtomicBoolean(true);
     when(storeIngestionTask.getIsRunning()).thenReturn(result);
-    doAnswer(invocation -> {
-      result.set(false);
-      return null;
-    }).when(storeIngestionTask).close();
+    doCallRealMethod().when(storeIngestionTask).close();
     doCallRealMethod().when(storeIngestionTask).isRunning();
     doCallRealMethod().when(storeIngestionTask).isIdleOverThreshold();
 
@@ -6758,182 +6754,23 @@ public abstract class StoreIngestionTaskTest {
     verify(storeIngestionTask, times(2)).consumerUnSubscribeForStateTransition(versionTopic, pcs);
   }
 
-  @DataProvider
-  public static Object[][] internalCloseCleanupFailureProvider() {
-    return new Object[][] { { "none" }, { "consumer" }, { "partition" }, { "viewWriter" }, { "writer" },
-        { "throwable" } };
-  }
-
-  @Test(dataProvider = "internalCloseCleanupFailureProvider", timeOut = 10 * Time.MS_PER_SECOND)
-  public void testStoreIngestionInternalClose(String failureStep) throws Exception {
-    CountDownLatch closeRequested = new CountDownLatch(1);
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testStoreIngestionInternalClose() throws Exception {
     AtomicReference<CompletableFuture<Void>> dropPartitionFuture = new AtomicReference<>();
-    AtomicReference<CompletableFuture<Void>> shutdownFuture = new AtomicReference<>();
-    List<CompletableFuture<Void>> unsubscribeFutures = new ArrayList<>();
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    boolean consumerFails = "consumer".equals(failureStep) || "throwable".equals(failureStep);
-    Throwable cleanupFailure = "throwable".equals(failureStep)
-        ? new AssertionError("Test unexpected shutdown cleanup failure")
-        : new VeniceException("Test shutdown cleanup failure");
-    Function<String, Answer<Object>> writerCleanup = step -> invocation -> {
-      unsubscribeFutures.forEach(future -> assertFalse(future.isDone()));
-      if (step.equals(failureStep)) {
-        throw cleanupFailure;
-      }
-      return invocation.callRealMethod();
-    };
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      try {
-        assertTrue(closeRequested.await(5, TimeUnit.SECONDS));
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new AssertionError(e);
-      }
-    }, AA_OFF);
-    config.setBeforeStartingConsumption(() -> doAnswer(startInvocation -> {
-      try {
-        doNothing().when(storeIngestionTaskUnderTest).shutdownPartitionConsumptionStates();
-      } catch (InterruptedException e) {
-        throw new AssertionError(e);
-      }
-      doAnswer(invocation -> {
-        assertSame(storeIngestionTaskUnderTest.unSubscribePartition(barTopicPartition), shutdownFuture.get());
-        unsubscribeFutures.forEach(future -> assertFalse(future.isDone()));
-        if (consumerFails) {
-          throw cleanupFailure;
-        }
-        return null;
-      }).when(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
-      doAnswer(invocation -> {
-        unsubscribeFutures.forEach(future -> assertFalse(future.isDone()));
-        if ("partition".equals(failureStep)) {
-          throw cleanupFailure;
-        }
-        return null;
-      }).when(pcs).unsubscribe();
-      doAnswer(writerCleanup.apply("viewWriter")).when(storeIngestionTaskUnderTest)
-          .closeVeniceViewWriters(anyBoolean());
-      doAnswer(writerCleanup.apply("writer")).when(storeIngestionTaskUnderTest).closeVeniceWriters(anyBoolean());
-      storeIngestionTaskUnderTest.getPartitionConsumptionStateMap().put(PARTITION_FOO, pcs);
-      unsubscribeFutures.add(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
-      unsubscribeFutures.add(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition, false));
       dropPartitionFuture.set(storeIngestionTaskUnderTest.dropStoragePartitionGracefully(fooTopicPartition));
-      storeIngestionTaskUnderTest.close();
-      shutdownFuture.set(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
-      unsubscribeFutures.add(shutdownFuture.get());
-      assertFalse(shutdownFuture.get().isDone());
-      assertSame(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition, false), shutdownFuture.get());
-      closeRequested.countDown();
-      return null;
-    }).when(mockVersionedStorageIngestionStats).resetIngestionTaskPushTimeoutGauge(anyString(), anyInt()));
-    runTest(config);
-    // The drop partition consumer action should still be handled as part of internalClose
-    dropPartitionFuture.get().get(5, TimeUnit.SECONDS);
-    for (CompletableFuture<Void> future: unsubscribeFutures) {
-      if ("none".equals(failureStep)) {
-        future.get(5, TimeUnit.SECONDS);
-      } else {
-        ExecutionException exception =
-            Assert.expectThrows(ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS));
-        assertEquals(exception.getCause(), cleanupFailure);
-      }
-    }
-    assertSame(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition), shutdownFuture.get());
-    verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
-    assertFalse(storeIngestionTaskUnderTest.hasAnyPendingSubscription());
-    assertTrue(storeIngestionTaskUnderTest.consumerActionsQueue.isEmpty());
-    if ("none".equals(failureStep)) {
-      verify(pcs).unsubscribe();
-      assertTrue(storeIngestionTaskUnderTest.getPartitionConsumptionStateMap().isEmpty());
-    }
-    if (!consumerFails) {
-      verify(storeIngestionTaskUnderTest).closeVeniceViewWriters(anyBoolean());
-      verify(storeIngestionTaskUnderTest).closeVeniceWriters(anyBoolean());
-    }
-  }
-
-  @DataProvider
-  public static Object[][] closeRacingWithRunProvider() {
-    return new Object[][] { { false, "none" }, { true, "none" }, { true, "writer" }, { true, "throwable" } };
-  }
-
-  @Test(dataProvider = "closeRacingWithRunProvider")
-  public void testCloseRacingWithRunCleansUpOnce(boolean closeBeforeRun, String failureStep) throws Exception {
-    CountDownLatch runEntered = new CountDownLatch(1);
-    CountDownLatch finishRun = new CountDownLatch(1);
-    Throwable cleanupFailure = "throwable".equals(failureStep)
-        ? new AssertionError("Test unexpected never-started cleanup failure")
-        : new VeniceException("Test never-started cleanup failure");
-    AtomicReference<CompletableFuture<Void>> queuedUnsubscribe = new AtomicReference<>();
-    AtomicReference<CompletableFuture<Void>> shutdownFuture = new AtomicReference<>();
-    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      try {
-        if (!closeBeforeRun) {
-          assertTrue(runEntered.await(5, TimeUnit.SECONDS));
-          storeIngestionTaskUnderTest.close();
-          shutdownFuture.set(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
-          assertFalse(shutdownFuture.get().isDone());
-          assertFalse(queuedUnsubscribe.get().isDone());
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new AssertionError(e);
-      } finally {
-        finishRun.countDown();
-      }
     }, AA_OFF);
+    // Mock out processConsumerActions to ensure the consumer action queue is not processed
     config.setBeforeStartingConsumption(() -> {
-      queuedUnsubscribe.set(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
-      doAnswer(invocation -> {
-        assertFalse(Thread.holdsLock(storeIngestionTaskUnderTest));
-        assertFalse(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition).isDone());
-        assertFalse(storeIngestionTaskUnderTest.waitForShutdown(0));
-        if ("throwable".equals(failureStep)) {
-          throw cleanupFailure;
-        }
-        return null;
-      }).when(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
-      if ("writer".equals(failureStep)) {
-        doThrow(cleanupFailure).when(storeIngestionTaskUnderTest).closeVeniceWriters(anyBoolean());
-      }
-      doAnswer(invocation -> {
-        runEntered.countDown();
-        assertTrue(finishRun.await(5, TimeUnit.SECONDS));
-        return null;
-      }).when(mockVersionedStorageIngestionStats).resetIngestionTaskPushTimeoutGauge(anyString(), anyInt());
-      if (closeBeforeRun) {
-        if ("throwable".equals(failureStep)) {
-          assertSame(Assert.expectThrows(AssertionError.class, storeIngestionTaskUnderTest::close), cleanupFailure);
-        } else {
-          storeIngestionTaskUnderTest.close();
-        }
-        shutdownFuture.set(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
-        assertTrue(shutdownFuture.get().isDone());
-        assertTrue(queuedUnsubscribe.get().isDone());
+      try {
+        doNothing().when(storeIngestionTaskUnderTest).processConsumerActions(any());
+      } catch (InterruptedException e) {
+        // ignored
       }
     });
     runTest(config);
-    for (CompletableFuture<Void> future: Arrays.asList(queuedUnsubscribe.get(), shutdownFuture.get())) {
-      if ("none".equals(failureStep)) {
-        future.get(5, TimeUnit.SECONDS);
-      } else {
-        ExecutionException exception =
-            Assert.expectThrows(ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS));
-        assertSame(exception.getCause(), cleanupFailure);
-      }
-    }
-    assertSame(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition), shutdownFuture.get());
-    assertTrue(storeIngestionTaskUnderTest.waitForShutdown(0));
-    verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
-    if (!"throwable".equals(failureStep)) {
-      verify(storeIngestionTaskUnderTest).closeVeniceViewWriters(anyBoolean());
-      verify(storeIngestionTaskUnderTest).closeVeniceWriters(anyBoolean());
-    }
-    assertFalse(storeIngestionTaskUnderTest.hasAnyPendingSubscription());
-    assertTrue(storeIngestionTaskUnderTest.consumerActionsQueue.isEmpty());
-    if (closeBeforeRun) {
-      verify(mockVersionedStorageIngestionStats, never()).resetIngestionTaskPushTimeoutGauge(anyString(), anyInt());
-    }
+    // The drop partition consumer action should still be handled as part of internalClose
+    dropPartitionFuture.get().get();
   }
 
   /**

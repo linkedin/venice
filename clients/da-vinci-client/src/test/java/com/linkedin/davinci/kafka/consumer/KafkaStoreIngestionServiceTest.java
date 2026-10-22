@@ -18,7 +18,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -98,7 +97,6 @@ import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -458,7 +456,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
-  public void testCloseStoreIngestionTask() throws Exception {
+  public void testCloseStoreIngestionTask() {
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -502,17 +500,14 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotEquals(storeIngestionTask, newStoreIngestionTask);
     assertEquals(newStoreIngestionTask.getStorageEngine(), storageEngine2);
 
-    // The stopped service retains a real task without ever submitting it to the executor.
+    // Mimic a graceful shutdown timeout
     kafkaStoreIngestionService
         .startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0, Optional.empty());
-    StoreIngestionTask unsubmittedTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    assertFalse(kafkaStoreIngestionService.isRunning());
-    assertTrue(unsubmittedTask.shutdownAndWait(0));
-    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
-    CompletableFuture<Void> stopFuture = kafkaStoreIngestionService.stopConsumption(config, 0);
-    stopFuture.get(5, TimeUnit.SECONDS);
-    assertSame(kafkaStoreIngestionService.stopConsumption(config, 0), stopFuture);
-    assertTrue(unsubmittedTask.getGracefulShutdownLatch().get().await(0, TimeUnit.SECONDS));
+    StoreIngestionTask shutdownTimeoutTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    // Initialize the latch forcefully to mimic task is running
+    shutdownTimeoutTask.getGracefulShutdownLatch().get();
+    // Graceful shutdown wait should time out
+    Assert.assertFalse(shutdownTimeoutTask.shutdownAndWait(1));
     kafkaStoreIngestionService.close();
   }
 
@@ -541,31 +536,16 @@ public abstract class KafkaStoreIngestionServiceTest {
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB));
 
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
-    StoreIngestionTask oldTask = spy(kafkaStoreIngestionService.getStoreIngestionTask(topicName));
-    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topicName, oldTask);
+    StoreIngestionTask oldTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    // Mimic an inactive task whose run() has not finished its cleanup yet.
+    oldTask.getGracefulShutdownLatch().get();
     oldTask.close();
 
+    long startTimeMs = System.currentTimeMillis();
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
-    verify(oldTask).waitForShutdown(1);
+    assertTrue(System.currentTimeMillis() - startTimeMs >= TimeUnit.SECONDS.toMillis(1));
     Assert.assertNotSame(kafkaStoreIngestionService.getStoreIngestionTask(topicName), oldTask);
     kafkaStoreIngestionService.close();
-  }
-
-  @Test
-  public void testStopConsumptionDelegatesToStoppingTask() {
-    String topicName = "test-store_v1";
-    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(
-        topicName,
-        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB));
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0);
-    StoreIngestionTask task = mock(StoreIngestionTask.class);
-    CompletableFuture<Void> cleanupFuture = new CompletableFuture<>();
-    doReturn(false).when(task).isRunning();
-    doReturn(cleanupFuture).when(task).unSubscribePartition(topicPartition);
-    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topicName, task);
-
-    // The task's synchronized unsubscribe decides atomically between enqueueing and awaiting shutdown cleanup.
-    assertSame(kafkaStoreIngestionService.stopConsumption(config, 0), cleanupFuture);
   }
 
   @Test

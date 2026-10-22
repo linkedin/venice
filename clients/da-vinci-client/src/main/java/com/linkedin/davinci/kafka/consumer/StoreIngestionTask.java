@@ -486,9 +486,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
-  private final CompletableFuture<Void> shutdownCleanupFuture = new CompletableFuture<>();
-  // Guarded by this; cleanup belongs to run(), or to close() if the task never starts.
-  private boolean runOrCloseStarted;
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
@@ -993,14 +990,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Adds an asynchronous partition unsubscription request for the task, or awaits shutdown cleanup if it is stopping.
+   * Adds an asynchronous partition unsubscription request for the task.
    */
   public synchronized CompletableFuture<Void> unSubscribePartition(
       PubSubTopicPartition topicPartition,
       boolean isHelixTriggeredAction) {
-    if (!isRunning()) {
-      return shutdownCleanupFuture;
-    }
+    throwIfNotRunning();
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
@@ -2065,15 +2060,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
-    CountDownLatch shutdownLatch;
-    synchronized (this) {
-      if (runOrCloseStarted) {
-        return;
-      }
-      runOrCloseStarted = true;
-      shutdownLatch = gracefulShutdownLatch.get();
-    }
     LogContext.setLogContext(serverConfig.getLogContext());
+    CountDownLatch shutdownLatch = gracefulShutdownLatch.get();
     boolean doFlush = true;
     try {
       // Update thread name to include topic to make it easy debugging
@@ -2436,34 +2424,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       getIsRunning().set(false);
     }
 
-    List<CompletableFuture<Void>> pendingUnsubscribeFutures = new ArrayList<>();
-    pendingUnsubscribeFutures.add(shutdownCleanupFuture);
-    for (ConsumerAction action: consumerActionsQueue) {
-      if (action.getType() == UNSUBSCRIBE) {
-        pendingUnsubscribeFutures.add(action.getFuture());
-      }
-    }
-    Exception cleanupFailure;
-    try {
-      cleanupFailure = internalCloseResources(doFlush);
-    } catch (Throwable t) {
-      pendingUnsubscribeFutures.forEach(future -> future.completeExceptionally(t));
-      throw t;
-    }
-    if (cleanupFailure == null) {
-      pendingUnsubscribeFutures.forEach(future -> future.complete(null));
-    } else {
-      pendingUnsubscribeFutures.forEach(future -> future.completeExceptionally(cleanupFailure));
-    }
-  }
-
-  private Exception internalCloseResources(boolean doFlush) {
-    Exception cleanupFailure = null;
     removeAllHeartbeatMonitoring();
     this.missingSOPCheckExecutor.shutdownNow();
 
-    // Reset offset and drop partition actions still need processing. Queued unsubscribe futures await
-    // shutdown cleanup; subscriptions will be restored by Helix notifications on the new task.
+    // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
+    // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
     // Remove all the actions out of the queue in order
     while (!consumerActionsQueue.isEmpty()) {
@@ -2509,25 +2474,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionStateMap.clear();
     } catch (Exception e) {
       LOGGER.error("{} Error while unsubscribing topic.", ingestionTaskName, e);
-      cleanupFailure = e;
     }
 
     try {
       closeVeniceViewWriters(doFlush);
     } catch (Exception e) {
       LOGGER.error("Error while closing venice view writer", e);
-      if (cleanupFailure == null) {
-        cleanupFailure = e;
-      }
     }
 
     try {
       closeVeniceWriters(doFlush);
     } catch (Exception e) {
       LOGGER.error("Error while closing venice writers", e);
-      if (cleanupFailure == null) {
-        cleanupFailure = e;
-      }
     }
 
     if (topicManagerRepository != null) {
@@ -2545,7 +2503,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
-    return cleanupFailure;
   }
 
   public void closeVeniceWriters(boolean doFlush) {
@@ -5875,39 +5832,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Stops the consumer task.
    */
-  public void close() {
-    CountDownLatch shutdownLatch;
-    synchronized (this) {
-      // Evict any pending repair tasks
-      getIsRunning().set(false);
-      if (runOrCloseStarted) {
-        // KafkaConsumer is closed at the end of the run method.
-        // The operation is executed on a single thread in run method.
-        // This method signals the run method to end, which closes the
-        // resources before exiting.
+  public synchronized void close() {
+    // Evict any pending repair tasks
+    getIsRunning().set(false);
+    // KafkaConsumer is closed at the end of the run method.
+    // The operation is executed on a single thread in run method.
+    // This method signals the run method to end, which closes the
+    // resources before exiting.
 
-        if (recordTransformer != null) {
-          // shut down the threadpool first, since tasks running in it may require a valid recordTransformer object
-          this.recordTransformerOnRecoveryThreadPool.shutdownNow();
+    if (recordTransformer != null) {
+      // shut down the threadpool first, since tasks running in it may require a valid recordTransformer object
+      this.recordTransformerOnRecoveryThreadPool.shutdownNow();
 
-          long startTime = System.nanoTime();
-          Store store = storeRepository.getStoreOrThrow(storeName);
-          recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
-          LOGGER.info(
-              "DaVinciRecordTransformer onEndVersionIngestion took {} ms for store version: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              storeVersionName);
-          Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
-        }
-        return;
-      }
-      runOrCloseStarted = true;
-      shutdownLatch = gracefulShutdownLatch.get();
-    }
-    try {
-      internalClose(false);
-    } finally {
-      shutdownLatch.countDown();
+      long startTime = System.nanoTime();
+      Store store = storeRepository.getStoreOrThrow(storeName);
+      recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
+      LOGGER.info(
+          "DaVinciRecordTransformer onEndVersionIngestion took {} ms for store version: {}",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          storeVersionName);
+      Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
     }
   }
 

@@ -79,11 +79,6 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private final String storeName;
   private final int versionNumber;
   private VeniceStoreType storeVersionType;
-  private volatile CompletableFuture<Void> stopConsumptionFuture;
-  private CompletableFuture<Void> startupFinishedFuture;
-  // Ingestion completion callbacks must not acquire the monitor used to issue backend stops.
-  private final Object customizedStateLock = new Object();
-  private boolean customizedStateRemoved;
 
   public AbstractPartitionStateModel(
       IngestionBackend ingestionBackend,
@@ -230,15 +225,12 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      * reset the customized view to default state before instance gets shut down.
      */
     if (partitionPushStatusAccessor != null) {
-      synchronized (customizedStateLock) {
-        customizedStateRemoved = false;
-        partitionPushStatusAccessor
-            .updateReplicaStatus(storeAndServerConfigs.getStoreVersionName(), partition, ExecutionStatus.STARTED);
-        partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(
-            storeAndServerConfigs.getStoreVersionName(),
-            partition,
-            HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
-      }
+      partitionPushStatusAccessor
+          .updateReplicaStatus(storeAndServerConfigs.getStoreVersionName(), partition, ExecutionStatus.STARTED);
+      partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(
+          storeAndServerConfigs.getStoreVersionName(),
+          partition,
+          HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     }
   }
 
@@ -299,6 +291,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
     try (Timer t = Timer.run(waitTimeLogging)) {
       waitPartitionPushStatusAccessor();
+      initializePartitionPushStatus();
     } catch (Exception e) {
       throw new VeniceException(
           "Error when initializing partition push status accessor, " + "will not start ingestion for store partition. ",
@@ -320,29 +313,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
-      CompletableFuture<Void> startupFinished = new CompletableFuture<>();
-      synchronized (this) {
-        stopConsumptionFuture = null;
-        startupFinishedFuture = startupFinished;
-      }
-      try {
-        synchronized (customizedStateLock) {
-          customizedStateRemoved = false;
-          try {
-            initializePartitionPushStatus();
-          } catch (Exception e) {
-            throw new VeniceException(
-                "Error when initializing partition push status accessor, "
-                    + "will not start ingestion for store partition. ",
-                e);
-          }
-        }
-        ingestionBackend
-            .startConsumption(storeAndServerConfigs, partition, Optional.empty(), storePartitionDescription);
-      } finally {
-        // A stop racing with startup must also clean up a partially started replica if startup fails.
-        startupFinished.complete(null);
-      }
+      ingestionBackend.startConsumption(storeAndServerConfigs, partition, Optional.empty(), storePartitionDescription);
     }
   }
 
@@ -366,15 +337,6 @@ public abstract class AbstractPartitionStateModel extends StateModel {
    * remove customized state for this partition if there is one
    */
   protected void removeCustomizedState() {
-    synchronized (customizedStateLock) {
-      removeCustomizedStateInternal();
-    }
-  }
-
-  private void removeCustomizedStateInternal() {
-    if (customizedStateRemoved) {
-      return;
-    }
     try {
       waitPartitionPushStatusAccessor();
     } catch (Exception e) {
@@ -400,11 +362,6 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         }
         try {
           partitionPushStatusAccessor.deleteReplicaStatus(storeName, partition);
-          logger.info(
-              "Removed customized state for store: {}, partition: {}, on instance: {}",
-              storeName,
-              partition,
-              instanceName);
           isSuccess = true;
         } catch (Exception e) {
           logger.error(
@@ -426,7 +383,6 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         throw new VeniceException(errorMsg);
       }
     }
-    customizedStateRemoved = true;
   }
 
   protected void waitConsumptionCompleted(String resourceName, StateModelIngestionProgressNotifier notifier) {
@@ -560,58 +516,23 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
   }
 
-  protected CompletableFuture<Void> stopConsumption(boolean dropCVState) {
-    CompletableFuture<Void> future = getOrStopConsumption();
-    if (!dropCVState) {
-      return future;
-    }
-    return future.whenComplete((ignored, throwable) -> {
-      if (throwable != null) {
-        logger.warn(
-            "Failed to stop consumption for resource: {}, partition: {}",
-            storeAndServerConfigs.getStoreVersionName(),
-            partition,
-            throwable);
-      }
-      // A delayed stop callback must not remove the customized state of a restarted replica.
-      synchronized (customizedStateLock) {
-        if (stopConsumptionFuture != future) {
-          return;
-        }
-        try {
-          // Attempt routing withdrawal even if ingestion stop failed; preserve either failure.
-          removeCustomizedState();
-        } catch (RuntimeException e) {
-          logger.error(
-              "Failed to withdraw customized state for resource: {}, partition: {}",
+  protected void stopConsumption(boolean dropCVState) {
+    CompletableFuture<Void> future =
+        ingestionBackend.stopConsumption(storeAndServerConfigs, partition, storePartitionDescription);
+    if (dropCVState) {
+      future.whenComplete((ignored, throwable) -> {
+        if (throwable != null) {
+          logger.warn(
+              "Failed to stop consumption for resource: {}, partition: {}",
               storeAndServerConfigs.getStoreVersionName(),
-              partition,
-              e);
-          throw e;
+              partition);
         }
-      }
-    });
-  }
-
-  private synchronized CompletableFuture<Void> getOrStopConsumption() {
-    if (stopConsumptionFuture != null) {
-      return stopConsumptionFuture;
+        /**
+         * Drop CV state anyway, and it may not work well in error condition, but it is fine since it is still a best effort.
+         */
+        removeCustomizedState();
+      });
     }
-    // A duplicate backend stop can complete before the original unsubscribe finishes, including on failure.
-    if (startupFinishedFuture != null && !startupFinishedFuture.isDone()) {
-      stopConsumptionFuture = startupFinishedFuture.thenCompose(
-          ignored -> ingestionBackend.stopConsumption(storeAndServerConfigs, partition, storePartitionDescription));
-    } else {
-      try {
-        stopConsumptionFuture =
-            ingestionBackend.stopConsumption(storeAndServerConfigs, partition, storePartitionDescription);
-      } catch (RuntimeException e) {
-        stopConsumptionFuture = new CompletableFuture<>();
-        stopConsumptionFuture.completeExceptionally(e);
-        throw e;
-      }
-    }
-    return stopConsumptionFuture;
   }
 
   protected IngestionBackend getIngestionBackend() {

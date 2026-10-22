@@ -64,7 +64,9 @@ import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.AbstractReadResponse;
+import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
 import com.linkedin.venice.listener.response.stats.AbstractReadResponseStats;
@@ -112,8 +114,6 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
-import com.linkedin.venice.utils.InMemoryLogAppender;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
@@ -142,7 +142,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
+import java.util.function.IntFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
@@ -265,14 +265,16 @@ public class StorageReadRequestHandlerTest {
   }
 
   private StorageReadRequestHandler createStorageReadRequestHandler() {
-    return createStorageReadRequestHandler(executor);
+    return createStorageReadRequestHandler(false, MultiGetResponseWrapper::new);
   }
 
-  private StorageReadRequestHandler createStorageReadRequestHandler(ThreadPoolExecutor executionPool) {
+  private StorageReadRequestHandler createStorageReadRequestHandler(
+      boolean parallelBatchGetEnabled,
+      IntFunction<MultiGetResponseWrapper> multiGetResponseProvider) {
     return new StorageReadRequestHandler(
         serverConfig,
-        executionPool,
-        executionPool,
+        parallelBatchGetEnabled ? parallelExecutor : executor,
+        parallelBatchGetEnabled ? parallelExecutor : executor,
         storageEngineRepository,
         storeRepository,
         schemaRepository,
@@ -280,7 +282,9 @@ public class StorageReadRequestHandlerTest {
         readMetadataRetriever,
         healthCheckService,
         compressorFactory,
-        Optional.empty());
+        Optional.empty(),
+        multiGetResponseProvider,
+        ComputeResponseWrapper::new);
   }
 
   @Test
@@ -411,7 +415,7 @@ public class StorageReadRequestHandlerTest {
     doReturn(chunkSize).when(serverConfig).getParallelBatchGetChunkSize();
 
     StorageReadRequestHandler requestHandler =
-        createStorageReadRequestHandler(parallel.configValue ? parallelExecutor : executor);
+        createStorageReadRequestHandler(parallel.configValue, MultiGetResponseWrapper::new);
     requestHandler.channelRead(context, request);
     verify(context, timeout(10000)).writeAndFlush(argumentCaptor.capture());
 
@@ -503,165 +507,6 @@ public class StorageReadRequestHandlerTest {
 
     // Asserting that the exception got logged
     Assert.assertTrue(errorLogCount.get() > 0);
-  }
-
-  @DataProvider(name = "failureDiagnosticRequests")
-  public Object[][] failureDiagnosticRequests() {
-    return new Object[][] { { SINGLE_GET, false }, { RequestType.MULTI_GET, false }, { RequestType.MULTI_GET, true },
-        { RequestType.COMPUTE, false }, { RequestType.COMPUTE, true } };
-  }
-
-  @Test(dataProvider = "failureDiagnosticRequests")
-  public void testStorageFailureDiagnostics(RequestType requestType, boolean parallel) throws Exception {
-    RedundantExceptionFilter.getRedundantExceptionFilter().clearBitSet();
-    String topic = "diagnostic-store_v1";
-    byte[] key = "key-not-for-logging".getBytes(StandardCharsets.UTF_8);
-    int partition = 3;
-    int keyCount = requestType == SINGLE_GET ? 1 : 2;
-    RouterRequest request;
-    if (requestType == SINGLE_GET) {
-      GetRouterRequest getRequest = mock(GetRouterRequest.class);
-      doReturn(key).when(getRequest).getKeyBytes();
-      doReturn(partition).when(getRequest).getPartition();
-      request = getRequest;
-    } else if (requestType == RequestType.MULTI_GET) {
-      MultiGetRouterRequestWrapper multiGet = mock(MultiGetRouterRequestWrapper.class);
-      doReturn(
-          Arrays.asList(
-              new MultiGetRouterRequestKeyV1(1, ByteBuffer.wrap(key), partition),
-              new MultiGetRouterRequestKeyV1(2, ByteBuffer.wrap(key), partition))).when(multiGet).getKeys();
-      request = multiGet;
-    } else {
-      ComputeRouterRequestWrapper compute = mock(ComputeRouterRequestWrapper.class);
-      String schema = SchemaBuilder.record("DiagnosticValue").fields().requiredString("name").endRecord().toString();
-      doReturn(new SchemaEntry(1, schema)).when(schemaRepository).getValueSchema(any(), anyInt());
-      doReturn(new ComputeRequest(Collections.emptyList(), new org.apache.avro.util.Utf8(schema))).when(compute)
-          .getComputeRequest();
-      doReturn(1).when(compute).getValueSchemaId();
-      doReturn(
-          Arrays.asList(
-              new ComputeRouterRequestKeyV1(1, ByteBuffer.wrap(key), partition),
-              new ComputeRouterRequestKeyV1(2, ByteBuffer.wrap(key), partition))).when(compute).getKeys();
-      request = compute;
-    }
-    doReturn(topic).when(request).getResourceName();
-    doReturn("diagnostic-store").when(request).getStoreName();
-    doReturn(requestType).when(request).getRequestType();
-    doReturn(keyCount).when(request).getKeyCount();
-    doReturn(true).when(request).isRetryRequest();
-    doReturn(true).when(request).isStreamingRequest();
-    doReturn(parallel).when(serverConfig).isEnableParallelBatchGet();
-    doReturn(1).when(serverConfig).getParallelBatchGetChunkSize();
-
-    ThreadPoolExecutor queuedExecutor = new InlineExecutor() {
-      @Override
-      public void execute(Runnable runnable) {
-        getQueue().add(runnable);
-      }
-    };
-    StorageReadRequestHandler handler = createStorageReadRequestHandler(queuedExecutor);
-    InMemoryLogAppender appender = new InMemoryLogAppender.Builder().build();
-    org.apache.logging.log4j.core.Logger logger =
-        (org.apache.logging.log4j.core.Logger) LogManager.getLogger(StorageReadRequestHandler.class);
-    appender.start();
-    logger.addAppender(appender);
-    try {
-      handler.channelRead(context, request);
-      queuedExecutor.getQueue().forEach(Runnable::run);
-      queuedExecutor.getQueue().clear();
-      verify(context).writeAndFlush(argumentCaptor.capture());
-      assertTrue(argumentCaptor.getValue() instanceof AbstractReadResponse);
-      assertTrue(appender.getLogs().isEmpty(), "Successful reads must not emit failure diagnostics");
-      reset(context);
-
-      queuedExecutor.getQueue().add(() -> {});
-      long beforeSubmissionMs = System.currentTimeMillis();
-      long beforeSubmissionNs = System.nanoTime();
-      handler.channelRead(context, request);
-      long afterSubmissionNs = System.nanoTime();
-      long afterSubmissionMs = System.currentTimeMillis();
-      assertTrue(appender.getLogs().isEmpty(), "Queued reads must not emit failure diagnostics before execution");
-      verify(context, never()).writeAndFlush(any());
-
-      PersistenceFailureException failure =
-          new PersistenceFailureException("Partition: " + partition + " of store: " + topic + " does not exist");
-      doThrow(failure).when(storageEngine).get(anyInt(), any(ByteBuffer.class));
-      doThrow(failure).when(storageEngine).get(anyInt(), any(byte[].class));
-      doThrow(failure).when(storageEngine).get(anyInt(), any(byte[].class), any(ByteBuffer.class));
-      queuedExecutor.getQueue().remove().run();
-      String prefix = "Storage read execution failed: ";
-      for (int i = 0; i < (parallel ? keyCount : 1); i++) {
-        long executionStart = System.nanoTime();
-        queuedExecutor.getQueue().remove().run();
-        long executionEnd = System.nanoTime();
-        List<String> diagnostics =
-            appender.getLogs().stream().filter(log -> log.startsWith(prefix)).collect(Collectors.toList());
-        assertEquals(diagnostics.size(), 1, "Repeated chunk failures must share the resource/exception rate limit");
-        if (i > 0) {
-          continue;
-        }
-        String diagnostic = diagnostics.get(0);
-        Map<String, String> fields = Arrays.stream(diagnostic.substring(prefix.length()).split(", "))
-            .map(field -> field.split("=", 2))
-            .collect(Collectors.toMap(field -> field[0], field -> field[1]));
-        assertEquals(fields.get("resource"), topic);
-        assertEquals(fields.get("requestType"), requestType.toString());
-        assertEquals(fields.get("retry"), "true");
-        assertEquals(fields.get("streaming"), "true");
-        assertEquals(fields.get("requestIdentity"), String.valueOf(System.identityHashCode(request)));
-        long submissionMs = Long.parseLong(fields.get("submittedAtEpochMs"));
-        assertTrue(submissionMs >= beforeSubmissionMs - 1 && submissionMs <= afterSubmissionMs + 1);
-        double queueWaitMs = Double.parseDouble(fields.get("queueWaitMs"));
-        assertTrue(queueWaitMs >= (executionStart - afterSubmissionNs) / 1_000_000.0);
-        assertTrue(queueWaitMs <= (executionEnd - beforeSubmissionNs) / 1_000_000.0);
-        double executionMs = Double.parseDouble(fields.get("executionMs"));
-        assertTrue(executionMs >= 0);
-        assertTrue(executionMs <= (executionEnd - executionStart) / 1_000_000.0);
-        assertEquals(fields.get("queueLengthAtSubmission"), "1");
-        assertEquals(fields.get("requestKeyCount"), String.valueOf(keyCount));
-        assertEquals(fields.get("chunkIndex"), String.valueOf(parallel ? i : -1));
-        assertEquals(fields.get("exceptionType"), PersistenceFailureException.class.getName());
-        assertFalse(diagnostic.contains(new String(key, StandardCharsets.UTF_8)));
-      }
-      assertTrue(queuedExecutor.getQueue().isEmpty());
-      verify(context).writeAndFlush(argumentCaptor.capture());
-      HttpShortcutResponse response = (HttpShortcutResponse) argumentCaptor.getValue();
-      assertEquals(response.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-      assertTrue(response.getMessage().contains(failure.getMessage()));
-      assertTrue(
-          appender.getLogs()
-              .stream()
-              .anyMatch(
-                  log -> log.startsWith("Exception thrown for " + topic)
-                      && log.contains("requestIdentity=" + System.identityHashCode(request))));
-
-      RuntimeException[] failures = { failure, new VeniceException("Different diagnostic failure"), failure };
-      for (int i = 0; i < failures.length; i++) {
-        reset(context);
-        if (i == 2) {
-          doReturn("another-diagnostic-store_v1").when(request).getResourceName();
-        }
-        doThrow(failures[i]).when(storageEngine).get(anyInt(), any(ByteBuffer.class));
-        doThrow(failures[i]).when(storageEngine).get(anyInt(), any(byte[].class));
-        doThrow(failures[i]).when(storageEngine).get(anyInt(), any(byte[].class), any(ByteBuffer.class));
-        handler.channelRead(context, request);
-        queuedExecutor.getQueue().forEach(Runnable::run);
-        queuedExecutor.getQueue().clear();
-        assertEquals(
-            appender.getLogs().stream().filter(log -> log.startsWith(prefix)).count(),
-            (long) i + 1,
-            "Only a different resource or exception class should emit another warning");
-        verify(context).writeAndFlush(argumentCaptor.capture());
-        response = (HttpShortcutResponse) argumentCaptor.getValue();
-        assertEquals(response.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-        assertTrue(response.getMessage().contains(failures[i].getMessage()));
-      }
-    } finally {
-      RedundantExceptionFilter.getRedundantExceptionFilter().clearBitSet();
-      logger.removeAppender(appender);
-      appender.stop();
-      queuedExecutor.shutdownNow();
-    }
   }
 
   @Test
@@ -871,7 +716,7 @@ public class StorageReadRequestHandlerTest {
     doReturn(2).when(request).getKeyCount();
 
     StorageReadRequestHandler requestHandler =
-        createStorageReadRequestHandler(parallelBatchGetEnabled ? parallelExecutor : executor);
+        createStorageReadRequestHandler(parallelBatchGetEnabled, MultiGetResponseWrapper::new);
     requestHandler.channelRead(context, request);
 
     verify(context, timeout(10000)).writeAndFlush(argumentCaptor.capture());
